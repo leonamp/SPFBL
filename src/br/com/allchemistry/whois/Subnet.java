@@ -91,7 +91,20 @@ public abstract class Subnet implements Serializable {
      */
     private String refresh(String result) throws ProcessException {
         try {
-            boolean reducedLocal = false;
+            String inetnum_upNew = null;
+            String aut_numNew = null;
+            String abuse_cNew = null;
+            String ownerNew = null;
+            String owneridNew = null;
+            String responsibleNew = null;
+            String countryNew = null;
+            String owner_cNew = null;
+            String tech_cNew = null;
+            String inetrevNew = null;
+            Date createdNew = null;
+            Date changedNew = null;
+            ArrayList<String> nameServerListNew = new ArrayList<String>();
+            boolean reducedNew = false;
             String inetnumResult = null;
             BufferedReader reader = new BufferedReader(new StringReader(result));
             try {
@@ -103,35 +116,35 @@ public abstract class Subnet implements Serializable {
                         inetnumResult = line.substring(index).trim();
                     } else if (line.startsWith("inetnum-up:")) {
                         int index = line.indexOf(':') + 1;
-                        inetnum_up = line.substring(index).trim();
+                        inetnum_upNew = line.substring(index).trim();
                     } else if (line.startsWith("aut-num:")) {
                         int index = line.indexOf(':') + 1;
-                        aut_num = line.substring(index).trim();
+                        aut_numNew = line.substring(index).trim();
                     } else if (line.startsWith("abuse-c:")) {
                         int index = line.indexOf(':') + 1;
-                        abuse_c = line.substring(index).trim();
+                        abuse_cNew = line.substring(index).trim();
                     } else if (line.startsWith("owner:")) {
                         int index = line.indexOf(':') + 1;
-                        owner = line.substring(index).trim();
+                        ownerNew = line.substring(index).trim();
                     } else if (line.startsWith("ownerid:")) {
                         int index = line.indexOf(':') + 1;
-                        ownerid = line.substring(index).trim();
+                        owneridNew = line.substring(index).trim();
                     } else if (line.startsWith("responsible:")) {
                         int index = line.indexOf(':') + 1;
-                        responsible = line.substring(index).trim();
+                        responsibleNew = line.substring(index).trim();
                     } else if (line.startsWith("country:")) {
                         int index = line.indexOf(':') + 1;
-                        country = line.substring(index).trim();
+                        countryNew = line.substring(index).trim();
                     } else if (line.startsWith("owner-c:")) {
                         int index = line.indexOf(':') + 1;
-                        owner_c = line.substring(index).trim();
+                        owner_cNew = line.substring(index).trim();
                     } else if (line.startsWith("tech-c:")) {
                         int index = line.indexOf(':') + 1;
-                        owner_c = line.substring(index).trim();
+                        owner_cNew = line.substring(index).trim();
                     } else if (line.startsWith("inetrev:")) {
                         int index = line.indexOf(':') + 1;
                         String inetrevResult = line.substring(index).trim();
-                        inetrev = inetrevResult;
+                        inetrevNew = inetrevResult;
                     } else if (line.startsWith("nserver:")) {
                         int index = line.indexOf(':') + 1;
                         String nserver = line.substring(index).trim();
@@ -144,13 +157,13 @@ public abstract class Subnet implements Serializable {
                         NameServer ns = NameServer.getNameServer(nserver);
                         ns.setStat(nsstat);
                         ns.setLastAA(nslastaa);
-                        nameServerList.add(nserver);
+                        nameServerListNew.add(nserver);
                     } else if (line.startsWith("created:")) {
                         int index = line.indexOf(':') + 1;
-                        created = DATE_FORMATTER.parse(line.substring(index).trim());
+                        createdNew = DATE_FORMATTER.parse(line.substring(index).trim());
                     } else if (line.startsWith("changed:")) {
                         int index = line.indexOf(':') + 1;
-                        changed = DATE_FORMATTER.parse(line.substring(index).trim());
+                        changedNew = DATE_FORMATTER.parse(line.substring(index).trim());
                     } else if (line.startsWith("nic-hdl-br:")) {
                         int index = line.indexOf(':') + 1;
                         String nic_hdl_br = line.substring(index).trim();
@@ -160,7 +173,7 @@ public abstract class Subnet implements Serializable {
                         line = reader.readLine().trim();
                         index = line.indexOf(':') + 1;
                         String e_mail;
-                        if (reducedLocal) {
+                        if (reducedNew) {
                             e_mail = null;
                         } else {
                             e_mail = line.substring(index).trim();
@@ -178,7 +191,7 @@ public abstract class Subnet implements Serializable {
                         handle.setChanged(changed2);
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
-                        reducedLocal = true;
+                        reducedNew = true;
                     } else if (line.startsWith("% Permission denied.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Permissão negada.")) {
@@ -195,8 +208,22 @@ public abstract class Subnet implements Serializable {
             if (inetnumResult == null) {
                 throw new ProcessException("ERROR: SUBNET NOT FOUND");
             } else {
+                this.inetnum_up = inetnum_upNew;
+                this.aut_num = aut_numNew;
+                this.abuse_c = abuse_cNew;
+                this.owner = ownerNew;
+                this.ownerid = owneridNew;
+                this.responsible = responsibleNew;
+                this.country = countryNew;
+                this.owner_c = owner_cNew;
+                this.tech_c = tech_cNew;
+                this.inetrev = inetrevNew;
+                this.created = createdNew;
+                this.changed = changedNew;
+                this.nameServerList.clear();
+                this.nameServerList.addAll(nameServerListNew);
+                this.reduced = reducedNew;
                 this.lastRefresh = System.currentTimeMillis();
-                this.reduced = reducedLocal;
                 this.queries = 1;
                 return inetnumResult;
             }
