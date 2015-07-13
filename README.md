@@ -9,7 +9,7 @@ Uma vez iniciado o serviço, as consultas podem ser feitas por programas cliente
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
 ```
-user:~# /usr/local/bin/exim4/spfblquery.sh 200.160.7.130 gter-bounces@eng.registro.br eng.registro.br
+user:~# ./spfblquery.sh 200.160.7.130 gter-bounces@eng.registro.br eng.registro.br
 PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
 ```
 
@@ -18,7 +18,7 @@ Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para u
 Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo script "spfblspam.sh", que vai extrair o ticket contido no campo "Received-SPFBL":
 
 ```
-user:~# /usr/local/bin/exim4/spfblspam.sh <caminho da mensagem SPAM>
+user:~# ./spfblspam.sh <caminho da mensagem SPAM>
 Reclamação SPFBL enviada com sucesso.
 ```
 

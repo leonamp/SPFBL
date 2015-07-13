@@ -70,6 +70,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * Uma vez recebida a reclamação com o ticket, o serviço 
  * descriptografa o ticket e extrai os responsaveis pelo envio.
  * 
+ * 
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
 public final class SPF implements Serializable {
