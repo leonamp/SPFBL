@@ -15,7 +15,7 @@ PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5B
 
 Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para uma possível denúncia de SPAM futura.
 
-Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo script "spfblspam.sh", que vai extrair o ticket contido no campo "Received-SPFBL":
+Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo script "spfblspam.sh", que vai extrair o ticket contido no campo "Received-SPFBL" e enviá-lo ao serviço SPFBL:
 
 ```
 user:~# ./spfblspam.sh <caminho da mensagem SPAM>

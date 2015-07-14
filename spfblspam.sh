@@ -2,6 +2,10 @@
 #
 # Este é um script que faz a reclação de SPAM ao serviço SPFBL.
 #
+# Atenção! Para utilizar este serviço, solicite a liberação das consultas 
+# no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
+# ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
+#
 # Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail.
 # Com posse do ticket, ele envia a reclamação ao serviço SPFBL para contabilização de reclamação.
 #
