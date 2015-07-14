@@ -2,6 +2,10 @@
 #
 # Este é um script que retorna o resultado SPFBL através de uma implementação em servidor externo.
 #
+# Atenção! Para utilizar este serviço, solicite a liberação das consultas 
+# no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
+# ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
+#
 # A saída deste programa deve ser incorporada ao cabeçalho Received-SPFBL da mensagem de e-mail que gerou a consulta.
 #
 # Exemplo:

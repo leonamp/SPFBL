@@ -212,7 +212,10 @@ public abstract class Subnet implements Serializable {
                 this.aut_num = aut_numNew;
                 this.abuse_c = abuse_cNew;
                 this.owner = ownerNew;
-                this.ownerid = owneridNew;
+                if (owneridNew != null) {
+                    // Associar ownerid somente se retornar valor.
+                    this.ownerid = owneridNew;
+                }
                 this.responsible = responsibleNew;
                 this.country = countryNew;
                 this.owner_c = owner_cNew;
