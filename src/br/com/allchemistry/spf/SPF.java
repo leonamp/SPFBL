@@ -26,6 +26,7 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
@@ -1662,6 +1663,10 @@ public final class SPF implements Serializable {
                     String ticket = tokenizer.nextToken();
                     SPF.addComplain(ticket);
                     result = "OK\n";
+                } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
+                    String ticket = tokenizer.nextToken();
+                    SPF.removeComplain(ticket);
+                    result = "OK\n";
                 } else if ((firstToken.equals("CHECK") && tokenizer.countTokens() == 3) || tokenizer.countTokens() == 2) {
                     try {
                         String ip;
@@ -1739,10 +1744,12 @@ public final class SPF implements Serializable {
                             }
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
-                                HashMap<String,Float> reputationMap = SPF.getReputationMap(tokenSet);
-                                for (String token : reputationMap.keySet()) {
-                                    float probability = reputationMap.get(token);
-                                    result += token + " " + probability + "\n";
+                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap(tokenSet);
+                                for (String token : distributionMap.keySet()) {
+                                    Distribution distribution = distributionMap.get(token);
+                                    float probability = distribution.getSpamProbability();
+                                    Status status = distribution.getStatus();
+                                    result += token + " " + status.name() + " " + probability + "\n";
                                 }
                             } else {
                                 String ticket;
@@ -1876,6 +1883,20 @@ public final class SPF implements Serializable {
     }
     
     /**
+     * Remove uma nova reclamação de SPAM.
+     * @param ticket o ticket da mensagem original.
+     * @throws ProcessException se houver falha no processamento do ticket.
+     */
+    public synchronized static void removeComplain(String ticket) throws ProcessException {
+        if (COMPLAIN_MAP.remove(ticket) == null) {
+            // O ticket não existe ou não foi usado.
+            throw new ProcessException("ERROR: TICKET NOT EXISTS");
+        } else {
+            COMPLAIN_CHANGED = true;
+        }
+    }
+    
+    /**
      * Classe que representa uma reclamação.
      * Possui mecanismo de vencimento da reclamação.
      */
@@ -1913,6 +1934,7 @@ public final class SPF implements Serializable {
         }
         
         public void removeComplains() {
+            Server.logHamSPF(tokenSet);
             // Retira todas as reclamações.
             while (!tokenSet.isEmpty()) {
                 String token = tokenSet.pollFirst();
@@ -1921,7 +1943,6 @@ public final class SPF implements Serializable {
                     distribution.removeSpam();
                 }
             }
-            Server.logHamSPF(tokenSet);
         }
         
         @Override
@@ -1971,12 +1992,15 @@ public final class SPF implements Serializable {
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
         boolean blacklisted = false;
         for (String token : tokenSet) {
-            Distribution distribution = getDistribution(token, true);
-            if (distribution.isBlacklisted()) {
+            Distribution distribution = getDistribution(token, false);
+            if (distribution == null) {
+                // Distribuição não encontrada.
+                // Considerar que não está listado.
+            } else if (distribution.isBlacklisted()) {
                 Server.logDebug("BLACKLISTED " + token);
                 blacklisted = true;
-            } else {
-                distribution.addHam();
+//            } else {
+//                distribution.addHam();
             }
         }
         return blacklisted;
@@ -2003,32 +2027,32 @@ public final class SPF implements Serializable {
         return distribution;
     }
     
-    public synchronized static HashMap<String,Float> getReputationMap() {
-        HashMap<String,Float> reputationMap = new HashMap<String,Float>();
+    public synchronized static TreeMap<String,Distribution> getDistributionMap() {
+        TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
         for (String token : DISTRIBUTION_MAP.keySet()) {
             Distribution distribution = DISTRIBUTION_MAP.get(token);
-            reputationMap.put(token, distribution.getSpamProbability());
+            distributionMap.put(token, distribution);
         }
-        return reputationMap;
+        return distributionMap;
     }
     
-    public synchronized static HashMap<String,Float> getReputationMap(TreeSet<String> tokenSet) {
-        HashMap<String,Float> reputationMap = new HashMap<String,Float>();
+    public synchronized static TreeMap<String,Distribution> getDistributionMap(TreeSet<String> tokenSet) {
+        TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
         if (!tokenSet.isEmpty()) {
             for (String token : DISTRIBUTION_MAP.keySet()) {
                 if (tokenSet.contains(token)) {
                     Distribution distribution = DISTRIBUTION_MAP.get(token);
-                    reputationMap.put(token, distribution.getSpamProbability());
+                    distributionMap.put(token, distribution);
                 }
             }
         }
-        return reputationMap;
+        return distributionMap;
     }
     
     /**
      * Enumeração do status da distribuição.
      */
-    private enum Status implements Serializable {
+    public enum Status implements Serializable {
         WHITE, // Whitelisted
         GRAY, // Graylisted
         BLACK; // Blacklisted
@@ -2036,13 +2060,13 @@ public final class SPF implements Serializable {
     
     /**
      * Classe que representa a distribuição binomial entre SPAM e HAM.
-     * O volume máximo dos dois valores é o valor máximo de um unsigned byte. 
+     * O valor máximo é 255. 
      */
-    private static final class Distribution implements Serializable {
+    public static final class Distribution implements Serializable {
         
         private static final long serialVersionUID = 1L;
         
-        private byte ham; // Quantidade total de HAM.
+//        private byte ham; // Quantidade total de HAM.
         private byte spam; // Quantidade total de SPAM.
         private long lastQuery; // Última consulta à distribuição.
         private Status status; // Status da distribuição.
@@ -2052,8 +2076,8 @@ public final class SPF implements Serializable {
         }
         
         public void reset() {
-            ham = (byte) 0xFF;
-            spam = 0x00;
+//            ham = (byte) 0xFF;
+            spam = (byte) 0x00;
             lastQuery = System.currentTimeMillis();
             status = Status.WHITE;
             DISTRIBUTION_CHANGED = true;
@@ -2064,8 +2088,9 @@ public final class SPF implements Serializable {
         }
         
         public synchronized float getSpamProbability() {
-            int total = (ham & 0xFF) + (spam & 0xFF);
-            float probability = total == 0 ? 0.0f : (float) (spam & 0xFF) / total;
+//            int total = (ham & 0xFF) + (spam & 0xFF);
+//            float probability = total == 0 ? 0.0f : (float) (spam & 0xFF) / total;
+            float probability = (float) (spam & 0xFF) / 255;
             lastQuery = System.currentTimeMillis();
             DISTRIBUTION_CHANGED = true;
             return probability;
@@ -2103,12 +2128,12 @@ public final class SPF implements Serializable {
             return getStatus() == Status.BLACK;
         }
         
-        public synchronized void addHam() {
-            if ((ham & 0xFF) < 0xFF) {
-                ham++;
-                DISTRIBUTION_CHANGED = true;
-            }
-        }
+//        public synchronized void addHam() {
+//            if ((ham & 0x00FF) + (spam & 0x00FF) < 0x00FF) {
+//                ham++;
+//                DISTRIBUTION_CHANGED = true;
+//            }
+//        }
         
         public synchronized void removeSpam() {
             if ((spam & 0xFF) > 0x00) {
@@ -2118,10 +2143,10 @@ public final class SPF implements Serializable {
         }
         
         public synchronized void flipToSpam() {
-            if ((ham & 0xFF) > 0x00) {
-                ham--;
-                DISTRIBUTION_CHANGED = true;
-            }
+//            if ((ham & 0xFF) > 0x00) {
+//                ham--;
+//                DISTRIBUTION_CHANGED = true;
+//            }
             if ((spam & 0xFF) < 0xFF) {
                 spam++;
                 DISTRIBUTION_CHANGED = true;
