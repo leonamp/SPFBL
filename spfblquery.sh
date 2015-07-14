@@ -29,7 +29,7 @@
 #    SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
 #    NEUTRAL <ticket>: permitir o recebimento da mensagem.
 #    NONE <ticket>: permitir o recebimento da mensagem.
-#    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist.
+#    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 #
 # Códigos de saída:
 #

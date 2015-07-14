@@ -5,6 +5,8 @@
 package br.com.allchemistry.core;
 
 import br.com.allchemistry.spf.SPF;
+import br.com.allchemistry.spf.SPF.Distribution;
+import br.com.allchemistry.spf.SPF.Status;
 import br.com.allchemistry.whois.AutonomousSystem;
 import br.com.allchemistry.whois.Domain;
 import br.com.allchemistry.whois.Handle;
@@ -752,10 +754,14 @@ public abstract class Server extends Thread {
                 } else if (token.equals("REPUTATION")) {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
-                    HashMap<String,Float> reputationMap = SPF.getReputationMap();
-                    for (String tokenReputation : reputationMap.keySet()) {
-                        float probability = reputationMap.get(tokenReputation);
+                    TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
+                    for (String tokenReputation : distributionMap.keySet()) {
+                        Distribution distribution = distributionMap.get(tokenReputation);
+                        float probability = distribution.getSpamProbability();
+                        Status status = distribution.getStatus();
                         stringBuilder.append(tokenReputation);
+                        stringBuilder.append(' ');
+                        stringBuilder.append(status);
                         stringBuilder.append(' ');
                         stringBuilder.append(probability);
                         stringBuilder.append('\n');
