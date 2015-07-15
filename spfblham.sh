@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Este é um script que faz a reclação de SPAM ao serviço SPFBL.
+# Este é um script que revoga uma reclação de SPAM ao serviço SPFBL.
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
@@ -8,13 +8,13 @@
 #
 # Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
 #
-# Com posse do ticket, ele envia a reclamação ao serviço SPFBL para contabilização de reclamação.
+# Com posse do ticket, ele solicita a revogação da reclamação ao serviço SPFBL.
 #
 # Parâmetros de entrada:
 #  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
 #
 # Códigos de saída:
-#  0. Ticket enviado com sucesso.
+#  0. Reclamação revogada com sucesso.
 #  1. Arquivo inexistente.
 #  2. Arquivo não contém ticket.
 #  3. Erro no envio do ticket.
@@ -68,16 +68,16 @@ if [[ -z $ticket ]]; then
 else
 
 	# Registra reclamação SPFBL.
-	resposta=$(echo "SPAM $ticket" | nc -w 3 54.94.137.168 9877)
+	resposta=$(echo "HAM $ticket" | nc -w 3 54.94.137.168 9877)
 
 	if [[ $resposta == "" ]]; then
 				
-		echo "A reclamação SPFBL não foi enviada por timeout."
+		echo "A revogação SPFBL não foi enviada por timeout."
 		exit 4
 					
 	elif [[ $resposta == "OK"* ]]; then
 				
-		echo "Reclamação SPFBL enviada com sucesso."
+		echo "Revogação SPFBL enviada com sucesso."
 		exit 0
 				
 	elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
@@ -87,7 +87,7 @@ else
 				
 	else
 				
-		echo "A reclamação SPFBL não foi enviada: $resposta"
+		echo "A revogação SPFBL não foi enviada: $resposta"
 		exit 3
 				
 	fi
