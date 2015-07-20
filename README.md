@@ -28,4 +28,5 @@ Se este projeto for útil para sua empresa, faça uma doação de qualquer valor
 
 1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy
 
-![alt tag](https://raw.github.com/leonamp/SPFBL/bitcoin.png)
+![Donate](https://github.com/leonamp/SPFBL/blob/master/bicoin.png "Donate")
+
