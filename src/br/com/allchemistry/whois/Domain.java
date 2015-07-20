@@ -64,6 +64,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private String dsstatus;
     private String dslastok;
     private String saci;
+    private String web_whois;
     
     /**
      * Lista dos servidores de nome do domínio.
@@ -329,6 +330,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             String dsstatusNew = null;
             String dslastokNew = null;
             String saciNew = null;
+            String web_whoisNew = null;
             ArrayList<String> nameServerListNew = new ArrayList<String>();
             boolean reducedNew = false;
             String domainResult = null;
@@ -418,6 +420,9 @@ public class Domain implements Serializable, Comparable<Domain> {
                     } else if (line.startsWith("saci:")) {
                         int index = line.indexOf(':') + 1;
                         saciNew = line.substring(index).trim();
+                    } else if (line.startsWith("web-whois:")) {
+                        int index = line.indexOf(':') + 1;
+                        web_whoisNew = line.substring(index).trim();
                     } else if (line.startsWith("provider:")) {
                         int index = line.indexOf(':') + 1;
                         providerNew = line.substring(index).trim();
@@ -491,6 +496,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 this.dsstatus = dsstatusNew;
                 this.dslastok = dslastokNew;
                 this.saci = saciNew;
+                this.web_whois = web_whoisNew;
                 this.nameServerList.clear();
                 this.nameServerList.addAll(nameServerListNew);
                 this.reduced = reducedNew;
@@ -581,6 +587,8 @@ public class Domain implements Serializable, Comparable<Domain> {
             return dslastok;
         } else if (key.equals("saci")) {
             return saci;
+        } else if (key.equals("web-whois")) {
+            return web_whois;
         } else if (key.equals("nserver")) {
             return nameServerList.toString();
         } else if (key.equals("EXPIRATION")) {

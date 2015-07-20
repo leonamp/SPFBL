@@ -4,6 +4,7 @@
  */
 package br.com.allchemistry.spf;
 
+import br.com.allchemistry.core.NormalDistribution;
 import br.com.allchemistry.whois.Domain;
 import br.com.allchemistry.core.ProcessException;
 import br.com.allchemistry.core.Server;
@@ -100,7 +101,7 @@ public final class SPF implements Serializable {
     private static final String BEST_GUESS = "v=spf1 a/24 mx/24 ptr ?all";
     
     /**
-     * Mapa de registros manuais de SPF caso o domínio não tema um.
+     * Mapa de registros manuais de SPF caso o domínio não tenha um.
      */
     private static HashMap<String,String> GUESS_MAP = new HashMap<String,String>();
     
@@ -185,7 +186,7 @@ public final class SPF implements Serializable {
             }
             return registryList;
         } catch (NamingException ex) {
-            throw new ProcessException("ERROR: HOST NOT FOUND");
+            throw new ProcessException("ERROR: HOST NOT FOUND", ex);
         } catch (Exception ex) {
             throw new ProcessException("ERROR: FATAL", ex);
         }
@@ -329,109 +330,118 @@ public final class SPF implements Serializable {
      * @throws ProcessException se houver falha no processamento.
      */
     private void refresh(boolean load) throws ProcessException {
-        LinkedList<String> registryList = getRegistrySPF(hostname);
-        if (registryList.isEmpty()) {
-            Server.logQuerySPF(hostname, "no registry");
-        } else {
-            ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
-            ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
-            ArrayList<Mechanism> mechanismListInclude = new ArrayList<Mechanism>();
-            ArrayList<Mechanism> mechanismListPTR = new ArrayList<Mechanism>();
-            TreeSet<String> visitedTokens = new TreeSet<String>();
-            Qualifier allLocal = null;
-            String redirectLocal = null;
-            String explanationLocal = null;
-            boolean errorQuery = false;
-            String fixed;
-            for (String registry : registryList) {
-                boolean errorRegistry = false;
-                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                while (tokenizer.hasMoreTokens()) {
-                    String token = tokenizer.nextToken();
-                    if (visitedTokens.contains(token)) {
-                        // Token já visitado.
-                    } else if (token.equals("v=spf1")) {
-                        // Nada deve ser feito.
-                    } else if (token.equals("v=msv1")) {
-                        // Nada deve ser feito.
-                    } else if (token.startsWith("t=") && token.length() == 32) {
-                        // Nada deve ser feito.
-                    } else if (isMechanismAll(token)) {
-                        // Não permitir qualificadores permissivos para all.
-                        switch (token.charAt(0)) {
-                            case '-':
-                                allLocal = Qualifier.FAIL;
-                                break;
-                            case '~':
-                                allLocal = Qualifier.SOFTFAIL;
-                                break;
-                            default:
-                                allLocal = Qualifier.NEUTRAL; // Default qualifier or all.
-                        }
-                    } else if (isMechanismIPv4(token)) {
-                        mechanismListIP.add(new MechanismIPv4(token));
-                    } else if (isMechanismIPv6(token)) {
-                        mechanismListIP.add(new MechanismIPv6(token));
-                    } else if (isMechanismA(token)) {
-                        mechanismListDNS.add(new MechanismA(token, load));
-                    } else if (isMechanismMX(token)) {
-                        mechanismListDNS.add(new MechanismMX(token, load));
-                    } else if (isMechanismPTR(token)) {
-                        mechanismListPTR.add(new MechanismPTR(token));
-                    } else if (isMechanismExistis(token)) {
-                        mechanismListDNS.add(new MechanismExists(token));
-                    } else if (isMechanismInclude(token)) {
-                        mechanismListInclude.add(new MechanismInclude(token));
-                    } else if (isModifierRedirect(token)) {
-                        int index = token.indexOf("=") + 1;
-                        redirectLocal = token.substring(index);
-                    } else if (isModifierExplanation(token)) {
-                        int index = token.indexOf("=") + 1;
-                        explanationLocal = token.substring(index);
-                    } else if ((fixed = extractIPv4CIDR(token)) != null) {
-                        // Tenta recuperar um erro de sintaxe.
-                        if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+        try {
+            LinkedList<String> registryList = getRegistrySPF(hostname);
+            if (registryList.isEmpty()) {
+                Server.logQuerySPF(hostname, "no registry");
+            } else {
+                ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
+                ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
+                ArrayList<Mechanism> mechanismListInclude = new ArrayList<Mechanism>();
+                ArrayList<Mechanism> mechanismListPTR = new ArrayList<Mechanism>();
+                TreeSet<String> visitedTokens = new TreeSet<String>();
+                Qualifier allLocal = null;
+                String redirectLocal = null;
+                String explanationLocal = null;
+                boolean errorQuery = false;
+                String fixed;
+                for (String registry : registryList) {
+                    boolean errorRegistry = false;
+                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        if (visitedTokens.contains(token)) {
+                            // Token já visitado.
+                        } else if (token.equals("v=spf1")) {
+                            // Nada deve ser feito.
+                        } else if (token.equals("v=msv1")) {
+                            // Nada deve ser feito.
+                        } else if (token.startsWith("t=") && token.length() == 32) {
+                            // Nada deve ser feito.
+                        } else if (isMechanismAll(token)) {
+                            // Não permitir qualificadores permissivos para all.
+                            switch (token.charAt(0)) {
+                                case '-':
+                                    allLocal = Qualifier.FAIL;
+                                    break;
+                                case '~':
+                                    allLocal = Qualifier.SOFTFAIL;
+                                    break;
+                                default:
+                                    allLocal = Qualifier.NEUTRAL; // Default qualifier or all.
+                            }
+                        } else if (isMechanismIPv4(token)) {
                             mechanismListIP.add(new MechanismIPv4(token));
-                        }
-                        errorRegistry = true;
-                    } else if ((fixed = extractIPv6CIDR(token)) != null) {
-                        // Tenta recuperar um erro de sintaxe.
-                        if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+                        } else if (isMechanismIPv6(token)) {
                             mechanismListIP.add(new MechanismIPv6(token));
+                        } else if (isMechanismA(token)) {
+                            mechanismListDNS.add(new MechanismA(token, load));
+                        } else if (isMechanismMX(token)) {
+                            mechanismListDNS.add(new MechanismMX(token, load));
+                        } else if (isMechanismPTR(token)) {
+                            mechanismListPTR.add(new MechanismPTR(token));
+                        } else if (isMechanismExistis(token)) {
+                            mechanismListDNS.add(new MechanismExists(token));
+                        } else if (isMechanismInclude(token)) {
+                            mechanismListInclude.add(new MechanismInclude(token));
+                        } else if (isModifierRedirect(token)) {
+                            int index = token.indexOf("=") + 1;
+                            redirectLocal = token.substring(index);
+                        } else if (isModifierExplanation(token)) {
+                            int index = token.indexOf("=") + 1;
+                            explanationLocal = token.substring(index);
+                        } else if ((fixed = extractIPv4CIDR(token)) != null) {
+                            // Tenta recuperar um erro de sintaxe.
+                            if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+                                mechanismListIP.add(new MechanismIPv4(token));
+                            }
+                            errorRegistry = true;
+                        } else if ((fixed = extractIPv6CIDR(token)) != null) {
+                            // Tenta recuperar um erro de sintaxe.
+                            if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+                                mechanismListIP.add(new MechanismIPv6(token));
+                            }
+                            errorRegistry = true;
+                        } else {
+                            // Um erro durante o processamento foi encontrado.
+                            Server.logDebug("SPF token not defined: " + token);
+                            errorRegistry = true;
+                            errorQuery = true;
                         }
-                        errorRegistry = true;
-                    } else {
-                        // Um erro durante o processamento foi encontrado.
-                        Server.logDebug("SPF token not defined: " + token);
-                        errorRegistry = true;
-                        errorQuery = true;
+                        visitedTokens.add(token);
                     }
-                    visitedTokens.add(token);
+                    if (errorRegistry) {
+                        // Log do registro com erro.
+                        Server.logErrorSPF(hostname, registry);
+                    } else {
+                        // Log do registro sem erro.
+                        Server.logQuerySPF(hostname, registry);
+                    }
                 }
-                if (errorRegistry) {
-                    // Log do registro com erro.
-                    Server.logErrorSPF(hostname, registry);
-                } else {
-                    // Log do registro sem erro.
-                    Server.logQuerySPF(hostname, registry);
-                }
+                // Considerar os mecanismos na ordem crescente
+                // de complexidade de processamento.
+                ArrayList<Mechanism> mechanismListLocal = new ArrayList<Mechanism>();
+                mechanismListLocal.addAll(mechanismListIP);
+                mechanismListLocal.addAll(mechanismListDNS);
+                mechanismListLocal.addAll(mechanismListInclude);
+                mechanismListLocal.addAll(mechanismListPTR);
+                // Atribuição dos novos valores.
+                this.mechanismList = mechanismListLocal;
+                this.all = allLocal;
+                this.redirect = redirectLocal;
+                this.explanation = explanationLocal;
+                this.error = errorQuery;
+                SPF_CHANGED = true;
+                this.queries = 0;
+                this.lastRefresh = System.currentTimeMillis();
             }
-            // Considerar os mecanismos na ordem crescente
-            // de complexidade de processamento.
-            ArrayList<Mechanism> mechanismListLocal = new ArrayList<Mechanism>();
-            mechanismListLocal.addAll(mechanismListIP);
-            mechanismListLocal.addAll(mechanismListDNS);
-            mechanismListLocal.addAll(mechanismListInclude);
-            mechanismListLocal.addAll(mechanismListPTR);
-            // Atribuição dos novos valores.
-            this.mechanismList = mechanismListLocal;
-            this.all = allLocal;
-            this.redirect = redirectLocal;
-            this.explanation = explanationLocal;
-            this.error = errorQuery;
-            SPF_CHANGED = true;
-            this.queries = 0;
-            this.lastRefresh = System.currentTimeMillis();
+        } catch (ProcessException ex) {
+            if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
+                // Host não existe mais.
+                // Apagar registro do cache.
+                removeSPF(hostname);
+            }
+            throw ex;
         }
     }
     
@@ -572,8 +582,8 @@ public final class SPF implements Serializable {
     private static boolean isMechanismA(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?a"
-                + "(:(([a-z0-9]|[a-z0-9][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9]))?"
+                + "(:([a-z0-9_][a-z0-9-]*[a-z0-9]\\.)+"
+                + "([a-z0-9_][a-z0-9-]*[a-z0-9]))?"
                 + "(/[0-9]{1,2})?"
                 + "$", token.toLowerCase()
                 );
@@ -708,8 +718,8 @@ public final class SPF implements Serializable {
                 if (mechanism instanceof MechanismInclude) {
                     try {
                         MechanismInclude include = (MechanismInclude) mechanism;
-                        SPF spf = include.getSPF();
-                        Qualifier qualifier = spf.getQualifier(
+//                        SPF spf = include.getSPF();
+                        Qualifier qualifier = include.getQualifierSPF(
                                 ip, deep + 1, hostVisitedSet);
                         if (qualifier == null) {
                             // Nenhum qualificador foi definido
@@ -1331,9 +1341,17 @@ public final class SPF implements Serializable {
             return expression.substring(index);
         }
         
-        public SPF getSPF() throws ProcessException {
+        public Qualifier getQualifierSPF(
+                String ip, int deep, TreeSet<String> hostVisitedSet
+                ) throws ProcessException {
             String host = getHostname();
-            return SPF.getSPF(host);
+            SPF spf = SPF.getSPF(host);
+            if (spf == null) {
+                return null;
+            } else {
+                return spf.getQualifier(ip, deep, hostVisitedSet);
+            }
+            
         }
         
         @Override
@@ -1382,6 +1400,12 @@ public final class SPF implements Serializable {
         }
         spf.queries++; // Incrementa o contador de consultas.
         return spf;
+    }
+    
+    private static synchronized void removeSPF(String host) {
+        if (SPF_MAP.remove(host) != null) {
+            SPF_CHANGED = true;
+        }
     }
     
     /**
@@ -1469,13 +1493,14 @@ public final class SPF implements Serializable {
             File file = new File("spf.map");
             if (file.exists()) {
                 try {
+                    HashMap<String,SPF> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        HashMap<String,SPF> map = SerializationUtils.deserialize(fileInputStream);
-                        SPF_MAP.putAll(map);
+                        map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
+                    SPF_MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1486,13 +1511,14 @@ public final class SPF implements Serializable {
             File file = new File("complain.map");
             if (file.exists()) {
                 try {
+                    HashMap<String,Complain> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        HashMap<String,Complain> map = SerializationUtils.deserialize(fileInputStream);
-                        COMPLAIN_MAP.putAll(map);
+                        map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
+                    COMPLAIN_MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1503,13 +1529,17 @@ public final class SPF implements Serializable {
             File file = new File("distribution.map");
             if (file.exists()) {
                 try {
+                    HashMap<String,Distribution> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        HashMap<String,Distribution> map = SerializationUtils.deserialize(fileInputStream);
-                        DISTRIBUTION_MAP.putAll(map);
+                        map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
+                    for (Distribution distribution : map.values()) {
+                        distribution.complain = distribution.spam & 0x000000FF;
+                    }
+                    DISTRIBUTION_MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1520,13 +1550,14 @@ public final class SPF implements Serializable {
             File file = new File("provider.set");
             if (file.exists()) {
                 try {
+                    TreeSet<String> set;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        TreeSet<String> set = SerializationUtils.deserialize(fileInputStream);
-                        PROVIDER_SET.addAll(set);
+                        set = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
+                    PROVIDER_SET.addAll(set);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1537,13 +1568,14 @@ public final class SPF implements Serializable {
             File file = new File("guess.map");
             if (file.exists()) {
                 try {
+                    HashMap<String,String> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        HashMap<String,String> map = SerializationUtils.deserialize(fileInputStream);
-                        GUESS_MAP.putAll(map);
+                        map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
+                    GUESS_MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1558,7 +1590,7 @@ public final class SPF implements Serializable {
         // presos aguardando a liberação do método.
         if (BACKGROUND_SEMAPHORE.tryAcquire()) {
             try {
-                backugroundRefresh();
+                backgroundRefresh();
             } finally {
                 BACKGROUND_SEMAPHORE.release();
             }
@@ -1566,7 +1598,7 @@ public final class SPF implements Serializable {
     }
     
     
-    public static synchronized void backugroundRefresh() {
+    public static synchronized void backgroundRefresh() {
         SPF spfMax = null;
         for (SPF spf : SPF_MAP.values()) {
             if (spfMax == null) {
@@ -1747,8 +1779,8 @@ public final class SPF implements Serializable {
                                 TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap(tokenSet);
                                 for (String token : distributionMap.keySet()) {
                                     Distribution distribution = distributionMap.get(token);
-                                    float probability = distribution.getSpamProbability();
-                                    Status status = distribution.getStatus();
+                                    float probability = distribution.getSpamProbability(false);
+                                    Status status = distribution.getStatus(false);
                                     result += token + " " + status.name() + " " + probability + "\n";
                                 }
                             } else {
@@ -1852,6 +1884,8 @@ public final class SPF implements Serializable {
                             COMPLAIN_MAP.remove(ticket);
                             COMPLAIN_CHANGED = true;
                         }
+                        // Apagar todas as distribuições vencidas.
+                        dropExpiredDistribution();
                     }
                 }, 3600000, 3600000 // Frequência de 1 hora.
                 );
@@ -1873,10 +1907,7 @@ public final class SPF implements Serializable {
      * @throws ProcessException se houver falha no processamento do ticket.
      */
     public synchronized static void addComplain(String ticket) throws ProcessException {
-        if (COMPLAIN_MAP.containsKey(ticket)) {
-            // O ticket já foi usado antes.
-            throw new ProcessException("ERROR: TICKET ALREADY USED");
-        } else {
+        if (!COMPLAIN_MAP.containsKey(ticket)) {
             COMPLAIN_MAP.put(ticket, new Complain(ticket));
             COMPLAIN_CHANGED = true;
         }
@@ -1887,11 +1918,10 @@ public final class SPF implements Serializable {
      * @param ticket o ticket da mensagem original.
      * @throws ProcessException se houver falha no processamento do ticket.
      */
-    public synchronized static void removeComplain(String ticket) throws ProcessException {
-        if (COMPLAIN_MAP.remove(ticket) == null) {
-            // O ticket não existe ou não foi usado.
-            throw new ProcessException("ERROR: TICKET NOT EXISTS");
-        } else {
+    public synchronized static void removeComplain(String ticket) {
+        Complain complain = COMPLAIN_MAP.remove(ticket);
+        if (complain != null) {
+            complain.removeComplains();
             COMPLAIN_CHANGED = true;
         }
     }
@@ -1918,7 +1948,7 @@ public final class SPF implements Serializable {
                 StringTokenizer tokenizer = new StringTokenizer(complain.substring(index+1), " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
-                    getDistribution(token, true).flipToSpam();
+                    getDistribution(token, true).addSpam();
                     tokenSet.add(token);
                 }
                 Server.logSpamSPF(tokenSet);
@@ -1973,7 +2003,18 @@ public final class SPF implements Serializable {
         }
     }
     
-    public synchronized static void dropToken(String token) {
+    public synchronized static void dropExpiredDistribution() {
+        TreeSet<String> distributionKeySet = new TreeSet<String>();
+        distributionKeySet.addAll(DISTRIBUTION_MAP.keySet());
+        for (String token : distributionKeySet) {
+            Distribution distribution = DISTRIBUTION_MAP.get(token);
+            if (distribution.isExpired14()) {
+                dropDistribution(token);
+            }
+        }
+    }
+    
+    public synchronized static void dropDistribution(String token) {
         if (DISTRIBUTION_MAP.remove(token) != null) {
             DISTRIBUTION_CHANGED = true;
         }
@@ -1997,10 +2038,7 @@ public final class SPF implements Serializable {
                 // Distribuição não encontrada.
                 // Considerar que não está listado.
             } else if (distribution.isBlacklisted()) {
-                Server.logDebug("BLACKLISTED " + token);
                 blacklisted = true;
-//            } else {
-//                distribution.addHam();
             }
         }
         return blacklisted;
@@ -2066,20 +2104,22 @@ public final class SPF implements Serializable {
         
         private static final long serialVersionUID = 1L;
         
-//        private byte ham; // Quantidade total de HAM.
-        private byte spam; // Quantidade total de SPAM.
+        private byte spam; // Quantidade total de SPAM. Obsoleto.
+        private int complain; // Quantidade total de reclamações.
         private long lastQuery; // Última consulta à distribuição.
-        private Status status; // Status da distribuição.
+        private Status status; // Status atual da distribuição.
+        private NormalDistribution interval = null; // Intervalo médio em segundos.
         
         public Distribution() {
             reset();
         }
         
         public void reset() {
-//            ham = (byte) 0xFF;
-            spam = (byte) 0x00;
-            lastQuery = System.currentTimeMillis();
+            spam = (byte) 0x00; // Obsoleto.
+            complain = 0;
+            lastQuery = 0;
             status = Status.WHITE;
+            interval = null;
             DISTRIBUTION_CHANGED = true;
         }
         
@@ -2087,23 +2127,68 @@ public final class SPF implements Serializable {
             return System.currentTimeMillis() - lastQuery > 604800000;
         }
         
-        public synchronized float getSpamProbability() {
-//            int total = (ham & 0xFF) + (spam & 0xFF);
-//            float probability = total == 0 ? 0.0f : (float) (spam & 0xFF) / total;
-            float probability = (float) (spam & 0xFF) / 255;
-            lastQuery = System.currentTimeMillis();
-            DISTRIBUTION_CHANGED = true;
-            return probability;
+        public boolean isExpired14() {
+            return System.currentTimeMillis() - lastQuery > 604800000 * 2;
+        }
+        
+        public String getInterval() {
+            if (interval == null) {
+                return "undefined";
+            } else {
+                return interval.toStringInt() + "s";
+            }
+        }
+        
+        public synchronized float getSpamProbability(boolean refresh) {
+            if (refresh) {
+                long currentTime = System.currentTimeMillis();
+                float intervalLocal;
+                if (lastQuery == 0) {
+                    intervalLocal = 0;
+                } else {
+                    intervalLocal = (float) (currentTime - lastQuery) / (float) 1000;
+                }
+                lastQuery = currentTime;
+                DISTRIBUTION_CHANGED = true;
+                if (intervalLocal == 0.0f) {
+                    // Se não houver intervalo definido,
+                    // considerar probabilidade zero.
+                    return 0.0f;
+                } else if (interval == null) {
+                    interval = new NormalDistribution(intervalLocal);
+                } else {
+                    interval.addElement(intervalLocal);
+                }
+//            } else if (interval == null) {
+//                return 0.0f;
+            }
+            return (float) (spam & 0xFF) / 256; // Obsoleto.
+            
+//            // Estimativa máxima do total de mensagens por 
+//            // semana calculado pela amostragem mais recente.
+//            double total = 60 * 60 * 24 * 7 / interval.getMinimum();
+//            if (total == Double.NaN || total <= 0) {
+//                // Divisão por zero ou imprecisão subestimada do total.
+//                // Considerar probabilidade zero.
+//                return 0.0f;
+//            } else if (complain > total) {
+//                // Imprecisão superestimada do total.
+//                // Considerar probabilidade 100%.
+//                return 1.0f;
+//            } else {
+//                // A probabilidade pode ser estimada com precisão.
+//                return (float) complain / (float) total;
+//            }
         }
         
         /**
          * Máquina de estados para listar em um pico e
-         * retirar a listagem somente quando o volume 
+         * retirar a listagem somente quando o total 
          * cair consideravelmente após este pico.
          * @return o status atual da distribuição.
          */
-        public synchronized Status getStatus() {
-            float probability = getSpamProbability();
+        public synchronized Status getStatus(boolean refresh) {
+            float probability = getSpamProbability(refresh);
             if (probability > 0.25f) {
                 // Se ultrapassar 25% de reclamações,
                 // mudar status para BLACK pois atingiu o pico.
@@ -2125,37 +2210,35 @@ public final class SPF implements Serializable {
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
         public boolean isBlacklisted() {
-            return getStatus() == Status.BLACK;
+            return getStatus(true) == Status.BLACK;
         }
-        
-//        public synchronized void addHam() {
-//            if ((ham & 0x00FF) + (spam & 0x00FF) < 0x00FF) {
-//                ham++;
-//                DISTRIBUTION_CHANGED = true;
-//            }
-//        }
         
         public synchronized void removeSpam() {
-            if ((spam & 0xFF) > 0x00) {
-                spam--;
-                DISTRIBUTION_CHANGED = true;
+            if ((spam & 0xFF) > 0x00) { // Obsoleto.
+                spam--; // Obsoleto.
+                DISTRIBUTION_CHANGED = true; // Obsoleto.
+                if (complain > 0) {
+                    complain--;
+                    DISTRIBUTION_CHANGED = true;
+                }
             }
         }
         
-        public synchronized void flipToSpam() {
-//            if ((ham & 0xFF) > 0x00) {
-//                ham--;
-//                DISTRIBUTION_CHANGED = true;
-//            }
-            if ((spam & 0xFF) < 0xFF) {
-                spam++;
-                DISTRIBUTION_CHANGED = true;
+        public synchronized void addSpam() {
+            if ((spam & 0xFF) < 0xFF) { // Obsoleto.
+                spam++; // Obsoleto.
+                DISTRIBUTION_CHANGED = true; // Obsoleto.
+                if (complain < Integer.MAX_VALUE) {
+                    complain++;
+                    DISTRIBUTION_CHANGED = true;
+                }
             }
+            
         }
         
         @Override
         public String toString() {
-            return Float.toString(getSpamProbability());
+            return Float.toString(getSpamProbability(false));
         }
     }
 }

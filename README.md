@@ -24,3 +24,7 @@ Reclamação SPFBL enviada com sucesso.
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até três dias após o recebimento.
 
+Se este projeto for útil para sua empresa, faça uma doação de qualquer valor em Bitcoin para ajudar a manter as atualizações:
+
+1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy
+
