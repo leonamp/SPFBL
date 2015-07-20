@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.security.SecureRandom;
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -704,6 +705,8 @@ public abstract class Server extends Thread {
         }
     }
     
+    public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
+    
     /**
      * Processa o comando e retorna o resultado.
      * @param command a expressão do comando.
@@ -757,13 +760,16 @@ public abstract class Server extends Thread {
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
                     for (String tokenReputation : distributionMap.keySet()) {
                         Distribution distribution = distributionMap.get(tokenReputation);
-                        float probability = distribution.getSpamProbability();
-                        Status status = distribution.getStatus();
+                        float probability = distribution.getSpamProbability(false);
+                        Status status = distribution.getStatus(false);
+                        String interval = distribution.getInterval();
                         stringBuilder.append(tokenReputation);
+                        stringBuilder.append(' ');
+                        stringBuilder.append(interval);
                         stringBuilder.append(' ');
                         stringBuilder.append(status);
                         stringBuilder.append(' ');
-                        stringBuilder.append(probability);
+                        stringBuilder.append(DECIMAL_FORMAT.format(probability));
                         stringBuilder.append('\n');
                     }
                     result = stringBuilder.toString();
@@ -787,10 +793,10 @@ public abstract class Server extends Thread {
                             result += "UNDEFINED\n";
                         }
                     }
-                } else if (token.equals("DROPTOKEN") && tokenizer.hasMoreTokens()) {
+                } else if (token.equals("DROPDISTRIBUTION") && tokenizer.hasMoreTokens()) {
                     while (tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
-                        SPF.dropToken(token);
+                        SPF.dropDistribution(token);
                     }
                     result = "OK\n";
                 } else if (token.equals("REFRESH") && tokenizer.hasMoreTokens()) {
