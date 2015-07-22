@@ -20,32 +20,29 @@ public class NormalDistribution implements Serializable {
     
     private static final int POPULATION = 32;
     
-    public static void main(String[] args) {
-        NormalDistribution distribution = new NormalDistribution();
-        for (int i = 0; i < 10000; i++) {
-            distribution.addElement((float) Math.random());
-            System.out.println(distribution);
-        }
-        
-        for (int i = 0; i < 10000; i++) {
-            distribution.addElement((float) Math.random() * 2);
-            System.out.println(distribution);
-        }
-    }
-    
+    /**
+     * Inicia uma distribuição normal com população cheia com média zero.
+     */
     public NormalDistribution() {
         xiSum = 0.0f;
         xi2Sum = 0.0f;
     }
     
-    public NormalDistribution(float value) {
-        xiSum = value;
-        xi2Sum = value * value;
+    /**
+     * Inicia uma distribuição normal com população cheia com média definida.
+     * @param avg a média da população.
+     */
+    public NormalDistribution(float avg) {
+        // Adiciona a população completa pela média.
+        xiSum = avg * POPULATION;
+        xi2Sum = avg * avg * POPULATION;
     }
     
     public synchronized void addElement(float value) {
+        // Retira um elemento médio da população.
         xiSum -= xiSum / POPULATION;
         xi2Sum -= xi2Sum / POPULATION;
+        // Adiciona o novo elemento na população.
         xiSum += value;
         xi2Sum += value * value;
     }

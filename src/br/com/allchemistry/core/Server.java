@@ -760,12 +760,12 @@ public abstract class Server extends Thread {
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
                     for (String tokenReputation : distributionMap.keySet()) {
                         Distribution distribution = distributionMap.get(tokenReputation);
-                        float probability = distribution.getSpamProbability(false);
-                        Status status = distribution.getStatus(false);
-                        String interval = distribution.getInterval();
+                        float probability = distribution.getAvgSpamProbability();
+                        Status status = distribution.getStatus();
+                        String frequency = distribution.getFrequencyLiteral();
                         stringBuilder.append(tokenReputation);
                         stringBuilder.append(' ');
-                        stringBuilder.append(interval);
+                        stringBuilder.append(frequency);
                         stringBuilder.append(' ');
                         stringBuilder.append(status);
                         stringBuilder.append(' ');
