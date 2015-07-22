@@ -1536,9 +1536,6 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    for (Distribution distribution : map.values()) {
-                        distribution.complain = distribution.spam & 0x000000FF;
-                    }
                     DISTRIBUTION_MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -1777,11 +1774,22 @@ public final class SPF implements Serializable {
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
                                 TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap(tokenSet);
-                                for (String token : distributionMap.keySet()) {
-                                    Distribution distribution = distributionMap.get(token);
-                                    float probability = distribution.getSpamProbability(false);
-                                    Status status = distribution.getStatus(false);
-                                    result += token + " " + status.name() + " " + probability + "\n";
+                                for (String token : tokenSet) {
+                                    float probability;
+                                    Status status;
+                                    String frequency;
+                                    if (distributionMap.containsKey(token)) {
+                                        Distribution distribution = distributionMap.get(token);
+                                        probability = distribution.getAvgSpamProbability();
+                                        status = distribution.getStatus();
+                                        frequency = distribution.getFrequencyLiteral();
+                                    } else {
+                                        probability = 0.0f;
+                                        status = SPF.Status.WHITE;
+                                        frequency = "undefined";
+                                    }
+                                    result += token + " " + frequency + " " + status.name() + " "
+                                            + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
                             } else {
                                 String ticket;
@@ -2076,12 +2084,10 @@ public final class SPF implements Serializable {
     
     public synchronized static TreeMap<String,Distribution> getDistributionMap(TreeSet<String> tokenSet) {
         TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
-        if (!tokenSet.isEmpty()) {
-            for (String token : DISTRIBUTION_MAP.keySet()) {
-                if (tokenSet.contains(token)) {
-                    Distribution distribution = DISTRIBUTION_MAP.get(token);
-                    distributionMap.put(token, distribution);
-                }
+        for (String token : tokenSet) {
+            if (DISTRIBUTION_MAP.containsKey(token)) {
+                Distribution distribution = DISTRIBUTION_MAP.get(token);
+                distributionMap.put(token, distribution);
             }
         }
         return distributionMap;
@@ -2104,22 +2110,20 @@ public final class SPF implements Serializable {
         
         private static final long serialVersionUID = 1L;
         
-        private byte spam; // Quantidade total de SPAM. Obsoleto.
         private int complain; // Quantidade total de reclamações.
         private long lastQuery; // Última consulta à distribuição.
         private Status status; // Status atual da distribuição.
-        private NormalDistribution interval = null; // Intervalo médio em segundos.
+        private NormalDistribution frequency = null; // Frequência média em segundos.
         
         public Distribution() {
             reset();
         }
         
         public void reset() {
-            spam = (byte) 0x00; // Obsoleto.
             complain = 0;
             lastQuery = 0;
             status = Status.WHITE;
-            interval = null;
+            frequency = null;
             DISTRIBUTION_CHANGED = true;
         }
         
@@ -2131,54 +2135,93 @@ public final class SPF implements Serializable {
             return System.currentTimeMillis() - lastQuery > 604800000 * 2;
         }
         
-        public String getInterval() {
-            if (interval == null) {
-                return "undefined";
+        public boolean hasFrequency() {
+            return frequency != null;
+        }
+        
+        public String getFrequencyLiteral() {
+            if (hasFrequency()) {
+                return frequency.toStringInt() + "s";
             } else {
-                return interval.toStringInt() + "s";
+                return "undefined";
             }
         }
         
-        public synchronized float getSpamProbability(boolean refresh) {
+        private float getInterval(boolean refresh) {
+            long currentTime = System.currentTimeMillis();
+            float interval;
+            if (lastQuery == 0) {
+                interval = 0;
+            } else {
+                interval = (float) (currentTime - lastQuery) / (float) 1000;
+            }
             if (refresh) {
-                long currentTime = System.currentTimeMillis();
-                float intervalLocal;
-                if (lastQuery == 0) {
-                    intervalLocal = 0;
-                } else {
-                    intervalLocal = (float) (currentTime - lastQuery) / (float) 1000;
-                }
                 lastQuery = currentTime;
                 DISTRIBUTION_CHANGED = true;
-                if (intervalLocal == 0.0f) {
-                    // Se não houver intervalo definido,
-                    // considerar probabilidade zero.
-                    return 0.0f;
-                } else if (interval == null) {
-                    interval = new NormalDistribution(intervalLocal);
-                } else {
-                    interval.addElement(intervalLocal);
-                }
-//            } else if (interval == null) {
-//                return 0.0f;
             }
-            return (float) (spam & 0xFF) / 256; // Obsoleto.
-            
-//            // Estimativa máxima do total de mensagens por 
-//            // semana calculado pela amostragem mais recente.
-//            double total = 60 * 60 * 24 * 7 / interval.getMinimum();
-//            if (total == Double.NaN || total <= 0) {
-//                // Divisão por zero ou imprecisão subestimada do total.
-//                // Considerar probabilidade zero.
-//                return 0.0f;
-//            } else if (complain > total) {
-//                // Imprecisão superestimada do total.
-//                // Considerar probabilidade 100%.
-//                return 1.0f;
-//            } else {
-//                // A probabilidade pode ser estimada com precisão.
-//                return (float) complain / (float) total;
-//            }
+            return interval;
+        }
+        
+        public synchronized void addQuery() {
+            float interval = getInterval(true);
+            if (interval == 0.0f) {
+                // Se não houver intervalo definido,
+                // considerar frequência nula.
+                frequency = null;
+            } else if (frequency == null) {
+                frequency = new NormalDistribution(interval);
+            } else {
+                frequency.addElement(interval);
+            }
+        }
+        
+        public synchronized float getMinSpamProbability() {
+            return getSpamProbability(-1);
+        }
+        
+        public synchronized float getAvgSpamProbability() {
+            return getSpamProbability(0);
+        }
+        
+        public synchronized float getMaxSpamProbability() {
+            return getSpamProbability(+1);
+        }
+        
+        private synchronized float getSpamProbability(int type) {
+            if (frequency == null) {
+                // Se não houver frequência definida,
+                // considerar probabilidade zero
+                // pela impossibilidade de cálculo.
+                return 0.0f;
+            } else if (complain < 3) {
+                // Se a quantida total de reclamações for 
+                // menor que três, considerar probabilidade zero 
+                // por conta na baixa precisão do cálculo.
+                return 0.0f;
+            } else {
+                // Estimativa máxima do total de mensagens por 
+                // semana calculado pela amostragem mais recente.
+                double total = 60 * 60 * 24 * 7;
+                if (type < 0) {
+                    total /= frequency.getMinimum();
+                } else if (type > 0) {
+                    total /= frequency.getMaximum();
+                } else {
+                    total /= frequency.getAverage();
+                }
+                if (total == Double.NaN || total <= 0) {
+                    // Divisão por zero ou imprecisão subestimada do total.
+                    // Considerar probabilidade zero.
+                    return 0.0f;
+                } else if (complain > total) {
+                    // Imprecisão superestimada do total.
+                    // Considerar probabilidade 100%.
+                    return 1.0f;
+                } else {
+                    // A probabilidade pode ser estimada com precisão.
+                    return (float) complain / (float) total;
+                }
+            }
         }
         
         /**
@@ -2187,19 +2230,16 @@ public final class SPF implements Serializable {
          * cair consideravelmente após este pico.
          * @return o status atual da distribuição.
          */
-        public synchronized Status getStatus(boolean refresh) {
-            float probability = getSpamProbability(refresh);
-            if (probability > 0.25f) {
-                // Se ultrapassar 25% de reclamações,
-                // mudar status para BLACK pois atingiu o pico.
-                status = Status.BLACK;
-            } else if (probability < 0.03125f) {
-                // Se cair menos de 3,125% de reclamações,
-                // mudar status para WHITE pois retrocedeu bastante.
+        public synchronized Status getStatus() {
+            float min;
+            float max;
+            if ((max = getMaxSpamProbability()) == 0.0f) {
                 status = Status.WHITE;
-            } else if (status == Status.WHITE) {
-                // Somente mudar o estado de WHITE para GRAY,
-                // e nunca de BLACK para GRAY.
+            } else if ((min = getMinSpamProbability()) > 0.125f) {
+                status = Status.BLACK;
+            } else if (status == Status.GRAY && min > 0.0625f) {
+                status = Status.BLACK;
+            } else if (status == Status.BLACK && max < 0.0625f) {
                 status = Status.GRAY;
             }
             return status;
@@ -2210,35 +2250,27 @@ public final class SPF implements Serializable {
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
         public boolean isBlacklisted() {
-            return getStatus(true) == Status.BLACK;
+            addQuery();
+            return getStatus() == Status.BLACK;
         }
         
         public synchronized void removeSpam() {
-            if ((spam & 0xFF) > 0x00) { // Obsoleto.
-                spam--; // Obsoleto.
-                DISTRIBUTION_CHANGED = true; // Obsoleto.
-                if (complain > 0) {
-                    complain--;
-                    DISTRIBUTION_CHANGED = true;
-                }
+            if (complain > 0) {
+                complain--;
+                DISTRIBUTION_CHANGED = true;
             }
         }
         
         public synchronized void addSpam() {
-            if ((spam & 0xFF) < 0xFF) { // Obsoleto.
-                spam++; // Obsoleto.
-                DISTRIBUTION_CHANGED = true; // Obsoleto.
-                if (complain < Integer.MAX_VALUE) {
-                    complain++;
-                    DISTRIBUTION_CHANGED = true;
-                }
+            if (complain < Integer.MAX_VALUE) {
+                complain++;
+                DISTRIBUTION_CHANGED = true;
             }
-            
         }
         
         @Override
         public String toString() {
-            return Float.toString(getSpamProbability(false));
+            return Float.toString(getAvgSpamProbability());
         }
     }
 }
