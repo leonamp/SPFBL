@@ -26,19 +26,21 @@ Reclamação SPFBL enviada com sucesso.
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até três dias após o recebimento.
 
+Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@allchemistry.com.br com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
+
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 ### Funcionalidades
 
-Algumas alterações foram implementadas no SPFBl com a intenção de minimizar as respostas negativas ou incoerentes do SPF convencional.
+Algumas alterações foram implementadas no SPFBL com a intenção de minimizar as respostas negativas ou incoerentes do SPF convencional.
 
 ##### Correção de sintaxe SPF
 
 As vezes alguns administradores de DNS acabam cometendo erros pequenos ao registrar um SPF para um determinado domínio. O SPFBL é capaz de fazer algumas correções destes erros.
 
-Por exemplo, o domínio "farmaciassaorafael.com.br", com o registro SPF "v=spf1 ipv4:177.10.167.165 -all", retorna falha no SPF convencional, mas o SPFBL reconhece um REGEX CIDR dentro de um token e deduz que o administrador queria dizer ip4 ou ip6.
+Por exemplo, o domínio "farmaciassaorafael.com.br", com o registro SPF "v=spf1 ipv4:177.10.167.165 -all", retorna falha no SPF convencional, mas o SPFBL reconhece um REGEX CIDR dentro de um token e deduz que o administrador queria dizer "ip4" invés de "ipv4".
 
 Além disto, se um mecanismo não puder ser reconhecido pelo SPFBL, este mesmo mecanismo é apenas ignorado, dando chance de acontecer um match em outros mecanismos que são reconhecidos pelo SPFBL.
 
@@ -48,7 +50,7 @@ Se o administrador registrar vários registros SPF para um determinado domínio,
 
 ##### Mecanismos permissivos demais
 
-O SPF convencional premite o registro de alguns mecanismos que são permissivos demais ao ponto de retornar sempre PASS para qualquer parâmetro utilizado na consulta.
+O SPF convencional não permite o registro de alguns mecanismos que são permissivos demais ao ponto de retornar sempre PASS para qualquer parâmetro utilizado na consulta.
 
 Um destes mecanismos é o +all, que no SPFBL foi abolido e substituido por ?all sempre que encontrado.
 
@@ -58,7 +60,7 @@ Os mecanismos de blocos de IP que contém algum endereço IP reservado são igno
 
 Quando um domínio não tem registro SPF, o SPFBL considera a recomendação "best-guess" do SPF: [best-guess](http://www.openspf.org/FAQ/Best_guess_record).
 
-Porém mesmo considerando esta recomendação, alguns domínios que não tem registro SPF não funcionam bem com o "best-guess". Nestes casos é possível registrar um "best-guess" específico para um determinado domínio. Por exemplo, o domínio "yahoo.com.br" não tem registro SPF e custuma enviar os seus e-mails pelos servidores listados no registro SPF do domínio "yahoo.com". A solução para este problema é adicionar o "best-guess" "v=spf1 redirect=yahoo.com" para o domínio "yahoo.com.br".
+Porém mesmo considerando esta recomendação, alguns domínios que não tem registro SPF não funcionam bem com o "best-guess". Nestes casos é possível registrar um "best-guess" específico para um determinado domínio. Por exemplo, o domínio "yahoo.com.br" não tem registro SPF e costuma enviar os seus e-mails pelos servidores listados no registro SPF do domínio "yahoo.com". A solução para este problema é adicionar o "best-guess" "v=spf1 redirect=yahoo.com" para o domínio "yahoo.com.br".
 
 ##### Cache dos registros SPF
 
@@ -74,18 +76,18 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 ##### Respostas SPFBL
 
-O SPFBL pode retorna todos os qualificadores do SPF convencional mais um qualifidador novo, chamado LISTED:
+O SPFBL retorna todos os qualificadores do SPF convencional mais um qualifidador novo, chamado LISTED:
 
-PASS <ticket>: permitir o recebimento da mensagem.
-FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
-SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
-NEUTRAL <ticket>: permitir o recebimento da mensagem.
-NONE <ticket>: permitir o recebimento da mensagem.
-LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+* PASS <ticket>: permitir o recebimento da mensagem.
+* FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
+* SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
+* NEUTRAL <ticket>: permitir o recebimento da mensagem.
+* NONE <ticket>: permitir o recebimento da mensagem.
+* LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 
 ##### Método de listagem
 
-O SPFBL mantém uma flag para cada responsável. Esta flag tem três estados: WHITE, GRAY e BLACK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima de se tratar de SPAM:
+O SPFBL mantém uma flag para cada responsável. Esta flag tem três estados: WHITE, GRAY e BLACK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima da mensagem ser SPAM:
 
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/flagFSM.png "flagFSM.png")
 
@@ -97,7 +99,7 @@ Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorn
 
 ##### Tipos de responsável
 
-Sempre que o qualificador do SPFBL der PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TDL BR.
+Sempre que o qualificador do SPFBL for PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TDL BR.
 
 Quando o qualificador for diferente de PASS, então o responsável considerado é o HELO ou o IP. Será considerado o HELO, com domínio e CNPJ ou CPF, se este for o reverso válido do IP. Caso contrário, o responsável é o IP.
 
@@ -114,6 +116,3 @@ PASS
 ```
 
 Na primeira linha, temos o qualificados SPF convencional. Nas demais linhas, temos uma sequencia dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável estar enviando SPAM.
-
-![Donate](https://github.com/leonamp/SPFBL/blob/master/bicoin.png "Donate")
-
