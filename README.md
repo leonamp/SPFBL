@@ -115,4 +115,4 @@ PASS
 @adsensum.com.br 2656±1218s GRAY 0.061
 ```
 
-Na primeira linha, temos o qualificados SPF convencional. Nas demais linhas, temos uma sequencia dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável estar enviando SPAM.
+Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
