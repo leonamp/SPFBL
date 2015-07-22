@@ -115,3 +115,5 @@ PASS
 
 Na primeira linha, temos o qualificados SPF convencional. Nas demais linhas, temos uma sequencia dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável estar enviando SPAM.
 
+![Donate](https://github.com/leonamp/SPFBL/blob/master/bicoin.png "Donate")
+
