@@ -183,16 +183,27 @@ public abstract class Server extends Thread {
      */
     public static final int DAY_TIME = 1000 * 60 * 60 * 24;
     
+    private static synchronized void log(String type, String message) {
+        log(type, message, null);
+    }
+    
+    private static synchronized void log(String type, String message, Throwable ex) {
+        System.out.println(
+                FORMAT_DATE_LOG.format(new Date())
+                + " " + type + " " + message
+                );
+        if (ex != null) {
+            ex.printStackTrace(System.out);
+        }
+    }
+    
     /**
      * Registra as mensagens para depuração.
      * Uma iniciativa para formalização das mensagens de log.
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logDebug(String message) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " DEBUG " + message
-                );
+        log("DEBUG", message);
     }
     
     /**
@@ -201,10 +212,7 @@ public abstract class Server extends Thread {
      * @param tokenSet o conjunto de tokens.
      */
     public static synchronized void logTicket(Set<String> tokenSet) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " TIKET " + tokenSet
-                );
+        log("TIKET", tokenSet.toString());
     }
     
     /**
@@ -213,10 +221,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logError(String message) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " ERROR " + message
-                );
+        log("ERROR", message);
     }
     
     /**
@@ -226,10 +231,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logError(Throwable ex) {
         if (ex != null) {
-            System.out.println(
-                    FORMAT_DATE_LOG.format(new Date()) + " ERROR"
-                    );
-            ex.printStackTrace(System.out);
+            log("ERROR", "Exception", ex);
         }
     }
     
@@ -239,11 +241,9 @@ public abstract class Server extends Thread {
      * @param hostname o nome do host.
      * @param registry o registro SPF do host.
      */
-    public static synchronized void logQuerySPF(String hostname, String registry) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " SPFOK " + hostname + " \"" + registry + "\""
-                );
+    public static synchronized void logQuerySPF(
+            String hostname, String registry) {
+        log("SPFOK", hostname + " \"" + registry + "\"");
     }
     
     /**
@@ -252,11 +252,9 @@ public abstract class Server extends Thread {
      * @param hostname o nome do host.
      * @param registry o registro SPF do host.
      */
-    public static synchronized void logErrorSPF(String hostname, String registry) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " SPFER " + hostname + " \"" + registry + "\""
-                );
+    public static synchronized void logErrorSPF(
+            String hostname, String registry) {
+        log("SPFER", hostname + " \"" + registry + "\"");
     }
     
     /**
@@ -265,10 +263,7 @@ public abstract class Server extends Thread {
      * @param ticket o ticket SPF criado.
      */
     public static synchronized void logTicketSPF(String ticket) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " SPFTK " + ticket
-                );
+        log("SPFTK", ticket);
     }
     
     /**
@@ -277,10 +272,7 @@ public abstract class Server extends Thread {
      * @param token o token SPF da mensagem original.
      */
     public static synchronized void logSpamSPF(Set<String> tokenSet) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " SPFBL " + tokenSet
-                );
+        log("SPFBL", tokenSet.toString());
     }
     
     /**
@@ -289,10 +281,7 @@ public abstract class Server extends Thread {
      * @param token o token SPF da mensagem original.
      */
     public static synchronized void logHamSPF(Set<String> tokenSet) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " SPFWL " + tokenSet
-                );
+        log("SPFWL", tokenSet.toString());
     }
     
     /**
@@ -304,10 +293,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logWhois(String server,
             String query, String result) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " WHOIS " + server + " " + query + "\n" + result
-                );
+        log("WHOIS", server + " " + query + "\n" + result);
     }
     
     private static long lastClientsFileModified = 0;
@@ -321,8 +307,11 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result a expressão do resultado.
      */
-    public static synchronized void logQuery(InetAddress ipAddress,
-            long time, String query, String result) {
+    public static synchronized void logQuery(
+            String type,
+            InetAddress ipAddress,
+//            long time,
+            String query, String result) {
         File clientsFile = new File("clients.txt");
         if (!clientsFile.exists()) {
             subnetClientsMap.clear();
@@ -373,12 +362,15 @@ public abstract class Server extends Thread {
         } catch (Exception ex) {
             Server.logError(ex);
         }
+        if (result != null) {
+            result = result.replace('\n', ';');
+        }
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date())
-                + " QUERY "
-                + Thread.currentThread().getName() + "(" + time + "ms) "
+                + " " + type + " "
+//                + Thread.currentThread().getName() + "(" + time + "ms) "
                 + cliente + ": "
-                + query + " => " + result.replace('\n', ';')
+                + query + " => " + result
                 );
     }
     

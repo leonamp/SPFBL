@@ -41,6 +41,7 @@ import org.apache.commons.lang3.SerializationUtils;
 
 /**
  * Representa o registro SPF de um deterninado host.
+ * Implementação da RFC 4406, exceto os Macros da seção 8 por enquanto.
  * 
  * Quando a consulta é feita, o resultado do SPF é 
  * considerado para determinar o responsável pela mensagem.
@@ -447,7 +448,7 @@ public final class SPF implements Serializable {
     
     public static void main(String[] args) {
         try {
-            System.out.println(extractIPv4CIDR("ip4:129.168.1.100.100/24"));
+            System.out.println(SPF.isMechanismInclude("include:ip4._spf.%{d}"));
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
@@ -2016,7 +2017,7 @@ public final class SPF implements Serializable {
         distributionKeySet.addAll(DISTRIBUTION_MAP.keySet());
         for (String token : distributionKeySet) {
             Distribution distribution = DISTRIBUTION_MAP.get(token);
-            if (distribution.isExpired14()) {
+            if (distribution.hasLastQuery() && distribution.isExpired14()) {
                 dropDistribution(token);
             }
         }
@@ -2137,6 +2138,10 @@ public final class SPF implements Serializable {
         
         public boolean hasFrequency() {
             return frequency != null;
+        }
+        
+        public boolean hasLastQuery() {
+            return lastQuery > 0;
         }
         
         public String getFrequencyLiteral() {

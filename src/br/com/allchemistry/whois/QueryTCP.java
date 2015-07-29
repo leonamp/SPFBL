@@ -107,7 +107,7 @@ public final class QueryTCP extends Server {
                 try {
                     String query = null;
                     String result = null;
-                    long time = 0; // Tempo de processamento.
+//                    long time = 0; // Tempo de processamento.
                     Socket socket = SOCKET_LIST.poll();
                     try {
                         InputStream inputStream = socket.getInputStream();
@@ -115,9 +115,9 @@ public final class QueryTCP extends Server {
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         query = bufferedReader.readLine();
                         if (query != null) {
-                            long begin = System.currentTimeMillis();
+//                            long begin = System.currentTimeMillis();
                             result = QueryTCP.this.processWHOIS(query);
-                            time = System.currentTimeMillis() - begin;
+//                            time = System.currentTimeMillis() - begin;
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
@@ -127,7 +127,11 @@ public final class QueryTCP extends Server {
                         // Fecha conexão logo após resposta.
                         socket.close();
                         // Log da consulta com o respectivo resultado.
-                        Server.logQuery(socket.getInetAddress(), time, query, result);
+                        Server.logQuery(
+                                "WHOQR",
+                                socket.getInetAddress(),
+//                                time,
+                                query, result);
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);
