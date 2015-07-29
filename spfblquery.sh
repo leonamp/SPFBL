@@ -1,19 +1,22 @@
 #!/bin/bash
 #
-# Este é um script que retorna o resultado SPFBL através de uma implementação em servidor externo.
+# Este é um script em BASH que retorna o resultado SPFBL
+# através de uma implementação em servidor externo.
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
 # ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
 #
-# A saída deste programa deve ser incorporada ao cabeçalho Received-SPFBL da mensagem de e-mail que gerou a consulta.
+# A saída deste programa deve ser incorporada ao cabeçalho
+# Received-SPFBL da mensagem de e-mail que gerou a consulta.
 #
 # Exemplo:
 #
 #    Received-SPFBL: PASS urNq9eFn65wKwDFGNsqCNYmywnlWmmilhZw5jdtvOr5jYk6mgkiWgQC1w696wT3ylP3r8qZnhOjwntTt5mCAuw==
 #
 # A informação que precede o qualificador é o ticket da consulta SPFBL.
-# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL, onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
+# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL, 
+# onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
 # O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
 #
 # Parâmetros de entrada:

@@ -32,6 +32,7 @@
 #    7: erro permanente.
 #    8: listado em lista negra.
 #    9: timeout de conexão.
+#    10: parâmetros inválidos.
 #
 
 ip=$1
@@ -59,6 +60,10 @@ elif [[ $qualifier == "LISTED"* ]]; then
 elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
 
 	exit 6
+	
+elif [[ $qualifier == "ERROR: QUERY" ]]; then
+
+	exit 10
 	
 elif [[ $qualifier == "ERROR: "* ]]; then
 

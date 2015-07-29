@@ -112,15 +112,19 @@ public final class QueryUDP extends Server {
                     byte[] data = packet.getData();
                     String query = new String(data, "ISO-8859-1").trim();
                     // Mede o tempo de processamento para estatísticas.
-                    long begin = System.currentTimeMillis();
+//                    long begin = System.currentTimeMillis();
                     String result = QueryUDP.this.processWHOIS(query);
-                    long time = System.currentTimeMillis() - begin;
+//                    long time = System.currentTimeMillis() - begin;
                     // Enviando resposta.
                     InetAddress ipAddress = packet.getAddress();
                     int portDestiny = packet.getPort();
                     send(result, ipAddress, portDestiny);
                     // Log da consulta com o respectivo resultado.
-                    Server.logQuery(ipAddress, time, query, result);
+                    Server.logQuery(
+                            "WHOQR",
+                            ipAddress,
+//                            time,
+                            query, result);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
