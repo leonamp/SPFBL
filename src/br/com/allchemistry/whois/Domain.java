@@ -242,11 +242,16 @@ public class Domain implements Serializable, Comparable<Domain> {
             return false;
         } else {
             address = address.toLowerCase();
+//            return Pattern.matches(
+//                    "^([_a-z0-9=\\.-]+=)?([_a-z0-9+=-]+(\\.[_a-z0-9=-]+)*@)?"
+//                    + "(([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])\\.)+"
+//                    + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])$", address
+//                    );
             return Pattern.matches(
-                    "^([_a-z0-9+=-]+(\\.[_a-z0-9=-]+)*@)?"
-                    + "(([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])\\.)+"
-                    + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])$", address
+                    "^([a-zA-Z0-9._%+=-]+@)?"
+                    + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                     );
+            
         }
     }
     
@@ -297,6 +302,22 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (Domain.isTDL(tdl)) {
             tdl = tdl.toLowerCase();
             if (TDL_SET.add(tdl)) {
+                // Atualiza flag de atualização.
+                TDL_CHANGED = true;
+            }
+        } else {
+            throw new ProcessException("ERROR: TDL INVALID");
+        }
+    }
+    
+    public static synchronized void removeTDL(String tdl) throws ProcessException {
+        if (tdl.charAt(0) != '.') {
+            // Corrigir TDL sem ponto.
+            tdl = "." + tdl;
+        }
+        if (Domain.isTDL(tdl)) {
+            tdl = tdl.toLowerCase();
+            if (TDL_SET.remove(tdl)) {
                 // Atualiza flag de atualização.
                 TDL_CHANGED = true;
             }
