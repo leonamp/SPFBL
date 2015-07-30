@@ -752,8 +752,8 @@ public abstract class Server extends Thread {
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
                     for (String tokenReputation : distributionMap.keySet()) {
                         Distribution distribution = distributionMap.get(tokenReputation);
-                        if (distribution.hasFrequency()) {
-                            float probability = distribution.getMinSpamProbability();
+                        float probability = distribution.getMinSpamProbability();
+                        if (probability > 0.0f && distribution.hasFrequency()) {
                             Status status = distribution.getStatus();
                             String frequency = distribution.getFrequencyLiteral();
                             stringBuilder.append(tokenReputation);

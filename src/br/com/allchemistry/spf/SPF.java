@@ -1667,6 +1667,7 @@ public final class SPF implements Serializable {
                 return false;
             }
         } else {
+            // O parâmetro ip não é um IP válido.
             return false;
         }
     }

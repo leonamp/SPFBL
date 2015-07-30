@@ -118,3 +118,9 @@ PASS
 ```
 
 Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
+
+##### Fluxo do SPFBL
+
+Para utilizar adequadamente o SPFBL, o MX deve ser capaz de fazer a consulta e seguir este fluxo:
+
+![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
