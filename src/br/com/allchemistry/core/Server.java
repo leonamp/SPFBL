@@ -752,17 +752,19 @@ public abstract class Server extends Thread {
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
                     for (String tokenReputation : distributionMap.keySet()) {
                         Distribution distribution = distributionMap.get(tokenReputation);
-                        float probability = distribution.getAvgSpamProbability();
-                        Status status = distribution.getStatus();
-                        String frequency = distribution.getFrequencyLiteral();
-                        stringBuilder.append(tokenReputation);
-                        stringBuilder.append(' ');
-                        stringBuilder.append(frequency);
-                        stringBuilder.append(' ');
-                        stringBuilder.append(status);
-                        stringBuilder.append(' ');
-                        stringBuilder.append(DECIMAL_FORMAT.format(probability));
-                        stringBuilder.append('\n');
+                        if (distribution.hasFrequency()) {
+                            float probability = distribution.getMinSpamProbability();
+                            Status status = distribution.getStatus();
+                            String frequency = distribution.getFrequencyLiteral();
+                            stringBuilder.append(tokenReputation);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(frequency);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(status);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                            stringBuilder.append('\n');
+                        }
                     }
                     result = stringBuilder.toString();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -789,6 +791,12 @@ public abstract class Server extends Thread {
                     while (tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         SPF.dropDistribution(token);
+                    }
+                    result = "OK\n";
+                } else if (token.equals("DROPTDL") && tokenizer.hasMoreTokens()) {
+                    while (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        Domain.removeTDL(token);
                     }
                     result = "OK\n";
                 } else if (token.equals("REFRESH") && tokenizer.hasMoreTokens()) {

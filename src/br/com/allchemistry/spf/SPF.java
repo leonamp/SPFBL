@@ -38,6 +38,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
 import org.apache.commons.lang3.SerializationUtils;
+import org.apache.commons.validator.routines.DomainValidator;
 
 /**
  * Representa o registro SPF de um deterninado host.
@@ -582,9 +583,9 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismA(String token) {
         return Pattern.matches(
-                "^(\\+|-|~|\\?)?a"
-                + "(:([a-z0-9_][a-z0-9-]*[a-z0-9]\\.)+"
-                + "([a-z0-9_][a-z0-9-]*[a-z0-9]))?"
+                "^"
+                + "(\\+|-|~|\\?)?a"
+                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
                 + "(/[0-9]{1,2})?"
                 + "$", token.toLowerCase()
                 );
@@ -598,8 +599,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismMX(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?mx"
-                + "(:(([a-z0-9]|[a-z0-9][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9]))?"
+                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
                 + "(\\.|/[0-9]{1,2})?"
                 + "$", token.toLowerCase()
                 );
@@ -613,8 +613,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismPTR(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?ptr"
-                + "(:(([a-z0-9]|[a-z0-9][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9]))?"
+                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
                 + "$", token.toLowerCase()
                 );
     }
@@ -626,9 +625,8 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismExistis(String token) {
         return Pattern.matches(
-                "^(\\+|-|~|\\?)?exists:_?"
-                + "(([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9])"
+                "^(\\+|-|~|\\?)?exists:"
+                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -641,8 +639,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismInclude(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?include:"
-                + "(([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9_])\\.)+"
-                + "([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9])\\.?"
+                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -654,9 +651,8 @@ public final class SPF implements Serializable {
      */
     private static boolean isModifierRedirect(String token) {
         return Pattern.matches(
-                "^redirect=_?"
-                + "(([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9_]|[a-z0-9_][a-z0-9_-]*[a-z0-9])"
+                "^redirect="
+                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -668,9 +664,8 @@ public final class SPF implements Serializable {
      */
     private static boolean isModifierExplanation(String token) {
         return Pattern.matches(
-                "^exp=_?"
-                + "(([a-z0-9]|[a-z0-9][a-z0-9_-]*[a-z0-9])\\.)+"
-                + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])"
+                "^exp="
+                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -1781,7 +1776,7 @@ public final class SPF implements Serializable {
                                     String frequency;
                                     if (distributionMap.containsKey(token)) {
                                         Distribution distribution = distributionMap.get(token);
-                                        probability = distribution.getAvgSpamProbability();
+                                        probability = distribution.getMinSpamProbability();
                                         status = distribution.getStatus();
                                         frequency = distribution.getFrequencyLiteral();
                                     } else {
@@ -2113,6 +2108,7 @@ public final class SPF implements Serializable {
         
         private int complain; // Quantidade total de reclamações.
         private long lastQuery; // Última consulta à distribuição.
+        private long lastComplain; // Última denúncia à distribuição.
         private Status status; // Status atual da distribuição.
         private NormalDistribution frequency = null; // Frequência média em segundos.
         
@@ -2123,6 +2119,7 @@ public final class SPF implements Serializable {
         public void reset() {
             complain = 0;
             lastQuery = 0;
+            lastComplain = 0;
             status = Status.WHITE;
             frequency = null;
             DISTRIBUTION_CHANGED = true;
@@ -2181,51 +2178,51 @@ public final class SPF implements Serializable {
         }
         
         public synchronized float getMinSpamProbability() {
-            return getSpamProbability(-1);
+            return getSpamProbability()[0];
         }
         
-        public synchronized float getAvgSpamProbability() {
-            return getSpamProbability(0);
-        }
-        
-        public synchronized float getMaxSpamProbability() {
-            return getSpamProbability(+1);
-        }
-        
-        private synchronized float getSpamProbability(int type) {
+        private synchronized float[] getSpamProbability() {
+            float[] probability = new float[3];
             if (frequency == null) {
                 // Se não houver frequência definida,
                 // considerar probabilidade zero
                 // pela impossibilidade de cálculo.
-                return 0.0f;
+                return probability;
             } else if (complain < 3) {
                 // Se a quantida total de reclamações for 
                 // menor que três, considerar probabilidade zero 
                 // por conta na baixa precisão do cálculo.
-                return 0.0f;
+                return probability;
+            } else if (frequency.getAverage() == 0.0d) {
+                // Impossível calcular por conta da divisão por zero.
+                // Considerar probabilidade zero.
+                return probability;
             } else {
                 // Estimativa máxima do total de mensagens por 
                 // semana calculado pela amostragem mais recente.
-                double total = 60 * 60 * 24 * 7;
-                if (type < 0) {
-                    total /= frequency.getMinimum();
-                } else if (type > 0) {
-                    total /= frequency.getMaximum();
-                } else {
-                    total /= frequency.getAverage();
+                double semana = 60 * 60 * 24 * 7;
+                float probabilityMin = (float) complain / (float) (semana / frequency.getMinimum());
+                if (probabilityMin < 0) {
+                    probabilityMin = 0.0f;
+                } else if (probabilityMin > 1.0) {
+                    probabilityMin = 1.0f;
                 }
-                if (total == Double.NaN || total <= 0) {
-                    // Divisão por zero ou imprecisão subestimada do total.
-                    // Considerar probabilidade zero.
-                    return 0.0f;
-                } else if (complain > total) {
-                    // Imprecisão superestimada do total.
-                    // Considerar probabilidade 100%.
-                    return 1.0f;
-                } else {
-                    // A probabilidade pode ser estimada com precisão.
-                    return (float) complain / (float) total;
+                float probabilityAvg = (float) complain / (float) (semana / frequency.getAverage());
+                if (probabilityAvg < 0) {
+                    probabilityAvg = 0.0f;
+                } else if (probabilityAvg > 1.0) {
+                    probabilityAvg = 1.0f;
                 }
+                float probabilityMax = (float) complain / (float) (semana / frequency.getMaximum());
+                if (probabilityMax < 0) {
+                    probabilityMax = 0.0f;
+                } else if (probabilityMax > 1.0) {
+                    probabilityMax = 1.0f;
+                }
+                probability[0] = probabilityMin;
+                probability[1] = probabilityAvg;
+                probability[2] = probabilityMax;
+                return probability;
             }
         }
         
@@ -2236,11 +2233,12 @@ public final class SPF implements Serializable {
          * @return o status atual da distribuição.
          */
         public synchronized Status getStatus() {
-            float min;
-            float max;
-            if ((max = getMaxSpamProbability()) == 0.0f) {
+            float[] probability = getSpamProbability();
+            float min = probability[0];
+            float max = probability[2];
+            if (max == 0.0f) {
                 status = Status.WHITE;
-            } else if ((min = getMinSpamProbability()) > 0.125f) {
+            } else if (min > 0.125f) {
                 status = Status.BLACK;
             } else if (status == Status.GRAY && min > 0.0625f) {
                 status = Status.BLACK;
@@ -2269,13 +2267,14 @@ public final class SPF implements Serializable {
         public synchronized void addSpam() {
             if (complain < Integer.MAX_VALUE) {
                 complain++;
+                lastComplain = System.currentTimeMillis();
                 DISTRIBUTION_CHANGED = true;
             }
         }
         
         @Override
         public String toString() {
-            return Float.toString(getAvgSpamProbability());
+            return Float.toString(getMinSpamProbability());
         }
     }
 }
