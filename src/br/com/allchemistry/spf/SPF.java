@@ -585,7 +585,7 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^"
                 + "(\\+|-|~|\\?)?a"
-                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
+                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
                 + "(/[0-9]{1,2})?"
                 + "$", token.toLowerCase()
                 );
@@ -599,7 +599,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismMX(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?mx"
-                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
+                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
                 + "(\\.|/[0-9]{1,2})?"
                 + "$", token.toLowerCase()
                 );
@@ -613,7 +613,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismPTR(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?ptr"
-                + "(:_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)?"
+                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
                 + "$", token.toLowerCase()
                 );
     }
@@ -626,7 +626,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismExistis(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?exists:"
-                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
+                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -639,7 +639,7 @@ public final class SPF implements Serializable {
     private static boolean isMechanismInclude(String token) {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?include:"
-                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
+                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -652,7 +652,7 @@ public final class SPF implements Serializable {
     private static boolean isModifierRedirect(String token) {
         return Pattern.matches(
                 "^redirect="
-                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
+                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
@@ -665,7 +665,7 @@ public final class SPF implements Serializable {
     private static boolean isModifierExplanation(String token) {
         return Pattern.matches(
                 "^exp="
-                + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)"
+                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
                 + "$", token.toLowerCase()
                 );
     }
