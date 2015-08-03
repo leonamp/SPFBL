@@ -4,6 +4,7 @@
  */
 package br.com.allchemistry.core;
 
+import br.com.allchemistry.dnsbl.QueryDNSBL;
 import br.com.allchemistry.whois.QueryTCP;
 import br.com.allchemistry.whois.QueryUDP;
 import br.com.allchemistry.spf.QuerySPF;
@@ -28,6 +29,7 @@ public class Main {
             new QueryTCP(port+1).start();
             new QueryUDP(port+1, size).start();
             new QuerySPF(port+2).start();
+            new QueryDNSBL().start();
         } catch (Exception ex) {
             Server.logError(ex);
             printHelp();

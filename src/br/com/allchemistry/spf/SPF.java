@@ -2035,6 +2035,29 @@ public final class SPF implements Serializable {
      */
     private static boolean DISTRIBUTION_CHANGED = false;
     
+    public static long getComplainTTL(String token) {
+        Distribution distribution = getDistribution(token, false);
+        if (distribution == null) {
+            // Distribuição não encontrada.
+            // Considerar que não está listado.
+            return 0;
+        } else {
+            // Transformar em minutos.
+            return distribution.getComplainTTL() / 60000;
+        }
+    }
+    
+    public static boolean isBlacklisted(String token) {
+        Distribution distribution = getDistribution(token, false);
+        if (distribution == null) {
+            // Distribuição não encontrada.
+            // Considerar que não está listado.
+            return false;
+        } else {
+            return distribution.isBlacklisted(false);
+        }
+    }
+    
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
         boolean blacklisted = false;
         for (String token : tokenSet) {
@@ -2042,7 +2065,7 @@ public final class SPF implements Serializable {
             if (distribution == null) {
                 // Distribuição não encontrada.
                 // Considerar que não está listado.
-            } else if (distribution.isBlacklisted()) {
+            } else if (distribution.isBlacklisted(true)) {
                 blacklisted = true;
             }
         }
@@ -2132,6 +2155,15 @@ public final class SPF implements Serializable {
         
         public boolean isExpired14() {
             return System.currentTimeMillis() - lastQuery > 604800000 * 2;
+        }
+        
+        public long getComplainTTL() {
+            long ttl =  lastComplain + 604800000 - System.currentTimeMillis();
+            if (ttl < 0) {
+                return 0;
+            } else {
+                return ttl;
+            }
         }
         
         public boolean hasFrequency() {
@@ -2253,8 +2285,10 @@ public final class SPF implements Serializable {
          * Verifica se o estado atual da distribuição é blacklisted.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
-        public boolean isBlacklisted() {
-            addQuery();
+        public boolean isBlacklisted(boolean query) {
+            if (query) {
+                addQuery();
+            }
             return getStatus() == Status.BLACK;
         }
         
