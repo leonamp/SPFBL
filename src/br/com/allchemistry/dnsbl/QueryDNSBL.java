@@ -21,7 +21,6 @@ import org.xbill.DNS.Flags;
 import org.xbill.DNS.Header;
 import org.xbill.DNS.Message;
 import org.xbill.DNS.Name;
-import org.xbill.DNS.Opcode;
 import org.xbill.DNS.Rcode;
 import org.xbill.DNS.Record;
 import org.xbill.DNS.Section;
@@ -121,7 +120,6 @@ public final class QueryDNSBL extends Server {
                     Record question = message.getQuestion();
                     Name name = question.getName();
                     String query = name.toString();
-//                    String txtMessage = "You are listed in this server.";
                     int index = query.indexOf(".dnsbl.allchemistry.com.br.");
                     boolean listed = false;
                     String token = null;
@@ -202,10 +200,6 @@ public final class QueryDNSBL extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Atualiza registros quase expirando durante a consulta.
-                    Server.tryBackugroundRefresh();
-                    // Armazena todos os registros atualizados durante a consulta.
-                    Server.storeCache();
                     // Oferece a conexão ociosa na última posição da lista.
                     CONNECTION_POLL.offer(this);
                     CONNECION_SEMAPHORE.release();
