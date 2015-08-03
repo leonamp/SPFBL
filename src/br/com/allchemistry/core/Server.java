@@ -247,6 +247,17 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as consultas ao DNSBL do host.
+     * Uma iniciativa para formalização das mensagens de log.
+     * @param query a expressão da consulta.
+     * @param result o resultado a ser registrado.
+     */
+    public static synchronized void logQueryDNSBL(
+            InetAddress ipAddress, String query, String result) {
+        logQuery("DNSBL", ipAddress, query, result + "\n");
+    }
+    
+    /**
      * Registra um erro no registro SPF do host.
      * Uma iniciativa para formalização das mensagens de log.
      * @param hostname o nome do host.
