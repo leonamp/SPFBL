@@ -4,6 +4,7 @@
  */
 package br.com.allchemistry.dnsbl;
 
+import br.com.allchemistry.core.ProcessException;
 import br.com.allchemistry.core.Server;
 import br.com.allchemistry.spf.SPF;
 import br.com.allchemistry.whois.Domain;
@@ -125,47 +126,53 @@ public final class QueryDNSBL extends Server {
                     String token = null;
                     long ttl = 0; // Tempo de cache.
                     if (index > 0) {
-                        token = query.substring(0, index);
-                        String ownerid;
-                        if (SubnetIPv4.isValidIPv4(token)) {
-                            // A consulta é um IPv4.
-                            // Reverter ordem dos octetos.
-                            byte[] address = SubnetIPv4.split(token);
-                            byte octeto = address[0];
-                            String ip = Integer.toString((int) octeto & 0xFF);
-                            for (int i = 1; i < address.length; i++) {
-                                octeto = address[i];
-                                ip = ((int) octeto & 0xFF) + "." + ip;
+                        try {
+                            token = query.substring(0, index);
+                            String ownerid;
+                            if (SubnetIPv4.isValidIPv4(token)) {
+                                // A consulta é um IPv4.
+                                // Reverter ordem dos octetos.
+                                byte[] address = SubnetIPv4.split(token);
+                                byte octeto = address[0];
+                                String ip = Integer.toString((int) octeto & 0xFF);
+                                for (int i = 1; i < address.length; i++) {
+                                    octeto = address[i];
+                                    ip = ((int) octeto & 0xFF) + "." + ip;
+                                }
+                                ip = SubnetIPv4.correctIP(ip);
+                                if (SPF.isBlacklisted(ip)) {
+                                    listed = true;
+                                    ttl = SPF.getComplainTTL(ip);
+                                    token = "IP " + ip;
+                                } else if ((ownerid = Subnet.getOwnerID(ip)) != null) {
+                                    listed = SPF.isBlacklisted(ownerid);
+                                    ttl = SPF.getComplainTTL(ownerid);
+                                    token = "Ownerid " + ownerid;
+                                }
+                            } else if (Domain.containsDomain(token)) {
+                                String host = Domain.extractHost(token, true);
+                                String domain = Domain.extractDomain(token, true);
+                                if (SPF.isBlacklisted(host)) {
+                                    listed = true;
+                                    ttl = SPF.getComplainTTL(host);
+                                    token = "Host " + host;
+                                } else if (SPF.isBlacklisted(domain)) {
+                                    listed = true;
+                                    ttl = SPF.getComplainTTL(domain);
+                                    token = "Domain " + domain;
+                                } else if ((ownerid = Domain.getOwnerID(domain)) != null) {
+                                    listed = SPF.isBlacklisted(ownerid);
+                                    ttl = SPF.getComplainTTL(ownerid);
+                                    token = "Ownerid " + ownerid;
+                                }
+                            } else {
+                                listed = SPF.isBlacklisted(token);
+                                ttl = SPF.getComplainTTL(token);
                             }
-                            ip = SubnetIPv4.correctIP(ip);
-                            if (SPF.isBlacklisted(ip)) {
-                                listed = true;
-                                ttl = SPF.getComplainTTL(ip);
-                                token = "IP " + ip;
-                            } else if ((ownerid = Subnet.getOwnerID(ip)) != null) {
-                                listed = SPF.isBlacklisted(ownerid);
-                                ttl = SPF.getComplainTTL(ownerid);
-                                token = "Ownerid " + ownerid;
-                            }
-                        } else if (Domain.containsDomain(token)) {
-                            String host = Domain.extractHost(token, true);
-                            String domain = Domain.extractDomain(token, true);
-                            if (SPF.isBlacklisted(host)) {
-                                listed = true;
-                                ttl = SPF.getComplainTTL(host);
-                                token = "Host " + host;
-                            } else if (SPF.isBlacklisted(domain)) {
-                                listed = true;
-                                ttl = SPF.getComplainTTL(domain);
-                                token = "Domain " + domain;
-                            } else if ((ownerid = Domain.getOwnerID(domain)) != null) {
-                                listed = SPF.isBlacklisted(ownerid);
-                                ttl = SPF.getComplainTTL(ownerid);
-                                token = "Ownerid " + ownerid;
-                            }
-                        } else {
-                            listed = SPF.isBlacklisted(token);
-                            ttl = SPF.getComplainTTL(token);
+                        } catch (ProcessException ex) {
+                            listed = false;
+                            token = null;
+                            ttl = 0;
                         }
                     }
                     // Alterando mensagem DNS para resposta.
