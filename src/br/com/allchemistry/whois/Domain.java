@@ -237,21 +237,20 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return verdadeiro se o endereço contém um domínio.
      */
     public static boolean containsDomain(String address) {
-        address = address.trim();
-        if (SubnetIPv4.isValidIPv4(address)) {
+        if (address == null) {
             return false;
         } else {
-            address = address.toLowerCase();
-//            return Pattern.matches(
-//                    "^([_a-z0-9=\\.-]+=)?([_a-z0-9+=-]+(\\.[_a-z0-9=-]+)*@)?"
-//                    + "(([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])\\.)+"
-//                    + "([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])$", address
-//                    );
-            return Pattern.matches(
-                    "^([a-zA-Z0-9._%+=-]+@)?"
-                    + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
-                    );
-            
+            address = address.trim();
+            if (SubnetIPv4.isValidIPv4(address)) {
+                return false;
+            } else {
+                address = address.toLowerCase();
+                return Pattern.matches(
+                        "^([a-zA-Z0-9._%+=-]+@)?"
+                        + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
+                        );
+
+            }
         }
     }
     

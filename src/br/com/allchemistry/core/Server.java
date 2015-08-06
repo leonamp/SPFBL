@@ -374,7 +374,7 @@ public abstract class Server extends Thread {
             Server.logError(ex);
         }
         if (result != null) {
-            result = result.replace('\n', ';');
+            result = result.replace("\n", "\\n");
         }
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date())

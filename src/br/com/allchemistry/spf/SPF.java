@@ -1672,6 +1672,104 @@ public final class SPF implements Serializable {
         }
     }
     
+    protected static String processPostfixSPF(
+            String ip, String sender, String helo
+            ) throws ProcessException {
+        if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
+            return "action=DEFER [SPF] "
+                    + "A transient error occurred when checking SPF record, "
+                    + "preventing a result from being reached. Try again later.\n\n";
+        } else if (!Domain.containsDomain(sender)) {
+            return "action=DEFER [SPF] "
+                    + "A transient error occurred when checking SPF record, "
+                    + "preventing a result from being reached. Try again later.\n\n";
+        } else {
+            try {
+                SPF spf = SPF.getSPF(sender);
+                String result = spf.getResult(ip);
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                String ownerid;
+                if (result.equals("FAIL")) {
+                    return "action=REJECT "
+                            + "[SPF] " + sender + " is not allowed to "
+                            + "send mail from " + ip + ". "
+                            + "Please see http://www.openspf.org/why.html?"
+                            + "sender=" + sender + "&"
+                            + "ip=" + ip + " for details.\n\n";
+                } else if (result.equals("PASS")) {
+                    // Quando fo PASS, significa que o domínio 
+                    // autorizou envio pelo IP, portanto o dono dele 
+                    // é responsavel pelas mensagens.
+                    String host = Domain.extractHost(sender, true);
+                    if (PROVIDER_SET.contains(host)) {
+                        // Listar apenas o remetente se o 
+                        // host for um provedor de e-mail.
+                        tokenSet.add(sender);
+                    } else {
+                        // Não é um provedor então
+                        // o domínio deve ser listado.
+                        tokenSet.add(host);
+                        tokenSet.add(Domain.extractDomain(sender, true));
+                        if ((ownerid = Domain.getOwnerID(sender)) != null) {
+                            tokenSet.add(ownerid);
+                        }
+                    }
+                } else if (SPF.heloMatchIP(ip, helo)) {
+                    // Se o HELO apontar para o IP,
+                    // então o dono do HELO é o responsável.
+                    if (!helo.startsWith(".")) {
+                        helo = "." + helo;
+                    }
+                    tokenSet.add(helo);
+                    tokenSet.add(Domain.extractDomain(helo, true));
+                    if ((ownerid = Domain.getOwnerID(helo)) != null) {
+                        tokenSet.add(ownerid);
+                    }
+                } else {
+                    // Em qualquer outro caso,
+                    // o responsável é o dono do IP.
+                    if (SubnetIPv4.isValidIPv4(ip)) {
+                        // Formalizar notação IPv4.
+                        tokenSet.add(SubnetIPv4.correctIP(ip));
+                    } else if (SubnetIPv6.isValidIPv6(ip)) {
+                        // Formalizar notação IPv6.
+                        tokenSet.add(SubnetIPv6.correctIP(ip));
+                    }
+                    if ((ownerid = Subnet.getOwnerID(ip)) != null) {
+                        tokenSet.add(ownerid);
+                    }
+                }
+                Server.logTicket(tokenSet);
+                String ticket = SPF.getTicket(tokenSet);
+                if (ticket == null) {
+                    // Não gerou ticket porque está listado.
+                    return "action=REJECT [RBL] "
+                            + "You are blocked in this "
+                            + "server for seven days.\n\n";
+                } else {
+                    // Adcionar ticket ao cabeçalho da mensagem.
+                    return "action=PREPEND "
+                            + "Received-SPFBL: " + result
+                            + " " + ticket + "\n\n";
+                }
+            } catch (ProcessException ex) {
+                if (ex.getMessage().equals("ERROR: SPF PARSE")) {
+                    return "action=REJECT [SPF] "
+                            + "One or more SPF records from " + sender + " "
+                            + "could not be interpreted. "
+                            + "Please see http://www.openspf.org/SPF_"
+                            + "Record_Syntax for details.\n\n";
+                } else {
+                    return "action=DEFER [SPF] "
+                            + "A transient error occurred when "
+                            + "checking SPF record from " + sender + ", "
+                            + "preventing a result from being reached. "
+                            + "Try again later.\n\n";
+                }
+            }
+        }
+    }
+    
     /**
      * Processa a consulta e retorna o resultado.
      * @param query a expressão da consulta.
