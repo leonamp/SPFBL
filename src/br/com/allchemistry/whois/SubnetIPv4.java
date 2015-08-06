@@ -183,9 +183,13 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
      * @return verdadeiro se um IP é válido na notação de IPv4.
      */
     public static boolean isValidIPv4(String ip) {
-        ip = ip.trim();
-        return Pattern.matches("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$", ip);
+        if (ip == null) {
+            return false;
+        } else {
+            ip = ip.trim();
+            return Pattern.matches("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$", ip);
+        }
     }
     
     /**

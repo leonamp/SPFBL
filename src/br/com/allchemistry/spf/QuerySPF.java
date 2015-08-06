@@ -107,18 +107,39 @@ public final class QuerySPF extends Server {
                 try {
                     String query = null;
                     String result = null;
-//                    long time = 0; // Tempo de processamento.
                     Socket socket = SOCKET_LIST.poll();
                     try {
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-                        query = bufferedReader.readLine();
-                        if (query != null) {
-                            query = query.trim();
-//                            long begin = System.currentTimeMillis();
-                            result = SPF.processSPF(query);
-//                            time = System.currentTimeMillis() - begin;
+                        String line = bufferedReader.readLine();
+                        if (line != null) {
+                            if (line.equals("request=smtpd_access_policy")) {
+                                // Entrada padrão do Postfix.
+                                // Extrair os atributos necessários.
+                                String ip = null;
+                                String sender = null;
+                                String helo = null;
+                                query = "";
+                                do {
+                                    query += line + "\\n";
+                                    if (line.startsWith("helo_name=")) {
+                                        int index = line.indexOf('=') + 1;
+                                        helo = line.substring(index);
+                                    } else if (line.startsWith("sender=")) {
+                                        int index = line.indexOf('=') + 1;
+                                        sender = line.substring(index);
+                                    } else if (line.startsWith("client_address=")) {
+                                        int index = line.indexOf('=') + 1;
+                                        ip = line.substring(index);
+                                    }
+                                } while ((line = bufferedReader.readLine()).length() > 0);
+                                query += "\\n";
+                                result = SPF.processPostfixSPF(ip, sender, helo);
+                            } else {
+                                query = line.trim();
+                                result = SPF.processSPF(query);
+                            }
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
@@ -131,7 +152,6 @@ public final class QuerySPF extends Server {
                         Server.logQuery(
                                 "SPFQR",
                                 socket.getInetAddress(),
-//                                time,
                                 query, result);
                     }
                 } catch (Exception ex) {
