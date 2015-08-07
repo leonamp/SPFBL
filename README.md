@@ -130,4 +130,4 @@ check_policy_service inet:<IP do servidor SPFBL>:9877
 
 Para utilizar adequadamente o SPFBL, o MX deve ser capaz de fazer a consulta e seguir este fluxo:
 
-![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
+![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/flowchartSPFBL.png "flowchartSPFBL.png")
