@@ -1675,11 +1675,13 @@ public final class SPF implements Serializable {
     protected static String processPostfixSPF(
             String ip, String sender, String helo
             ) throws ProcessException {
-        if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
-            return "action=DEFER [SPF] "
-                    + "A transient error occurred when checking SPF record, "
-                    + "preventing a result from being reached. Try again later.\n\n";
-        } else if (!Domain.containsDomain(sender)) {
+        if (sender == null || sender.length() == 0) {
+            return "action=WARN [SPF] "
+                    + "No SPF check because sender was not defined.\n\n";
+        } else if (!Domain.isEmail(sender)) {
+            return "action=REJECT [RBL] "
+                    + sender + " is not a valid e-mail address.\n\n";
+        } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
             return "action=DEFER [SPF] "
                     + "A transient error occurred when checking SPF record, "
                     + "preventing a result from being reached. Try again later.\n\n";

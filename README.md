@@ -119,6 +119,13 @@ PASS
 
 Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
 
+##### Integração nativa Postfix
+
+O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pelo Postfix, basta adicionar a segunite linha no arquivo main.cf:
+```
+check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
 ##### Fluxo do SPFBL
 
 Para utilizar adequadamente o SPFBL, o MX deve ser capaz de fazer a consulta e seguir este fluxo:
