@@ -23,7 +23,7 @@
 #  6. Ticket inválido.
 #
 
-if [[ $1 =~ ^[a-zA-Z0-9/+]+$ ]]; then
+if [[ $1 =~ ^[a-zA-Z0-9/+=]+$ ]]; then
 
 	# O parâmentro é um ticket SPFBL.
 	ticket=$1
