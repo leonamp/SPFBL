@@ -255,6 +255,24 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
+     * Verifica se o endereço é um e-mail válido.
+     * @param address o endereço a ser verificado.
+     * @return verdadeiro se o endereço é um e-mail válido.
+     */
+    public static boolean isEmail(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            address = address.trim();
+            address = address.toLowerCase();
+            return Pattern.matches(
+                    "^[a-zA-Z0-9._%+=-]+@"
+                    + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
+                    );
+        }
+    }
+    
+    /**
      * Verifica se o endereço é um TDL válido.
      * @param address o endereço a ser verificado.
      * @return verdadeiro se o endereço é um TDL válido.

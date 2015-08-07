@@ -114,7 +114,7 @@ public final class QuerySPF extends Server {
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
-                            if (line.equals("request=smtpd_access_policy")) {
+                            if (line.equals("/asd") || line.equals("request=smtpd_access_policy")) {
                                 // Entrada padrão do Postfix.
                                 // Extrair os atributos necessários.
                                 String ip = null;
