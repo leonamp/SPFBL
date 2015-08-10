@@ -110,7 +110,7 @@ public final class QuerySPF extends Server {
                     Socket socket = SOCKET_LIST.poll();
                     try {
                         InputStream inputStream = socket.getInputStream();
-                        InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
+                        InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
@@ -142,8 +142,7 @@ public final class QuerySPF extends Server {
                             }
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
-                            outputStream.write(result.getBytes("ISO-8859-1"));
-                            // Mede o tempo de resposta para estatísticas.
+                            outputStream.write(result.getBytes("UTF-8"));
                         }
                     } finally {
                         // Fecha conexão logo após resposta.
