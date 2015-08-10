@@ -1761,6 +1761,10 @@ public final class SPF implements Serializable {
                             + "could not be interpreted. "
                             + "Please see http://www.openspf.org/SPF_"
                             + "Record_Syntax for details.\n\n";
+                } else if (ex.getMessage().equals("ERROR: RESERVED")) {
+                    return "action=REJECT [SPF] "
+                            + "The domain of "
+                            + sender + " is a reserved TDL.\n\n";
                 } else {
                     return "action=DEFER [SPF] "
                             + "A transient error occurred when "

@@ -310,19 +310,7 @@ public abstract class Server extends Thread {
     private static long lastClientsFileModified = 0;
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
-    /**
-     * Registra as mensagens de consulta.
-     * Uma iniciativa para formalização das mensagens de log.
-     * @param ipAddress o IP da conexão.
-     * @param time o tempo de processamento da consulta.
-     * @param query a expressão da consulta.
-     * @param result a expressão do resultado.
-     */
-    public static synchronized void logQuery(
-            String type,
-            InetAddress ipAddress,
-//            long time,
-            String query, String result) {
+    private static synchronized String getLogClient(InetAddress ipAddress) {
         File clientsFile = new File("clients.txt");
         if (!clientsFile.exists()) {
             subnetClientsMap.clear();
@@ -373,14 +361,28 @@ public abstract class Server extends Thread {
         } catch (Exception ex) {
             Server.logError(ex);
         }
+        return cliente;
+    }
+    
+    /**
+     * Registra as mensagens de consulta.
+     * Uma iniciativa para formalização das mensagens de log.
+     * @param ipAddress o IP da conexão.
+     * @param time o tempo de processamento da consulta.
+     * @param query a expressão da consulta.
+     * @param result a expressão do resultado.
+     */
+    public static synchronized void logQuery(
+            String type,
+            InetAddress ipAddress,
+            String query, String result) {
         if (result != null) {
             result = result.replace("\n", "\\n");
         }
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date())
                 + " " + type + " "
-//                + Thread.currentThread().getName() + "(" + time + "ms) "
-                + cliente + ": "
+                + getLogClient(ipAddress) + ": "
                 + query + " => " + result
                 );
     }
