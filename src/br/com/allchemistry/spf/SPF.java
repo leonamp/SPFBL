@@ -1757,9 +1757,11 @@ public final class SPF implements Serializable {
                 String ticket = SPF.getTicket(tokenSet);
                 if (ticket == null) {
                     // Não gerou ticket porque está listado.
+                    long ttl = SPF.getComplainTTL(tokenSet);
+                    int days = (int) (ttl / 1440);
                     return "action=REJECT [RBL] "
                             + "You are blocked in this "
-                            + "server for seven days.\n\n";
+                            + "server for " + days + " days.\n\n";
                 } else {
                     // Adcionar ticket ao cabeçalho da mensagem.
                     return "action=PREPEND "
@@ -2186,6 +2188,17 @@ public final class SPF implements Serializable {
             // Transformar em minutos.
             return distribution.getComplainTTL() / 60000;
         }
+    }
+    
+    private static synchronized long getComplainTTL(TreeSet<String> tokenSet) {
+        long ttl = 0;
+        for (String token : tokenSet) {
+            long ttlNew = getComplainTTL(token);
+            if (ttl < ttlNew) {
+                ttl = ttlNew;
+            }
+        }
+        return ttl;
     }
     
     public static boolean isBlacklisted(String token) {
