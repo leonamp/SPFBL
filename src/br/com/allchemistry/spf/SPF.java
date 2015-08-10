@@ -2077,8 +2077,8 @@ public final class SPF implements Serializable {
             String complain = Server.decrypt(ticket);
             int index = complain.indexOf(' ');
             date = getTicketDate(complain.substring(0, index));
-            if (isExpired3()) {
-                // Ticket vencido com mais de 3 dias.
+            if (isExpired5()) {
+                // Ticket vencido com mais de 5 dias.
                 throw new ProcessException("ERROR: TICKET EXPIRED");
             } else {
                 StringTokenizer tokenizer = new StringTokenizer(complain.substring(index+1), " ");
@@ -2093,6 +2093,10 @@ public final class SPF implements Serializable {
         
         public boolean isExpired3() {
             return System.currentTimeMillis() - date.getTime() > 259200000;
+        }
+        
+        public boolean isExpired5() {
+            return System.currentTimeMillis() - date.getTime() > 432000000;
         }
         
         public boolean isExpired7() {
