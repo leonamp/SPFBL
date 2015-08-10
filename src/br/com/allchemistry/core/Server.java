@@ -277,14 +277,15 @@ public abstract class Server extends Thread {
         log("SPFTK", ticket);
     }
     
-    /**
-     * Registra uma reclamação de spam SPF consultado.
-     * Uma iniciativa para formalização das mensagens de log.
-     * @param token o token SPF da mensagem original.
-     */
-    public static synchronized void logSpamSPF(Set<String> tokenSet) {
-        log("SPFBL", tokenSet.toString());
-    }
+//    /**
+//     * Registra uma reclamação de spam SPF consultado.
+//     * Uma iniciativa para formalização das mensagens de log.
+//     * @param token o token SPF da mensagem original.
+//     * @deprecated uma nova forma de logar denúncia foi implementada.
+//     */
+//    public static synchronized void logSpamSPF(Set<String> tokenSet) {
+//        log("SPFBL", tokenSet.toString());
+//    }
     
     /**
      * Registra um vencimento de reclamação de spam SPF consultado.

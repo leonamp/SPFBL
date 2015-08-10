@@ -1610,7 +1610,11 @@ public final class SPF implements Serializable {
             try {
                 spfMax.refresh(true);
             } catch (ProcessException ex) {
-                Server.logError(ex);
+                if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
+                    Server.logDebug(spfMax.getHostname() + ": SPF registry cache removed.");
+                } else {
+                    Server.logError(ex);
+                }
             }
         }
         SPF.store();
@@ -1799,12 +1803,20 @@ public final class SPF implements Serializable {
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    SPF.addComplain(ticket);
-                    result = "OK\n";
+                    TreeSet<String> tokenSet = SPF.addComplain(ticket);
+                    if (tokenSet == null) {
+                        result = "DUPLICATE COMPLAIN\n";
+                    } else {
+                        result = "OK " + tokenSet + "\n";
+                    }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    SPF.removeComplain(ticket);
-                    result = "OK\n";
+                    TreeSet<String> tokenSet = SPF.removeComplain(ticket);
+                    if (tokenSet == null) {
+                        result = "ALREADY REMOVED\n";
+                    } else {
+                        result = "OK " + tokenSet + "\n";
+                    }
                 } else if ((firstToken.equals("CHECK") && tokenizer.countTokens() == 3) || tokenizer.countTokens() == 2) {
                     try {
                         String ip;
@@ -2023,10 +2035,14 @@ public final class SPF implements Serializable {
      * @param ticket o ticket da mensagem original.
      * @throws ProcessException se houver falha no processamento do ticket.
      */
-    public synchronized static void addComplain(String ticket) throws ProcessException {
-        if (!COMPLAIN_MAP.containsKey(ticket)) {
-            COMPLAIN_MAP.put(ticket, new Complain(ticket));
+    public synchronized static TreeSet<String> addComplain(String ticket) throws ProcessException {
+        if (COMPLAIN_MAP.containsKey(ticket)) {
+            return null;
+        } else {
+            Complain complain = new Complain(ticket);
+            COMPLAIN_MAP.put(ticket, complain);
             COMPLAIN_CHANGED = true;
+            return complain.getTokenSet();
         }
     }
     
@@ -2035,11 +2051,14 @@ public final class SPF implements Serializable {
      * @param ticket o ticket da mensagem original.
      * @throws ProcessException se houver falha no processamento do ticket.
      */
-    public synchronized static void removeComplain(String ticket) {
+    public synchronized static TreeSet<String> removeComplain(String ticket) {
         Complain complain = COMPLAIN_MAP.remove(ticket);
-        if (complain != null) {
+        if (complain == null) {
+            return null;
+        } else {
             complain.removeComplains();
             COMPLAIN_CHANGED = true;
+            return complain.getTokenSet();
         }
     }
     
@@ -2068,7 +2087,7 @@ public final class SPF implements Serializable {
                     getDistribution(token, true).addSpam();
                     tokenSet.add(token);
                 }
-                Server.logSpamSPF(tokenSet);
+//                Server.logSpamSPF(tokenSet); // Obsoleto.
             }
         }
         
@@ -2078,6 +2097,12 @@ public final class SPF implements Serializable {
         
         public boolean isExpired7() {
             return System.currentTimeMillis() - date.getTime() > 604800000;
+        }
+        
+        public TreeSet<String> getTokenSet() {
+            TreeSet<String> tokenSetClone = new TreeSet<String>();
+            tokenSetClone.addAll(this.tokenSet);
+            return tokenSetClone;
         }
         
         public void removeComplains() {
