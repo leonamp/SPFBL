@@ -104,6 +104,7 @@ public class Main {
         System.out.println("   FATAL");
         System.out.println("      A fatal error, check the LOG.");
         System.out.println();
-        System.out.println("Queries and results in ISO-8859-1 charset.");
+        System.out.println("Queries and results for WHOIS in ISO-8859-1 charset.");
+        System.out.println("Queries and results for SPFBL in UTF-8 charset.");
     }
 }
