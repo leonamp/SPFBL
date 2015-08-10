@@ -124,7 +124,11 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return o host do endereço de e-mail.
      */
     public static String extractHost(String address, boolean pontuacao) {
-        if (address.contains("@")) {
+        if (address == null) {
+            return null;
+        } else if (address.length() == 0) {
+            return null;
+        } else if (address.contains("@")) {
             // O endereço é um e-mail.
             // Extrair a parte do host.
             int index = address.indexOf('@');

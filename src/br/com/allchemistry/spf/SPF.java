@@ -354,6 +354,8 @@ public final class SPF implements Serializable {
                         String token = tokenizer.nextToken();
                         if (visitedTokens.contains(token)) {
                             // Token já visitado.
+                        } else if (token.equals("spf1")) {
+                            // Nada deve ser feito.
                         } else if (token.equals("v=spf1")) {
                             // Nada deve ser feito.
                         } else if (token.equals("v=msv1")) {
@@ -1383,19 +1385,23 @@ public final class SPF implements Serializable {
      */
     public static SPF getSPF(String address) throws ProcessException {
         String host = Domain.extractHost(address, false);
-        SPF spf;
-        if (SPF_MAP.containsKey(host)) {
-            spf = SPF_MAP.get(host);
-            if (spf.isRegistryExpired()) {
-                // Atualiza o registro se ele for antigo demais.
-                spf.refresh(false);
-            }
+        if (host == null) {
+            return null;
         } else {
-            spf = new SPF(host);
-            addSPF(spf);
+            SPF spf;
+            if (SPF_MAP.containsKey(host)) {
+                spf = SPF_MAP.get(host);
+                if (spf.isRegistryExpired()) {
+                    // Atualiza o registro se ele for antigo demais.
+                    spf.refresh(false);
+                }
+            } else {
+                spf = new SPF(host);
+                addSPF(spf);
+            }
+            spf.queries++; // Incrementa o contador de consultas.
+            return spf;
         }
-        spf.queries++; // Incrementa o contador de consultas.
-        return spf;
     }
     
     private static synchronized void removeSPF(String host) {
@@ -1675,10 +1681,7 @@ public final class SPF implements Serializable {
     protected static String processPostfixSPF(
             String ip, String sender, String helo
             ) throws ProcessException {
-        if (sender == null || sender.length() == 0) {
-            return "action=WARN [SPF] "
-                    + "No SPF check because sender was not defined.\n\n";
-        } else if (!Domain.isEmail(sender)) {
+        if (sender != null && sender.length() > 0 && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
         } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
@@ -1687,8 +1690,13 @@ public final class SPF implements Serializable {
                     + "preventing a result from being reached. Try again later.\n\n";
         } else {
             try {
+                String result;
                 SPF spf = SPF.getSPF(sender);
-                String result = spf.getResult(ip);
+                if (spf == null) {
+                    result = "NONE";
+                } else {
+                    result = spf.getResult(ip);
+                }
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String ownerid;
                 if (result.equals("FAIL")) {
