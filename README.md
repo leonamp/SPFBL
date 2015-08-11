@@ -62,13 +62,23 @@ Quando um domínio não tem registro SPF, o SPFBL considera a recomendação "be
 
 Porém mesmo considerando esta recomendação, alguns domínios que não tem registro SPF não funcionam bem com o "best-guess". Nestes casos é possível registrar um "best-guess" específico para um determinado domínio. Por exemplo, o domínio "yahoo.com.br" não tem registro SPF e costuma enviar os seus e-mails pelos servidores listados no registro SPF do domínio "yahoo.com". A solução para este problema é adicionar o "best-guess" "v=spf1 redirect=yahoo.com" para o domínio "yahoo.com.br".
 
+##### Quantidade máxima de interações DNS
+
+O SPF convencional tem um limitador que finaliza a busca quando ele atinge 10 interações de DNS. O motivo deste limitador é garantir que não haja loop infinito, porque a estrutura de dados do SPF é um grafo, e também para evitar respostas com alta latência. O problema deste limitador é que diversos administradores de domínio utilizam o mecanismo include no SPF para transferir a responsabilidade de configuração correta aos administradores de servidores de e-mail e as vezes estes últimos abusam do mecanismo include, gerando um grafo grande demais.
+
+O SPFBL não trabalha com grafo e sim com árvore. Isso é feito ignorando os nós já processados anteriormente.
+
+O SPFBL não tem o limitador de 10 interações de DNS do SPF convencional porque além de trabalhar com estrutura em árvore utiliza cache de registros SPF, que agiliza o processamento. A única limitação que existe é a limitação de nós abaixo de 10 níveis na árvore, que seria um absurdo atingir este limite. Estes nós abaixo de 10 níveis são então apenas ignorados, uma poda de árvore, e atingir este limite não é considerado uma falha de SPF. Isto faz com que as falhas por limite sejam extintas no SPFBL.
+
+Se a árvore for grande demais para ser percorrida e não houver registros desta árvore em cache, pode acontecer do cliente SPFBL considerar o timeout, fechar a conexão e gerar um erro temporário para o servidor da origem. Se acontecer isto, o SPFBL continua a varredura da árvore em background, mesmo com a conexão fechada, e quando a mesma consulta for realizada novamente, a resposta do SPFBL será imediata porque a árvore já estará toda em cache.
+
 ##### Cache dos registros SPF
 
 O SPFBL mantém em cache todos os registros SPF encontrados e procura mantê-los atualizados em background de acordo com o volume de consultas de cada um deles.
 
 ##### Denúncia de SPAM
 
-Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue informações sobre o responsável pelo envio e a data que a consulta foi realizada. Este ticket pode ser utilizado para formalizar uma denúncia,, que contabiliza para o responsável o peso de denúncia. Cada denúncia expira em sete dias após a data da consulta e não pode ser feita após três dias da consulta.
+Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue informações sobre o responsável pelo envio e a data que a consulta foi realizada. Este ticket pode ser utilizado para formalizar uma denúncia, que contabiliza para o responsável o peso de denúncia. Cada denúncia expira em sete dias após a data da consulta e não pode ser feita após cinco dias da consulta.
 
 ### Funcionamento
 
@@ -92,6 +102,12 @@ O SPFBL mantém uma flag para cada responsável. Esta flag tem três estados: WH
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/flagFSM.png "flagFSM.png")
 
 Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
+
+##### Fluxo do SPFBL
+
+O SPFBL utiliza deste fluxo para determinar responsável e se o mesmo está listado:
+
+![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
 
 ##### Registro de provedores de e-mail
 
@@ -126,8 +142,8 @@ O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pe
 check_policy_service inet:<IP do servidor SPFBL>:9877
 ```
 
-##### Fluxo do SPFBL
+##### Plugin de denúncia SPFBL no Roundcube
 
-Para utilizar adequadamente o SPFBL, o MX deve ser capaz de fazer a consulta e seguir este fluxo:
+O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no projeto independente do Ricardo Walter:
 
-![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
+![Roundcube-Plugin-markasjunk_spfbl](https://github.com/rikw22/Roundcube-Plugin-markasjunk_spfbl "Roundcube-Plugin-markasjunk_spfbl")
