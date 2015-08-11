@@ -1689,9 +1689,8 @@ public final class SPF implements Serializable {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
         } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
-            return "action=DEFER [SPF] "
-                    + "A transient error occurred when checking SPF record, "
-                    + "preventing a result from being reached. Try again later.\n\n";
+            return "action=REJECT [RBL] "
+                    + ip + " is not a valid IP.\n\n";
         } else {
             try {
                 String result;

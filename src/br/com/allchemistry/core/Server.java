@@ -399,7 +399,7 @@ public abstract class Server extends Thread {
             String command, String result) {
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date())
-                + " CMMND " + ipAddress.getHostAddress() + ": "
+                + " CMMND " + getLogClient(ipAddress) + ": "
                 + command + " => " + result.replace('\n', ';')
                 );
     }
