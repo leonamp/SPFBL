@@ -47,6 +47,7 @@ public final class CommandTCP extends Server {
             Server.logDebug("Listening commands on TCP port " + PORT + "...");
             while (continueListenning()) {
                 try {
+                    long time = System.currentTimeMillis();
                     String command = null;
                     String result = null;
                     Socket socket = SERVER_SOCKET.accept();
@@ -66,7 +67,7 @@ public final class CommandTCP extends Server {
                         // Fecha conexão logo após resposta.
                         socket.close();
                         // Log da consulta com o respectivo resultado.
-                        Server.logCommand(socket.getInetAddress(), command, result);
+                        Server.logCommand(time, socket.getInetAddress(), command, result);
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
