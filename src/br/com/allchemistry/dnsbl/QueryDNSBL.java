@@ -121,10 +121,10 @@ public final class QueryDNSBL extends Server {
                     Record question = message.getQuestion();
                     Name name = question.getName();
                     String query = name.toString();
-                    int index = query.indexOf(".dnsbl.allchemistry.com.br.");
+                    int index = query.lastIndexOf(".dnsbl.");
                     boolean listed = false;
                     String token = null;
-                    long ttl = 0; // Tempo de cache.
+                    long ttl = 0; // Tempo de cache no DNS.
                     if (index > 0) {
                         try {
                             token = query.substring(0, index);
