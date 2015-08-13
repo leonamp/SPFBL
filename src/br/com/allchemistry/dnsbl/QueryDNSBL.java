@@ -113,6 +113,7 @@ public final class QueryDNSBL extends Server {
             while (!PACKET_LIST.isEmpty()) {
                 try {
                     DatagramPacket packet = PACKET_LIST.poll();
+                    long time = System.currentTimeMillis();
                     byte[] data = packet.getData();
                     String result;
                     // Processando consulta DNS.
@@ -203,7 +204,7 @@ public final class QueryDNSBL extends Server {
                             );
                     SERVER_SOCKET.send(sendPacket);
                     // Log da consulta com o respectivo resultado.
-                    Server.logQueryDNSBL(ipAddress, query, result);
+                    Server.logQueryDNSBL(time, ipAddress, query, result);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {

@@ -301,9 +301,10 @@ public final class SPF implements Serializable {
      */
     private void refresh(boolean load) throws ProcessException {
         try {
+            long time = System.currentTimeMillis();
             LinkedList<String> registryList = getRegistrySPF(hostname);
             if (registryList.isEmpty()) {
-                Server.logQuerySPF(hostname, "no registry");
+                Server.logQuerySPF(time, hostname, "no registry");
             } else {
                 ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
                 ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
@@ -384,10 +385,10 @@ public final class SPF implements Serializable {
                     }
                     if (errorRegistry) {
                         // Log do registro com erro.
-                        Server.logErrorSPF(hostname, registry);
+                        Server.logErrorSPF(time, hostname, registry);
                     } else {
                         // Log do registro sem erro.
-                        Server.logQuerySPF(hostname, registry);
+                        Server.logQuerySPF(time, hostname, registry);
                     }
                 }
                 // Considerar os mecanismos na ordem crescente
@@ -1969,6 +1970,7 @@ public final class SPF implements Serializable {
                 } else {
                     result = spf.getResult(ip);
                 }
+                long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String ownerid;
                 if (result.equals("FAIL")) {
@@ -2021,7 +2023,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(ownerid);
                     }
                 }
-                Server.logTicket(tokenSet);
+                Server.logTicket(time, tokenSet);
                 String ticket = SPF.getTicket(tokenSet);
                 if (ticket == null) {
                     // Não gerou ticket porque está listado.
@@ -2069,6 +2071,7 @@ public final class SPF implements Serializable {
             if (query.length() == 0) {
                 result = "ERROR: QUERY\n";
             } else {
+                long time = System.currentTimeMillis();
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
@@ -2195,7 +2198,7 @@ public final class SPF implements Serializable {
                                 } else {
                                     // Anexando ticket ao resultado.
                                     result += " " + ticket + "\n";
-                                    Server.logTicket(tokenSet);
+                                    Server.logTicket(time, tokenSet);
                                 }
                             }
                         }

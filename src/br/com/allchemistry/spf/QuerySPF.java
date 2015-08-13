@@ -105,6 +105,7 @@ public final class QuerySPF extends Server {
         public void run() {
             while (!SOCKET_LIST.isEmpty()) {
                 try {
+                    long time = System.currentTimeMillis();
                     String query = null;
                     String result = null;
                     Socket socket = SOCKET_LIST.poll();
@@ -149,6 +150,7 @@ public final class QuerySPF extends Server {
                         socket.close();
                         // Log da consulta com o respectivo resultado.
                         Server.logQuery(
+                                time,
                                 "SPFQR",
                                 socket.getInetAddress(),
                                 query, result);
