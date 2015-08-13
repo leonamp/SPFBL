@@ -31,6 +31,8 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.naming.CommunicationException;
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
@@ -384,10 +386,10 @@ public final class SPF implements Serializable {
                         visitedTokens.add(token);
                     }
                     if (errorRegistry) {
-                        // Log do registro com erro.
+                        // Log do registro com erro de sintaxe.
                         Server.logErrorSPF(time, hostname, registry);
                     } else {
-                        // Log do registro sem erro.
+                        // Log do registro sem erro de sintaxe.
                         Server.logQuerySPF(time, hostname, registry);
                     }
                 }
@@ -1895,11 +1897,13 @@ public final class SPF implements Serializable {
             // o HELO não é um hostname válido.
             return false;
         } else if (SubnetIPv4.isValidIPv4(ip)) {
+            long time = System.currentTimeMillis();
             try {
                 Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
                         "dns:/" + helo, new String[]{"A"});
                 Attribute attribute = attributes.get("A");
                 if (attribute == null) {
+                    Server.logMatchHELO(time, helo, "MXDOMAIN " + ip);
                     return false;
                 } else {
                     int address = SubnetIPv4.getAddressIP(ip);
@@ -1910,22 +1914,32 @@ public final class SPF implements Serializable {
                         hostAddress = hostAddress.substring(indexSpace);
                         if (SubnetIPv4.isValidIPv4(hostAddress)) {
                             if (address == SubnetIPv4.getAddressIP(hostAddress)) {
+                                Server.logMatchHELO(time, helo, "OK " + ip);
                                 return true;
                             }
                         }
                     }
+                    Server.logMatchHELO(time, helo, "NOT " + ip);
                     return false;
                 }
+            } catch (CommunicationException ex) {
+                Server.logMatchHELO(time, helo, "TIMEOUT " + ip);
+                return false;
+            } catch (NameNotFoundException ex) {
+                Server.logMatchHELO(time, helo, "NOT FOUND " + ip);
+                return false;
             } catch (NamingException ex) {
-                // Não encontrou registro A para o host.
+                Server.logMatchHELO(time, helo, "ERROR " + ex.getMessage());
                 return false;
             }
         } else if (SubnetIPv6.isValidIPv6(ip)) {
+            long time = System.currentTimeMillis();
             try {
                 Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
                         "dns:/" + helo, new String[]{"AAAA"});
                 Attribute attribute = attributes.get("AAAA");
                 if (attribute == null) {
+                    Server.logMatchHELO(time, helo, "MXDOMAIN " + ip);
                     return false;
                 } else {
                     short[] address = SubnetIPv6.split(ip);
@@ -1936,16 +1950,24 @@ public final class SPF implements Serializable {
                         hostAddress = hostAddress.substring(indexSpace);
                         if (SubnetIPv6.isValidIPv6(hostAddress)) {
                             if (Arrays.equals(address, SubnetIPv6.split(hostAddress))) {
+                                Server.logMatchHELO(time, helo, "OK " + ip);
                                 return true;
                             }
                         }
                     }
+                    Server.logMatchHELO(time, helo, "NOT " + ip);
                     return false;
                 }
-            } catch (NamingException ex) {
-                // Não encontrou registro AAAA para o host.
+            } catch (CommunicationException ex) {
+                Server.logMatchHELO(time, helo, "TIMEOUT " + ip);
                 return false;
-            }
+            } catch (NameNotFoundException ex) {
+                Server.logMatchHELO(time, helo, "NOT FOUND " + ip);
+                return false;
+            } catch (NamingException ex) {
+                Server.logMatchHELO(time, helo, "ERROR " + ex.getMessage());
+                return false;
+             }
         } else {
             // O parâmetro ip não é um IP válido.
             return false;
@@ -2023,7 +2045,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(ownerid);
                     }
                 }
-                Server.logTicket(time, tokenSet);
+                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                 String ticket = SPF.getTicket(tokenSet);
                 if (ticket == null) {
                     // Não gerou ticket porque está listado.
@@ -2198,7 +2220,7 @@ public final class SPF implements Serializable {
                                 } else {
                                     // Anexando ticket ao resultado.
                                     result += " " + ticket + "\n";
-                                    Server.logTicket(time, tokenSet);
+                                    Server.logTicket(time, ip + " " + email + " " + helo, tokenSet);
                                 }
                             }
                         }

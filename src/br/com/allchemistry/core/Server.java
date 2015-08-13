@@ -208,11 +208,35 @@ public abstract class Server extends Thread {
     public static final int DAY_TIME = 1000 * 60 * 60 * 24;
     
     /**
-     * Registra uma linha de LOG usando os seguintes campos:
+     * Registra uma linha de LOG
+     * 
+     * Utiliza os seguintes campos:
      *    - Data do início do processo;
-     *    - Latência do processamento em segundos com 4 dígitos fixos;
+     *    - Latência do processamento em milisegundos com 4 dígitos fixos;
      *    - Tipo de registro de LOG com 5 caracteres fixos e
      *    - Mensagem do LOG.
+     * 
+     * Tipos de registros de LOG:
+     *    - CMMND: comandos ao servidor.
+     *    - DEBUG: debug do sistema.
+     *    - DNSBL: consulta DNSBL via DNS.
+     *    - ERROR: erro de sistema.
+     *    - MATCH: verificação se HELO aponta para IP.
+     *    - SPFER: consulta SPF com erros de sintaxe.
+     *    - SPFOK: consulta SPF sem erros de sintaxe.
+     *    - SPFQR: consulta SPFBL pelo cliente.
+     *    - SPFBL: adição de denúncia SPFBL pelo cliente.
+     *    - SPFWL: remoção de denúncia SPFBL pelo cliente.
+     *    - TIKET: geração de ticket pelo SPFBL.
+     *    - WHOIS: consulta externa do WHOIS.
+     *    - WHOQR: consulta de campos WHOIS pelo cliente.
+     * 
+     * Nenhum processamento deve durar mais que 9999 milisegundos.
+     * Por este motivo o valor foi limitado a 4 digitos.
+     * Se acontecer do valor ser maior que 9999, significa que o código 
+     * tem graves problemas de eficiência e deve ser revisto com urgência.
+     * Outros valores grandes abaixo deste limite podem 
+     * ser investigados com cautela.
      * 
      * @param time data exata do inicio do processamento.
      * @param type tipo de registro de LOG.
@@ -250,7 +274,6 @@ public abstract class Server extends Thread {
     
     /**
      * Registra as mensagens para depuração.
-     * Uma iniciativa para formalização das mensagens de log.
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logDebug(String message) {
@@ -259,16 +282,23 @@ public abstract class Server extends Thread {
     
     /**
      * Registra os tiquetes processados.
-     * Uma iniciativa para formalização das mensagens de log.
      * @param tokenSet o conjunto de tokens.
      */
-    public static synchronized void logTicket(long time, Set<String> tokenSet) {
-        log(time, "TIKET", tokenSet.toString());
+    public static synchronized void logTicket(long time, 
+            String query, Set<String> tokenSet) {
+        log(time, "TIKET", query + " => " + tokenSet);
+    }
+    
+    /**
+     * Registra as verificações de HELO com IP.
+     */
+    public static synchronized void logMatchHELO(long time, 
+            String helo, String result) {
+        log(time, "MATCH", helo + " => " + result);
     }
     
     /**
      * Registra as mensagens de erro.
-     * Uma iniciativa para formalização das mensagens de log.
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logError(String message) {
@@ -295,7 +325,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logQuerySPF(
             long time, String hostname, String registry) {
-        log(time, "SPFOK", hostname + " \"" + registry + "\"");
+        log(time, "SPFOK", hostname + " => \"" + registry + "\"");
     }
     
     /**
@@ -318,7 +348,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logErrorSPF(
             long time, String hostname, String registry) {
-        log(time, "SPFER", hostname + " \"" + registry + "\"");
+        log(time, "SPFER", hostname + " => \"" + registry + "\"");
     }
     
     /**
@@ -428,13 +458,10 @@ public abstract class Server extends Thread {
      * @param command a expressão do comando.
      * @param result a expressão do resultado.
      */
-    public static synchronized void logCommand(InetAddress ipAddress,
-            String command, String result) {
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " CMMND " + getLogClient(ipAddress) + ": "
-                + command + " => " + result.replace('\n', ';')
-                );
+    public static synchronized void logCommand(long time,
+            InetAddress ipAddress, String command, String result) {
+        result = result.replace("\n", "\\n");
+        log(time, "CMMND", getLogClient(ipAddress) + ": " + command + " => " + result);
     }
     
     /**
