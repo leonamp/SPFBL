@@ -26,6 +26,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.security.SecureRandom;
 import java.text.NumberFormat;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -177,6 +178,28 @@ public abstract class Server extends Thread {
      * nos métodos que o utilizam.
      */
     private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
+    
+    /**
+     * Constante de formatação da data no ticket.
+     * Baseado no padrão ISO 8601
+     * 
+     * Um objeto SimpleDateFormat não é thread safety,
+     * portanto é necessário utilizar sincronismo
+     * nos métodos que o utilizam.
+     */
+    private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+    
+    public static synchronized String getNewTicketDate() {
+        return FORMAT_DATE_TICKET.format(new Date());
+    }
+    
+    public static synchronized String formatTicketDate(Date date) {
+        return FORMAT_DATE_TICKET.format(date);
+    }
+    
+    public static synchronized Date parseTicketDate(String value) throws ParseException {
+        return FORMAT_DATE_TICKET.parse(value);
+    }
     
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
@@ -418,7 +441,7 @@ public abstract class Server extends Thread {
         // Finaliza timer local.
         WHOIS_SEMAPHORE_TIMER.cancel();
         // Finaliza timer SPF.
-        SPF.cancelTimer();
+        SPF.cancel();
         // Armazena os registros em disco.
         storeCache();
     }
