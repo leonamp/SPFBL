@@ -18,7 +18,6 @@ import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -38,7 +37,6 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
 import org.apache.commons.lang3.SerializationUtils;
-import org.apache.commons.validator.routines.DomainValidator;
 
 /**
  * Representa o registro SPF de um deterninado host.
@@ -98,31 +96,6 @@ public final class SPF implements Serializable {
     }
     
     /**
-     * http://www.openspf.org/FAQ/Best_guess_record
-     */
-    private static final String BEST_GUESS = "v=spf1 a/24 mx/24 ptr ?all";
-    
-    /**
-     * Mapa de registros manuais de SPF caso o domínio não tenha um.
-     */
-    private static HashMap<String,String> GUESS_MAP = new HashMap<String,String>();
-    
-    /**
-     * Flag que indica se o cache foi modificado.
-     */
-    private static boolean GUESS_CHANGED = false;
-    
-    public synchronized static void addGuess(String hostname,
-            String spf) throws ProcessException {
-        hostname = Domain.extractHost(hostname, false);
-        if (!Domain.containsDomain(hostname)) {
-            throw new ProcessException("ERROR: HOSTNAME INVALID");
-        } else if (!spf.equals(GUESS_MAP.put("." + hostname, spf))) {
-            GUESS_CHANGED = true;
-        }
-    }
-    
-    /**
      * Consulta o registro SPF nos registros DNS do domínio.
      * Se houver mais de dois registros diferentes,
      * realiza o merge do forma a retornar um único registro.
@@ -174,16 +147,16 @@ public final class SPF implements Serializable {
             }
             if (registryList.isEmpty()) {
                 hostname = "." + hostname;
-                if (GUESS_MAP.containsKey(hostname)) {
+                if (CacheGuess.contains(hostname)) {
                     // Significa que um palpite SPF 
                     // foi registrado ara este host.
                     // Neste caso utilizar o paltpite.
-                    registryList.add(GUESS_MAP.get(hostname));
+                    registryList.add(CacheGuess.get(hostname));
                 } else {
                     // Se não hoouver palpite específico para o host,
                     // utilizar o palpite padrão.
                     // http://www.openspf.org/FAQ/Best_guess_record
-                    registryList.add(BEST_GUESS);
+                    registryList.add(CacheGuess.BEST_GUESS);
                 }
             }
             return registryList;
@@ -323,11 +296,6 @@ public final class SPF implements Serializable {
     }
     
     /**
-     * Flag que indica se o cache foi modificado.
-     */
-    private static boolean SPF_CHANGED = false;
-    
-    /**
      * Atualiza o registro SPF de um host.
      * @throws ProcessException se houver falha no processamento.
      */
@@ -435,7 +403,7 @@ public final class SPF implements Serializable {
                 this.redirect = redirectLocal;
                 this.explanation = explanationLocal;
                 this.error = errorQuery;
-                SPF_CHANGED = true;
+                CacheSPF.CHANGED = true;
                 this.queries = 0;
                 this.lastRefresh = System.currentTimeMillis();
             }
@@ -443,7 +411,7 @@ public final class SPF implements Serializable {
             if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
                 // Host não existe mais.
                 // Apagar registro do cache.
-                removeSPF(hostname);
+                CacheSPF.remove(hostname);
             }
             throw ex;
         }
@@ -716,7 +684,6 @@ public final class SPF implements Serializable {
                 if (mechanism instanceof MechanismInclude) {
                     try {
                         MechanismInclude include = (MechanismInclude) mechanism;
-//                        SPF spf = include.getSPF();
                         Qualifier qualifier = include.getQualifierSPF(
                                 ip, deep + 1, hostVisitedSet);
                         if (qualifier == null) {
@@ -759,7 +726,7 @@ public final class SPF implements Serializable {
             }
         } else {
             hostVisitedSet.add(getHostname());
-            SPF spf = SPF.getSPF(redirect);
+            SPF spf = CacheSPF.get(redirect);
             return spf.getQualifier(ip, 0, hostVisitedSet);
         }
     }
@@ -1343,7 +1310,7 @@ public final class SPF implements Serializable {
                 String ip, int deep, TreeSet<String> hostVisitedSet
                 ) throws ProcessException {
             String host = getHostname();
-            SPF spf = SPF.getSPF(host);
+            SPF spf = CacheSPF.get(host);
             if (spf == null) {
                 return null;
             } else {
@@ -1364,133 +1331,79 @@ public final class SPF implements Serializable {
     }
     
     /**
-     * Mapa para cache dos registros SPF consultados.
+     * Classe que representa o cache de registros SPF.
      */
-    private static final HashMap<String,SPF> SPF_MAP = new HashMap<String,SPF>();
-    
-    /**
-     * Adiciona um registro SPF no mapa de cache.
-     * @param spf o registro SPF para ser adocionado.
-     */
-    private static synchronized void addSPF(SPF spf) {
-        SPF_MAP.put(spf.getHostname(), spf);
-        SPF_CHANGED = true;
-    }
-    
-    /**
-     * Retorna o registro SPF do e-mail.
-     * @param address o endereço de e-mail que deve ser consultado.
-     * @return o registro SPF, se for encontrado.
-     * @throws ProcessException se houver falha no processamento.
-     */
-    public static SPF getSPF(String address) throws ProcessException {
-        String host = Domain.extractHost(address, false);
-        if (host == null) {
-            return null;
-        } else {
-            SPF spf;
-            if (SPF_MAP.containsKey(host)) {
-                spf = SPF_MAP.get(host);
-                if (spf.isRegistryExpired()) {
-                    // Atualiza o registro se ele for antigo demais.
-                    spf.refresh(false);
-                }
+    private static class CacheSPF {
+        
+        /**
+         * Mapa para cache dos registros SPF consultados.
+         */
+        private static final HashMap<String,SPF> MAP = new HashMap<String,SPF>();
+        
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+        
+        /**
+         * Adiciona um registro SPF no mapa de cache.
+         * @param spf o registro SPF para ser adocionado.
+         */
+        private static synchronized void add(SPF spf) {
+            MAP.put(spf.getHostname(), spf);
+            CHANGED = true;
+        }
+        
+        /**
+         * Retorna o registro SPF do e-mail.
+         * @param address o endereço de e-mail que deve ser consultado.
+         * @return o registro SPF, se for encontrado.
+         * @throws ProcessException se houver falha no processamento.
+         */
+        public static SPF get(String address) throws ProcessException {
+            String host = Domain.extractHost(address, false);
+            if (host == null) {
+                return null;
             } else {
-                spf = new SPF(host);
-                addSPF(spf);
-            }
-            spf.queries++; // Incrementa o contador de consultas.
-            return spf;
-        }
-    }
-    
-    private static synchronized void removeSPF(String host) {
-        if (SPF_MAP.remove(host) != null) {
-            SPF_CHANGED = true;
-        }
-    }
-    
-    /**
-     * Armazenamento de cache em disco.
-     */
-    public static synchronized void store() {
-        if (SPF_CHANGED) {
-            try {
-                Server.logDebug("Storing spf.map...");
-                FileOutputStream outputStream = new FileOutputStream("spf.map");
-                try {
-                    SerializationUtils.serialize(SPF_MAP, outputStream);
-                    SPF_CHANGED = false;
-                } finally {
-                    outputStream.close();
+                SPF spf = MAP.get(host);
+                if (spf == null) {
+                    spf = new SPF(host);
+                    add(spf);
+                } else {
+                    if (spf.isRegistryExpired()) {
+                        // Atualiza o registro se ele for antigo demais.
+                        spf.refresh(false);
+                    }
                 }
-            } catch (Exception ex) {
-                Server.logError(ex);
+                spf.queries++; // Incrementa o contador de consultas.
+                return spf;
             }
         }
-        if (COMPLAIN_CHANGED) {
-            try {
-                Server.logDebug("Storing complain.map...");
-                FileOutputStream outputStream = new FileOutputStream("complain.map");
+
+        private static synchronized void remove(String host) {
+            if (MAP.remove(host) != null) {
+                CHANGED = true;
+            }
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
                 try {
-                    SerializationUtils.serialize(COMPLAIN_MAP, outputStream);
-                    COMPLAIN_CHANGED = false;
-                } finally {
-                    outputStream.close();
+                    Server.logDebug("Storing spf.map...");
+                    FileOutputStream outputStream = new FileOutputStream("spf.map");
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
                 }
-            } catch (Exception ex) {
-                Server.logError(ex);
             }
         }
-        if (DISTRIBUTION_CHANGED) {
-            try {
-                Server.logDebug("Storing distribution.map...");
-                FileOutputStream outputStream = new FileOutputStream("distribution.map");
-                try {
-                    SerializationUtils.serialize(DISTRIBUTION_MAP, outputStream);
-                    DISTRIBUTION_CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-        if (PROVIDER_CHANGED) {
-            try {
-                Server.logDebug("Storing provider.set...");
-                FileOutputStream outputStream = new FileOutputStream("provider.set");
-                try {
-                    SerializationUtils.serialize(PROVIDER_SET, outputStream);
-                    PROVIDER_CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-        if (GUESS_CHANGED) {
-            try {
-                Server.logDebug("Storing guess.map...");
-                FileOutputStream outputStream = new FileOutputStream("guess.map");
-                try {
-                    SerializationUtils.serialize(GUESS_MAP, outputStream);
-                    GUESS_CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    /**
-     * Carregamento de cache do disco.
-     */
-    public static synchronized void load() {
-        { // Carregamento do mapa SPF.
+        
+        private static synchronized void load() {
             Server.logDebug("Loading spf.map...");
             File file = new File("spf.map");
             if (file.exists()) {
@@ -1502,13 +1415,91 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    SPF_MAP.putAll(map);
+                    MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
             }
         }
-        { // Carregamento do mapa de reclamações.
+        
+        /**
+         * Atualiza o registro mais consultado.
+         */
+        private static void refresh() {
+            SPF spfMax = null;
+            for (SPF spf : MAP.values()) {
+                if (spfMax == null) {
+                    spfMax = spf;
+                } else if (spfMax.queries < spf.queries) {
+                    spfMax = spf;
+                }
+            }
+            if (spfMax != null && spfMax.queries > 3) {
+                try {
+                    spfMax.refresh(true);
+                } catch (ProcessException ex) {
+                    if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
+                        Server.logDebug(spfMax.getHostname() + ": SPF registry cache removed.");
+                    } else {
+                        Server.logError(ex);
+                    }
+                }
+            }
+            store();
+        }
+    }
+    
+    private static final Semaphore REFRESH_SEMAPHORE = new Semaphore(1);
+    
+    /**
+     * Atualiza registros SPF somente se nenhum 
+     * outro processo estiver atualizando.
+     */
+    public static void tryRefresh() {
+        // Evita que muitos processos fiquem 
+        // presos aguardando a liberação do método.
+        if (REFRESH_SEMAPHORE.tryAcquire()) {
+            try {
+                CacheSPF.refresh();
+            } finally {
+                REFRESH_SEMAPHORE.release();
+            }
+        }
+    }
+    
+    /**
+     * Classe que representa o cache de registros de denúncia.
+     */
+    private static class CacheComplain {
+        
+        /**
+         * Mapa de reclamações com seus respectivos tickets.
+         */
+        private static final HashMap<String,Complain> MAP = new HashMap<String,Complain>();
+
+        /**
+         * Flag que indica se o cache de reclamações foi modificado.
+         */
+        private static boolean CHANGED = false;
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    Server.logDebug("Storing complain.map...");
+                    FileOutputStream outputStream = new FileOutputStream("complain.map");
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
             Server.logDebug("Loading complain.map...");
             File file = new File("complain.map");
             if (file.exists()) {
@@ -1520,13 +1511,120 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    COMPLAIN_MAP.putAll(map);
+                    MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
             }
         }
-        { // Carregamento do mapa de distribuição.
+        
+        /**
+         * Timer que controla as reclamações.
+         */
+        private static final Timer TIMER = new Timer("TimerComplain");
+
+        public static void cancel() {
+            TIMER.cancel();
+        }
+
+        static {
+            // Agenda processamento de reclamações vencidas.
+            TIMER.schedule(
+                    new TimerTask() {
+                        @Override
+                        public synchronized void run() {
+                            LinkedList<String> expiredTicket = new LinkedList<String>();
+                            // Verificar reclamações vencidas.
+                            for (String ticket : MAP.keySet()) {
+                                Complain complain = MAP.get(ticket);
+                                if (complain.isExpired7()) {
+                                    complain.removeComplains();
+                                    expiredTicket.add(ticket);
+                                }
+                            }
+                            // Remover todos os tickets processados.
+                            for (String ticket : expiredTicket) {
+                                MAP.remove(ticket);
+                                CHANGED = true;
+                            }
+                            // Apagar todas as distribuições vencidas.
+                            CacheDistribution.dropExpired();
+                        }
+                    }, 3600000, 3600000 // Frequência de 1 hora.
+                    );
+        }
+
+        /**
+         * Adiciona uma nova reclamação de SPAM.
+         * @param ticket o ticket da mensagem original.
+         * @throws ProcessException se houver falha no processamento do ticket.
+         */
+        public synchronized static TreeSet<String> add(String ticket) throws ProcessException {
+            if (MAP.containsKey(ticket)) {
+                return null;
+            } else {
+                Complain complain = new Complain(ticket);
+                MAP.put(ticket, complain);
+                CHANGED = true;
+                return complain.getTokenSet();
+            }
+        }
+
+        /**
+         * Remove uma nova reclamação de SPAM.
+         * @param ticket o ticket da mensagem original.
+         * @throws ProcessException se houver falha no processamento do ticket.
+         */
+        public synchronized static TreeSet<String> remove(String ticket) {
+            Complain complain = MAP.remove(ticket);
+            if (complain == null) {
+                return null;
+            } else {
+                complain.removeComplains();
+                CHANGED = true;
+                return complain.getTokenSet();
+            }
+        }
+    }
+    
+    public static void cancel() {
+        CacheComplain.cancel();
+    }
+    
+    /**
+     * Classe que representa o cache de 
+     * registros de distribuição de responsáveis.
+     */
+    private static class CacheDistribution {
+        
+        /**
+         * Mapa de distribuição binomial dos tokens encontrados.
+         */
+        private static final HashMap<String,Distribution> MAP = new HashMap<String,Distribution>();
+
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    Server.logDebug("Storing distribution.map...");
+                    FileOutputStream outputStream = new FileOutputStream("distribution.map");
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
             Server.logDebug("Loading distribution.map...");
             File file = new File("distribution.map");
             if (file.exists()) {
@@ -1538,13 +1636,135 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    DISTRIBUTION_MAP.putAll(map);
+                    MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
             }
         }
-        { // Carregamento do conjunto de provedores de e-mail.
+        
+        public static void dropExpired() {
+            TreeSet<String> distributionKeySet = new TreeSet<String>();
+            distributionKeySet.addAll(MAP.keySet());
+            for (String token : distributionKeySet) {
+                Distribution distribution = MAP.get(token);
+                if (distribution != null
+                        && distribution.hasLastQuery()
+                        && distribution.isExpired14()
+                        ) {
+                    drop(token);
+                }
+            }
+        }
+
+        public static synchronized void drop(String token) {
+            if (MAP.remove(token) != null) {
+                CHANGED = true;
+            }
+        }
+        
+        public static synchronized void put(String token,
+                Distribution distribution) {
+            if (MAP.put(token, distribution) != null) {
+                CHANGED = true;
+            }
+        }
+        
+        /**
+         * Retorna uma distribuição binomial do token informado.
+         * @param token o token cuja distribuição deve ser retornada.
+         * @return uma distribuição binomial do token informado.
+         */
+        private static Distribution get(String token, boolean create) {
+            Distribution distribution = MAP.get(token);
+            if (distribution != null) {
+                if (distribution.isExpired7()) {
+                    distribution.reset();
+                }
+            } else if (create) {
+                distribution = new Distribution();
+                put(token, distribution);
+            } else {
+                distribution = null;
+            }
+            return distribution;
+        }
+
+        public static TreeMap<String,Distribution> getMap() {
+            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+            distributionMap.putAll(MAP);
+            return distributionMap;
+        }
+
+        public static TreeMap<String,Distribution> getMap(TreeSet<String> tokenSet) {
+            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+            for (String token : tokenSet) {
+                Distribution distribution = MAP.get(token);
+                if (distribution != null) {
+                    distributionMap.put(token, distribution);
+                }
+            }
+            return distributionMap;
+        }
+    }
+    
+    public static TreeMap<String,Distribution> getDistributionMap() {
+        return CacheDistribution.getMap();
+    }
+    
+    public static void dropDistribution(String token) {
+        CacheDistribution.drop(token);
+    }
+    
+    /**
+     * Classe que representa o cache de provedores de e-mail.
+     */
+    private static class CacheProvider {
+        
+        /**
+         * Conjunto de provedores notórios de e-mail.
+         */
+        private static final TreeSet<String> SET = new TreeSet<String>();
+
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+
+        public static synchronized void add(String domain) throws ProcessException {
+            domain = Domain.extractHost(domain, false);
+            if (!Domain.containsDomain(domain)) {
+                throw new ProcessException("ERROR: PROVIDER INVALID");
+            } else {
+                domain = "@" + domain;
+                if (SET.add(domain)) {
+                    CHANGED = true;
+                }
+            }
+        }
+        
+        public static boolean contains(String host) {
+            return SET.contains(host);
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    Server.logDebug("Storing provider.set...");
+                    FileOutputStream outputStream = new FileOutputStream("provider.set");
+                    try {
+                        SerializationUtils.serialize(SET, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
             Server.logDebug("Loading provider.set...");
             File file = new File("provider.set");
             if (file.exists()) {
@@ -1556,13 +1776,74 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    PROVIDER_SET.addAll(set);
+                    SET.addAll(set);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
             }
         }
-        { // Carregamento do mapa de palpites SPF.
+    }
+    
+    public static void addProvider(String provider) throws ProcessException {
+        CacheProvider.add(provider);
+    }
+    
+    /**
+     * Classe que representa o cache de "best-guess" exclusivos.
+     */
+    private static class CacheGuess {
+        
+        /**
+         * http://www.openspf.org/FAQ/Best_guess_record
+         */
+        private static final String BEST_GUESS = "v=spf1 a/24 mx/24 ptr ?all";
+
+        /**
+         * Mapa de registros manuais de SPF caso o domínio não tenha um.
+         */
+        private static final HashMap<String,String> MAP = new HashMap<String,String>();
+
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+
+        public static synchronized void add(String hostname,
+                String spf) throws ProcessException {
+            hostname = Domain.extractHost(hostname, false);
+            if (!Domain.containsDomain(hostname)) {
+                throw new ProcessException("ERROR: HOSTNAME INVALID");
+            } else if (!spf.equals(MAP.put("." + hostname, spf))) {
+                CHANGED = true;
+            }
+        }
+        
+        public static boolean contains(String host) {
+            return MAP.containsKey(host);
+        }
+        
+        public static String get(String host) {
+            return MAP.get(host);
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    Server.logDebug("Storing guess.map...");
+                    FileOutputStream outputStream = new FileOutputStream("guess.map");
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
             Server.logDebug("Loading guess.map...");
             File file = new File("guess.map");
             if (file.exists()) {
@@ -1574,7 +1855,7 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    GUESS_MAP.putAll(map);
+                    MAP.putAll(map);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1582,42 +1863,30 @@ public final class SPF implements Serializable {
         }
     }
     
-    private static final Semaphore BACKGROUND_SEMAPHORE = new Semaphore(1);
-    
-    public static void tryBackugroundRefresh() {
-        // Evita que muitos processos fiquem 
-        // presos aguardando a liberação do método.
-        if (BACKGROUND_SEMAPHORE.tryAcquire()) {
-            try {
-                backgroundRefresh();
-            } finally {
-                BACKGROUND_SEMAPHORE.release();
-            }
-        }
+    public static void addGuess(String host, String spf) throws ProcessException {
+        CacheGuess.add(host, spf);
     }
     
+    /**
+     * Armazenamento de cache em disco.
+     */
+    public static void store() {
+        CacheSPF.store();
+        CacheComplain.store();
+        CacheDistribution.store();
+        CacheProvider.store();
+        CacheGuess.store();
+    }
     
-    public static synchronized void backgroundRefresh() {
-        SPF spfMax = null;
-        for (SPF spf : SPF_MAP.values()) {
-            if (spfMax == null) {
-                spfMax = spf;
-            } else if (spfMax.queries < spf.queries) {
-                spfMax = spf;
-            }
-        }
-        if (spfMax != null && spfMax.queries > 3) {
-            try {
-                spfMax.refresh(true);
-            } catch (ProcessException ex) {
-                if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
-                    Server.logDebug(spfMax.getHostname() + ": SPF registry cache removed.");
-                } else {
-                    Server.logError(ex);
-                }
-            }
-        }
-        SPF.store();
+    /**
+     * Carregamento de cache do disco.
+     */
+    public static void load() {
+        CacheSPF.load();
+        CacheComplain.load();
+        CacheDistribution.load();
+        CacheProvider.load();
+        CacheGuess.load();
     }
     
     public static boolean heloMatchIP(String ip, String helo) {
@@ -1694,7 +1963,7 @@ public final class SPF implements Serializable {
         } else {
             try {
                 String result;
-                SPF spf = SPF.getSPF(sender);
+                SPF spf = CacheSPF.get(sender);
                 if (spf == null) {
                     result = "NONE";
                 } else {
@@ -1714,7 +1983,7 @@ public final class SPF implements Serializable {
                     // autorizou envio pelo IP, portanto o dono dele 
                     // é responsavel pelas mensagens.
                     String host = Domain.extractHost(sender, true);
-                    if (PROVIDER_SET.contains(host)) {
+                    if (CacheProvider.contains(host)) {
                         // Listar apenas o remetente se o 
                         // host for um provedor de e-mail.
                         tokenSet.add(sender);
@@ -1804,7 +2073,7 @@ public final class SPF implements Serializable {
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = SPF.addComplain(ticket);
+                    TreeSet<String> tokenSet = CacheComplain.add(ticket);
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
                     } else {
@@ -1812,7 +2081,7 @@ public final class SPF implements Serializable {
                     }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = SPF.removeComplain(ticket);
+                    TreeSet<String> tokenSet = CacheComplain.remove(ticket);
                     if (tokenSet == null) {
                         result = "ALREADY REMOVED\n";
                     } else {
@@ -1833,7 +2102,7 @@ public final class SPF implements Serializable {
                         } else if (!Domain.containsDomain(email)) {
                             result = "ERROR: QUERY\n";
                         } else {
-                            SPF spf = SPF.getSPF(email);
+                            SPF spf = CacheSPF.get(email);
                             result = spf.getResult(ip);
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             String ownerid;
@@ -1846,7 +2115,7 @@ public final class SPF implements Serializable {
                                 // autorizou envio pelo IP, portanto o dono dele 
                                 // é responsavel pelas mensagens.
                                 String host = Domain.extractHost(email, true);
-                                if (PROVIDER_SET.contains(host)) {
+                                if (CacheProvider.contains(host)) {
                                     // Listar apenas o remetente se o 
                                     // host for um provedor de e-mail.
                                     tokenSet.add(email);
@@ -1895,7 +2164,7 @@ public final class SPF implements Serializable {
                             }
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
-                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap(tokenSet);
+                                TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
                                 for (String token : tokenSet) {
                                     float probability;
                                     Status status;
@@ -1952,24 +2221,14 @@ public final class SPF implements Serializable {
         }
     }
     
-    /**
-     * Constante de formatação da data no ticket.
-     * Baseado no padrão ISO 8601
-     * 
-     * Um objeto SimpleDateFormat não é thread safety,
-     * portanto é necessário utilizar sincronismo
-     * nos métodos que o utilizam.
-     */
-    private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
-    
-    public static synchronized String getTicket(TreeSet<String> tokenSet) throws ProcessException {
+    public static String getTicket(TreeSet<String> tokenSet) throws ProcessException {
         if (isBlacklisted(tokenSet)) {
             // Representa ameaça.
             // Não gerar ticket.
             return null;
         } else {
             // Não representa ameaça.
-            String ticket = FORMAT_DATE_TICKET.format(new Date());
+            String ticket = Server.getNewTicketDate();
             for (String token : tokenSet) {
                 ticket += " " + token;
             }
@@ -1977,89 +2236,11 @@ public final class SPF implements Serializable {
         }
     }
     
-    private static synchronized Date getTicketDate(String date) throws ProcessException {
+    private static Date getTicketDate(String date) throws ProcessException {
         try {
-            return FORMAT_DATE_TICKET.parse(date);
+            return Server.parseTicketDate(date);
         } catch (ParseException ex) {
             throw new ProcessException("ERROR: INVALID TICKET", ex);
-        }
-    }
-    
-    /**
-     * Timer que controla as reclamações.
-     */
-    private static final Timer COMPLAIN_TIMER = new Timer("TimerComplain");
-    
-    public static void cancelTimer() {
-        COMPLAIN_TIMER.cancel();
-    }
-    
-    static {
-        // Agenda processamento de reclamações vencidas.
-        COMPLAIN_TIMER.schedule(
-                new TimerTask() {
-                    @Override
-                    public synchronized void run() {
-                        LinkedList<String> expiredTicket = new LinkedList<String>();
-                        // Verificar reclamações vencidas.
-                        for (String ticket : COMPLAIN_MAP.keySet()) {
-                            Complain complain = COMPLAIN_MAP.get(ticket);
-                            if (complain.isExpired7()) {
-                                complain.removeComplains();
-                                expiredTicket.add(ticket);
-                            }
-                        }
-                        // Remover todos os tickets processados.
-                        for (String ticket : expiredTicket) {
-                            COMPLAIN_MAP.remove(ticket);
-                            COMPLAIN_CHANGED = true;
-                        }
-                        // Apagar todas as distribuições vencidas.
-                        dropExpiredDistribution();
-                    }
-                }, 3600000, 3600000 // Frequência de 1 hora.
-                );
-    }
-    
-    /**
-     * Mapa de reclamações com seus respectivos tickets.
-     */
-    private static HashMap<String,Complain> COMPLAIN_MAP = new HashMap<String,Complain>();
-    
-    /**
-     * Flag que indica se o cache de reclamações foi modificado.
-     */
-    private static boolean COMPLAIN_CHANGED = false;
-    
-    /**
-     * Adiciona uma nova reclamação de SPAM.
-     * @param ticket o ticket da mensagem original.
-     * @throws ProcessException se houver falha no processamento do ticket.
-     */
-    public synchronized static TreeSet<String> addComplain(String ticket) throws ProcessException {
-        if (COMPLAIN_MAP.containsKey(ticket)) {
-            return null;
-        } else {
-            Complain complain = new Complain(ticket);
-            COMPLAIN_MAP.put(ticket, complain);
-            COMPLAIN_CHANGED = true;
-            return complain.getTokenSet();
-        }
-    }
-    
-    /**
-     * Remove uma nova reclamação de SPAM.
-     * @param ticket o ticket da mensagem original.
-     * @throws ProcessException se houver falha no processamento do ticket.
-     */
-    public synchronized static TreeSet<String> removeComplain(String ticket) {
-        Complain complain = COMPLAIN_MAP.remove(ticket);
-        if (complain == null) {
-            return null;
-        } else {
-            complain.removeComplains();
-            COMPLAIN_CHANGED = true;
-            return complain.getTokenSet();
         }
     }
     
@@ -2085,10 +2266,9 @@ public final class SPF implements Serializable {
                 StringTokenizer tokenizer = new StringTokenizer(complain.substring(index+1), " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
-                    getDistribution(token, true).addSpam();
+                    CacheDistribution.get(token, true).addSpam();
                     tokenSet.add(token);
                 }
-//                Server.logSpamSPF(tokenSet); // Obsoleto.
             }
         }
         
@@ -2115,7 +2295,7 @@ public final class SPF implements Serializable {
             // Retira todas as reclamações.
             while (!tokenSet.isEmpty()) {
                 String token = tokenSet.pollFirst();
-                Distribution distribution = getDistribution(token, false);
+                Distribution distribution = CacheDistribution.get(token, false);
                 if (distribution != null) {
                     distribution.removeSpam();
                 }
@@ -2124,61 +2304,12 @@ public final class SPF implements Serializable {
         
         @Override
         public String toString() {
-            return FORMAT_DATE_TICKET.format(date);
+            return Server.formatTicketDate(date);
         }
     }
-    
-    /**
-     * Conjunto de provedores notórios de e-mail.
-     */
-    private static TreeSet<String> PROVIDER_SET = new TreeSet<String>();
-    
-    /**
-     * Flag que indica se o cache foi modificado.
-     */
-    private static boolean PROVIDER_CHANGED = false;
-    
-    public synchronized static void addProvider(String domain) throws ProcessException {
-        domain = Domain.extractHost(domain, false);
-        if (!Domain.containsDomain(domain)) {
-            throw new ProcessException("ERROR: PROVIDER INVALID");
-        } else {
-            domain = "@" + domain;
-            if (PROVIDER_SET.add(domain)) {
-                PROVIDER_CHANGED = true;
-            }
-        }
-    }
-    
-    public synchronized static void dropExpiredDistribution() {
-        TreeSet<String> distributionKeySet = new TreeSet<String>();
-        distributionKeySet.addAll(DISTRIBUTION_MAP.keySet());
-        for (String token : distributionKeySet) {
-            Distribution distribution = DISTRIBUTION_MAP.get(token);
-            if (distribution.hasLastQuery() && distribution.isExpired14()) {
-                dropDistribution(token);
-            }
-        }
-    }
-    
-    public synchronized static void dropDistribution(String token) {
-        if (DISTRIBUTION_MAP.remove(token) != null) {
-            DISTRIBUTION_CHANGED = true;
-        }
-    }
-    
-    /**
-     * Mapa de distribuição binomial dos tokens encontrados.
-     */
-    private static HashMap<String,Distribution> DISTRIBUTION_MAP = new HashMap<String,Distribution>();
-    
-    /**
-     * Flag que indica se o cache foi modificado.
-     */
-    private static boolean DISTRIBUTION_CHANGED = false;
     
     public static long getComplainTTL(String token) {
-        Distribution distribution = getDistribution(token, false);
+        Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
             // Distribuição não encontrada.
             // Considerar que não está listado.
@@ -2201,7 +2332,7 @@ public final class SPF implements Serializable {
     }
     
     public static boolean isBlacklisted(String token) {
-        Distribution distribution = getDistribution(token, false);
+        Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
             // Distribuição não encontrada.
             // Considerar que não está listado.
@@ -2214,7 +2345,7 @@ public final class SPF implements Serializable {
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
         boolean blacklisted = false;
         for (String token : tokenSet) {
-            Distribution distribution = getDistribution(token, false);
+            Distribution distribution = CacheDistribution.get(token, false);
             if (distribution == null) {
                 // Distribuição não encontrada.
                 // Considerar que não está listado.
@@ -2223,47 +2354,6 @@ public final class SPF implements Serializable {
             }
         }
         return blacklisted;
-    }
-    
-    /**
-     * Retorna uma distribuição binomial do token informado.
-     * @param token o token cuja distribuição deve ser retornada.
-     * @return uma distribuição binomial do token informado.
-     */
-    private synchronized static Distribution getDistribution(String token, boolean create) {
-        Distribution distribution;
-        if (DISTRIBUTION_MAP.containsKey(token)) {
-            distribution = DISTRIBUTION_MAP.get(token);
-            if (distribution.isExpired7()) {
-                distribution.reset();
-            }
-        } else if (create) {
-            distribution = new Distribution();
-            DISTRIBUTION_MAP.put(token, distribution);
-        } else {
-            distribution = null;
-        }
-        return distribution;
-    }
-    
-    public synchronized static TreeMap<String,Distribution> getDistributionMap() {
-        TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
-        for (String token : DISTRIBUTION_MAP.keySet()) {
-            Distribution distribution = DISTRIBUTION_MAP.get(token);
-            distributionMap.put(token, distribution);
-        }
-        return distributionMap;
-    }
-    
-    public synchronized static TreeMap<String,Distribution> getDistributionMap(TreeSet<String> tokenSet) {
-        TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
-        for (String token : tokenSet) {
-            if (DISTRIBUTION_MAP.containsKey(token)) {
-                Distribution distribution = DISTRIBUTION_MAP.get(token);
-                distributionMap.put(token, distribution);
-            }
-        }
-        return distributionMap;
     }
     
     /**
@@ -2299,7 +2389,7 @@ public final class SPF implements Serializable {
             lastComplain = 0;
             status = Status.WHITE;
             frequency = null;
-            DISTRIBUTION_CHANGED = true;
+            CacheDistribution.CHANGED = true;
         }
         
         public boolean isExpired7() {
@@ -2345,7 +2435,7 @@ public final class SPF implements Serializable {
             }
             if (refresh) {
                 lastQuery = currentTime;
-                DISTRIBUTION_CHANGED = true;
+                CacheDistribution.CHANGED = true;
             }
             return interval;
         }
@@ -2436,6 +2526,7 @@ public final class SPF implements Serializable {
         
         /**
          * Verifica se o estado atual da distribuição é blacklisted.
+         * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
         public boolean isBlacklisted(boolean query) {
@@ -2448,7 +2539,7 @@ public final class SPF implements Serializable {
         public synchronized void removeSpam() {
             if (complain > 0) {
                 complain--;
-                DISTRIBUTION_CHANGED = true;
+                CacheDistribution.CHANGED = true;
             }
         }
         
@@ -2456,7 +2547,7 @@ public final class SPF implements Serializable {
             if (complain < Integer.MAX_VALUE) {
                 complain++;
                 lastComplain = System.currentTimeMillis();
-                DISTRIBUTION_CHANGED = true;
+                CacheDistribution.CHANGED = true;
             }
         }
         
