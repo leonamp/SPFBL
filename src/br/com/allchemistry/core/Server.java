@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.security.SecureRandom;
+import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -206,15 +207,42 @@ public abstract class Server extends Thread {
      */
     public static final int DAY_TIME = 1000 * 60 * 60 * 24;
     
-    private static synchronized void log(String type, String message) {
-        log(type, message, null);
-    }
-    
-    private static synchronized void log(String type, String message, Throwable ex) {
+    /**
+     * Registra uma linha de LOG usando os seguintes campos:
+     *    - Data do início do processo;
+     *    - Latência do processamento em segundos com 4 dígitos fixos;
+     *    - Tipo de registro de LOG com 5 caracteres fixos e
+     *    - Mensagem do LOG.
+     * 
+     * @param time data exata do inicio do processamento.
+     * @param type tipo de registro de LOG.
+     * @param message a mensagem do registro de LOG.
+     */
+    private static synchronized void log(long time, String type, String message) {
+        int latencia = (int) (System.currentTimeMillis() - time);
+        if (latencia > 9999) {
+            // Para manter a formatação correta no LOG,
+            // Registrar apenas latências até 9999, que tem 4 digitos.
+            latencia = 9999;
+        }
         System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
+                FORMAT_DATE_LOG.format(new Date(time))
+                + " " + LATENCIA_FORMAT.format(latencia)
                 + " " + type + " " + message
                 );
+    }
+    
+    /**
+     * O campo de latência do LOG tem apenas 4 digitos.
+     * Serve para mostrar quais processamentos levam mais tempo
+     * e para encontrar com mais facilidade códigos
+     * do programa que não estão bem escritos.
+     */
+    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
+    
+    private static synchronized void log(long time,
+            String type, String message, Throwable ex) {
+        log(time, type, message);
         if (ex != null) {
             ex.printStackTrace(System.out);
         }
@@ -226,16 +254,16 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logDebug(String message) {
-        log("DEBUG", message);
+        log(System.currentTimeMillis(), "DEBUG", message);
     }
     
     /**
-     * Registra os tiquetes criados.
+     * Registra os tiquetes processados.
      * Uma iniciativa para formalização das mensagens de log.
      * @param tokenSet o conjunto de tokens.
      */
-    public static synchronized void logTicket(Set<String> tokenSet) {
-        log("TIKET", tokenSet.toString());
+    public static synchronized void logTicket(long time, Set<String> tokenSet) {
+        log(time, "TIKET", tokenSet.toString());
     }
     
     /**
@@ -244,7 +272,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static synchronized void logError(String message) {
-        log("ERROR", message);
+        log(System.currentTimeMillis(), "ERROR", message);
     }
     
     /**
@@ -254,19 +282,20 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logError(Throwable ex) {
         if (ex != null) {
-            log("ERROR", "Exception", ex);
+            log(System.currentTimeMillis(), "ERROR", "Exception", ex);
         }
     }
     
     /**
-     * Registra as consultas ao SPF do host.
+     * Registra as consultas ao SPF do host 
+     * que não foram encontrados erros de sintaxe.
      * Uma iniciativa para formalização das mensagens de log.
      * @param hostname o nome do host.
      * @param registry o registro SPF do host.
      */
     public static synchronized void logQuerySPF(
-            String hostname, String registry) {
-        log("SPFOK", hostname + " \"" + registry + "\"");
+            long time, String hostname, String registry) {
+        log(time, "SPFOK", hostname + " \"" + registry + "\"");
     }
     
     /**
@@ -275,40 +304,22 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result o resultado a ser registrado.
      */
-    public static synchronized void logQueryDNSBL(
+    public static synchronized void logQueryDNSBL(long time,
             InetAddress ipAddress, String query, String result) {
-        logQuery("DNSBL", ipAddress, query, result + "\n");
+        logQuery(time, "DNSBL", ipAddress, query, result + "\n");
     }
     
     /**
-     * Registra um erro no registro SPF do host.
+     * Registra um erro no registro SPF do host 
+     * que foram encontrados erros de sintaxe.
      * Uma iniciativa para formalização das mensagens de log.
      * @param hostname o nome do host.
      * @param registry o registro SPF do host.
      */
     public static synchronized void logErrorSPF(
-            String hostname, String registry) {
-        log("SPFER", hostname + " \"" + registry + "\"");
+            long time, String hostname, String registry) {
+        log(time, "SPFER", hostname + " \"" + registry + "\"");
     }
-    
-    /**
-     * Registra um ticket SPF criado.
-     * Uma iniciativa para formalização das mensagens de log.
-     * @param ticket o ticket SPF criado.
-     */
-    public static synchronized void logTicketSPF(String ticket) {
-        log("SPFTK", ticket);
-    }
-    
-//    /**
-//     * Registra uma reclamação de spam SPF consultado.
-//     * Uma iniciativa para formalização das mensagens de log.
-//     * @param token o token SPF da mensagem original.
-//     * @deprecated uma nova forma de logar denúncia foi implementada.
-//     */
-//    public static synchronized void logSpamSPF(Set<String> tokenSet) {
-//        log("SPFBL", tokenSet.toString());
-//    }
     
     /**
      * Registra um vencimento de reclamação de spam SPF consultado.
@@ -316,7 +327,7 @@ public abstract class Server extends Thread {
      * @param token o token SPF da mensagem original.
      */
     public static synchronized void logHamSPF(Set<String> tokenSet) {
-        log("SPFWL", tokenSet.toString());
+        log(System.currentTimeMillis(), "SPFWL", tokenSet.toString());
     }
     
     /**
@@ -326,9 +337,11 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result o resultado a ser registrado.
      */
-    public static synchronized void logWhois(String server,
-            String query, String result) {
-        log("WHOIS", server + " " + query + "\n" + result);
+    public static synchronized void logWhois(long time,
+            String server, String query, String result) {
+        result = result.replace("\r", "\\r");
+        result = result.replace("\n", "\\n");
+        log(time, "WHOIS", server + " " + query + " => " + result);
     }
     
     private static long lastClientsFileModified = 0;
@@ -391,24 +404,21 @@ public abstract class Server extends Thread {
     /**
      * Registra as mensagens de consulta.
      * Uma iniciativa para formalização das mensagens de log.
-     * @param ipAddress o IP da conexão.
+     * @param time data exatata no inicio do processamento.
+     * @param ipAddress o IP do cliente da conexão.
      * @param time o tempo de processamento da consulta.
      * @param query a expressão da consulta.
      * @param result a expressão do resultado.
      */
     public static synchronized void logQuery(
+            long time,
             String type,
             InetAddress ipAddress,
             String query, String result) {
         if (result != null) {
             result = result.replace("\n", "\\n");
         }
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date())
-                + " " + type + " "
-                + getLogClient(ipAddress) + ": "
-                + query + " => " + result
-                );
+        log(time, type, getLogClient(ipAddress) + ": " + query + " => " + result);
     }
     
     /**
@@ -544,6 +554,7 @@ public abstract class Server extends Thread {
      * @throws ProcessException se houver falha no processamento da informação.
      */
     public static String whoisID(String query, String server) throws ProcessException {
+        long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
             WHOIS_CONNECTION_SEMAPHORE.acquire();
@@ -570,7 +581,7 @@ public abstract class Server extends Thread {
         }
         try {
             String result = outputStream.toString("ISO-8859-1");
-            logWhois(server, query, result);
+            logWhois(time, server, query, result);
             return result;
         } catch (UnsupportedEncodingException ex) {
             throw new ProcessException("ERROR: ENCODING", ex);
@@ -610,6 +621,7 @@ public abstract class Server extends Thread {
      * @throws ProcessException se houver falha no processamento da informação.
      */
     public static String whois(String query, String server) throws ProcessException {
+        long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
             WHOIS_CONNECTION_SEMAPHORE.acquire();
@@ -636,7 +648,7 @@ public abstract class Server extends Thread {
         }
         try {
             String result = outputStream.toString("ISO-8859-1");
-            logWhois(server, query, result);
+            logWhois(time, server, query, result);
             return result;
         } catch (UnsupportedEncodingException ex) {
             throw new ProcessException("ERROR: ENCODING", ex);
