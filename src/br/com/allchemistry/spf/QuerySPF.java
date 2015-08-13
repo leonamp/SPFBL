@@ -152,13 +152,13 @@ public final class QuerySPF extends Server {
                                 "SPFQR",
                                 socket.getInetAddress(),
                                 query, result);
+                        // Atualiza registro mais consultado.
+                        SPF.tryRefresh();
+                        Server.tryBackugroundRefresh();
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Atualiza registro mais consultado.
-                    SPF.tryBackugroundRefresh();
-                    Server.tryBackugroundRefresh();
                     // Oferece a conexão ociosa na última posição da lista.
                     CONNECTION_POLL.offer(this);
                     CONNECION_SEMAPHORE.release();
