@@ -18,6 +18,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import javax.naming.NameNotFoundException;
 import org.apache.commons.lang3.SerializationUtils;
@@ -694,7 +695,12 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
+    public static void store() {
+        storeDomain();
+        storeTDL();
+    }
+    
+    private static synchronized void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
                 Server.logDebug("Storing domain.map...");
@@ -710,6 +716,9 @@ public class Domain implements Serializable, Comparable<Domain> {
                 Server.logError(ex);
             }
         }
+    }
+    
+    private static synchronized void storeTDL() {
         if (TDL_CHANGED) {
             try {
                 Server.logDebug("Storing tdl.set...");
