@@ -314,7 +314,7 @@ public final class SPF implements Serializable {
             CacheSPF.CHANGED = true;
             this.queries = 0;
             this.lastRefresh = System.currentTimeMillis();
-            Server.logQuerySPF(time, hostname, "MXDOMAIN");
+            Server.logLookupSPF(time, hostname, "NXDOMAIN");
         } else if (registryList.isEmpty()) {
             // Sem registro SPF.
             this.mechanismList = new ArrayList<Mechanism>();
@@ -325,7 +325,7 @@ public final class SPF implements Serializable {
             CacheSPF.CHANGED = true;
             this.queries = 0;
             this.lastRefresh = System.currentTimeMillis();
-            Server.logQuerySPF(time, hostname, "NO REGISTRY");
+            Server.logLookupSPF(time, hostname, "NO REGISTRY");
         } else {
             ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
             ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
@@ -406,10 +406,10 @@ public final class SPF implements Serializable {
                 }
                 if (errorRegistry) {
                     // Log do registro com erro de sintaxe.
-                    Server.logErrorSPF(time, hostname, registry);
+                    Server.logLookupSPF(time, hostname, "ERROR \"" + registry + "\"");
                 } else {
                     // Log do registro sem erro de sintaxe.
-                    Server.logQuerySPF(time, hostname, registry);
+                    Server.logLookupSPF(time, hostname, "OK \"" + registry + "\"");
                 }
             }
             // Considerar os mecanismos na ordem crescente
@@ -992,9 +992,7 @@ public final class SPF implements Serializable {
         }
         
         private synchronized void loadList() {
-            if (!mechanismList.isEmpty()) {
-                loaded = true; // Temporário
-            } else if (!loaded) {
+            if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
                 String expression = getExpression();
@@ -1004,14 +1002,18 @@ public final class SPF implements Serializable {
                     expression = expression.substring(1);
                 }
                 String hostName;
+                String hostNameCIDR;
                 int indexDomain = expression.indexOf(':');
                 int indexPrefix = expression.indexOf('/');
                 if (indexDomain > 0 && indexPrefix > indexDomain) {
                     hostName = expression.substring(indexDomain + 1, indexPrefix);
+                    hostNameCIDR = expression.substring(indexDomain + 1);
                 } else if (indexDomain > 0) {
                     hostName = expression.substring(indexDomain + 1);
+                    hostNameCIDR = expression.substring(indexDomain + 1);
                 } else {
                     hostName = getHostname();
+                    hostNameCIDR = getHostname();
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
@@ -1040,13 +1042,13 @@ public final class SPF implements Serializable {
                     }
                     Server.logMecanismA(time, hostName, resultSet.toString());
                 } catch (CommunicationException ex) {
-                    Server.logMecanismA(time, hostName, "TIMEOUT");
+                    Server.logMecanismA(time, hostNameCIDR, "TIMEOUT");
                 } catch (NameNotFoundException ex) {
-                    Server.logMecanismA(time, hostName, "NOT FOUND");
+                    Server.logMecanismA(time, hostNameCIDR, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
-                    Server.logMecanismA(time, hostName, "NOT FOUND");
+                    Server.logMecanismA(time, hostNameCIDR, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismA(time, hostName, "ERROR " + ex.getMessage());
+                    Server.logMecanismA(time, hostNameCIDR, "ERROR " + ex.getMessage());
                 }
                 loaded = true;
             }
@@ -1083,9 +1085,7 @@ public final class SPF implements Serializable {
         }
         
         private synchronized void loadList() {
-            if (!mechanismList.isEmpty()) {
-                loaded = true; // Temporário
-            } else if (!loaded) {
+            if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
                 String expression = getExpression();
@@ -1095,14 +1095,18 @@ public final class SPF implements Serializable {
                     expression = expression.substring(1);
                 }
                 String hostName;
+                String hostNameCIDR;
                 int indexDomain = expression.indexOf(':');
                 int indexPrefix = expression.indexOf('/');
                 if (indexDomain > 0 && indexPrefix > indexDomain) {
                     hostName = expression.substring(indexDomain + 1, indexPrefix);
+                    hostNameCIDR = expression.substring(indexDomain + 1);
                 } else if (indexDomain > 0) {
                     hostName = expression.substring(indexDomain + 1);
+                    hostNameCIDR = expression.substring(indexDomain + 1);
                 } else {
                     hostName = getHostname();
+                    hostNameCIDR = getHostname();
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
@@ -1171,15 +1175,15 @@ public final class SPF implements Serializable {
                             }
                         }
                     }
-                    Server.logMecanismMX(time, hostName, resultSet.toString());
+                    Server.logMecanismMX(time, hostNameCIDR, resultSet.toString());
                 } catch (CommunicationException ex) {
-                    Server.logMecanismMX(time, hostName, "TIMEOUT");
+                    Server.logMecanismMX(time, hostNameCIDR, "TIMEOUT");
                 } catch (NameNotFoundException ex) {
-                    Server.logMecanismMX(time, hostName, "NOT FOUND");
+                    Server.logMecanismMX(time, hostNameCIDR, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
-                    Server.logMecanismMX(time, hostName, "NOT FOUND");
+                    Server.logMecanismMX(time, hostNameCIDR, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismMX(time, hostName, "ERROR " + ex.getMessage());
+                    Server.logMecanismMX(time, hostNameCIDR, "ERROR " + ex.getMessage());
                 }
                 loaded = true;
             }
@@ -1954,7 +1958,7 @@ public final class SPF implements Serializable {
                             "dns:/" + helo, new String[]{"A"});
                     Attribute attribute = attributes.get("A");
                     if (attribute == null) {
-                        Server.logMatchHELO(time, helo + " " + ip, "MXDOMAIN");
+                        Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
                         return false;
                     } else {
                         int address = SubnetIPv4.getAddressIP(ip);
@@ -1990,7 +1994,7 @@ public final class SPF implements Serializable {
                             "dns:/" + helo, new String[]{"AAAA"});
                     Attribute attribute = attributes.get("AAAA");
                     if (attribute == null) {
-                        Server.logMatchHELO(time, helo + " " + ip, "MXDOMAIN");
+                        Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
                         return false;
                     } else {
                         short[] address = SubnetIPv6.split(ip);

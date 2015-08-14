@@ -322,7 +322,7 @@ public abstract class Server extends Thread {
     }
     
     /**
-     * Registra verificações de macth de HELO.
+     * Registra verificações de DNS reverso.
      */
     public static synchronized void logReverseDNS(long time, 
             String ip, String result) {
@@ -353,11 +353,11 @@ public abstract class Server extends Thread {
      * que não foram encontrados erros de sintaxe.
      * Uma iniciativa para formalização das mensagens de log.
      * @param hostname o nome do host.
-     * @param registry o registro SPF do host.
+     * @param result o resultado SPF do host.
      */
-    public static synchronized void logQuerySPF(
-            long time, String hostname, String registry) {
-        log(time, "SPFOK", hostname + " => \"" + registry + "\"");
+    public static synchronized void logLookupSPF(
+            long time, String hostname, String result) {
+        log(time, "SPFLK", hostname + " => " + result);
     }
     
     /**
@@ -369,18 +369,6 @@ public abstract class Server extends Thread {
     public static synchronized void logQueryDNSBL(long time,
             InetAddress ipAddress, String query, String result) {
         logQuery(time, "DNSBL", ipAddress, query, result + "\n");
-    }
-    
-    /**
-     * Registra um erro no registro SPF do host 
-     * que foram encontrados erros de sintaxe.
-     * Uma iniciativa para formalização das mensagens de log.
-     * @param hostname o nome do host.
-     * @param registry o registro SPF do host.
-     */
-    public static synchronized void logErrorSPF(
-            long time, String hostname, String registry) {
-        log(time, "SPFER", hostname + " => \"" + registry + "\"");
     }
     
     /**
