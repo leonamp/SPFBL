@@ -290,11 +290,43 @@ public abstract class Server extends Thread {
     }
     
     /**
-     * Registra as verificações de HELO com IP.
+     * Registra as consultas DNS.
+     */
+    public static synchronized void logLookupDNS(long time, 
+            String type, String host, String result) {
+        log(time, "DNSLK", type + " " + host + " => " + result);
+    }
+    
+    /**
+     * Registra as consultas de mecanismo A de SPF.
+     */
+    public static synchronized void logMecanismA(long time, 
+            String host, String result) {
+        log(time, "SPFMA", host + " => " + result);
+    }
+    
+    /**
+     * Registra as consultas de mecanismo MX de SPF.
+     */
+    public static synchronized void logMecanismMX(long time, 
+            String host, String result) {
+        log(time, "SPFMX", host + " => " + result);
+    }
+    
+    /**
+     * Registra verificações de macth de HELO.
      */
     public static synchronized void logMatchHELO(long time, 
-            String helo, String result) {
-        log(time, "MATCH", helo + " => " + result);
+            String query, String result) {
+        log(time, "HELOM", query + " => " + result);
+    }
+    
+    /**
+     * Registra verificações de macth de HELO.
+     */
+    public static synchronized void logReverseDNS(long time, 
+            String ip, String result) {
+        log(time, "DNSRV", ip + " => " + result);
     }
     
     /**
