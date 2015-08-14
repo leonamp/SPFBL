@@ -163,7 +163,7 @@ public final class SPF implements Serializable {
             }
             return registryList;
         } catch (NamingException ex) {
-            throw new ProcessException("ERROR: HOST NOT FOUND", ex);
+            return null; 
         } catch (Exception ex) {
             throw new ProcessException("ERROR: FATAL", ex);
         }
@@ -302,121 +302,132 @@ public final class SPF implements Serializable {
      * @throws ProcessException se houver falha no processamento.
      */
     private void refresh(boolean load) throws ProcessException {
-        try {
-            long time = System.currentTimeMillis();
-            LinkedList<String> registryList = getRegistrySPF(hostname);
-            if (registryList.isEmpty()) {
-                Server.logQuerySPF(time, hostname, "no registry");
-            } else {
-                ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
-                ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
-                ArrayList<Mechanism> mechanismListInclude = new ArrayList<Mechanism>();
-                ArrayList<Mechanism> mechanismListPTR = new ArrayList<Mechanism>();
-                TreeSet<String> visitedTokens = new TreeSet<String>();
-                Qualifier allLocal = null;
-                String redirectLocal = null;
-                String explanationLocal = null;
-                boolean errorQuery = false;
-                String fixed;
-                for (String registry : registryList) {
-                    boolean errorRegistry = false;
-                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                    while (tokenizer.hasMoreTokens()) {
-                        String token = tokenizer.nextToken();
-                        if (visitedTokens.contains(token)) {
-                            // Token já visitado.
-                        } else if (token.equals("spf1")) {
-                            // Nada deve ser feito.
-                        } else if (token.equals("v=spf1")) {
-                            // Nada deve ser feito.
-                        } else if (token.equals("v=msv1")) {
-                            // Nada deve ser feito.
-                        } else if (token.startsWith("t=") && token.length() == 32) {
-                            // Nada deve ser feito.
-                        } else if (isMechanismAll(token)) {
-                            // Não permitir qualificadores permissivos para all.
-                            switch (token.charAt(0)) {
-                                case '-':
-                                    allLocal = Qualifier.FAIL;
-                                    break;
-                                case '~':
-                                    allLocal = Qualifier.SOFTFAIL;
-                                    break;
-                                default:
-                                    allLocal = Qualifier.NEUTRAL; // Default qualifier or all.
-                            }
-                        } else if (isMechanismIPv4(token)) {
-                            mechanismListIP.add(new MechanismIPv4(token));
-                        } else if (isMechanismIPv6(token)) {
-                            mechanismListIP.add(new MechanismIPv6(token));
-                        } else if (isMechanismA(token)) {
-                            mechanismListDNS.add(new MechanismA(token, load));
-                        } else if (isMechanismMX(token)) {
-                            mechanismListDNS.add(new MechanismMX(token, load));
-                        } else if (isMechanismPTR(token)) {
-                            mechanismListPTR.add(new MechanismPTR(token));
-                        } else if (isMechanismExistis(token)) {
-                            mechanismListDNS.add(new MechanismExists(token));
-                        } else if (isMechanismInclude(token)) {
-                            mechanismListInclude.add(new MechanismInclude(token));
-                        } else if (isModifierRedirect(token)) {
-                            int index = token.indexOf("=") + 1;
-                            redirectLocal = token.substring(index);
-                        } else if (isModifierExplanation(token)) {
-                            int index = token.indexOf("=") + 1;
-                            explanationLocal = token.substring(index);
-                        } else if ((fixed = extractIPv4CIDR(token)) != null) {
-                            // Tenta recuperar um erro de sintaxe.
-                            if (!visitedTokens.contains(token = "ip4:" + fixed)) {
-                                mechanismListIP.add(new MechanismIPv4(token));
-                            }
-                            errorRegistry = true;
-                        } else if ((fixed = extractIPv6CIDR(token)) != null) {
-                            // Tenta recuperar um erro de sintaxe.
-                            if (!visitedTokens.contains(token = "ip4:" + fixed)) {
-                                mechanismListIP.add(new MechanismIPv6(token));
-                            }
-                            errorRegistry = true;
-                        } else {
-                            // Um erro durante o processamento foi encontrado.
-                            Server.logDebug("SPF token not defined: " + token);
-                            errorRegistry = true;
-                            errorQuery = true;
+        long time = System.currentTimeMillis();
+        LinkedList<String> registryList = getRegistrySPF(hostname);
+        if (registryList == null) {
+            // Domínimo não encontrado.
+            this.mechanismList = null;
+            this.all = null;
+            this.redirect = null;
+            this.explanation = null;
+            this.error = false;
+            CacheSPF.CHANGED = true;
+            this.queries = 0;
+            this.lastRefresh = System.currentTimeMillis();
+            Server.logQuerySPF(time, hostname, "MXDOMAIN");
+        } else if (registryList.isEmpty()) {
+            // Sem registro SPF.
+            this.mechanismList = new ArrayList<Mechanism>();
+            this.all = null;
+            this.redirect = null;
+            this.explanation = null;
+            this.error = false;
+            CacheSPF.CHANGED = true;
+            this.queries = 0;
+            this.lastRefresh = System.currentTimeMillis();
+            Server.logQuerySPF(time, hostname, "NO REGISTRY");
+        } else {
+            ArrayList<Mechanism> mechanismListIP = new ArrayList<Mechanism>();
+            ArrayList<Mechanism> mechanismListDNS = new ArrayList<Mechanism>();
+            ArrayList<Mechanism> mechanismListInclude = new ArrayList<Mechanism>();
+            ArrayList<Mechanism> mechanismListPTR = new ArrayList<Mechanism>();
+            TreeSet<String> visitedTokens = new TreeSet<String>();
+            Qualifier allLocal = null;
+            String redirectLocal = null;
+            String explanationLocal = null;
+            boolean errorQuery = false;
+            String fixed;
+            for (String registry : registryList) {
+                boolean errorRegistry = false;
+                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    if (visitedTokens.contains(token)) {
+                        // Token já visitado.
+                    } else if (token.equals("spf1")) {
+                        // Nada deve ser feito.
+                    } else if (token.equals("v=spf1")) {
+                        // Nada deve ser feito.
+                    } else if (token.equals("v=msv1")) {
+                        // Nada deve ser feito.
+                    } else if (token.startsWith("t=") && token.length() == 32) {
+                        // Nada deve ser feito.
+                    } else if (isMechanismAll(token)) {
+                        // Não permitir qualificadores permissivos para all.
+                        switch (token.charAt(0)) {
+                            case '-':
+                                allLocal = Qualifier.FAIL;
+                                break;
+                            case '~':
+                                allLocal = Qualifier.SOFTFAIL;
+                                break;
+                            default:
+                                allLocal = Qualifier.NEUTRAL; // Default qualifier or all.
                         }
-                        visitedTokens.add(token);
-                    }
-                    if (errorRegistry) {
-                        // Log do registro com erro de sintaxe.
-                        Server.logErrorSPF(time, hostname, registry);
+                    } else if (isMechanismIPv4(token)) {
+                        mechanismListIP.add(new MechanismIPv4(token));
+                    } else if (isMechanismIPv6(token)) {
+                        mechanismListIP.add(new MechanismIPv6(token));
+                    } else if (isMechanismA(token)) {
+                        mechanismListDNS.add(new MechanismA(token, load));
+                    } else if (isMechanismMX(token)) {
+                        mechanismListDNS.add(new MechanismMX(token, load));
+                    } else if (isMechanismPTR(token)) {
+                        mechanismListPTR.add(new MechanismPTR(token));
+                    } else if (isMechanismExistis(token)) {
+                        mechanismListDNS.add(new MechanismExists(token));
+                    } else if (isMechanismInclude(token)) {
+                        mechanismListInclude.add(new MechanismInclude(token));
+                    } else if (isModifierRedirect(token)) {
+                        int index = token.indexOf("=") + 1;
+                        redirectLocal = token.substring(index);
+                    } else if (isModifierExplanation(token)) {
+                        int index = token.indexOf("=") + 1;
+                        explanationLocal = token.substring(index);
+                    } else if ((fixed = extractIPv4CIDR(token)) != null) {
+                        // Tenta recuperar um erro de sintaxe.
+                        if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+                            mechanismListIP.add(new MechanismIPv4(token));
+                        }
+                        errorRegistry = true;
+                    } else if ((fixed = extractIPv6CIDR(token)) != null) {
+                        // Tenta recuperar um erro de sintaxe.
+                        if (!visitedTokens.contains(token = "ip4:" + fixed)) {
+                            mechanismListIP.add(new MechanismIPv6(token));
+                        }
+                        errorRegistry = true;
                     } else {
-                        // Log do registro sem erro de sintaxe.
-                        Server.logQuerySPF(time, hostname, registry);
+                        // Um erro durante o processamento foi encontrado.
+                        Server.logDebug("SPF token not defined: " + token);
+                        errorRegistry = true;
+                        errorQuery = true;
                     }
+                    visitedTokens.add(token);
                 }
-                // Considerar os mecanismos na ordem crescente
-                // de complexidade de processamento.
-                ArrayList<Mechanism> mechanismListLocal = new ArrayList<Mechanism>();
-                mechanismListLocal.addAll(mechanismListIP);
-                mechanismListLocal.addAll(mechanismListDNS);
-                mechanismListLocal.addAll(mechanismListInclude);
-                mechanismListLocal.addAll(mechanismListPTR);
-                // Atribuição dos novos valores.
-                this.mechanismList = mechanismListLocal;
-                this.all = allLocal;
-                this.redirect = redirectLocal;
-                this.explanation = explanationLocal;
-                this.error = errorQuery;
-                CacheSPF.CHANGED = true;
-                this.queries = 0;
-                this.lastRefresh = System.currentTimeMillis();
+                if (errorRegistry) {
+                    // Log do registro com erro de sintaxe.
+                    Server.logErrorSPF(time, hostname, registry);
+                } else {
+                    // Log do registro sem erro de sintaxe.
+                    Server.logQuerySPF(time, hostname, registry);
+                }
             }
-        } catch (ProcessException ex) {
-            if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
-                // Host não existe mais.
-                // Apagar registro do cache.
-                CacheSPF.remove(hostname);
-            }
-            throw ex;
+            // Considerar os mecanismos na ordem crescente
+            // de complexidade de processamento.
+            ArrayList<Mechanism> mechanismListLocal = new ArrayList<Mechanism>();
+            mechanismListLocal.addAll(mechanismListIP);
+            mechanismListLocal.addAll(mechanismListDNS);
+            mechanismListLocal.addAll(mechanismListInclude);
+            mechanismListLocal.addAll(mechanismListPTR);
+            // Atribuição dos novos valores.
+            this.mechanismList = mechanismListLocal;
+            this.all = allLocal;
+            this.redirect = redirectLocal;
+            this.explanation = explanationLocal;
+            this.error = errorQuery;
+            CacheSPF.CHANGED = true;
+            this.queries = 0;
+            this.lastRefresh = System.currentTimeMillis();
         }
     }
     
@@ -681,6 +692,8 @@ public final class SPF implements Serializable {
             return null; // Evita excesso de consultas.
         } else if (hostVisitedSet.contains(getHostname())) {
             return null; // Evita looping infinito.
+        } else if (mechanismList == null) {
+            throw new ProcessException("ERROR: HOST NOT FOUND");
         } else if (redirect == null) {
             hostVisitedSet.add(getHostname());
             for (Mechanism mechanism : mechanismList) {
@@ -982,6 +995,7 @@ public final class SPF implements Serializable {
             if (!mechanismList.isEmpty()) {
                 loaded = true; // Temporário
             } else if (!loaded) {
+                long time = System.currentTimeMillis();
                 // Carregamento de lista.
                 String expression = getExpression();
                 if (!Character.isLetter(expression.charAt(0))) {
@@ -1000,6 +1014,7 @@ public final class SPF implements Serializable {
                     hostName = getHostname();
                 }
                 try {
+                    TreeSet<String> resultSet = new TreeSet<String>();
                     Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
                             "dns:/" + hostName, new String[]{"A"});
                     Attribute attribute = attributes.get("A");
@@ -1007,6 +1022,7 @@ public final class SPF implements Serializable {
                         NamingEnumeration enumeration = attribute.getAll();
                         while (enumeration.hasMoreElements()) {
                             String hostAddress = (String) enumeration.next();
+                            resultSet.add(hostAddress);
                             int indexSpace = hostAddress.indexOf(' ') + 1;
                             hostAddress = hostAddress.substring(indexSpace);
                             if (!SubnetIPv4.isValidIPv4(hostAddress)) {
@@ -1022,8 +1038,15 @@ public final class SPF implements Serializable {
                             mechanismList.add(new MechanismIPv4(hostAddress));
                         }
                     }
+                    Server.logMecanismA(time, hostName, resultSet.toString());
+                } catch (CommunicationException ex) {
+                    Server.logMecanismA(time, hostName, "TIMEOUT");
+                } catch (NameNotFoundException ex) {
+                    Server.logMecanismA(time, hostName, "NOT FOUND");
+                } catch (InvalidAttributeIdentifierException ex) {
+                    Server.logMecanismA(time, hostName, "NOT FOUND");
                 } catch (NamingException ex) {
-                    // Não encontrou registro MX para o host.
+                    Server.logMecanismA(time, hostName, "ERROR " + ex.getMessage());
                 }
                 loaded = true;
             }
@@ -1063,6 +1086,7 @@ public final class SPF implements Serializable {
             if (!mechanismList.isEmpty()) {
                 loaded = true; // Temporário
             } else if (!loaded) {
+                long time = System.currentTimeMillis();
                 // Carregamento de lista.
                 String expression = getExpression();
                 if (!Character.isLetter(expression.charAt(0))) {
@@ -1081,6 +1105,7 @@ public final class SPF implements Serializable {
                     hostName = getHostname();
                 }
                 try {
+                    TreeSet<String> resultSet = new TreeSet<String>();
                     Attributes attributesMX = Server.INITIAL_DIR_CONTEXT.getAttributes(
                             "dns:/" + hostName, new String[]{"MX"});
                     Attribute attributeMX = attributesMX.get("MX");
@@ -1095,11 +1120,13 @@ public final class SPF implements Serializable {
                                     hostAddress += expression.substring(indexPrefix);
                                 }
                                 mechanismList.add(new MechanismIPv4(hostAddress));
+                                resultSet.add(hostAddress);
                             } else if (SubnetIPv6.isValidIPv6(hostAddress)) {
                                 if (indexPrefix > 0) {
                                     hostAddress += expression.substring(indexPrefix);
                                 }
                                 mechanismList.add(new MechanismIPv6(hostAddress));
+                                resultSet.add(hostAddress);
                             } else {
                                 try {
                                     Attributes attributesA = Server.INITIAL_DIR_CONTEXT.getAttributes(
@@ -1113,11 +1140,12 @@ public final class SPF implements Serializable {
                                                     host4Address += expression.substring(indexPrefix);
                                                 }
                                                 mechanismList.add(new MechanismIPv4(host4Address));
+                                                resultSet.add(host4Address);
                                             }
                                         }
                                     }
                                 } catch (NamingException ex) {
-                                    // Não encontrou registro A para o MX.
+                                    // Endereço não encontrado.
                                 }
                                 if (indexPrefix == -1) {
                                     // Se não houver definição CIDR,
@@ -1132,18 +1160,26 @@ public final class SPF implements Serializable {
                                                 String host6Address = (String) attributeAAAA.get(i);
                                                 if (SubnetIPv6.isValidIPv6(host6Address)) {
                                                     mechanismList.add(new MechanismIPv6(host6Address));
+                                                    resultSet.add(host6Address);
                                                 }
                                             }
                                         }
                                     } catch (NamingException ex) {
-                                        // Não encontrou registro AAAA para o MX.
+                                        // Endereço não encontrado.
                                     }
                                 }
                             }
                         }
                     }
+                    Server.logMecanismMX(time, hostName, resultSet.toString());
+                } catch (CommunicationException ex) {
+                    Server.logMecanismMX(time, hostName, "TIMEOUT");
+                } catch (NameNotFoundException ex) {
+                    Server.logMecanismMX(time, hostName, "NOT FOUND");
+                } catch (InvalidAttributeIdentifierException ex) {
+                    Server.logMecanismMX(time, hostName, "NOT FOUND");
                 } catch (NamingException ex) {
-                    // Não encontrou registro MX para o host.
+                    Server.logMecanismMX(time, hostName, "ERROR " + ex.getMessage());
                 }
                 loaded = true;
             }
@@ -1201,10 +1237,11 @@ public final class SPF implements Serializable {
      * @return o conjunto de reversos do IP informado.
      */
     private static TreeSet<String> getReverse(String ip) {
+        long time1 = System.currentTimeMillis();
+        String reverse = null;
         TreeSet<String> reverseList = new TreeSet<String>();
         try {
             byte[] address1;
-            String reverse;
             if (SubnetIPv4.isValidIPv4(ip)) {
                 reverse = "in-addr.arpa";
                 address1 = SubnetIPv4.split(ip);
@@ -1223,53 +1260,56 @@ public final class SPF implements Serializable {
             } else {
                 throw new ProcessException("ERROR: DNS REVERSE");
             }
-            try {
-                Attributes atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                        "dns:/" + reverse, new String[]{"PTR"});
-                Attribute attributePTR = atributes.get("PTR");
-                for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
-                    try {
-                        String host = (String) attributePTR.get(indexPTR);
-                        if (host.startsWith(".")) {
-                            host = host.substring(1);
-                        }
-                        if (host.endsWith(".")) {
-                            host = host.substring(0,host.length()-1);
-                        }
-                        if (SubnetIPv4.isValidIPv4(ip)) {
-                            atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                    "dns:/" + host, new String[]{"A"});
-                            Attribute attributeA = atributes.get("A");
-                            for (int indexA = 0; indexA < attributeA.size(); indexA++) {
-                                String ipA = (String) attributeA.get(indexA);
-                                byte[] address2 = SubnetIPv4.split(ipA);
-                                if (Arrays.equals(address1, address2)) {
-                                    reverseList.add("." + host);
-                                    break;
-                                }
-                            }
-                        } else if (SubnetIPv6.isValidIPv6(ip)) {
-                            atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                    "dns:/" + host, new String[]{"AAAA"});
-                            Attribute attributeAAAA = atributes.get("AAAA");
-                            for (int indexA = 0; indexA < attributeAAAA.size(); indexA++) {
-                                String ipAAAA = (String) attributeAAAA.get(indexA);
-                                byte[] address2 = SubnetIPv6.splitByte(ipAAAA);
-                                if (Arrays.equals(address1, address2)) {
-                                    reverseList.add("." + host);
-                                    break;
-                                }
-                            }
-                        }
-                    } catch (NamingException ex) {
-                        // Registro não encontrado.
+            Attributes atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                    "dns:/" + reverse, new String[]{"PTR"});
+            Attribute attributePTR = atributes.get("PTR");
+            for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
+                try {
+                    String host = (String) attributePTR.get(indexPTR);
+                    if (host.startsWith(".")) {
+                        host = host.substring(1);
                     }
+                    if (host.endsWith(".")) {
+                        host = host.substring(0,host.length()-1);
+                    }
+                    if (SubnetIPv4.isValidIPv4(ip)) {
+                        atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                                "dns:/" + host, new String[]{"A"});
+                        Attribute attributeA = atributes.get("A");
+                        for (int indexA = 0; indexA < attributeA.size(); indexA++) {
+                            String ipA = (String) attributeA.get(indexA);
+                            byte[] address2 = SubnetIPv4.split(ipA);
+                            if (Arrays.equals(address1, address2)) {
+                                reverseList.add("." + host);
+                                break;
+                            }
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(ip)) {
+                        atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                                "dns:/" + host, new String[]{"AAAA"});
+                        Attribute attributeAAAA = atributes.get("AAAA");
+                        for (int indexAAAA = 0; indexAAAA < attributeAAAA.size(); indexAAAA++) {
+                            String ipAAAA = (String) attributeAAAA.get(indexAAAA);
+                            byte[] address2 = SubnetIPv6.splitByte(ipAAAA);
+                            if (Arrays.equals(address1, address2)) {
+                                reverseList.add("." + host);
+                                break;
+                            }
+                        }
+                    }
+                } catch (NamingException ex) {
+                    // Endereço não encontrado.
                 }
-            } catch (InvalidAttributeIdentifierException ex) {
-                // Registro não encontrado.
             }
+            Server.logReverseDNS(time1, ip, reverseList.toString());
+        } catch (CommunicationException ex) {
+            Server.logReverseDNS(time1, ip, "TIMEOUT");
+        } catch (NameNotFoundException ex) {
+            Server.logReverseDNS(time1, ip, "NOT FOUND");
+        } catch (InvalidAttributeIdentifierException ex) {
+            Server.logReverseDNS(time1, ip, "NOT FOUND");
         } catch (NamingException ex) {
-            // Reverso não encontrado.
+            Server.logReverseDNS(time1, ip, "ERROR " + ex.getMessage());
         } finally {
             return reverseList;
         }
@@ -1892,85 +1932,97 @@ public final class SPF implements Serializable {
         CacheGuess.load();
     }
     
-    public static boolean heloMatchIP(String ip, String helo) {
-        if (!Domain.containsDomain(helo)) {
-            // o HELO não é um hostname válido.
-            return false;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
-            long time = System.currentTimeMillis();
-            try {
-                Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                        "dns:/" + helo, new String[]{"A"});
-                Attribute attribute = attributes.get("A");
-                if (attribute == null) {
-                    Server.logMatchHELO(time, helo, "MXDOMAIN " + ip);
-                    return false;
-                } else {
-                    int address = SubnetIPv4.getAddressIP(ip);
-                    NamingEnumeration enumeration = attribute.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String hostAddress = (String) enumeration.next();
-                        int indexSpace = hostAddress.indexOf(' ') + 1;
-                        hostAddress = hostAddress.substring(indexSpace);
-                        if (SubnetIPv4.isValidIPv4(hostAddress)) {
-                            if (address == SubnetIPv4.getAddressIP(hostAddress)) {
-                                Server.logMatchHELO(time, helo, "OK " + ip);
-                                return true;
+    /**
+     * Classe que representa o cache de resolução de HELO.
+     * Na ultima verificação dos registros do LOG foi visto que
+     * diversas consultas SPFBL demoram excessivamente por conta
+     * da verificação de HELO na qual não existe domínio ou
+     * registro para IPs, acarretanto TIMEOUT 3 segundos depois.
+     */
+    private static class CacheHELO {
+        
+        // TODO: implementar uma estrutura de dados que comporte o cache de resolução de HELO.
+        
+        public static boolean match(String ip, String helo) {
+            if (!Domain.containsDomain(helo)) {
+                // o HELO não é um hostname válido.
+                return false;
+            } else if (SubnetIPv4.isValidIPv4(ip)) {
+                long time = System.currentTimeMillis();
+                try {
+                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                            "dns:/" + helo, new String[]{"A"});
+                    Attribute attribute = attributes.get("A");
+                    if (attribute == null) {
+                        Server.logMatchHELO(time, helo + " " + ip, "MXDOMAIN");
+                        return false;
+                    } else {
+                        int address = SubnetIPv4.getAddressIP(ip);
+                        NamingEnumeration enumeration = attribute.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String hostAddress = (String) enumeration.next();
+                            int indexSpace = hostAddress.indexOf(' ') + 1;
+                            hostAddress = hostAddress.substring(indexSpace);
+                            if (SubnetIPv4.isValidIPv4(hostAddress)) {
+                                if (address == SubnetIPv4.getAddressIP(hostAddress)) {
+                                    Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    return true;
+                                }
                             }
                         }
+                        Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        return false;
                     }
-                    Server.logMatchHELO(time, helo, "NOT " + ip);
+                } catch (CommunicationException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    return false;
+                } catch (NameNotFoundException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "NOT FOUND");
+                    return false;
+                } catch (NamingException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
                     return false;
                 }
-            } catch (CommunicationException ex) {
-                Server.logMatchHELO(time, helo, "TIMEOUT " + ip);
-                return false;
-            } catch (NameNotFoundException ex) {
-                Server.logMatchHELO(time, helo, "NOT FOUND " + ip);
-                return false;
-            } catch (NamingException ex) {
-                Server.logMatchHELO(time, helo, "ERROR " + ex.getMessage());
+            } else if (SubnetIPv6.isValidIPv6(ip)) {
+                long time = System.currentTimeMillis();
+                try {
+                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                            "dns:/" + helo, new String[]{"AAAA"});
+                    Attribute attribute = attributes.get("AAAA");
+                    if (attribute == null) {
+                        Server.logMatchHELO(time, helo + " " + ip, "MXDOMAIN");
+                        return false;
+                    } else {
+                        short[] address = SubnetIPv6.split(ip);
+                        NamingEnumeration enumeration = attribute.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String hostAddress = (String) enumeration.next();
+                            int indexSpace = hostAddress.indexOf(' ') + 1;
+                            hostAddress = hostAddress.substring(indexSpace);
+                            if (SubnetIPv6.isValidIPv6(hostAddress)) {
+                                if (Arrays.equals(address, SubnetIPv6.split(hostAddress))) {
+                                    Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    return true;
+                                }
+                            }
+                        }
+                        Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        return false;
+                    }
+                } catch (CommunicationException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    return false;
+                } catch (NameNotFoundException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "NOT FOUND");
+                    return false;
+                } catch (NamingException ex) {
+                    Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                    return false;
+                 }
+            } else {
+                // O parâmetro ip não é um IP válido.
                 return false;
             }
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            long time = System.currentTimeMillis();
-            try {
-                Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                        "dns:/" + helo, new String[]{"AAAA"});
-                Attribute attribute = attributes.get("AAAA");
-                if (attribute == null) {
-                    Server.logMatchHELO(time, helo, "MXDOMAIN " + ip);
-                    return false;
-                } else {
-                    short[] address = SubnetIPv6.split(ip);
-                    NamingEnumeration enumeration = attribute.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String hostAddress = (String) enumeration.next();
-                        int indexSpace = hostAddress.indexOf(' ') + 1;
-                        hostAddress = hostAddress.substring(indexSpace);
-                        if (SubnetIPv6.isValidIPv6(hostAddress)) {
-                            if (Arrays.equals(address, SubnetIPv6.split(hostAddress))) {
-                                Server.logMatchHELO(time, helo, "OK " + ip);
-                                return true;
-                            }
-                        }
-                    }
-                    Server.logMatchHELO(time, helo, "NOT " + ip);
-                    return false;
-                }
-            } catch (CommunicationException ex) {
-                Server.logMatchHELO(time, helo, "TIMEOUT " + ip);
-                return false;
-            } catch (NameNotFoundException ex) {
-                Server.logMatchHELO(time, helo, "NOT FOUND " + ip);
-                return false;
-            } catch (NamingException ex) {
-                Server.logMatchHELO(time, helo, "ERROR " + ex.getMessage());
-                return false;
-             }
-        } else {
-            // O parâmetro ip não é um IP válido.
-            return false;
         }
     }
     
@@ -2020,7 +2072,7 @@ public final class SPF implements Serializable {
                             tokenSet.add(ownerid);
                         }
                     }
-                } else if (SPF.heloMatchIP(ip, helo)) {
+                } else if (CacheHELO.match(ip, helo)) {
                     // Se o HELO apontar para o IP,
                     // então o dono do HELO é o responsável.
                     if (!helo.startsWith(".")) {
@@ -2156,7 +2208,7 @@ public final class SPF implements Serializable {
 //                                        tokenSet.add(owner_c);
 //                                    }
                                 }
-                            } else if (SPF.heloMatchIP(ip, helo)) {
+                            } else if (CacheHELO.match(ip, helo)) {
                                 // Se o HELO apontar para o IP,
                                 // então o dono do HELO é o responsável.
                                 if (!helo.startsWith(".")) {
