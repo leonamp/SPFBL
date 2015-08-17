@@ -88,6 +88,7 @@ public final class SPF implements Serializable {
     private Qualifier all = null; // Qualificador do mecanismo all.
     private boolean error = false; // Se houve erro de sintaxe.
     private int queries = 0; // Contador de consultas.
+    private int nxdomain = 0; // Contador de inexistência de domínio.
     
     private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
     private static final int REFRESH_TIME = 7; // Prazo máximo que o registro deve permanecer em cache em dias.
@@ -297,6 +298,10 @@ public final class SPF implements Serializable {
         }
     }
     
+    private boolean isInexistent() {
+        return nxdomain > 30;
+    }
+    
     /**
      * Atualiza o registro SPF de um host.
      * @throws ProcessException se houver falha no processamento.
@@ -313,6 +318,7 @@ public final class SPF implements Serializable {
             this.error = false;
             CacheSPF.CHANGED = true;
             this.queries = 0;
+            this.nxdomain++;
             this.lastRefresh = System.currentTimeMillis();
             Server.logLookupSPF(time, hostname, "NXDOMAIN");
         } else if (registryList.isEmpty()) {
@@ -324,6 +330,7 @@ public final class SPF implements Serializable {
             this.error = false;
             CacheSPF.CHANGED = true;
             this.queries = 0;
+            this.nxdomain = 0;
             this.lastRefresh = System.currentTimeMillis();
             Server.logLookupSPF(time, hostname, "NO REGISTRY");
         } else {
@@ -408,15 +415,8 @@ public final class SPF implements Serializable {
                 if (result == null) {
                     result = (errorRegistry ? "ERROR" : "OK") + " \"" + registry + "\"";
                 } else {
-                    result += (errorRegistry ? "\nERROR" : "\nOK") + " \"" + registry + "\"";
+                    result += (errorRegistry ? "\\nERROR" : "\\nOK") + " \"" + registry + "\"";
                 }
-//                if (errorRegistry) {
-//                    // Log do registro com erro de sintaxe.
-//                    Server.logLookupSPF(time, hostname, "ERROR \"" + registry + "\"");
-//                } else {
-//                    // Log do registro sem erro de sintaxe.
-//                    Server.logLookupSPF(time, hostname, "OK \"" + registry + "\"");
-//                }
             }
             // Considerar os mecanismos na ordem crescente
             // de complexidade de processamento.
@@ -433,6 +433,7 @@ public final class SPF implements Serializable {
             this.error = errorQuery;
             CacheSPF.CHANGED = true;
             this.queries = 0;
+            this.nxdomain = 0;
             this.lastRefresh = System.currentTimeMillis();
             Server.logLookupSPF(time, hostname, result);
         }
@@ -2054,6 +2055,12 @@ public final class SPF implements Serializable {
                 SPF spf = CacheSPF.get(sender);
                 if (spf == null) {
                     result = "NONE";
+                } else if (spf.isInexistent()) {
+                    // O domínio foi dado como inexistente inúmeras vezes.
+                    // Rejeitar a mensagem pois há abuso de tentativas.
+                    String dominio = Domain.extractDomain(sender, false);
+                    return "action=REJECT [RBL] "
+                            + dominio + " is non-existent internet domain.\n\n";
                 } else {
                     result = spf.getResult(ip);
                 }
