@@ -106,6 +106,7 @@ public final class QuerySPF extends Server {
             while (!SOCKET_LIST.isEmpty()) {
                 try {
                     long time = System.currentTimeMillis();
+                    String type = "SPFQR";
                     String query = null;
                     String result = null;
                     Socket socket = SOCKET_LIST.poll();
@@ -115,7 +116,7 @@ public final class QuerySPF extends Server {
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
-                            if (line.equals("/asd") || line.equals("request=smtpd_access_policy")) {
+                            if (line.equals("request=smtpd_access_policy")) {
                                 // Entrada padrão do Postfix.
                                 // Extrair os atributos necessários.
                                 String ip = null;
@@ -140,6 +141,11 @@ public final class QuerySPF extends Server {
                             } else {
                                 query = line.trim();
                                 result = SPF.processSPF(query);
+                                if (query.startsWith("HAM ")) {
+                                    type = "SPFHM";
+                                } else if (query.startsWith("SPAM ")) {
+                                    type = "SPFSP";
+                                }
                             }
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
@@ -150,10 +156,10 @@ public final class QuerySPF extends Server {
                         socket.close();
                         // Log da consulta com o respectivo resultado.
                         Server.logQuery(
-                                time,
-                                "SPFQR",
+                                time, type,
                                 socket.getInetAddress(),
-                                query, result);
+                                query, result
+                                );
                         // Atualiza registro mais consultado.
                         SPF.tryRefresh();
                         Server.tryBackugroundRefresh();

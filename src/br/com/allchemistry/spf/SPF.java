@@ -337,6 +337,7 @@ public final class SPF implements Serializable {
             String explanationLocal = null;
             boolean errorQuery = false;
             String fixed;
+            String result = null;
             for (String registry : registryList) {
                 boolean errorRegistry = false;
                 StringTokenizer tokenizer = new StringTokenizer(registry, " ");
@@ -404,13 +405,18 @@ public final class SPF implements Serializable {
                     }
                     visitedTokens.add(token);
                 }
-                if (errorRegistry) {
-                    // Log do registro com erro de sintaxe.
-                    Server.logLookupSPF(time, hostname, "ERROR \"" + registry + "\"");
+                if (result == null) {
+                    result = (errorRegistry ? "ERROR" : "OK") + " \"" + registry + "\"";
                 } else {
-                    // Log do registro sem erro de sintaxe.
-                    Server.logLookupSPF(time, hostname, "OK \"" + registry + "\"");
+                    result += (errorRegistry ? "\nERROR" : "\nOK") + " \"" + registry + "\"";
                 }
+//                if (errorRegistry) {
+//                    // Log do registro com erro de sintaxe.
+//                    Server.logLookupSPF(time, hostname, "ERROR \"" + registry + "\"");
+//                } else {
+//                    // Log do registro sem erro de sintaxe.
+//                    Server.logLookupSPF(time, hostname, "OK \"" + registry + "\"");
+//                }
             }
             // Considerar os mecanismos na ordem crescente
             // de complexidade de processamento.
@@ -428,6 +434,7 @@ public final class SPF implements Serializable {
             CacheSPF.CHANGED = true;
             this.queries = 0;
             this.lastRefresh = System.currentTimeMillis();
+            Server.logLookupSPF(time, hostname, result);
         }
     }
     
@@ -1153,8 +1160,10 @@ public final class SPF implements Serializable {
                                 }
                                 if (indexPrefix == -1) {
                                     // Se não houver definição CIDR,
-                                    // considerar também os endereços AAAA.
-                                    // Isto não é um padrão SPF.
+                                    // considerar também os endereços IPv6 
+                                    // para ficar compatível com pilha dupla.
+                                    // Isto não é um padrão SPF mas não há 
+                                    // prejuízo algum no uso deste conceito.
                                     try {
                                         Attributes attributesAAAA = Server.INITIAL_DIR_CONTEXT.getAttributes(
                                                 "dns:/" + hostAddress, new String[]{"AAAA"});
