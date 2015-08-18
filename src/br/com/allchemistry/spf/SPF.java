@@ -299,7 +299,19 @@ public final class SPF implements Serializable {
     }
     
     private boolean isInexistent() {
-        return nxdomain > 30;
+        // Se procurou 32 vezes seguidas e retornou domínio inexistente,
+        // considerar como definitivamente inexistente.
+        return nxdomain > 32;
+    }
+    
+    /**
+     * Método seguro para incrementar nxdomain 
+     * sem deixar que ele se torne negativo.
+     */
+    private void addInexistent() {
+        if (nxdomain < Integer.MAX_VALUE) {
+            nxdomain++;
+        }
     }
     
     /**
@@ -318,7 +330,7 @@ public final class SPF implements Serializable {
             this.error = false;
             CacheSPF.CHANGED = true;
             this.queries = 0;
-            this.nxdomain++;
+            this.addInexistent();
             this.lastRefresh = System.currentTimeMillis();
             Server.logLookupSPF(time, hostname, "NXDOMAIN");
         } else if (registryList.isEmpty()) {
