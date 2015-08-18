@@ -484,8 +484,9 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
     public static synchronized void store() {
         if (SUBNET_CHANGED) {
             try {
-                Server.logDebug("Storing subnet6.map...");
-                FileOutputStream outputStream = new FileOutputStream("subnet6.map");
+                long time = System.currentTimeMillis();
+                File file = new File("subnet6.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(SUBNET_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -493,6 +494,7 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -503,17 +505,19 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading subnet6.map...");
+        long time = System.currentTimeMillis();
         File file = new File("subnet6.map");
         if (file.exists()) {
             try {
+                TreeMap<Long,SubnetIPv6> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    TreeMap<Long,SubnetIPv6> map = SerializationUtils.deserialize(fileInputStream);
-                    SUBNET_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                SUBNET_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

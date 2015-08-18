@@ -703,8 +703,9 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static synchronized void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
-                Server.logDebug("Storing domain.map...");
-                FileOutputStream outputStream = new FileOutputStream("domain.map");
+                long time = System.currentTimeMillis();
+                File file = new File("domain.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(DOMAIN_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -712,6 +713,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -721,8 +723,9 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static synchronized void storeTDL() {
         if (TDL_CHANGED) {
             try {
-                Server.logDebug("Storing tdl.set...");
-                FileOutputStream outputStream = new FileOutputStream("tdl.set");
+                long time = System.currentTimeMillis();
+                File file = new File("tdl.set");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(TDL_SET, outputStream);
                     // Atualiza flag de atualização.
@@ -730,6 +733,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -740,32 +744,36 @@ public class Domain implements Serializable, Comparable<Domain> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading domain.map...");
+        long time = System.currentTimeMillis();
         File file = new File("domain.map");
         if (file.exists()) {
             try {
+                HashMap<String, Domain> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashMap<String, Domain> map = SerializationUtils.deserialize(fileInputStream);
-                    DOMAIN_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                DOMAIN_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Loading tdl.set...");
+        time = System.currentTimeMillis();
         file = new File("tdl.set");
         if (file.exists()) {
             try {
+                HashSet<String> set;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashSet<String> set = SerializationUtils.deserialize(fileInputStream);
-                    TDL_SET.addAll(set);
+                    set = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                TDL_SET.addAll(set);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

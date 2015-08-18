@@ -281,6 +281,22 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as gravações de cache em disco.
+     * @param file o arquivo armazenado.
+     */
+    public static synchronized void logStore(long time, File file) {
+        log(time, "STORE", file.getName());
+    }
+    
+    /**
+     * Registra os carregamentos de cache no disco.
+     * @param file o arquivo carregado.
+     */
+    public static synchronized void logLoad(long time, File file) {
+        log(time, "LOADC", file.getName());
+    }
+    
+    /**
      * Registra as mensagens de checagem DNS.
      * @param host o host que foi consultado.
      */
