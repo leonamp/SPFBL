@@ -281,6 +281,15 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as mensagens de checagem DNS.
+     * @param host o host que foi consultado.
+     */
+    public static synchronized void logCheckDNS(
+            long time, String host, String result) {
+        log(time, "DNSCK", host + " => " + result);
+    }
+    
+    /**
      * Registra os tiquetes processados.
      * @param tokenSet o conjunto de tokens.
      */
@@ -368,7 +377,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logQueryDNSBL(long time,
             InetAddress ipAddress, String query, String result) {
-        logQuery(time, "DNSBL", ipAddress, query, result + "\n");
+        logQuery(time, "DNSBL", ipAddress, query, result);
     }
     
     /**
@@ -715,7 +724,6 @@ public abstract class Server extends Thread {
      */
     public static synchronized boolean backgroundRefresh() {
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == 30) {
-            Server.logDebug("Refreshing cache...");
             if (Domain.backgroundRefresh()) {
                 return true;
             } else if (Subnet.backgroundRefresh()) {

@@ -779,15 +779,20 @@ public class Domain implements Serializable, Comparable<Domain> {
      * registrado em DNS ou se houver falha de DNS.
      */
     private static void checkHost(String host) throws ProcessException {
+        long time = System.currentTimeMillis();
         try {
-            Server.logDebug("DNS lookup for " + host + "...");
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.INITIAL_DIR_CONTEXT.getAttributes("dns:/" + host, null);
+            Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
+            Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
         } catch (Exception ex) {
             // Houve falha para encontrar os registros.
+            Server.logCheckDNS(time, host, "ERROR " + ex.getMessage());
             throw new ProcessException("ERROR: NSLOOKUP", ex);
+        } finally {
+            
         }
     }
     
