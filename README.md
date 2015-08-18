@@ -56,6 +56,14 @@ Um destes mecanismos é o +all, que no SPFBL foi abolido e substituido por ?all 
 
 Os mecanismos de blocos de IP que contém algum endereço IP reservado são ignorados pelo SPFBL.
 
+##### Consideração de IPv6 para mecanismo "mx" sem máscara
+
+Sempre que o mecaninsmo "mx" for utilizado sem a máscara num registro SPF, o SPFBL irá considerar tanto IPv4 quanto IPv6 do host para manter compatibilidade de pilha dupla neste MX.
+
+Quando a máscara for mencionada, então não é possível utilizar esta solução pois as máscaras de IPv4 e IPv6 são incompatáveis.
+
+O protocolo SPF convencional não prevê pilha dupla em mecanismo "mx", então é possível que uma consulta SPF convencional não resulte em PASS sendo que a mesma consulta resulte PASS no SPFBL.
+
 ##### Domínios sem registro SPF
 
 Quando um domínio não tem registro SPF, o SPFBL considera a recomendação "best-guess" do SPF: [best-guess](http://www.openspf.org/FAQ/Best_guess_record).
@@ -75,6 +83,10 @@ Se a árvore for grande demais para ser percorrida e não houver registros desta
 ##### Cache dos registros SPF
 
 O SPFBL mantém em cache todos os registros SPF encontrados e procura mantê-los atualizados em background de acordo com o volume de consultas de cada um deles.
+
+##### Registro de provedores de e-mail
+
+É possível registrar um provedor de e-mail no SPFBL. Sempre que um provedor for registrado, o SPFBL vai considerar os respectivos endereços de e-mail como responsável pelo envio, sendo que o provedor será isentado da responsabilidade.
 
 ##### Denúncia de SPAM
 
@@ -108,10 +120,6 @@ Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorn
 O SPFBL utiliza deste fluxo para determinar responsável e se o mesmo está listado:
 
 ![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
-
-##### Registro de provedores de e-mail
-
-É possível registrar um provedor de e-mail no SPFBL. Sempre que um provedor for registrado, o SPFBL vai considerar os respectivos endereços de e-mail como responsável pelo envio, sendo que o provedor será isentado da responsabilidade.
 
 ##### Tipos de responsável
 
@@ -147,3 +155,17 @@ check_policy_service inet:<IP do servidor SPFBL>:9877
 O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no projeto independente do Ricardo Walter:
 
 ![Roundcube-Plugin-markasjunk_spfbl](https://github.com/rikw22/Roundcube-Plugin-markasjunk_spfbl "Roundcube-Plugin-markasjunk_spfbl")
+
+### Como iniciar o serviço SPFBL
+
+Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, complain.map, distribution.map, domain.map, guess.map, handle.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map e tdl.set.
+
+Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
+
+```
+sudo java -jar SPFBL.jar 9875 512 >> log.001.txt &
+```
+
+O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
+
+Se tiver problemas ou dúvidas, consulte o suporte pelo endereço <leandro@allchemistry.com.br>.
