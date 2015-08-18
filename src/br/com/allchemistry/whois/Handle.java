@@ -191,8 +191,9 @@ public class Handle implements Serializable, Comparable<Handle> {
     public static synchronized void store() {
         if (HANDLE_CHANGED) {
             try {
-                Server.logDebug("Storing handle.map...");
-                FileOutputStream outputStream = new FileOutputStream("handle.map");
+                long time = System.currentTimeMillis();
+                File file = new File("handle.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(HANDLE_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -200,6 +201,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -210,17 +212,19 @@ public class Handle implements Serializable, Comparable<Handle> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading handle.map...");
+        long time = System.currentTimeMillis();
         File file = new File("handle.map");
         if (file.exists()) {
             try {
+                HashMap<String, Handle> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashMap<String, Handle> map = SerializationUtils.deserialize(fileInputStream);
-                    HANDLE_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                HANDLE_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

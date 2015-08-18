@@ -286,8 +286,9 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     public static synchronized void store() {
         if (AS_CHANGED) {
             try {
-                Server.logDebug("Storing as.map...");
-                FileOutputStream outputStream = new FileOutputStream("as.map");
+                long time = System.currentTimeMillis();
+                File file = new File("as.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(AS_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -295,6 +296,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -305,17 +307,19 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading as.map...");
+        long time = System.currentTimeMillis();
         File file = new File("as.map");
         if (file.exists()) {
             try {
+                HashMap<String,AutonomousSystem> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashMap<String,AutonomousSystem> map = SerializationUtils.deserialize(fileInputStream);
-                    AS_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                AS_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

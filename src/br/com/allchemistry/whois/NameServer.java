@@ -117,8 +117,9 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     public static synchronized void store() {
         if (NS_CHANGED) {
             try {
-                Server.logDebug("Storing ns.map...");
-                FileOutputStream outputStream = new FileOutputStream("ns.map");
+                long time = System.currentTimeMillis();
+                File file = new File("ns.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(NS_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -126,6 +127,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -136,17 +138,19 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading ns.map...");
+        long time = System.currentTimeMillis();
         File file = new File("ns.map");
         if (file.exists()) {
             try {
+                HashMap<String, NameServer> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashMap<String, NameServer> map = SerializationUtils.deserialize(fileInputStream);
-                    NS_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                NS_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

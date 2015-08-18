@@ -1458,14 +1458,16 @@ public final class SPF implements Serializable {
         private static synchronized void store() {
             if (CHANGED) {
                 try {
-                    Server.logDebug("Storing spf.map...");
-                    FileOutputStream outputStream = new FileOutputStream("spf.map");
+                    long time = System.currentTimeMillis();
+                    File file = new File("spf.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
+                    Server.logStore(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1473,7 +1475,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void load() {
-            Server.logDebug("Loading spf.map...");
+            long time = System.currentTimeMillis();
             File file = new File("spf.map");
             if (file.exists()) {
                 try {
@@ -1485,6 +1487,7 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     MAP.putAll(map);
+                    Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1554,14 +1557,16 @@ public final class SPF implements Serializable {
         private static synchronized void store() {
             if (CHANGED) {
                 try {
-                    Server.logDebug("Storing complain.map...");
-                    FileOutputStream outputStream = new FileOutputStream("complain.map");
+                    long time = System.currentTimeMillis();
+                    File file = new File("complain.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
+                    Server.logStore(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1569,7 +1574,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void load() {
-            Server.logDebug("Loading complain.map...");
+            long time = System.currentTimeMillis();
             File file = new File("complain.map");
             if (file.exists()) {
                 try {
@@ -1581,6 +1586,7 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     MAP.putAll(map);
+                    Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1679,14 +1685,16 @@ public final class SPF implements Serializable {
         private static synchronized void store() {
             if (CHANGED) {
                 try {
-                    Server.logDebug("Storing distribution.map...");
-                    FileOutputStream outputStream = new FileOutputStream("distribution.map");
+                    long time = System.currentTimeMillis();
+                    File file = new File("distribution.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
+                    Server.logStore(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1694,7 +1702,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void load() {
-            Server.logDebug("Loading distribution.map...");
+            long time = System.currentTimeMillis();
             File file = new File("distribution.map");
             if (file.exists()) {
                 try {
@@ -1706,6 +1714,7 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     MAP.putAll(map);
+                    Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1819,14 +1828,16 @@ public final class SPF implements Serializable {
         private static synchronized void store() {
             if (CHANGED) {
                 try {
-                    Server.logDebug("Storing provider.set...");
-                    FileOutputStream outputStream = new FileOutputStream("provider.set");
+                    long time = System.currentTimeMillis();
+                    File file = new File("provider.set");
+                    FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
+                    Server.logStore(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1834,7 +1845,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void load() {
-            Server.logDebug("Loading provider.set...");
+            long time = System.currentTimeMillis();
             File file = new File("provider.set");
             if (file.exists()) {
                 try {
@@ -1846,6 +1857,7 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     SET.addAll(set);
+                    Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1898,14 +1910,16 @@ public final class SPF implements Serializable {
         private static synchronized void store() {
             if (CHANGED) {
                 try {
-                    Server.logDebug("Storing guess.map...");
-                    FileOutputStream outputStream = new FileOutputStream("guess.map");
+                    long time = System.currentTimeMillis();
+                    File file = new File("guess.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
+                    Server.logStore(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1913,7 +1927,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void load() {
-            Server.logDebug("Loading guess.map...");
+            long time = System.currentTimeMillis();
             File file = new File("guess.map");
             if (file.exists()) {
                 try {
@@ -1925,6 +1939,7 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     MAP.putAll(map);
+                    Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }

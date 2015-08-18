@@ -291,8 +291,9 @@ public class Owner implements Serializable, Comparable<Owner> {
     public static synchronized void store() {
         if (OWNER_CHANGED) {
             try {
-                Server.logDebug("Storing owner.map...");
-                FileOutputStream outputStream = new FileOutputStream("owner.map");
+                long time = System.currentTimeMillis();
+                File file = new File("owner.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(OWNER_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -300,6 +301,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -310,17 +312,19 @@ public class Owner implements Serializable, Comparable<Owner> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading owner.map...");
+        long time = System.currentTimeMillis();
         File file = new File("owner.map");
         if (file.exists()) {
             try {
+                HashMap<String, Owner> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    HashMap<String, Owner> map = SerializationUtils.deserialize(fileInputStream);
-                    OWNER_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                OWNER_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }

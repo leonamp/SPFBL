@@ -394,8 +394,9 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
     public static synchronized void store() {
         if (SUBNET_CHANGED) {
             try {
-                Server.logDebug("Storing subnet4.map...");
-                FileOutputStream outputStream = new FileOutputStream("subnet4.map");
+                long time = System.currentTimeMillis();
+                File file = new File("subnet4.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(SUBNET_MAP, outputStream);
                     // Atualiza flag de atualização.
@@ -403,6 +404,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
                 } finally {
                     outputStream.close();
                 }
+                Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -413,17 +415,19 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
      * Carregamento de cache do disco.
      */
     public static synchronized void load() {
-        Server.logDebug("Loading subnet4.map...");
+        long time = System.currentTimeMillis();
         File file = new File("subnet4.map");
         if (file.exists()) {
             try {
+                TreeMap<Integer, SubnetIPv4> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
-                    TreeMap<Integer, SubnetIPv4> map = SerializationUtils.deserialize(fileInputStream);
-                    SUBNET_MAP.putAll(map);
+                    map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
+                SUBNET_MAP.putAll(map);
+                Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
