@@ -150,6 +150,69 @@ O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pe
 check_policy_service inet:<IP do servidor SPFBL>:9877
 ```
 
+##### Integração com Exim
+
+Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_mail":
+```
+# Use spfblquery.sh to perform SPFBL check.
+  warn
+    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh $sender_host_address $sender_address $sender_helo_name}{ERROR}{$value}}
+    set acl_c_spfreceived = $runrc
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
+  drop
+    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = SPF check failed.
+    condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
+  defer
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPF check error.
+    condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
+  deny
+    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = SPF check unknown.
+    condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
+  drop
+    message = You are blocked in this server for seven days.
+    log_message = SPF check listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+```
+
+e a seguinte linha na secção "acl_check_data":
+```
+   warn
+      condition = ${if def:acl_c_spfbl {true}{false}}
+      add_header = Received-SPFBL: $acl_c_spfbl
+```
+
+##### Integração com Exim do cPanel
+
+Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
+```
+  warn
+    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh $sender_host_address $sender_address $sender_helo_name}{ERROR}{$value}}
+    set acl_c_spfreceived = $runrc
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
+  drop
+    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = SPF check failed.
+    condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
+  defer
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPF check error.
+    condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
+  deny
+    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = SPF check unknown.
+    condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
+  drop
+    message = You are blocked in this server for seven days.
+    log_message = SPF check listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+  warn
+    condition = ${if def:acl_c_spfbl {true}{false}}
+    add_header = Received-SPFBL: $acl_c_spfbl
+```
+
 ##### Plugin de denúncia SPFBL no Roundcube
 
 O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no projeto independente do Ricardo Walter:
