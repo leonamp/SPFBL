@@ -2211,7 +2211,10 @@ public final class SPF implements Serializable {
                     } else {
                         result = "OK " + tokenSet + "\n";
                     }
-                } else if ((firstToken.equals("CHECK") && tokenizer.countTokens() == 3) || tokenizer.countTokens() == 2) {
+                } else if (tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
+                        || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
+                        || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)
+                        ) {
                     try {
                         String ip;
                         if (firstToken.equals("CHECK")) {
@@ -2219,15 +2222,26 @@ public final class SPF implements Serializable {
                         } else {
                             ip = firstToken;
                         }
-                        String email = tokenizer.nextToken().toLowerCase();
-                        String helo = tokenizer.nextToken().toLowerCase();
-                        if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
+                        String email;
+                        String helo;
+                        if (tokenizer.countTokens() == 2) {
+                            email = tokenizer.nextToken().toLowerCase();
+                            helo = tokenizer.nextToken().toLowerCase();
+                        } else {
+                            email = null;
+                            helo = tokenizer.nextToken().toLowerCase();
+                        }
+                        if (!Subnet.isValidIP(ip)) {
                             result = "ERROR: QUERY\n";
-                        } else if (!Domain.containsDomain(email)) {
+                        } else if (email != null && !Domain.containsDomain(email)) {
                             result = "ERROR: QUERY\n";
                         } else {
                             SPF spf = CacheSPF.get(email);
-                            result = spf.getResult(ip);
+                            if (spf == null) {
+                                result = "NONE";
+                            } else {
+                                result = spf.getResult(ip);
+                            }
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             String ownerid;
 //                            String owner_c;
