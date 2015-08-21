@@ -2190,7 +2190,7 @@ public final class SPF implements Serializable {
         try {
             String result = "";
             if (query.length() == 0) {
-                result = "ERROR: QUERY\n";
+                return "ERROR: QUERY\n";
             } else {
                 long time = System.currentTimeMillis();
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
@@ -2222,23 +2222,25 @@ public final class SPF implements Serializable {
                         } else {
                             ip = firstToken;
                         }
-                        String email;
+                        String sender;
                         String helo;
                         if (tokenizer.countTokens() == 2) {
-                            email = tokenizer.nextToken().toLowerCase();
+                            sender = tokenizer.nextToken().toLowerCase();
                             helo = tokenizer.nextToken().toLowerCase();
                         } else {
-                            email = null;
+                            sender = null;
                             helo = tokenizer.nextToken().toLowerCase();
                         }
                         if (!Subnet.isValidIP(ip)) {
-                            result = "ERROR: QUERY\n";
-                        } else if (email != null && !Domain.containsDomain(email)) {
-                            result = "ERROR: QUERY\n";
+                            return "ERROR: INVALID IP\n";
+                        } else if (sender != null && !Domain.isEmail(sender)) {
+                            return "ERROR: INVALID SENDER\n";
                         } else {
-                            SPF spf = CacheSPF.get(email);
+                            SPF spf = CacheSPF.get(sender);
                             if (spf == null) {
                                 result = "NONE";
+                            } else if (spf.isInexistent()) {
+                                return "ERROR: NXDOMAIN\n";
                             } else {
                                 result = spf.getResult(ip);
                             }
@@ -2252,17 +2254,17 @@ public final class SPF implements Serializable {
                                 // Quando fo PASS, significa que o domínio 
                                 // autorizou envio pelo IP, portanto o dono dele 
                                 // é responsavel pelas mensagens.
-                                String host = Domain.extractHost(email, true);
+                                String host = Domain.extractHost(sender, true);
                                 if (CacheProvider.contains(host)) {
                                     // Listar apenas o remetente se o 
                                     // host for um provedor de e-mail.
-                                    tokenSet.add(email);
+                                    tokenSet.add(sender);
                                 } else {
                                     // Não é um provedor então
                                     // o domínio deve ser listado.
                                     tokenSet.add(host);
-                                    tokenSet.add(Domain.extractDomain(email, true));
-                                    if ((ownerid = Domain.getOwnerID(email)) != null) {
+                                    tokenSet.add(Domain.extractDomain(sender, true));
+                                    if ((ownerid = Domain.getOwnerID(sender)) != null) {
                                         tokenSet.add(ownerid);
                                     }
 //                                    if ((owner_c = Domain.getOwnerC(email)) != null) {
@@ -2333,7 +2335,7 @@ public final class SPF implements Serializable {
                                 } else {
                                     // Anexando ticket ao resultado.
                                     result += " " + ticket + "\n";
-                                    Server.logTicket(time, ip + " " + email + " " + helo, tokenSet);
+                                    Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                                 }
                             }
                         }
@@ -2346,7 +2348,7 @@ public final class SPF implements Serializable {
                         }
                     }
                 } else {
-                    result = "ERROR: QUERY\n";
+                    return "ERROR: QUERY\n";
                 }
             }
             return result;
@@ -2652,11 +2654,14 @@ public final class SPF implements Serializable {
             float max = probability[2];
             if (max == 0.0f) {
                 status = Status.WHITE;
-            } else if (min > 0.125f) {
+//            } else if (min > 0.125f) {
+            } else if (min > 0.0625f) {
                 status = Status.BLACK;
-            } else if (status == Status.GRAY && min > 0.0625f) {
+//            } else if (status == Status.GRAY && min > 0.0625f) {
+            } else if (status == Status.GRAY && min > 0.03125f) {
                 status = Status.BLACK;
-            } else if (status == Status.BLACK && max < 0.0625f) {
+//            } else if (status == Status.BLACK && max < 0.0625f) {
+            } else if (status == Status.BLACK && max < 0.03125f) {
                 status = Status.GRAY;
             }
             return status;

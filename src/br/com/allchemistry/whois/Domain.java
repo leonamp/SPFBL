@@ -271,7 +271,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             address = address.trim();
             address = address.toLowerCase();
             return Pattern.matches(
-                    "^[a-zA-Z0-9._%+=-]+@"
+                    "^[a-zA-Z0-9._%/+=-]+@"
                     + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                     );
         }
