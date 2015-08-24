@@ -232,3 +232,8 @@ sudo java -jar SPFBL.jar 9875 512 >> log.001.txt &
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
 
 Se tiver problemas ou dúvidas, consulte o suporte pelo endereço <leandro@allchemistry.com.br>.
+
+### Futuro do SPFBL
+
+Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes peer-to-peer.
+
