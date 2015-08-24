@@ -148,20 +148,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static void main(String[] args) {
-        try {
-            Domain.load();
-            System.out.println("www-data@thecash5.cloudapp.net");
-            System.out.println(extractHost("www-data@thecash5.cloudapp.net", true));
-            System.out.println(extractDomain("www-data@thecash5.cloudapp.net", true));
-            System.out.println(extractTDL("www-data@thecash5.cloudapp.net", true));
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            System.exit(0);
-        }
-    }
-    
     /**
      * Extrai o domínio pelos TDLs conhecidos.
      * @param address o endereço que contém o domínio.
@@ -259,6 +245,16 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static void main(String[] args) {
+        try {
+            System.out.println(isEmail("joana.mon,,te@web-sx12.dexonbr.com.br"));
+        } catch (Exception ex) {
+            Server.logError(ex);
+        } finally {
+            System.exit(0);
+        }
+    }
+    
     /**
      * Verifica se o endereço é um e-mail válido.
      * @param address o endereço a ser verificado.
@@ -271,7 +267,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             address = address.trim();
             address = address.toLowerCase();
             return Pattern.matches(
-                    "^[a-zA-Z0-9._%/+=-]+@"
+                    "^[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+@"
                     + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                     );
         }
