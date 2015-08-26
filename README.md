@@ -104,19 +104,43 @@ As opções de bloqueio são:
 
 Para visualizar a lista de bloqueios arbitrários:
 ```
-user:~# ./spfblview.sh <remetente>
+user:~# ./spfblblockview.sh <remetente>
 EMPTY
 ```
 
 Para adicionar um bloqueio arbitrário:
 ```
-user:~# ./spfblblock.sh <remetente>
+user:~# ./spfblblockadd.sh <remetente>
 OK
 ```
 
 Para remover um bloqueio arbitrário:
 ```
-user:~# ./spfblunblock.sh <remetente>
+user:~# ./spfblblockdrop.sh <remetente>
+OK
+```
+
+##### Spamtrap
+
+É possível adicionar destinatários na lista spamtrap do SPFBL.
+
+Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a auto-denúncia e manda o MTA discartar silencionsamente a mensagem.
+
+Para visualizar a lista de spamtrap:
+```
+user:~# ./spfbltrapview.sh <destinatário>
+EMPTY
+```
+
+Para adicionar um spamtrap:
+```
+user:~# ./spfbltrapadd.sh <destinatário>
+OK
+```
+
+Para remover um bspamtrap:
+```
+user:~# ./spfbltrapdrop.sh <destinatário>
 OK
 ```
 
@@ -126,7 +150,7 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais dois qualifidadores novos, chamados LISTED e BLOCKED:
+O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifidadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
 
 * PASS <ticket>: permitir o recebimento da mensagem.
 * FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
@@ -135,6 +159,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais dois qualifidad
 * NONE <ticket>: permitir o recebimento da mensagem.
 * LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
+* SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 
 ##### Método de listagem
 
