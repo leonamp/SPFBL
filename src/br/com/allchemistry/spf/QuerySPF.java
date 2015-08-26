@@ -207,7 +207,7 @@ public final class QuerySPF extends Server {
                                     result = "EMPTY\n";
                                 }
                             } else if (line.startsWith("TRAP ADD ")) {
-                                query = line.substring(6).trim();
+                                query = line.substring(5).trim();
                                 type = "STRAP";
                                 // Mecanismo de adição de spamtrap.
                                 line = line.substring(9);
@@ -230,7 +230,7 @@ public final class QuerySPF extends Server {
                                 }
                                 SPF.storeTrap();
                             } else if (line.startsWith("TRAP DROP ")) {
-                                query = line.substring(6).trim();
+                                query = line.substring(5).trim();
                                 type = "STRAP";
                                 // Mecanismo de remoção de spamtrap.
                                 line = line.substring(10);
@@ -253,7 +253,7 @@ public final class QuerySPF extends Server {
                                 }
                                 SPF.storeTrap();
                             } else if (line.equals("TRAP SHOW")) {
-                                query = line.substring(6).trim();
+                                query = line.substring(5).trim();
                                 type = "STRAP";
                                 // Mecanismo de visualização de bloqueios de remetentes.
                                 for (String recipient : SPF.getTrapSet(client)) {
