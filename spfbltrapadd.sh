@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Este é um script em BASH que remove um bloqueio de remetente na lista arbitrária do SPFBL.
+# Este é um script em BASH que adiciona um destinatário na lista spamtrap do SPFBL.
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
@@ -8,21 +8,19 @@
 #
 # Parâmetros de entrada:
 #
-#    1. sender: o remetente que deve ser desbloqueado, com endereço completo.
-#    1. domínio: o domínio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
-#    1. caixa postal: a caixa postal que deve ser desbloqueada, com arroba (ex: www-data@)
+#    1. recipient: o destinatário que deve ser bloqueado, com endereço completo.
 #
 #
 # Códigos de saída:
 #
-#    0: desbloqueado com sucesso.
+#    0: adicionado com sucesso.
 #    1: erro ao tentar adicionar bloqueio.
 #    2: timeout de conexão.
 #
 
-sender=$1
+recipient=$1
 
-response=$(echo "BLOCK DROP $sender" | nc -w 3 54.94.137.168 9877)
+response=$(echo "TRAP ADD $recipient" | nc -w 5 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 
