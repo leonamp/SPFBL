@@ -68,7 +68,7 @@ if [[ -z $ticket ]]; then
 else
 
 	# Registra reclamação SPFBL.
-	resposta=$(echo "SPAM $ticket" | nc -w 3 54.94.137.168 9877)
+	resposta=$(echo "SPAM $ticket" | nc -w 5 54.94.137.168 9877)
 
 	if [[ $resposta == "" ]]; then
 				

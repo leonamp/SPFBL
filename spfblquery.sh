@@ -22,8 +22,9 @@
 # Parâmetros de entrada:
 #
 #    1. IP: o IPv4 ou IPv6 do host de origem.
-#    2. email: o email do remetente.
+#    2. email: o email do remetente (opcional).
 #    3. HELO: o HELO passado pelo host de origem.
+#    4. recipient: o destinátario da mensagem (opcional).
 #
 # Saídas com qualificadores e as ações:
 #
@@ -34,6 +35,7 @@
 #    NONE <ticket>: permitir o recebimento da mensagem.
 #    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 #    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
+#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 #
 # Códigos de saída:
 #
@@ -48,13 +50,15 @@
 #    8: listado em lista negra.
 #    9: timeout de conexão.
 #    10: bloqueado permanentemente.
+#    11: spamtrap.
 #
 
 ip=$1
 email=$2
 helo=$3
+recipient=$4
 
-qualifier=$(echo "$ip $email $helo" | nc -w 3 54.94.137.168 9877)
+qualifier=$(echo "$ip $email $helo $recipient" | nc -w 5 54.94.137.168 9877)
 
 if [[ $qualifier == "" ]]; then
 
@@ -68,6 +72,10 @@ if [[ $qualifier == "TIMEOUT" ]]; then
 
         exit 9
         
+elif [[ $qualifier == "SPAMTRAP" ]]; then
+
+	exit 11
+	
 elif [[ $qualifier == "BLOCKED" ]]; then
 
 	exit 10

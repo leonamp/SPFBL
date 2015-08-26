@@ -39,7 +39,7 @@ ip=$1
 email=$2
 helo=$3
 
-qualifier=$(echo "CHECK $ip $email $helo" | nc -w 3 54.94.137.168 9877)
+qualifier=$(echo "CHECK $ip $email $helo" | nc -w 5 54.94.137.168 9877)
 
 if [[ $qualifier == "" ]]; then
 
