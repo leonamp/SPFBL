@@ -33,6 +33,7 @@
 #    NEUTRAL <ticket>: permitir o recebimento da mensagem.
 #    NONE <ticket>: permitir o recebimento da mensagem.
 #    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 #
 # Códigos de saída:
 #
@@ -46,6 +47,7 @@
 #    7: erro permanente.
 #    8: listado em lista negra.
 #    9: timeout de conexão.
+#    10: bloqueado permanentemente.
 #
 
 ip=$1
@@ -66,6 +68,10 @@ if [[ $qualifier == "TIMEOUT" ]]; then
 
         exit 9
         
+elif [[ $qualifier == "BLOCKED" ]]; then
+
+	exit 10
+	
 elif [[ $qualifier == "LISTED" ]]; then
 
 	exit 8
