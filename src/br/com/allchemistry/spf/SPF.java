@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -1533,6 +1535,7 @@ public final class SPF implements Serializable {
         if (REFRESH_SEMAPHORE.tryAcquire()) {
             try {
                 CacheSPF.refresh();
+                CacheHELO.refresh();
             } finally {
                 REFRESH_SEMAPHORE.release();
             }
@@ -1624,6 +1627,8 @@ public final class SPF implements Serializable {
                             }
                             // Apagar todas as distribuições vencidas.
                             CacheDistribution.dropExpired();
+                            // Apagar todas os registros de DNS de HELO vencidos.
+                            CacheHELO.dropExpired();
                         }
                     }, 3600000, 3600000 // Frequência de 1 hora.
                     );
@@ -1743,7 +1748,7 @@ public final class SPF implements Serializable {
         
         public static synchronized void put(String token,
                 Distribution distribution) {
-            if (MAP.put(token, distribution) != null) {
+            if (MAP.put(token, distribution) == null) {
                 CHANGED = true;
             }
         }
@@ -1870,6 +1875,180 @@ public final class SPF implements Serializable {
     }
     
     /**
+     * Classe que representa o cache de bloqueios de remetente.
+     */
+    private static class CacheBlock {
+        
+        /**
+         * Conjunto de remetentes bloqueados.
+         */
+        private static final HashSet<String> SET = new HashSet<String>();
+
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+
+        public static synchronized boolean add(String sender) throws ProcessException {
+            if (sender == null || !sender.contains("@")) {
+                throw new ProcessException("ERROR: SENDER INVALID");
+            } else if (SET.add(sender.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean add(String client, String sender) throws ProcessException {
+            if (sender == null || !sender.contains("@")) {
+                throw new ProcessException("ERROR: SENDER INVALID");
+            } else if (SET.add(client + ':' + sender.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean drop(String sender) throws ProcessException {
+            if (sender == null || !sender.contains("@")) {
+                throw new ProcessException("ERROR: SENDER INVALID");
+            } else if (SET.remove(sender.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean drop(String client, String sender) throws ProcessException {
+            if (sender == null || !sender.contains("@")) {
+                throw new ProcessException("ERROR: SENDER INVALID");
+            } else if (SET.remove(client + ':' + sender.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized TreeSet<String> get(String client) throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            for (String sender : SET) {
+                if (sender.startsWith(client + ':')) {
+                    int index = sender.indexOf(':') + 1;
+                    sender = sender.substring(index);
+                    blockSet.add(sender);
+                }
+            }
+            return blockSet;
+        }
+        
+//        public static boolean contains(String sender) {
+//            if (sender == null || !sender.contains("@")) {
+//                return false;
+//            } else {
+//                String part = sender.substring(0, sender.indexOf('@') + 1);
+//                String domain = sender.substring(sender.lastIndexOf('@'));
+//                if (SET.contains(sender)) {
+//                    return true;
+//                } else if (SET.contains(part)) {
+//                    return true;
+//                } else if (SET.contains(domain)) {
+//                    return true;
+//                } else {
+//                    return false;
+//                }
+//            }
+//        }
+        
+        public static boolean contains(String client, String sender) {
+            if (sender == null || !sender.contains("@")) {
+                return false;
+            } else {
+                sender = sender.toLowerCase();
+                String part = sender.substring(0, sender.indexOf('@') + 1);
+                String domain = sender.substring(sender.lastIndexOf('@'));
+                if (SET.contains(sender)) {
+                    return true;
+                } else if (SET.contains(client + ':' + sender)) {
+                    return true;
+                } else if (SET.contains(part)) {
+                    return true;
+                } else if (SET.contains(client + ':' + part)) {
+                    return true;
+                } else if (SET.contains(domain)) {
+                    return true;
+                } else if (SET.contains(client + ':' + domain)) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("block.set");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(SET, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("block.set");
+            if (file.exists()) {
+                try {
+                    Set<String> set;
+                    FileInputStream fileInputStream = new FileInputStream(file);
+                    try {
+                        set = SerializationUtils.deserialize(fileInputStream);
+                    } finally {
+                        fileInputStream.close();
+                    }
+                    SET.addAll(set);
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+    }
+    
+    public static boolean addBlock(String sender) throws ProcessException {
+        return CacheBlock.add(sender);
+    }
+    
+    public static boolean addBlock(String client, String sender) throws ProcessException {
+        return CacheBlock.add(client, sender);
+    }
+    
+    public static boolean dropBlock(String sender) throws ProcessException {
+        return CacheBlock.drop(sender);
+    }
+    
+    public static boolean dropBlock(String client, String sender) throws ProcessException {
+        return CacheBlock.drop(client, sender);
+    }
+    
+    public static TreeSet<String> getBlockSet(String client) throws ProcessException {
+        return CacheBlock.get(client);
+    }
+    
+    /**
      * Classe que representa o cache de "best-guess" exclusivos.
      */
     private static class CacheGuess {
@@ -1951,6 +2130,10 @@ public final class SPF implements Serializable {
         CacheGuess.add(host, spf);
     }
     
+    public static void storeBlock() {
+        CacheBlock.store();
+    }
+    
     /**
      * Armazenamento de cache em disco.
      */
@@ -1959,7 +2142,9 @@ public final class SPF implements Serializable {
         CacheComplain.store();
         CacheDistribution.store();
         CacheProvider.store();
+        CacheBlock.store();
         CacheGuess.store();
+        CacheHELO.store();
     }
     
     /**
@@ -1970,8 +2155,12 @@ public final class SPF implements Serializable {
         CacheComplain.load();
         CacheDistribution.load();
         CacheProvider.load();
+        CacheBlock.load();
         CacheGuess.load();
+        CacheHELO.load();
     }
+    
+    
     
     /**
      * Classe que representa o cache de resolução de HELO.
@@ -1982,18 +2171,98 @@ public final class SPF implements Serializable {
      */
     private static class CacheHELO {
         
-        // TODO: implementar uma estrutura de dados que comporte o cache de resolução de HELO.
+        /**
+         * Mapa de atributos da verificação de HELO.
+         */
+        private static final HashMap<String,HELO> MAP = new HashMap<String,HELO>();
+        
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+        
+        /*
+         * Classe para guardar os atributos da consulta.
+         */
+        private static final class HELO implements Serializable {
+        
+            private static final long serialVersionUID = 1L;
+
+            private Attributes attributes = null;
+            private int queryCount = 0;
+            private long lastQuery;
+
+            private HELO(String hostname) throws NamingException {
+                this.lastQuery = System.currentTimeMillis();
+                refresh(hostname);
+            }
+            
+            public synchronized void refresh(String hostname) throws NamingException {
+                long time = System.currentTimeMillis();
+                try {
+                    this.attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                            "dns:/" + hostname, new String[]{"A", "AAAA"});
+                    this.queryCount = 0;
+                    CHANGED = true;
+                    if (attributes == null) {
+                        Server.logLookupHELO(time, hostname, "NXDOMAIN");
+                    } else {
+                        Server.logLookupHELO(time, hostname, attributes.toString());
+                    }
+                } catch (NameNotFoundException ex) {
+                    this.attributes = null;
+                    this.queryCount = 0;
+                    CHANGED = true;
+                    Server.logLookupHELO(time, hostname, "NXDOMAIN");
+                }
+            }
+
+            public boolean isExpired7() {
+                return System.currentTimeMillis() - lastQuery > 604800000;
+            }
+        }
+        
+        /**
+         * Primeiro teste de estrutura de dados simples.
+         * @param helo
+         * @return
+         * @throws Exception 
+         */
+        private static Attributes getAttributes(String hostname) throws NamingException {
+            HELO heloObj = MAP.get(hostname);
+            if (heloObj == null) {
+                heloObj = new HELO(hostname);
+                put(hostname, heloObj);
+                return heloObj.attributes;
+            } else {
+                heloObj.queryCount++;
+                heloObj.lastQuery = System.currentTimeMillis();
+                CHANGED = true;
+                return heloObj.attributes;
+            }
+        }
+        
+        private static Attribute getAttribute(
+                String helo, String attribute) throws NamingException {
+            Attributes attributes = getAttributes(helo);
+            if (attributes == null) {
+                return null;
+            } else {
+                return attributes.get(attribute);
+            }
+        }
         
         public static boolean match(String ip, String helo) {
-            if (!Domain.containsDomain(helo)) {
+            if ((helo = Domain.extractHost(helo, false)) == null) {
+                // o HELO é nulo.
+                return false;
+            } else if (!Domain.containsDomain(helo)) {
                 // o HELO não é um hostname válido.
                 return false;
             } else if (SubnetIPv4.isValidIPv4(ip)) {
                 long time = System.currentTimeMillis();
                 try {
-                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + helo, new String[]{"A"});
-                    Attribute attribute = attributes.get("A");
+                    Attribute attribute = getAttribute(helo, "A");
                     if (attribute == null) {
                         Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
                         return false;
@@ -2017,9 +2286,6 @@ public final class SPF implements Serializable {
                 } catch (CommunicationException ex) {
                     Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
                     return false;
-                } catch (NameNotFoundException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "NOT FOUND");
-                    return false;
                 } catch (NamingException ex) {
                     Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
                     return false;
@@ -2027,9 +2293,7 @@ public final class SPF implements Serializable {
             } else if (SubnetIPv6.isValidIPv6(ip)) {
                 long time = System.currentTimeMillis();
                 try {
-                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + helo, new String[]{"AAAA"});
-                    Attribute attribute = attributes.get("AAAA");
+                    Attribute attribute = getAttribute(helo, "AAAA");
                     if (attribute == null) {
                         Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
                         return false;
@@ -2053,9 +2317,6 @@ public final class SPF implements Serializable {
                 } catch (CommunicationException ex) {
                     Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
                     return false;
-                } catch (NameNotFoundException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "NOT FOUND");
-                    return false;
                 } catch (NamingException ex) {
                     Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
                     return false;
@@ -2065,10 +2326,97 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        public static synchronized void drop(String helo) {
+            if (MAP.remove(helo) != null) {
+                CHANGED = true;
+            }
+        }
+        
+        public static synchronized void put(String helo, HELO heloObj) {
+            if (MAP.put(helo, heloObj) == null) {
+                CHANGED = true;
+            }
+        }
+        
+        public static void dropExpired() {
+            TreeSet<String> distributionKeySet = new TreeSet<String>();
+            distributionKeySet.addAll(MAP.keySet());
+            for (String helo : distributionKeySet) {
+                HELO heloObj = MAP.get(helo);
+                if (heloObj != null && heloObj.isExpired7()) {
+                    drop(helo);
+                }
+            }
+        }
+        
+        /**
+         * Atualiza o registro mais consultado.
+         */
+        private static void refresh() {
+            String heloMax = null;
+            HELO heloObjMax = null;
+            for (String helo : MAP.keySet()) {
+                HELO heloObj = MAP.get(helo);
+                if (heloObjMax == null) {
+                    heloObjMax = heloObj;
+                } else if (heloObjMax.queryCount < heloObj.queryCount) {
+                    heloObjMax = heloObj;
+                }
+            }
+            if (heloMax != null && heloObjMax != null
+                    && heloObjMax.queryCount > 3) {
+                try {
+                    heloObjMax.refresh(heloMax);
+                } catch (NamingException ex) {
+                    Server.logError(ex);
+                }
+            }
+            store();
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("helo.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("helo.map");
+            if (file.exists()) {
+                try {
+                    HashMap<String,HELO> map;
+                    FileInputStream fileInputStream = new FileInputStream(file);
+                    try {
+                        map = SerializationUtils.deserialize(fileInputStream);
+                    } finally {
+                        fileInputStream.close();
+                    }
+                    MAP.putAll(map);
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
     }
     
     protected static String processPostfixSPF(
-            String ip, String sender, String helo
+            String client, String ip, String sender, String helo
             ) throws ProcessException {
         if (sender != null && sender.length() > 0 && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
@@ -2076,6 +2424,9 @@ public final class SPF implements Serializable {
         } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
+        } else if (CacheBlock.contains(client, sender)) {
+            return "action=REJECT [RBL] "
+                    + sender + " is permanently blocked in this server.\n\n";
         } else {
             try {
                 String result;
@@ -2186,7 +2537,7 @@ public final class SPF implements Serializable {
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
      */
-    protected static String processSPF(String query) {
+    protected static String processSPF(String client, String query) {
         try {
             String result = "";
             if (query.length() == 0) {
@@ -2227,6 +2578,9 @@ public final class SPF implements Serializable {
                         if (tokenizer.countTokens() == 2) {
                             sender = tokenizer.nextToken().toLowerCase();
                             helo = tokenizer.nextToken().toLowerCase();
+                            if (CacheBlock.contains(client, sender)) {
+                                return "BLOCKED\n";
+                            }
                         } else {
                             sender = null;
                             helo = tokenizer.nextToken().toLowerCase();
@@ -2654,13 +3008,10 @@ public final class SPF implements Serializable {
             float max = probability[2];
             if (max == 0.0f) {
                 status = Status.WHITE;
-//            } else if (min > 0.125f) {
             } else if (min > 0.0625f) {
                 status = Status.BLACK;
-//            } else if (status == Status.GRAY && min > 0.0625f) {
             } else if (status == Status.GRAY && min > 0.03125f) {
                 status = Status.BLACK;
-//            } else if (status == Status.BLACK && max < 0.0625f) {
             } else if (status == Status.BLACK && max < 0.03125f) {
                 status = Status.GRAY;
             }

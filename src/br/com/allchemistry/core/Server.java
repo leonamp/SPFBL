@@ -323,6 +323,14 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as consultas DNS para HELO.
+     */
+    public static synchronized void logLookupHELO(long time, 
+            String host, String result) {
+        log(time, "HELOL", host + " => " + result);
+    }
+    
+    /**
      * Registra as consultas de mecanismo A de SPF.
      */
     public static synchronized void logMecanismA(long time, 
@@ -422,7 +430,7 @@ public abstract class Server extends Thread {
     private static long lastClientsFileModified = 0;
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
-    private static synchronized String getLogClient(InetAddress ipAddress) {
+    public static synchronized String getLogClient(InetAddress ipAddress) {
         File clientsFile = new File("clients.txt");
         if (!clientsFile.exists()) {
             subnetClientsMap.clear();
@@ -854,6 +862,25 @@ public abstract class Server extends Thread {
                         SPF.addProvider(provider);
                     }
                     result = "OK\n";
+                } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
+                    String action = tokenizer.nextToken();
+                    if (action.equals("ADD")) {
+                        // Comando para adicionar bloqueio de remetente.
+                        while (tokenizer.hasMoreTokens()) {
+                            String provider = tokenizer.nextToken();
+                            SPF.addBlock(provider);
+                        }
+                        result = "OK\n";
+                    } else if (action.equals("DROP")) {
+                        // Comando para adicionar bloqueio de remetente.
+                        while (tokenizer.hasMoreTokens()) {
+                            String provider = tokenizer.nextToken();
+                            SPF.dropBlock(provider);
+                        }
+                        result = "OK\n";
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
                     // Comando para adicionar um palpite SPF.
                     String domain = tokenizer.nextToken();

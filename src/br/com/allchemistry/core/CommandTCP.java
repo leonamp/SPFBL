@@ -68,6 +68,8 @@ public final class CommandTCP extends Server {
                         socket.close();
                         // Log da consulta com o respectivo resultado.
                         Server.logCommand(time, socket.getInetAddress(), command, result);
+                        // Salvar arquivos de cache.
+                        Server.storeCache();
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
