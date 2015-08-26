@@ -233,6 +233,9 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     message = You are permanently blocked on this server.
     log_message = SPF check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+  discard
+    log_message = SPF check spamtrap.
+    condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
 ```
 
 e a seguinte linha na secção "acl_check_data":
@@ -270,6 +273,9 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     message = You are permanently blocked on this server.
     log_message = SPF check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+  discard
+    log_message = SPF check spamtrap.
+    condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
