@@ -92,13 +92,41 @@ O SPFBL mantém em cache todos os registros SPF encontrados e procura mantê-los
 
 Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue informações sobre o responsável pelo envio e a data que a consulta foi realizada. Este ticket pode ser utilizado para formalizar uma denúncia, que contabiliza para o responsável o peso de denúncia. Cada denúncia expira em sete dias após a data da consulta e não pode ser feita após cinco dias da consulta.
 
+##### Bloqueio permanente de remetentes
+
+É possível bloquear remetentes permanentemente através da alteração de uma lista arbitrária.
+
+As opções de bloqueio são:
+
+* Caixa postal: apenas a parte que antecede o arroba.
+* Domínio: apenas a parte que precede o arroba.
+* Remetente: o endereço completo do remetente.
+
+Para visualizar a lista de bloqueios arbitrários:
+```
+user:~# ./spfblview.sh <remetente>
+EMPTY
+```
+
+Para adicionar um bloqueio arbitrário:
+```
+user:~# ./spfblblock.sh <remetente>
+OK
+```
+
+Para remover um bloqueio arbitrário:
+```
+user:~# ./spfblunblock.sh <remetente>
+OK
+```
+
 ### Funcionamento
 
 A seguir é mostrado como o SPFBL funciona internamente.
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais um qualifidador novo, chamado LISTED:
+O SPFBL retorna todos os qualificadores do SPF convencional mais dois qualifidadores novos, chamados LISTED e BLOCKED:
 
 * PASS <ticket>: permitir o recebimento da mensagem.
 * FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
@@ -106,6 +134,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais um qualifidador
 * NEUTRAL <ticket>: permitir o recebimento da mensagem.
 * NONE <ticket>: permitir o recebimento da mensagem.
 * LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+* BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 
 ##### Método de listagem
 
@@ -231,9 +260,12 @@ sudo java -jar SPFBL.jar 9875 512 >> log.001.txt &
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
 
-Se tiver problemas ou dúvidas, consulte o suporte pelo endereço <leandro@allchemistry.com.br>.
-
 ### Futuro do SPFBL
 
 Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes peer-to-peer.
 
+### Forum SPFBL
+
+Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
+
+![Forum SPFBL](https://groups.google.com/forum/#!forum/spfbl "Forum SPFBL")
