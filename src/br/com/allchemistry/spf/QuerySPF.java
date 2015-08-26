@@ -124,6 +124,7 @@ public final class QuerySPF extends Server {
                                 String ip = null;
                                 String sender = null;
                                 String helo = null;
+                                String recipient = null;
                                 query = "";
                                 do {
                                     query += line + "\\n";
@@ -136,10 +137,15 @@ public final class QuerySPF extends Server {
                                     } else if (line.startsWith("client_address=")) {
                                         int index = line.indexOf('=') + 1;
                                         ip = line.substring(index);
+                                    } else if (line.startsWith("recipient=")) {
+                                        int index = line.indexOf('=') + 1;
+                                        recipient = line.substring(index);
                                     }
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
-                                result = SPF.processPostfixSPF(client, ip, sender, helo);
+                                result = SPF.processPostfixSPF(
+                                        client, ip, sender, helo, recipient
+                                        );
                             } else if (line.startsWith("BLOCK ADD ")) {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
@@ -195,6 +201,66 @@ public final class QuerySPF extends Server {
                                         result = sender + "\n";
                                     } else {
                                         result += sender + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (line.startsWith("TRAP ADD ")) {
+                                query = line.substring(6).trim();
+                                type = "STRAP";
+                                // Mecanismo de adição de spamtrap.
+                                line = line.substring(9);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String recipient = tokenizer.nextToken();
+                                        boolean added = SPF.addTrap(client, recipient);
+                                        if (result == null) {
+                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                        } else {
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                        }
+                                    } catch (Exception ex) {
+                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeTrap();
+                            } else if (line.startsWith("TRAP DROP ")) {
+                                query = line.substring(6).trim();
+                                type = "STRAP";
+                                // Mecanismo de remoção de spamtrap.
+                                line = line.substring(10);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String recipient = tokenizer.nextToken();
+                                        boolean droped = SPF.dropTrap(client, recipient);
+                                        if (result == null) {
+                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                        } else {
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                        }
+                                    } catch (Exception ex) {
+                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeTrap();
+                            } else if (line.equals("TRAP SHOW")) {
+                                query = line.substring(6).trim();
+                                type = "STRAP";
+                                // Mecanismo de visualização de bloqueios de remetentes.
+                                for (String recipient : SPF.getTrapSet(client)) {
+                                    if (result == null) {
+                                        result = recipient + "\n";
+                                    } else {
+                                        result += recipient + "\n";
                                     }
                                 }
                                 if (result == null) {

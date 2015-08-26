@@ -1875,6 +1875,152 @@ public final class SPF implements Serializable {
     }
     
     /**
+     * Classe que representa o cache de spamtrap.
+     */
+    private static class CacheTrap {
+        
+        /**
+         * Conjunto de destinatarios de spamtrap.
+         */
+        private static final HashSet<String> SET = new HashSet<String>();
+
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+
+        public static synchronized boolean add(String recipient) throws ProcessException {
+            if (recipient == null || !Domain.isEmail(recipient)) {
+                throw new ProcessException("ERROR: RECIPIENT INVALID");
+            } else if (SET.add(recipient.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean add(String client, String recipient) throws ProcessException {
+            if (recipient == null || !Domain.isEmail(recipient)) {
+                throw new ProcessException("ERROR: RECIPIENT INVALID");
+            } else if (SET.add(client + ':' + recipient.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean drop(String recipient) throws ProcessException {
+            if (recipient == null || !Domain.isEmail(recipient)) {
+                throw new ProcessException("ERROR: RECIPIENT INVALID");
+            } else if (SET.remove(recipient.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean drop(String client, String recipient) throws ProcessException {
+            if (recipient == null || !Domain.isEmail(recipient)) {
+                throw new ProcessException("ERROR: RECIPIENT INVALID");
+            } else if (SET.remove(client + ':' + recipient.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized TreeSet<String> get(String client) throws ProcessException {
+            TreeSet<String> trapSet = new TreeSet<String>();
+            for (String recipient : SET) {
+                if (recipient.startsWith(client + ':')) {
+                    int index = recipient.indexOf(':') + 1;
+                    recipient = recipient.substring(index);
+                    trapSet.add(recipient);
+                }
+            }
+            return trapSet;
+        }
+        
+        public static boolean contains(String client, String recipient) {
+            if (recipient == null || !Domain.isEmail(recipient)) {
+                return false;
+            } else {
+                recipient = recipient.toLowerCase();
+                if (SET.contains(recipient)) {
+                    return true;
+                } else if (SET.contains(client + ':' + recipient)) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+        
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("trap.set");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(SET, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        private static synchronized void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("trap.set");
+            if (file.exists()) {
+                try {
+                    Set<String> set;
+                    FileInputStream fileInputStream = new FileInputStream(file);
+                    try {
+                        set = SerializationUtils.deserialize(fileInputStream);
+                    } finally {
+                        fileInputStream.close();
+                    }
+                    SET.addAll(set);
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+    }
+    
+    public static boolean addTrap(String sender) throws ProcessException {
+        return CacheTrap.add(sender);
+    }
+    
+    public static boolean addTrap(String client, String sender) throws ProcessException {
+        return CacheTrap.add(client, sender);
+    }
+    
+    public static boolean dropTrap(String sender) throws ProcessException {
+        return CacheTrap.drop(sender);
+    }
+    
+    public static boolean dropTrap(String client, String sender) throws ProcessException {
+        return CacheTrap.drop(client, sender);
+    }
+    
+    public static TreeSet<String> getTrapSet(String client) throws ProcessException {
+        return CacheTrap.get(client);
+    }
+    
+    /**
      * Classe que representa o cache de bloqueios de remetente.
      */
     private static class CacheBlock {
@@ -1944,24 +2090,6 @@ public final class SPF implements Serializable {
             }
             return blockSet;
         }
-        
-//        public static boolean contains(String sender) {
-//            if (sender == null || !sender.contains("@")) {
-//                return false;
-//            } else {
-//                String part = sender.substring(0, sender.indexOf('@') + 1);
-//                String domain = sender.substring(sender.lastIndexOf('@'));
-//                if (SET.contains(sender)) {
-//                    return true;
-//                } else if (SET.contains(part)) {
-//                    return true;
-//                } else if (SET.contains(domain)) {
-//                    return true;
-//                } else {
-//                    return false;
-//                }
-//            }
-//        }
         
         public static boolean contains(String client, String sender) {
             if (sender == null || !sender.contains("@")) {
@@ -2134,6 +2262,10 @@ public final class SPF implements Serializable {
         CacheBlock.store();
     }
     
+    public static void storeTrap() {
+        CacheTrap.store();
+    }
+    
     /**
      * Armazenamento de cache em disco.
      */
@@ -2142,6 +2274,7 @@ public final class SPF implements Serializable {
         CacheComplain.store();
         CacheDistribution.store();
         CacheProvider.store();
+        CacheTrap.store();
         CacheBlock.store();
         CacheGuess.store();
         CacheHELO.store();
@@ -2155,6 +2288,7 @@ public final class SPF implements Serializable {
         CacheComplain.load();
         CacheDistribution.load();
         CacheProvider.load();
+        CacheTrap.load();
         CacheBlock.load();
         CacheGuess.load();
         CacheHELO.load();
@@ -2416,8 +2550,8 @@ public final class SPF implements Serializable {
     }
     
     protected static String processPostfixSPF(
-            String client, String ip, String sender, String helo
-            ) throws ProcessException {
+            String client, String ip, String sender, String helo,
+            String recipient) throws ProcessException {
         if (sender != null && sender.length() > 0 && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
@@ -2425,8 +2559,12 @@ public final class SPF implements Serializable {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
         } else if (CacheBlock.contains(client, sender)) {
+            // TODO: auto-denúnica
             return "action=REJECT [RBL] "
                     + sender + " is permanently blocked in this server.\n\n";
+        } else if (CacheTrap.contains(client, recipient)) {
+            // TODO: auto-denúnica
+            return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
         } else {
             try {
                 String result;
