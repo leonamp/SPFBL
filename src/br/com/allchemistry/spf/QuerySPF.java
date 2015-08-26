@@ -14,6 +14,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
+import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -111,6 +112,7 @@ public final class QuerySPF extends Server {
                     String result = null;
                     Socket socket = SOCKET_LIST.poll();
                     try {
+                        String client = Server.getLogClient(socket.getInetAddress());
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
@@ -137,10 +139,70 @@ public final class QuerySPF extends Server {
                                     }
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
-                                result = SPF.processPostfixSPF(ip, sender, helo);
+                                result = SPF.processPostfixSPF(client, ip, sender, helo);
+                            } else if (line.startsWith("BLOCK ADD ")) {
+                                query = line.substring(6).trim();
+                                type = "BLOCK";
+                                // Mecanismo de adição bloqueio de remetente.
+                                line = line.substring(10);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String sender = tokenizer.nextToken();
+                                        boolean added = SPF.addBlock(client, sender);
+                                        if (result == null) {
+                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                        } else {
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                        }
+                                    } catch (Exception ex) {
+                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeBlock();
+                            } else if (line.startsWith("BLOCK DROP ")) {
+                                query = line.substring(6).trim();
+                                type = "BLOCK";
+                                // Mecanismo de remoção de bloqueio de remetente.
+                                line = line.substring(11);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String sender = tokenizer.nextToken();
+                                        boolean droped = SPF.dropBlock(client, sender);
+                                        if (result == null) {
+                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                        } else {
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                        }
+                                    } catch (Exception ex) {
+                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeBlock();
+                            } else if (line.equals("BLOCK SHOW")) {
+                                query = line.substring(6).trim();
+                                type = "BLOCK";
+                                // Mecanismo de visualização de bloqueios de remetentes.
+                                for (String sender : SPF.getBlockSet(client)) {
+                                    if (result == null) {
+                                        result = sender + "\n";
+                                    } else {
+                                        result += sender + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
                             } else {
                                 query = line.trim();
-                                result = SPF.processSPF(query);
+                                result = SPF.processSPF(client, query);
                                 if (query.startsWith("HAM ")) {
                                     type = "SPFHM";
                                 } else if (query.startsWith("SPAM ")) {
