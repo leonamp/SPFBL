@@ -504,6 +504,17 @@ public abstract class Server extends Thread {
         log(time, type, getLogClient(ipAddress) + ": " + query + " => " + result);
     }
     
+    public static synchronized void logQuery(
+            long time,
+            String type,
+            String client,
+            String query, String result) {
+        if (result != null) {
+            result = result.replace("\n", "\\n");
+        }
+        log(time, type, client + ": " + query + " => " + result);
+    }
+    
     /**
      * Registra as mensagens de comando.
      * Uma iniciativa para formalização das mensagens de log.

@@ -83,6 +83,16 @@ public abstract class Subnet implements Serializable {
     // Temporário até final da transição.
     public abstract String getWhoisServer() throws ProcessException;
     
+    public static String correctIP(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.correctIP(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.correctIP(ip);
+        } else {
+            return ip;
+        }
+    }
+    
     /**
      * Atualiza os campos do registro com resultado do WHOIS.
      * @param result o resultado do WHOIS.
