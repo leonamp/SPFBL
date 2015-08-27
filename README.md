@@ -94,7 +94,7 @@ Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue inform
 
 ##### Bloqueio permanente de remetentes
 
-É possível bloquear remetentes permanentemente através da alteração de uma lista arbitrária.
+É possível bloquear remetentes permanentemente através da alteração de uma lista arbitrária onde o SPFBL realiza a denúncia automática e manda o MTA rejeitar a mensagem.
 
 As opções de bloqueio são:
 
@@ -124,7 +124,7 @@ OK
 
 É possível adicionar destinatários na lista spamtrap do SPFBL.
 
-Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a auto-denúncia e manda o MTA discartar silencionsamente a mensagem.
+Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a denúncia automática e manda o MTA discartar silencionsamente a mensagem.
 
 Para visualizar a lista de spamtrap:
 ```
