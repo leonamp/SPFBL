@@ -24,7 +24,7 @@
 #    1. IP: o IPv4 ou IPv6 do host de origem.
 #    2. email: o email do remetente (opcional).
 #    3. HELO: o HELO passado pelo host de origem.
-#    4. recipient: o destinátario da mensagem (opcional).
+#    4. recipient: o destinátario da mensagem (opcional se não utilizar spamtrap).
 #
 # Saídas com qualificadores e as ações:
 #
@@ -58,7 +58,7 @@ email=$2
 helo=$3
 recipient=$4
 
-qualifier=$(echo "$ip $email $helo $recipient" | nc -w 5 54.94.137.168 9877)
+qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc -w 5 54.94.137.168 9877)
 
 if [[ $qualifier == "" ]]; then
 

@@ -2750,25 +2750,47 @@ public final class SPF implements Serializable {
                     } else {
                         result = "OK " + tokenSet + "\n";
                     }
-                } else if (tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
+                } else if ((firstToken.equals("SPF") || tokenizer.countTokens() == 4)
+                        || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
                     try {
                         String ip;
-                        if (firstToken.equals("CHECK")) {
-                            ip = tokenizer.nextToken();
-                        } else {
-                            ip = firstToken;
-                        }
                         String sender;
                         String helo;
-                        String recipient = null;
-                        if (tokenizer.countTokens() == 2) {
-                            sender = tokenizer.nextToken().toLowerCase();
-                            helo = tokenizer.nextToken().toLowerCase();
+                        String recipient;
+                        if (firstToken.equals("SPF")) {
+                            // Nova formatação de consulta.
+                            ip = tokenizer.nextToken();
+                            sender = tokenizer.nextToken();
+                            helo = tokenizer.nextToken();
+                            recipient = tokenizer.nextToken();
+                            ip = ip.substring(1,ip.length()-1);
+                            sender = sender.substring(1,sender.length()-1);
+                            helo = helo.substring(1,helo.length()-1);
+                            recipient = recipient.substring(1,recipient.length()-1);
+                            if (sender.length() == 0) {
+                                sender = null;
+                            }
+                            if (recipient.length() == 0) {
+                                recipient = null;
+                            }
                         } else {
-                            sender = null;
-                            helo = tokenizer.nextToken().toLowerCase();
+                            // Manter compatibilidade da versão antiga.
+                            // Versão obsoleta.
+                            if (firstToken.equals("CHECK")) {
+                                ip = tokenizer.nextToken();
+                            } else {
+                                ip = firstToken;
+                            }
+                            if (tokenizer.countTokens() == 2) {
+                                sender = tokenizer.nextToken().toLowerCase();
+                                helo = tokenizer.nextToken().toLowerCase();
+                            } else {
+                                sender = null;
+                                helo = tokenizer.nextToken().toLowerCase();
+                            }
+                            recipient = null;
                         }
                         if (!Subnet.isValidIP(ip)) {
                             return "ERROR: INVALID IP\n";
