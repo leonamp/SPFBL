@@ -1,2 +1,20 @@
-201.6.246.214/32	leandro@allchemistry.com.br	Leandro Carlos Rodrigues
-187.49.128.1/32		fabio@rline.com.br		Fabio Julian Ortlieb
+201.6.246.214/32	leandro@allchemistry.com.br		Leandro Carlos Rodrigues
+189.84.0.0/24		alexandre@onda.net.br			Alexandre J. Correa
+177.184.32.0/24		alexandre@onda.net.br			Alexandre J. Correa
+173.192.213.34/32	alexandre@onda.net.br			Alexandre J. Correa
+179.107.83.0/24		alexandre@onda.net.br			Alexandre J. Correa
+72.55.179.117/32	anderson@microquest.com.br		Anderson C. Santos
+174.142.146.128/29	anderson@microquest.com.br		Anderson C. Santos
+200.144.184.32/27	jguidini@usp.br				Juliano Alves Guidini
+150.162.61.4/32		abadan@gmail.com			Diego Abadan
+150.162.61.2/32		abadan@gmail.com			Diego Abadan
+150.162.0.129/32	abadan@gmail.com			Diego Abadan
+200.175.19.133/32	daviperes@gmail.com			Davi Peres
+187.86.57.0/24		rick@opcaonet.com.br			Ricardo Walter
+187.86.63.0/24		rick@opcaonet.com.br			Ricardo Walter
+187.49.128.1/32		fabio@rline.com.br			Fabio Julian Ortlieb
+69.162.79.64/28		smuxbr@gmail.com			Roberto Lima
+69.162.91.240/28	smuxbr@gmail.com			Roberto Lima
+192.169.80.20/30	smuxbr@gmail.com			Roberto Lima
+187.17.176.0/20		suporte@adllink.com.br			Fernando José
+177.154.143.192/27	gian@live.com				Gian BR

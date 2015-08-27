@@ -206,11 +206,11 @@ check_policy_service inet:<IP do servidor SPFBL>:9877
 
 ##### Integração com Exim
 
-Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_mail":
+Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_rcpt":
 ```
 # Use spfblquery.sh to perform SPFBL check.
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh $sender_host_address $sender_address $sender_helo_name}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
@@ -236,10 +236,6 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   discard
     log_message = SPF check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
-```
-
-e a seguinte linha na secção "acl_check_data":
-```
    warn
       condition = ${if def:acl_c_spfbl {true}{false}}
       add_header = Received-SPFBL: $acl_c_spfbl
@@ -250,7 +246,7 @@ e a seguinte linha na secção "acl_check_data":
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
 ```
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh $sender_host_address $sender_address $sender_helo_name}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
