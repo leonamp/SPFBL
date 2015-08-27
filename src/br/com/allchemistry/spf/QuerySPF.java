@@ -4,6 +4,7 @@
  */
 package br.com.allchemistry.spf;
 
+import br.com.allchemistry.core.ProcessException;
 import br.com.allchemistry.core.Server;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -161,8 +162,8 @@ public final class QuerySPF extends Server {
                                         } else {
                                             result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
                                         }
-                                    } catch (Exception ex) {
-                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    } catch (ProcessException ex) {
+                                        result = ex.getMessage() + "\n";
                                     }
                                 }
                                 if (result == null) {
@@ -184,8 +185,8 @@ public final class QuerySPF extends Server {
                                         } else {
                                             result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
                                         }
-                                    } catch (Exception ex) {
-                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    } catch (ProcessException ex) {
+                                        result = ex.getMessage() + "\n";
                                     }
                                 }
                                 if (result == null) {
@@ -221,8 +222,8 @@ public final class QuerySPF extends Server {
                                         } else {
                                             result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
                                         }
-                                    } catch (Exception ex) {
-                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    } catch (ProcessException ex) {
+                                        result = ex.getMessage() + "\n";
                                     }
                                 }
                                 if (result == null) {
@@ -244,8 +245,8 @@ public final class QuerySPF extends Server {
                                         } else {
                                             result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
                                         }
-                                    } catch (Exception ex) {
-                                        result += "ERROR: " + ex.getMessage() + "\n";
+                                    } catch (ProcessException ex) {
+                                        result = ex.getMessage() + "\n";
                                     }
                                 }
                                 if (result == null) {

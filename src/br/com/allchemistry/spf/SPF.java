@@ -8,6 +8,7 @@ import br.com.allchemistry.core.NormalDistribution;
 import br.com.allchemistry.whois.Domain;
 import br.com.allchemistry.core.ProcessException;
 import br.com.allchemistry.core.Server;
+import br.com.allchemistry.whois.Owner;
 import br.com.allchemistry.whois.Subnet;
 import br.com.allchemistry.whois.SubnetIPv4;
 import br.com.allchemistry.whois.SubnetIPv6;
@@ -43,46 +44,41 @@ import javax.naming.directory.InvalidAttributeIdentifierException;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
- * Representa o registro SPF de um deterninado host.
- * Implementação da RFC 4406, exceto os Macros da seção 8 por enquanto.
- * 
- * Quando a consulta é feita, o resultado do SPF é 
- * considerado para determinar o responsável pela mensagem.
- * Uma vez encontrado o responsável, um ticket SPFBL 
- * é gerado através de criptografia na base 64.
- * Este ticket é enviado juntamente o qualificador SPF da consulta.
- * O cliente da consulta deve extrair o ticket do resultado 
- * e adicionar no cabeçalho da mensagem utilizando o campo "Received-SPFBL".
- * 
- * A regra de determinação de responsabilidade é usada para 
- * gerar o ticket SPFBL e funciona da seguinte forma:
- *    1. Se retornar PASS, o remetente é o responsável pela mensagem ou
- *    2. Caso contrário, o host é responsável pela mensagem.
- * 
- * No primeiro caso, onde o remetente é responsável pela mensagem,
- * o ticket é gerado com a seguinte regra:
- *    1. Se o domínio do rementente estiver na lista de provedores,
- *       então o endereço de e-mail completo é utilizado ou
- *    2. Caso contrário, o host e domínio do rementente são utilizados.
- * 
- * No segundo caso, onde o host é responsável pela mensagem,
- * o ticket é gerado com a seguinte regra:
- *    1. Se o HELO apontar para o IP, então o próprio 
- *       HELO e o domínio do HELO são utilizados ou
- *    2. Caso contrário, o IP é utilizado.
- * 
- * Todas as consultas são registradas numa distribuição de probabilidade,
- * onde é possível alternar de HAM para SPAM utilizando o ticket gerado.
- * Uma vez recebida a reclamação com o ticket, o serviço 
- * descriptografa o ticket e extrai os responsaveis pelo envio.
- * 
- * 
+ * Representa o registro SPF de um deterninado host. Implementação da RFC 4406,
+ * exceto os Macros da seção 8 por enquanto.
+ *
+ * Quando a consulta é feita, o resultado do SPF é considerado para determinar o
+ * responsável pela mensagem. Uma vez encontrado o responsável, um ticket SPFBL
+ * é gerado através de criptografia na base 64. Este ticket é enviado juntamente
+ * o qualificador SPF da consulta. O cliente da consulta deve extrair o ticket
+ * do resultado e adicionar no cabeçalho da mensagem utilizando o campo
+ * "Received-SPFBL".
+ *
+ * A regra de determinação de responsabilidade é usada para gerar o ticket SPFBL
+ * e funciona da seguinte forma: 1. Se retornar PASS, o remetente é o
+ * responsável pela mensagem ou 2. Caso contrário, o host é responsável pela
+ * mensagem.
+ *
+ * No primeiro caso, onde o remetente é responsável pela mensagem, o ticket é
+ * gerado com a seguinte regra: 1. Se o domínio do rementente estiver na lista
+ * de provedores, então o endereço de e-mail completo é utilizado ou 2. Caso
+ * contrário, o host e domínio do rementente são utilizados.
+ *
+ * No segundo caso, onde o host é responsável pela mensagem, o ticket é gerado
+ * com a seguinte regra: 1. Se o HELO apontar para o IP, então o próprio HELO e
+ * o domínio do HELO são utilizados ou 2. Caso contrário, o IP é utilizado.
+ *
+ * Todas as consultas são registradas numa distribuição de probabilidade, onde é
+ * possível alternar de HAM para SPAM utilizando o ticket gerado. Uma vez
+ * recebida a reclamação com o ticket, o serviço descriptografa o ticket e
+ * extrai os responsaveis pelo envio.
+ *
+ *
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
 public final class SPF implements Serializable {
-    
+
     private static final long serialVersionUID = 1L;
-    
     private final String hostname;
     private String redirect = null;
     private String explanation = null;
@@ -91,22 +87,22 @@ public final class SPF implements Serializable {
     private boolean error = false; // Se houve erro de sintaxe.
     private int queries = 0; // Contador de consultas.
     private int nxdomain = 0; // Contador de inexistência de domínio.
-    
     private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
     private static final int REFRESH_TIME = 7; // Prazo máximo que o registro deve permanecer em cache em dias.
-    
+
     private SPF(String hostname) throws ProcessException {
         this.hostname = hostname;
         refresh(false);
     }
-    
+
     /**
-     * Consulta o registro SPF nos registros DNS do domínio.
-     * Se houver mais de dois registros diferentes,
-     * realiza o merge do forma a retornar um único registro.
+     * Consulta o registro SPF nos registros DNS do domínio. Se houver mais de
+     * dois registros diferentes, realiza o merge do forma a retornar um único
+     * registro.
+     *
      * @param hostname o nome do host para consulta do SPF.
      * @return o registro SPF consertado, padronuzado e mergeado.
-     * @throws ProcessException 
+     * @throws ProcessException
      */
     private static LinkedList<String> getRegistrySPF(String hostname) throws ProcessException {
         try {
@@ -166,14 +162,15 @@ public final class SPF implements Serializable {
             }
             return registryList;
         } catch (NamingException ex) {
-            return null; 
+            return null;
         } catch (Exception ex) {
             throw new ProcessException("ERROR: FATAL", ex);
         }
     }
-    
+
     /**
      * Algoritmo para consertar e padronizar o registro SPF.
+     *
      * @param registry o registro SPF original.
      * @return o registro SPF consertado e padronizado.
      */
@@ -238,22 +235,22 @@ public final class SPF implements Serializable {
         }
         return registry;
     }
-    
+
     /**
      * Merge nas listas de fixação de SPF.
+     *
      * @param midleList lista dos mecanismos centrais.
      * @param errorList lista dos mecanismos com erro de sintaxe.
      */
     private static void mergeMechanism(
             LinkedList<String> midleList,
-            LinkedList<String> errorList
-    ) {
+            LinkedList<String> errorList) {
         while (!errorList.isEmpty()) {
             boolean fixed = false;
             if (errorList.size() > 1) {
                 for (int index = 1; index < errorList.size(); index++) {
                     String tokenFix = errorList.getFirst();
-                    for (String tokenError : errorList.subList(1, index+1)) {
+                    for (String tokenError : errorList.subList(1, index + 1)) {
                         tokenFix += tokenError;
                     }
                     if (isMechanismMiddle(tokenFix)) {
@@ -274,9 +271,10 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     /**
      * Verifica se o token é um mecanismo cental.
+     *
      * @param token o token do registro SPF.
      * @return verdadeiro se o token é um mecanismo cental.
      */
@@ -299,25 +297,26 @@ public final class SPF implements Serializable {
             return false;
         }
     }
-    
+
     private boolean isInexistent() {
         // Se procurou 32 vezes seguidas e retornou domínio inexistente,
         // considerar como definitivamente inexistente.
         return nxdomain > 32;
     }
-    
+
     /**
-     * Método seguro para incrementar nxdomain 
-     * sem deixar que ele se torne negativo.
+     * Método seguro para incrementar nxdomain sem deixar que ele se torne
+     * negativo.
      */
     private void addInexistent() {
         if (nxdomain < Integer.MAX_VALUE) {
             nxdomain++;
         }
     }
-    
+
     /**
      * Atualiza o registro SPF de um host.
+     *
      * @throws ProcessException se houver falha no processamento.
      */
     private void refresh(boolean load) throws ProcessException {
@@ -452,30 +451,21 @@ public final class SPF implements Serializable {
             Server.logLookupSPF(time, hostname, result);
         }
     }
-    
-    public static void main(String[] args) {
-        try {
-            System.out.println(SPF.isMechanismInclude("include:ip4._spf.%{d}"));
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            System.exit(0);
-        }
-    }
-    
+
     /**
      * Verifica se o token é um mecanismo all válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo all válido.
      */
     private static boolean isMechanismAll(String token) {
         return Pattern.matches(
-                "^(\\+|-|~|\\?)?all$", token.toLowerCase()
-                );
+                "^(\\+|-|~|\\?)?all$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um mecanismo ip4 válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo ip4 válido.
      */
@@ -485,21 +475,20 @@ public final class SPF implements Serializable {
                 + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
                 + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
                 + "(/[0-9]{1,2})?"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Extrai um CIDR de IPv4 válido.
+     *
      * @param token o token a ser verificado.
      * @return um CIDR de IPv4 válido.
      */
     private static String extractIPv4CIDR(String token) {
-         Pattern pattern = Pattern.compile(
+        Pattern pattern = Pattern.compile(
                 "(:|^)((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
                 + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-                + "(/[0-9]{1,2})?)$"
-                );
+                + "(/[0-9]{1,2})?)$");
         Matcher matcher = pattern.matcher(token.toLowerCase());
         if (matcher.find()) {
             return matcher.group(2);
@@ -507,9 +496,10 @@ public final class SPF implements Serializable {
             return null;
         }
     }
-    
+
     /**
      * Verifica se o token é um mecanismo ip6 válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo ip6 válido.
      */
@@ -517,63 +507,62 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?ip6:"
                 + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
-                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
-                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
-                 + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
-                 + "(%.+)?(\\/[0-9]{1,3})?"
-                + "$", token
-                );
+                + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
+                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
+                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
+                + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
+                + "(%.+)?(\\/[0-9]{1,3})?"
+                + "$", token);
     }
-    
+
     /**
      * Extrai um CIDR de IPv6 válido.
+     *
      * @param token o token a ser verificado.
      * @return um CIDR de IPv6 válido.
      */
     private static String extractIPv6CIDR(String token) {
-         Pattern pattern = Pattern.compile(
+        Pattern pattern = Pattern.compile(
                 "(:|^)(((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
-                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
-                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
-                 + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                 + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
-                 + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                 + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
-                 + "(%.+)?(\\/[0-9]{1,3})?)$"
-                );
+                + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
+                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
+                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
+                + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+                + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
+                + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
+                + "(%.+)?(\\/[0-9]{1,3})?)$");
         Matcher matcher = pattern.matcher(token);
         if (matcher.find()) {
             return matcher.group(2);
@@ -581,9 +570,10 @@ public final class SPF implements Serializable {
             return null;
         }
     }
-    
+
     /**
      * Verifica se o token é um mecanismo a válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo a válido.
      */
@@ -593,12 +583,12 @@ public final class SPF implements Serializable {
                 + "(\\+|-|~|\\?)?a"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
                 + "(/[0-9]{1,2})?"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um mecanismo mx válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo mx válido.
      */
@@ -607,12 +597,12 @@ public final class SPF implements Serializable {
                 "^(\\+|-|~|\\?)?mx"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
                 + "(\\.|/[0-9]{1,2})?"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um mecanismo ptr válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo ptr válido.
      */
@@ -620,12 +610,12 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?ptr"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um mecanismo existis válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo existis válido.
      */
@@ -633,12 +623,12 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?exists:"
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um mecanismo include válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um mecanismo include válido.
      */
@@ -646,12 +636,12 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?include:"
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um modificador redirect válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um modificador redirect válido.
      */
@@ -659,12 +649,12 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^redirect="
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o token é um modificador explanation válido.
+     *
      * @param token o token a ser verificado.
      * @return verdadeiro se o token é um modificador explanation válido.
      */
@@ -672,21 +662,22 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^exp="
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase()
-                );
+                + "$", token.toLowerCase());
     }
-    
+
     /**
      * Verifica se o registro atual expirou.
+     *
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isRegistryExpired() {
         int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > REFRESH_TIME;
     }
-    
+
     /**
      * Retorna o resultado SPF para um IP especifico.
+     *
      * @param ip o IP a ser verificado.
      * @return o resultado SPF para um IP especifico.
      * @throws ProcessException se houver falha no processamento.
@@ -699,9 +690,10 @@ public final class SPF implements Serializable {
             return qualifier.name();
         }
     }
-    
+
     /**
      * Retorna o qualificador para uma consulta SPF.
+     *
      * @param ip o IP a ser verificado.
      * @param deep a profundiade de navegação da ávore SPF.
      * @param hostVisitedSet o conjunto de hosts visitados.
@@ -768,56 +760,56 @@ public final class SPF implements Serializable {
             return spf.getQualifier(ip, 0, hostVisitedSet);
         }
     }
-    
+
     /**
      * Retorna o hostname do registro SPF.
+     *
      * @return o hostname do registro SPF.
      */
     public String getHostname() {
         return hostname;
     }
-    
+
     /**
-     * Retorna o dominio de explicação do registro SPF.
-     * Não sei ainda do que se trata.
+     * Retorna o dominio de explicação do registro SPF. Não sei ainda do que se
+     * trata.
+     *
      * @return o dominio de explicação do registro SPF.
      */
     public String getExplanation() {
         return explanation;
     }
-    
+
     /**
      * A enumeração que representa todos os qualificadores possíveis.
      */
     private enum Qualifier {
-        
+
         PASS("Pass"),
         FAIL("Fail"),
         SOFTFAIL("SoftFail"),
         NEUTRAL("Neutral");
-        
         private final String description;
-        
+
         private Qualifier(String description) {
             this.description = description;
         }
-        
+
         @Override
         public String toString() {
             return description;
         }
     }
-    
+
     /**
      * Classe abstrata que representa qualquer mecanismo de processamento SPF.
      */
     private abstract class Mechanism implements Serializable {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final String expression;
-        private final Qualifier qualifier; 
-        
+        private final Qualifier qualifier;
+
         private Mechanism(String expression) {
             this.expression = expression;
             switch (expression.charAt(0)) {
@@ -837,17 +829,17 @@ public final class SPF implements Serializable {
                     this.qualifier = Qualifier.PASS; // Default qualifier.
             }
         }
-        
+
         public abstract boolean match(String ip) throws ProcessException;
-        
+
         public Qualifier getQualifier() {
             return qualifier;
         }
-        
+
         public String getExpression() {
             return expression;
         }
-        
+
         public boolean equals(Mechanism other) {
             if (other == null) {
                 return false;
@@ -857,32 +849,30 @@ public final class SPF implements Serializable {
                 return this.expression.equals(other.expression);
             }
         }
-        
+
         @Override
         public String toString() {
             return expression;
         }
     }
-    
+
     /**
      * Mecanismo de processamento CIDR de IPv4.
      */
     private final class MechanismIPv4 extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final int address;
         private final int mask;
-        
         /**
          * Marcado sempre que o mecanismo aponta para blocos reservados.
          */
         private final boolean reserved;
-        
+
         public MechanismIPv4(String expression) {
             super(expression);
             int index = expression.indexOf(':');
-            String inetnum = expression.substring(index+1);
+            String inetnum = expression.substring(index + 1);
             index = inetnum.indexOf('/');
             int addressLocal;
             int maskLocal;
@@ -890,8 +880,8 @@ public final class SPF implements Serializable {
                 maskLocal = 0xFFFFFFFF;
                 addressLocal = SubnetIPv4.getAddressIP(inetnum);
             } else {
-                maskLocal = SubnetIPv4.getMaskNet(inetnum.substring(index+1));
-                addressLocal = SubnetIPv4.getAddressIP(inetnum.substring(0,index)) & maskLocal;
+                maskLocal = SubnetIPv4.getMaskNet(inetnum.substring(index + 1));
+                addressLocal = SubnetIPv4.getAddressIP(inetnum.substring(0, index)) & maskLocal;
             }
             // Verifica se o endereço pertence a blocos reservados.
             boolean reservedLocal = addressLocal == 0xFFFFFFFF; // Broadcast
@@ -935,11 +925,11 @@ public final class SPF implements Serializable {
             this.mask = maskLocal;
             this.reserved = reservedLocal;
         }
-        
+
         public boolean isReserved() {
             return reserved;
         }
-        
+
         @Override
         public boolean match(String ip) {
             if (isReserved()) {
@@ -954,31 +944,30 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     /**
      * Mecanismo de processamento CIDR de IPv6.
      */
     private final class MechanismIPv6 extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final short[] address;
         private final short[] mask;
-        
+
         public MechanismIPv6(String expression) {
             super(expression);
             int index = expression.indexOf(':');
-            String inetnum = expression.substring(index+1);
+            String inetnum = expression.substring(index + 1);
             index = inetnum.indexOf('/');
             if (index == -1) {
                 this.mask = SubnetIPv6.getMaskIPv6(128);
                 this.address = SubnetIPv6.split(inetnum);
             } else {
-                this.mask = SubnetIPv6.getMaskIPv6(inetnum.substring(index+1));
-                this.address = SubnetIPv6.split(inetnum.substring(0,index), mask);
+                this.mask = SubnetIPv6.getMaskIPv6(inetnum.substring(index + 1));
+                this.address = SubnetIPv6.split(inetnum.substring(0, index), mask);
             }
         }
-        
+
         @Override
         public boolean match(String ip) {
             if (SubnetIPv6.isValidIPv6(ip)) {
@@ -994,25 +983,23 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     /**
      * Mecanismo de processamento do registro A.
      */
     private final class MechanismA extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
-        
         private boolean loaded = false;
-        
+
         public MechanismA(String expression, boolean load) {
             super(expression);
             if (load) {
                 loadList();
             }
         }
-        
+
         private synchronized void loadList() {
             if (!loaded) {
                 long time = System.currentTimeMillis();
@@ -1075,7 +1062,7 @@ public final class SPF implements Serializable {
                 loaded = true;
             }
         }
-        
+
         @Override
         public boolean match(String ip) throws ProcessException {
             loadList();
@@ -1087,25 +1074,23 @@ public final class SPF implements Serializable {
             return false;
         }
     }
-    
+
     /**
      * Mecanismo de processamento do registro MX.
      */
     private final class MechanismMX extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
-        
         private boolean loaded = false;
-        
+
         public MechanismMX(String expression, boolean load) {
             super(expression);
             if (load) {
                 loadList();
             }
         }
-        
+
         private synchronized void loadList() {
             if (!loaded) {
                 long time = System.currentTimeMillis();
@@ -1212,7 +1197,7 @@ public final class SPF implements Serializable {
                 loaded = true;
             }
         }
-        
+
         @Override
         public boolean match(String ip) throws ProcessException {
             loadList();
@@ -1224,18 +1209,18 @@ public final class SPF implements Serializable {
             return false;
         }
     }
-    
+
     /**
      * Mecanismo de processamento do reverso do IP de origem.
      */
     private final class MechanismPTR extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
+
         public MechanismPTR(String expression) {
             super(expression);
         }
-        
+
         @Override
         public synchronized boolean match(String ip) throws ProcessException {
             String expression = getExpression();
@@ -1254,13 +1239,13 @@ public final class SPF implements Serializable {
             return false;
         }
     }
-    
+
     /**
-     * Retorna o conjunto de hostnames que 
-     * representam o DNS reverso do IP informado.
-     * Apesar de geralmente haver apenas um reverso configurado,
-     * é possível que haja mais de um pois é possível que haja
-     * mais de um registro PTR e cada um deles apontando para o mesmo IP.
+     * Retorna o conjunto de hostnames que representam o DNS reverso do IP
+     * informado. Apesar de geralmente haver apenas um reverso configurado, é
+     * possível que haja mais de um pois é possível que haja mais de um registro
+     * PTR e cada um deles apontando para o mesmo IP.
+     *
      * @param ip o IP a ser verificado.
      * @return o conjunto de reversos do IP informado.
      */
@@ -1298,7 +1283,7 @@ public final class SPF implements Serializable {
                         host = host.substring(1);
                     }
                     if (host.endsWith(".")) {
-                        host = host.substring(0,host.length()-1);
+                        host = host.substring(0, host.length() - 1);
                     }
                     if (SubnetIPv4.isValidIPv4(ip)) {
                         atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
@@ -1342,44 +1327,43 @@ public final class SPF implements Serializable {
             return reverseList;
         }
     }
-    
+
     /**
      * Mecanismo de processamento exists.
      */
     private final class MechanismExists extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
+
         public MechanismExists(String expression) {
             super(expression);
         }
-        
+
         @Override
         public boolean match(String ip) throws ProcessException {
             throw new ProcessException("ERROR: NOT IMPLEMENTED");
         }
     }
-    
+
     /**
      * Mecanismo de inclusão de um nó na árvore SPF.
      */
     private final class MechanismInclude extends Mechanism {
-        
+
         private static final long serialVersionUID = 1L;
-        
+
         public MechanismInclude(String expression) {
             super(expression);
         }
-        
+
         private String getHostname() {
             String expression = getExpression();
             int index = expression.indexOf(':') + 1;
             return expression.substring(index);
         }
-        
+
         public Qualifier getQualifierSPF(
-                String ip, int deep, TreeSet<String> hostVisitedSet
-                ) throws ProcessException {
+                String ip, int deep, TreeSet<String> hostVisitedSet) throws ProcessException {
             String host = getHostname();
             SPF spf = CacheSPF.get(host);
             if (spf == null) {
@@ -1387,46 +1371,47 @@ public final class SPF implements Serializable {
             } else {
                 return spf.getQualifier(ip, deep, hostVisitedSet);
             }
-            
+
         }
-        
+
         @Override
         public boolean match(String ip) throws ProcessException {
             throw new ProcessException("ERROR: FATAL ERROR"); // Não pode fazer o match direto.
         }
     }
-    
+
     @Override
     public String toString() {
         return hostname;
     }
-    
+
     /**
      * Classe que representa o cache de registros SPF.
      */
     private static class CacheSPF {
-        
+
         /**
          * Mapa para cache dos registros SPF consultados.
          */
-        private static final HashMap<String,SPF> MAP = new HashMap<String,SPF>();
-        
+        private static final HashMap<String, SPF> MAP = new HashMap<String, SPF>();
         /**
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
-        
+
         /**
          * Adiciona um registro SPF no mapa de cache.
+         *
          * @param spf o registro SPF para ser adocionado.
          */
         private static synchronized void add(SPF spf) {
             MAP.put(spf.getHostname(), spf);
             CHANGED = true;
         }
-        
+
         /**
          * Retorna o registro SPF do e-mail.
+         *
          * @param address o endereço de e-mail que deve ser consultado.
          * @return o registro SPF, se for encontrado.
          * @throws ProcessException se houver falha no processamento.
@@ -1456,7 +1441,7 @@ public final class SPF implements Serializable {
                 CHANGED = true;
             }
         }
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -1475,13 +1460,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("spf.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,SPF> map;
+                    HashMap<String, SPF> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -1495,7 +1480,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         /**
          * Atualiza o registro mais consultado.
          */
@@ -1522,12 +1507,11 @@ public final class SPF implements Serializable {
             store();
         }
     }
-    
     private static final Semaphore REFRESH_SEMAPHORE = new Semaphore(1);
-    
+
     /**
-     * Atualiza registros SPF somente se nenhum 
-     * outro processo estiver atualizando.
+     * Atualiza registros SPF somente se nenhum outro processo estiver
+     * atualizando.
      */
     public static void tryRefresh() {
         // Evita que muitos processos fiquem 
@@ -1541,22 +1525,21 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     /**
      * Classe que representa o cache de registros de denúncia.
      */
     private static class CacheComplain {
-        
+
         /**
          * Mapa de reclamações com seus respectivos tickets.
          */
-        private static final HashMap<String,Complain> MAP = new HashMap<String,Complain>();
-
+        private static final HashMap<String, Complain> MAP = new HashMap<String, Complain>();
         /**
          * Flag que indica se o cache de reclamações foi modificado.
          */
         private static boolean CHANGED = false;
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -1575,13 +1558,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("complain.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,Complain> map;
+                    HashMap<String, Complain> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -1595,7 +1578,6 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
         /**
          * Timer que controla as reclamações.
          */
@@ -1609,33 +1591,34 @@ public final class SPF implements Serializable {
             // Agenda processamento de reclamações vencidas.
             TIMER.schedule(
                     new TimerTask() {
-                        @Override
-                        public synchronized void run() {
-                            LinkedList<String> expiredTicket = new LinkedList<String>();
-                            // Verificar reclamações vencidas.
-                            for (String ticket : MAP.keySet()) {
-                                Complain complain = MAP.get(ticket);
-                                if (complain.isExpired7()) {
-                                    complain.removeComplains();
-                                    expiredTicket.add(ticket);
-                                }
-                            }
-                            // Remover todos os tickets processados.
-                            for (String ticket : expiredTicket) {
-                                MAP.remove(ticket);
-                                CHANGED = true;
-                            }
-                            // Apagar todas as distribuições vencidas.
-                            CacheDistribution.dropExpired();
-                            // Apagar todas os registros de DNS de HELO vencidos.
-                            CacheHELO.dropExpired();
+                @Override
+                public synchronized void run() {
+                    LinkedList<String> expiredTicket = new LinkedList<String>();
+                    // Verificar reclamações vencidas.
+                    for (String ticket : MAP.keySet()) {
+                        Complain complain = MAP.get(ticket);
+                        if (complain.isExpired7()) {
+                            complain.removeComplains();
+                            expiredTicket.add(ticket);
                         }
-                    }, 3600000, 3600000 // Frequência de 1 hora.
+                    }
+                    // Remover todos os tickets processados.
+                    for (String ticket : expiredTicket) {
+                        MAP.remove(ticket);
+                        CHANGED = true;
+                    }
+                    // Apagar todas as distribuições vencidas.
+                    CacheDistribution.dropExpired();
+                    // Apagar todas os registros de DNS de HELO vencidos.
+                    CacheHELO.dropExpired();
+                }
+            }, 3600000, 3600000 // Frequência de 1 hora.
                     );
         }
 
         /**
          * Adiciona uma nova reclamação de SPAM.
+         *
          * @param ticket o ticket da mensagem original.
          * @throws ProcessException se houver falha no processamento do ticket.
          */
@@ -1652,6 +1635,7 @@ public final class SPF implements Serializable {
 
         /**
          * Remove uma nova reclamação de SPAM.
+         *
          * @param ticket o ticket da mensagem original.
          * @throws ProcessException se houver falha no processamento do ticket.
          */
@@ -1666,27 +1650,26 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     public static void cancel() {
         CacheComplain.cancel();
     }
-    
+
     /**
-     * Classe que representa o cache de 
-     * registros de distribuição de responsáveis.
+     * Classe que representa o cache de registros de distribuição de
+     * responsáveis.
      */
     private static class CacheDistribution {
-        
+
         /**
          * Mapa de distribuição binomial dos tokens encontrados.
          */
-        private static final HashMap<String,Distribution> MAP = new HashMap<String,Distribution>();
-
+        private static final HashMap<String, Distribution> MAP = new HashMap<String, Distribution>();
         /**
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -1705,13 +1688,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("distribution.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,Distribution> map;
+                    HashMap<String, Distribution> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -1725,7 +1708,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         public static void dropExpired() {
             TreeSet<String> distributionKeySet = new TreeSet<String>();
             distributionKeySet.addAll(MAP.keySet());
@@ -1733,8 +1716,7 @@ public final class SPF implements Serializable {
                 Distribution distribution = MAP.get(token);
                 if (distribution != null
                         && distribution.hasLastQuery()
-                        && distribution.isExpired14()
-                        ) {
+                        && distribution.isExpired14()) {
                     drop(token);
                 }
             }
@@ -1745,16 +1727,17 @@ public final class SPF implements Serializable {
                 CHANGED = true;
             }
         }
-        
+
         public static synchronized void put(String token,
                 Distribution distribution) {
             if (MAP.put(token, distribution) == null) {
                 CHANGED = true;
             }
         }
-        
+
         /**
          * Retorna uma distribuição binomial do token informado.
+         *
          * @param token o token cuja distribuição deve ser retornada.
          * @return uma distribuição binomial do token informado.
          */
@@ -1773,14 +1756,14 @@ public final class SPF implements Serializable {
             return distribution;
         }
 
-        public static TreeMap<String,Distribution> getMap() {
-            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+        public static TreeMap<String, Distribution> getMap() {
+            TreeMap<String, Distribution> distributionMap = new TreeMap<String, Distribution>();
             distributionMap.putAll(MAP);
             return distributionMap;
         }
 
-        public static TreeMap<String,Distribution> getMap(TreeSet<String> tokenSet) {
-            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+        public static TreeMap<String, Distribution> getMap(TreeSet<String> tokenSet) {
+            TreeMap<String, Distribution> distributionMap = new TreeMap<String, Distribution>();
             for (String token : tokenSet) {
                 Distribution distribution = MAP.get(token);
                 if (distribution != null) {
@@ -1790,25 +1773,24 @@ public final class SPF implements Serializable {
             return distributionMap;
         }
     }
-    
-    public static TreeMap<String,Distribution> getDistributionMap() {
+
+    public static TreeMap<String, Distribution> getDistributionMap() {
         return CacheDistribution.getMap();
     }
-    
+
     public static void dropDistribution(String token) {
         CacheDistribution.drop(token);
     }
-    
+
     /**
      * Classe que representa o cache de provedores de e-mail.
      */
     private static class CacheProvider {
-        
+
         /**
          * Conjunto de provedores notórios de e-mail.
          */
         private static final TreeSet<String> SET = new TreeSet<String>();
-
         /**
          * Flag que indica se o cache foi modificado.
          */
@@ -1825,11 +1807,11 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         public static boolean contains(String host) {
             return SET.contains(host);
         }
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -1848,7 +1830,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("provider.set");
@@ -1869,21 +1851,20 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     public static void addProvider(String provider) throws ProcessException {
         CacheProvider.add(provider);
     }
-    
+
     /**
      * Classe que representa o cache de spamtrap.
      */
     private static class CacheTrap {
-        
+
         /**
          * Conjunto de destinatarios de spamtrap.
          */
         private static final HashSet<String> SET = new HashSet<String>();
-
         /**
          * Flag que indica se o cache foi modificado.
          */
@@ -1899,7 +1880,7 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
-        
+
         public static synchronized boolean add(String client, String recipient) throws ProcessException {
             if (recipient == null || !Domain.isEmail(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
@@ -1910,7 +1891,7 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
-        
+
         public static synchronized boolean drop(String recipient) throws ProcessException {
             if (recipient == null || !Domain.isEmail(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
@@ -1921,7 +1902,7 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
-        
+
         public static synchronized boolean drop(String client, String recipient) throws ProcessException {
             if (recipient == null || !Domain.isEmail(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
@@ -1932,7 +1913,7 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
-        
+
         public static synchronized TreeSet<String> get(String client) throws ProcessException {
             TreeSet<String> trapSet = new TreeSet<String>();
             for (String recipient : SET) {
@@ -1944,7 +1925,7 @@ public final class SPF implements Serializable {
             }
             return trapSet;
         }
-        
+
         public static boolean contains(String client, String recipient) {
             if (recipient == null || !Domain.isEmail(recipient)) {
                 return false;
@@ -1959,7 +1940,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -1978,7 +1959,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("trap.set");
@@ -1999,46 +1980,56 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     public static boolean addTrap(String sender) throws ProcessException {
         return CacheTrap.add(sender);
     }
-    
+
     public static boolean addTrap(String client, String sender) throws ProcessException {
         return CacheTrap.add(client, sender);
     }
-    
+
     public static boolean dropTrap(String sender) throws ProcessException {
         return CacheTrap.drop(sender);
     }
-    
+
     public static boolean dropTrap(String client, String sender) throws ProcessException {
         return CacheTrap.drop(client, sender);
     }
-    
+
     public static TreeSet<String> getTrapSet(String client) throws ProcessException {
         return CacheTrap.get(client);
     }
-    
+
     /**
      * Classe que representa o cache de bloqueios de remetente.
      */
     private static class CacheBlock {
-        
+
         /**
          * Conjunto de remetentes bloqueados.
          */
         private static final HashSet<String> SET = new HashSet<String>();
-
         /**
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
 
-        public static synchronized boolean add(String sender) throws ProcessException {
-            if (sender == null || !sender.contains("@")) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (SET.add(sender.toLowerCase())) {
+        public static synchronized boolean add(String token) throws ProcessException {
+            if ((token = correctToken(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.add(token.toLowerCase())) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public static synchronized boolean add(String client, String token) throws ProcessException {
+            if ((token = correctToken(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.add(client + ':' + token.toLowerCase())) {
                 CHANGED = true;
                 return true;
             } else {
@@ -2046,39 +2037,50 @@ public final class SPF implements Serializable {
             }
         }
         
-        public static synchronized boolean add(String client, String sender) throws ProcessException {
-            if (sender == null || !sender.contains("@")) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (SET.add(client + ':' + sender.toLowerCase())) {
+        public static String correctToken(String token) throws ProcessException {
+            if (token == null) {
+                return null;
+            } else if (Owner.isOwnerID(token)) {
+                return Owner.correctID(token);
+            } else if (Domain.isEmail(token)) {
+                return token.toLowerCase();
+            } else if (token.endsWith("@")) {
+                return token.toLowerCase();
+            } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
+                return token.toLowerCase();
+            } else if (!token.contains("@") && Domain.containsDomain(token)) {
+                return Domain.extractHost(token, true);
+            } else if (token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
+                return Domain.extractHost(token, true);
+            } else if (Subnet.isValidIP(token)) {
+                return Subnet.correctIP(token);
+            } else {
+                return null;
+            }
+        }
+
+        public static synchronized boolean drop(String token) throws ProcessException {
+            if ((token = correctToken(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         }
-        
-        public static synchronized boolean drop(String sender) throws ProcessException {
-            if (sender == null || !sender.contains("@")) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (SET.remove(sender.toLowerCase())) {
+
+        public static synchronized boolean drop(String client, String token) throws ProcessException {
+            if ((token = correctToken(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.remove(client + ':' + token.toLowerCase())) {
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         }
-        
-        public static synchronized boolean drop(String client, String sender) throws ProcessException {
-            if (sender == null || !sender.contains("@")) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (SET.remove(client + ':' + sender.toLowerCase())) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
+
         public static synchronized TreeSet<String> get(String client) throws ProcessException {
             TreeSet<String> blockSet = new TreeSet<String>();
             for (String sender : SET) {
@@ -2090,11 +2092,19 @@ public final class SPF implements Serializable {
             }
             return blockSet;
         }
-        
-        public static boolean contains(String client, String sender) {
-            if (sender == null || !sender.contains("@")) {
-                return false;
-            } else {
+
+        public static boolean contains(String client,
+                String ip, String sender, String helo,
+                String ownerid) {
+            if (ip != null) {
+                ip = Subnet.correctIP(ip);
+                if (SET.contains(ip)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ip)) {
+                    return true;
+                }
+            }
+            if (sender != null && sender.contains("@")) {
                 sender = sender.toLowerCase();
                 String part = sender.substring(0, sender.indexOf('@') + 1);
                 String domain = sender.substring(sender.lastIndexOf('@'));
@@ -2110,12 +2120,39 @@ public final class SPF implements Serializable {
                     return true;
                 } else if (SET.contains(client + ':' + domain)) {
                     return true;
-                } else {
-                    return false;
+                } else if (containsHost(client, domain.substring(1))) {
+                    return true;
                 }
             }
+            if ((helo = Domain.extractHost(helo, true)) != null) {
+                if (containsHost(client, helo)) {
+                    return true;
+                }
+            }
+            if (ownerid != null) {
+                if (SET.contains(ownerid)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ownerid)) {
+                    return true;
+                }
+            }
+            return false;
         }
         
+        private static boolean containsHost(String client, String host) {
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                if (SET.contains(token)) {
+                    return true;
+                } else if (SET.contains(client + ':' + token)) {
+                    return true;
+                }
+            } while (host.contains("."));
+            return false;
+        }
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -2134,7 +2171,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("block.set");
@@ -2156,41 +2193,49 @@ public final class SPF implements Serializable {
         }
     }
     
+    public static void main(String[] args) {
+        try {
+            System.out.println(CacheBlock.containsHost("leandro@allchemistry.com.br", ".allchem.allchemistry.com.br"));
+        } catch (Exception ex) {
+            Server.logError(ex);
+        } finally {
+            System.exit(0);
+        }
+    }
+
     public static boolean addBlock(String sender) throws ProcessException {
         return CacheBlock.add(sender);
     }
-    
+
     public static boolean addBlock(String client, String sender) throws ProcessException {
         return CacheBlock.add(client, sender);
     }
-    
+
     public static boolean dropBlock(String sender) throws ProcessException {
         return CacheBlock.drop(sender);
     }
-    
+
     public static boolean dropBlock(String client, String sender) throws ProcessException {
         return CacheBlock.drop(client, sender);
     }
-    
+
     public static TreeSet<String> getBlockSet(String client) throws ProcessException {
         return CacheBlock.get(client);
     }
-    
+
     /**
      * Classe que representa o cache de "best-guess" exclusivos.
      */
     private static class CacheGuess {
-        
+
         /**
          * http://www.openspf.org/FAQ/Best_guess_record
          */
         private static final String BEST_GUESS = "v=spf1 a/24 mx/24 ptr ?all";
-
         /**
          * Mapa de registros manuais de SPF caso o domínio não tenha um.
          */
-        private static final HashMap<String,String> MAP = new HashMap<String,String>();
-
+        private static final HashMap<String, String> MAP = new HashMap<String, String>();
         /**
          * Flag que indica se o cache foi modificado.
          */
@@ -2205,15 +2250,15 @@ public final class SPF implements Serializable {
                 CHANGED = true;
             }
         }
-        
+
         public static boolean contains(String host) {
             return MAP.containsKey(host);
         }
-        
+
         public static String get(String host) {
             return MAP.get(host);
         }
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -2232,13 +2277,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("guess.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,String> map;
+                    HashMap<String, String> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -2253,19 +2298,19 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     public static void addGuess(String host, String spf) throws ProcessException {
         CacheGuess.add(host, spf);
     }
-    
+
     public static void storeBlock() {
         CacheBlock.store();
     }
-    
+
     public static void storeTrap() {
         CacheTrap.store();
     }
-    
+
     /**
      * Armazenamento de cache em disco.
      */
@@ -2279,7 +2324,7 @@ public final class SPF implements Serializable {
         CacheGuess.store();
         CacheHELO.store();
     }
-    
+
     /**
      * Carregamento de cache do disco.
      */
@@ -2293,35 +2338,30 @@ public final class SPF implements Serializable {
         CacheGuess.load();
         CacheHELO.load();
     }
-    
-    
-    
+
     /**
-     * Classe que representa o cache de resolução de HELO.
-     * Na ultima verificação dos registros do LOG foi visto que
-     * diversas consultas SPFBL demoram excessivamente por conta
-     * da verificação de HELO na qual não existe domínio ou
-     * registro para IPs, acarretanto TIMEOUT 3 segundos depois.
+     * Classe que representa o cache de resolução de HELO. Na ultima verificação
+     * dos registros do LOG foi visto que diversas consultas SPFBL demoram
+     * excessivamente por conta da verificação de HELO na qual não existe
+     * domínio ou registro para IPs, acarretanto TIMEOUT 3 segundos depois.
      */
     private static class CacheHELO {
-        
+
         /**
          * Mapa de atributos da verificação de HELO.
          */
-        private static final HashMap<String,HELO> MAP = new HashMap<String,HELO>();
-        
+        private static final HashMap<String, HELO> MAP = new HashMap<String, HELO>();
         /**
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
-        
+
         /*
          * Classe para guardar os atributos da consulta.
          */
         private static final class HELO implements Serializable {
-        
-            private static final long serialVersionUID = 1L;
 
+            private static final long serialVersionUID = 1L;
             private Attributes attributes = null;
             private int queryCount = 0;
             private long lastQuery;
@@ -2330,7 +2370,7 @@ public final class SPF implements Serializable {
                 this.lastQuery = System.currentTimeMillis();
                 refresh(hostname);
             }
-            
+
             public synchronized void refresh(String hostname) throws NamingException {
                 long time = System.currentTimeMillis();
                 try {
@@ -2355,12 +2395,13 @@ public final class SPF implements Serializable {
                 return System.currentTimeMillis() - lastQuery > 604800000;
             }
         }
-        
+
         /**
          * Primeiro teste de estrutura de dados simples.
+         *
          * @param helo
          * @return
-         * @throws Exception 
+         * @throws Exception
          */
         private static Attributes getAttributes(String hostname) throws NamingException {
             HELO heloObj = MAP.get(hostname);
@@ -2375,7 +2416,7 @@ public final class SPF implements Serializable {
                 return heloObj.attributes;
             }
         }
-        
+
         private static Attribute getAttribute(
                 String helo, String attribute) throws NamingException {
             Attributes attributes = getAttributes(helo);
@@ -2385,7 +2426,7 @@ public final class SPF implements Serializable {
                 return attributes.get(attribute);
             }
         }
-        
+
         public static boolean match(String ip, String helo) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
                 // o HELO é nulo.
@@ -2454,25 +2495,25 @@ public final class SPF implements Serializable {
                 } catch (NamingException ex) {
                     Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
                     return false;
-                 }
+                }
             } else {
                 // O parâmetro ip não é um IP válido.
                 return false;
             }
         }
-        
+
         public static synchronized void drop(String helo) {
             if (MAP.remove(helo) != null) {
                 CHANGED = true;
             }
         }
-        
+
         public static synchronized void put(String helo, HELO heloObj) {
             if (MAP.put(helo, heloObj) == null) {
                 CHANGED = true;
             }
         }
-        
+
         public static void dropExpired() {
             TreeSet<String> distributionKeySet = new TreeSet<String>();
             distributionKeySet.addAll(MAP.keySet());
@@ -2483,7 +2524,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         /**
          * Atualiza o registro mais consultado.
          */
@@ -2508,7 +2549,7 @@ public final class SPF implements Serializable {
             }
             store();
         }
-        
+
         private static synchronized void store() {
             if (CHANGED) {
                 try {
@@ -2527,13 +2568,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         private static synchronized void load() {
             long time = System.currentTimeMillis();
             File file = new File("helo.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,HELO> map;
+                    HashMap<String, HELO> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -2548,7 +2589,7 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     protected static String processPostfixSPF(
             String client, String ip, String sender, String helo,
             String recipient) throws ProcessException {
@@ -2558,13 +2599,6 @@ public final class SPF implements Serializable {
         } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
-        } else if (CacheBlock.contains(client, sender)) {
-            // TODO: auto-denúnica
-            return "action=REJECT [RBL] "
-                    + sender + " is permanently blocked in this server.\n\n";
-        } else if (CacheTrap.contains(client, recipient)) {
-            // TODO: auto-denúnica
-            return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
         } else {
             try {
                 String result;
@@ -2582,7 +2616,7 @@ public final class SPF implements Serializable {
                 }
                 long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
-                String ownerid;
+                String ownerid = null;
                 if (result.equals("FAIL")) {
                     return "action=REJECT "
                             + "[SPF] " + sender + " is not allowed to "
@@ -2634,8 +2668,23 @@ public final class SPF implements Serializable {
                     }
                 }
                 Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
-                String ticket = SPF.getTicket(tokenSet);
-                if (ticket == null) {
+                String ticket;
+                if (CacheTrap.contains(client, recipient)) {
+                    // Spamtrap. Denúnica automática.
+                    long time2 = System.currentTimeMillis();
+                    ticket = SPF.getTicketComplain(tokenSet);
+                    TreeSet<String> complainSet = CacheComplain.add(ticket);
+                    Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                    return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
+                } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
+                    // Bloqueio. Denúnica automática.
+                    long time2 = System.currentTimeMillis();
+                    ticket = SPF.getTicketComplain(tokenSet);
+                    TreeSet<String> complainSet = CacheComplain.add(ticket);
+                    Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                    return "action=REJECT [RBL] "
+                            + sender + " is permanently blocked in this server.\n\n";
+                } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
                     // Não gerou ticket porque está listado.
                     long ttl = SPF.getComplainTTL(tokenSet);
                     int days = (int) (ttl / 1440);
@@ -2669,9 +2718,10 @@ public final class SPF implements Serializable {
             }
         }
     }
-    
+
     /**
      * Processa a consulta e retorna o resultado.
+     *
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
      */
@@ -2702,8 +2752,7 @@ public final class SPF implements Serializable {
                     }
                 } else if (tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
-                        || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)
-                        ) {
+                        || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
                     try {
                         String ip;
                         if (firstToken.equals("CHECK")) {
@@ -2713,12 +2762,10 @@ public final class SPF implements Serializable {
                         }
                         String sender;
                         String helo;
+                        String recipient = null;
                         if (tokenizer.countTokens() == 2) {
                             sender = tokenizer.nextToken().toLowerCase();
                             helo = tokenizer.nextToken().toLowerCase();
-                            if (CacheBlock.contains(client, sender)) {
-                                return "BLOCKED\n";
-                            }
                         } else {
                             sender = null;
                             helo = tokenizer.nextToken().toLowerCase();
@@ -2737,11 +2784,10 @@ public final class SPF implements Serializable {
                                 result = spf.getResult(ip);
                             }
                             TreeSet<String> tokenSet = new TreeSet<String>();
-                            String ownerid;
+                            String ownerid = null;
 //                            String owner_c;
                             if (result.equals("FAIL")) {
-                                // Adicionar tokens quando FAIL.
-                                // Criar auto-reclamação?
+                                return "FAIL\n";
                             } else if (result.equals("PASS")) {
                                 // Quando fo PASS, significa que o domínio 
                                 // autorizou envio pelo IP, portanto o dono dele 
@@ -2794,9 +2840,10 @@ public final class SPF implements Serializable {
 //                                    tokenSet.add(owner_c);
 //                                }
                             }
+                            String ticket;
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
-                                TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
+                                TreeMap<String, Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
                                 for (String token : tokenSet) {
                                     float probability;
                                     Status status;
@@ -2814,21 +2861,29 @@ public final class SPF implements Serializable {
                                     result += token + " " + frequency + " " + status.name() + " "
                                             + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
+                            } else if (CacheTrap.contains(client, recipient)) {
+                                // Spamtrap. Denunciar automaticamente.
+                                long time2 = System.currentTimeMillis();
+                                ticket = SPF.getTicketComplain(tokenSet);
+                                TreeSet<String> complainSet = CacheComplain.add(ticket);
+                                Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                                return "SPAMTRAP\n";
+                            } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
+                                // Bloqueio. Denunciar automaticamente.
+                                long time2 = System.currentTimeMillis();
+                                ticket = SPF.getTicketComplain(tokenSet);
+                                TreeSet<String> complainSet = CacheComplain.add(ticket);
+                                Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                                return "BLOCKED\n";
+                            } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
+                                // Se não retornou ticket,
+                                // significa que pelo menos um token
+                                // do conjunto está em lista negra.
+                                return "LISTED\n";
                             } else {
-                                String ticket;
-                                if (tokenSet.isEmpty()) {
-                                    // Não processar ticket quando não houver tokens.
-                                    result += "\n";
-                                } else if ((ticket = SPF.getTicket(tokenSet)) == null) {
-                                    // Se não retornou ticket,
-                                    // significa que pelo menos um token
-                                    // do conjunto está em lista negra.
-                                    result = "LISTED\n";
-                                } else {
-                                    // Anexando ticket ao resultado.
-                                    result += " " + ticket + "\n";
-                                    Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
-                                }
+                                // Anexando ticket ao resultado.
+                                result += " " + ticket + "\n";
+                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                             }
                         }
                     } catch (ProcessException ex) {
@@ -2847,27 +2902,31 @@ public final class SPF implements Serializable {
         } catch (ProcessException ex) {
             Server.logError(ex.getCause());
             return ex.getMessage() + "\n";
-         } catch (Exception ex) {
+        } catch (Exception ex) {
             Server.logError(ex);
             return "ERROR: FATAL\n";
         }
     }
-    
-    public static String getTicket(TreeSet<String> tokenSet) throws ProcessException {
+
+    public static String getTicketComplain(TreeSet<String> tokenSet) throws ProcessException {
+        String ticket = Server.getNewTicketDate();
+        for (String token : tokenSet) {
+            ticket += " " + token;
+        }
+        return Server.encrypt(ticket);
+    }
+
+    public static String getTicketIfAllow(TreeSet<String> tokenSet) throws ProcessException {
         if (isBlacklisted(tokenSet)) {
             // Representa ameaça.
             // Não gerar ticket.
             return null;
         } else {
             // Não representa ameaça.
-            String ticket = Server.getNewTicketDate();
-            for (String token : tokenSet) {
-                ticket += " " + token;
-            }
-            return Server.encrypt(ticket);
+            return getTicketComplain(tokenSet);
         }
     }
-    
+
     private static Date getTicketDate(String date) throws ProcessException {
         try {
             return Server.parseTicketDate(date);
@@ -2875,18 +2934,17 @@ public final class SPF implements Serializable {
             throw new ProcessException("ERROR: INVALID TICKET", ex);
         }
     }
-    
+
     /**
-     * Classe que representa uma reclamação.
-     * Possui mecanismo de vencimento da reclamação.
+     * Classe que representa uma reclamação. Possui mecanismo de vencimento da
+     * reclamação.
      */
     private static final class Complain implements Serializable {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private final Date date;
         private final TreeSet<String> tokenSet = new TreeSet<String>();
-        
+
         public Complain(String ticket) throws ProcessException {
             String complain = Server.decrypt(ticket);
             int index = complain.indexOf(' ');
@@ -2895,7 +2953,7 @@ public final class SPF implements Serializable {
                 // Ticket vencido com mais de 5 dias.
                 throw new ProcessException("ERROR: TICKET EXPIRED");
             } else {
-                StringTokenizer tokenizer = new StringTokenizer(complain.substring(index+1), " ");
+                StringTokenizer tokenizer = new StringTokenizer(complain.substring(index + 1), " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
                     CacheDistribution.get(token, true).addSpam();
@@ -2903,25 +2961,25 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         public boolean isExpired3() {
             return System.currentTimeMillis() - date.getTime() > 259200000;
         }
-        
+
         public boolean isExpired5() {
             return System.currentTimeMillis() - date.getTime() > 432000000;
         }
-        
+
         public boolean isExpired7() {
             return System.currentTimeMillis() - date.getTime() > 604800000;
         }
-        
+
         public TreeSet<String> getTokenSet() {
             TreeSet<String> tokenSetClone = new TreeSet<String>();
             tokenSetClone.addAll(this.tokenSet);
             return tokenSetClone;
         }
-        
+
         public void removeComplains() {
             Server.logHamSPF(tokenSet);
             // Retira todas as reclamações.
@@ -2933,13 +2991,13 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        
+
         @Override
         public String toString() {
             return Server.formatTicketDate(date);
         }
     }
-    
+
     public static long getComplainTTL(String token) {
         Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
@@ -2951,7 +3009,7 @@ public final class SPF implements Serializable {
             return distribution.getComplainTTL() / 60000;
         }
     }
-    
+
     private static synchronized long getComplainTTL(TreeSet<String> tokenSet) {
         long ttl = 0;
         for (String token : tokenSet) {
@@ -2962,7 +3020,7 @@ public final class SPF implements Serializable {
         }
         return ttl;
     }
-    
+
     public static boolean isBlacklisted(String token) {
         Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
@@ -2973,7 +3031,7 @@ public final class SPF implements Serializable {
             return distribution.isBlacklisted(false);
         }
     }
-    
+
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
         boolean blacklisted = false;
         for (String token : tokenSet) {
@@ -2987,34 +3045,34 @@ public final class SPF implements Serializable {
         }
         return blacklisted;
     }
-    
+
     /**
      * Enumeração do status da distribuição.
      */
     public enum Status implements Serializable {
+
         WHITE, // Whitelisted
         GRAY, // Graylisted
         BLACK; // Blacklisted
     }
-    
+
     /**
-     * Classe que representa a distribuição binomial entre SPAM e HAM.
-     * O valor máximo é 255. 
+     * Classe que representa a distribuição binomial entre SPAM e HAM. O valor
+     * máximo é 255.
      */
     public static final class Distribution implements Serializable {
-        
+
         private static final long serialVersionUID = 1L;
-        
         private int complain; // Quantidade total de reclamações.
         private long lastQuery; // Última consulta à distribuição.
         private long lastComplain; // Última denúncia à distribuição.
         private Status status; // Status atual da distribuição.
         private NormalDistribution frequency = null; // Frequência média em segundos.
-        
+
         public Distribution() {
             reset();
         }
-        
+
         public void reset() {
             complain = 0;
             lastQuery = 0;
@@ -3023,32 +3081,32 @@ public final class SPF implements Serializable {
             frequency = null;
             CacheDistribution.CHANGED = true;
         }
-        
+
         public boolean isExpired7() {
             return System.currentTimeMillis() - lastQuery > 604800000;
         }
-        
+
         public boolean isExpired14() {
             return System.currentTimeMillis() - lastQuery > 604800000 * 2;
         }
-        
+
         public long getComplainTTL() {
-            long ttl =  lastComplain + 604800000 - System.currentTimeMillis();
+            long ttl = lastComplain + 604800000 - System.currentTimeMillis();
             if (ttl < 0) {
                 return 0;
             } else {
                 return ttl;
             }
         }
-        
+
         public boolean hasFrequency() {
             return frequency != null;
         }
-        
+
         public boolean hasLastQuery() {
             return lastQuery > 0;
         }
-        
+
         public String getFrequencyLiteral() {
             if (hasFrequency()) {
                 return frequency.toStringInt() + "s";
@@ -3056,7 +3114,7 @@ public final class SPF implements Serializable {
                 return "undefined";
             }
         }
-        
+
         private float getInterval(boolean refresh) {
             long currentTime = System.currentTimeMillis();
             float interval;
@@ -3071,7 +3129,7 @@ public final class SPF implements Serializable {
             }
             return interval;
         }
-        
+
         public synchronized void addQuery() {
             float interval = getInterval(true);
             if (interval == 0.0f) {
@@ -3084,11 +3142,11 @@ public final class SPF implements Serializable {
                 frequency.addElement(interval);
             }
         }
-        
+
         public synchronized float getMinSpamProbability() {
             return getSpamProbability()[0];
         }
-        
+
         private synchronized float[] getSpamProbability() {
             float[] probability = new float[3];
             if (frequency == null) {
@@ -3133,11 +3191,11 @@ public final class SPF implements Serializable {
                 return probability;
             }
         }
-        
+
         /**
-         * Máquina de estados para listar em um pico e
-         * retirar a listagem somente quando o total 
-         * cair consideravelmente após este pico.
+         * Máquina de estados para listar em um pico e retirar a listagem
+         * somente quando o total cair consideravelmente após este pico.
+         *
          * @return o status atual da distribuição.
          */
         public synchronized Status getStatus() {
@@ -3155,9 +3213,10 @@ public final class SPF implements Serializable {
             }
             return status;
         }
-        
+
         /**
          * Verifica se o estado atual da distribuição é blacklisted.
+         *
          * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
@@ -3167,14 +3226,14 @@ public final class SPF implements Serializable {
             }
             return getStatus() == Status.BLACK;
         }
-        
+
         public synchronized void removeSpam() {
             if (complain > 0) {
                 complain--;
                 CacheDistribution.CHANGED = true;
             }
         }
-        
+
         public synchronized void addSpam() {
             if (complain < Integer.MAX_VALUE) {
                 complain++;
@@ -3182,7 +3241,7 @@ public final class SPF implements Serializable {
                 CacheDistribution.CHANGED = true;
             }
         }
-        
+
         @Override
         public String toString() {
             return Float.toString(getMinSpamProbability());

@@ -96,7 +96,7 @@ public class Owner implements Serializable, Comparable<Owner> {
         this.refresh();
     }
     
-    private static String correctID(String id) throws ProcessException {
+    public static String correctID(String id) throws ProcessException {
         if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
             return id;
         } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
