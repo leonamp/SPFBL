@@ -11,7 +11,7 @@ Uma vez iniciado o serviço, as consultas podem ser feitas por programas cliente
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
 ```
-user:~# ./spfblquery.sh 200.160.7.130 gter-bounces@eng.registro.br eng.registro.br
+user:~# ./spfblquery.sh "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
 PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
 ```
 
@@ -24,7 +24,7 @@ user:~# ./spfblspam.sh <caminho da mensagem SPAM>
 Reclamação SPFBL enviada com sucesso.
 ```
 
-Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até três dias após o recebimento.
+Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até cinco dias após o recebimento.
 
 Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@allchemistry.com.br com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
 
@@ -159,7 +159,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifida
 * NONE <ticket>: permitir o recebimento da mensagem.
 * LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
-* SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+* SPAMTRAP: discartar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 
 ##### Método de listagem
 
@@ -173,7 +173,7 @@ Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorn
 
 O SPFBL utiliza deste fluxo para determinar responsável e se o mesmo está listado:
 
-![flowchartSPFBL.png](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
+![flowchartSPFBL](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
 
 ##### Tipos de responsável
 
@@ -285,7 +285,7 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, complain.map, distribution.map, domain.map, guess.map, handle.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map e tdl.set.
+Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tdl.set e trap.set.
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
@@ -297,10 +297,12 @@ O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar cor
 
 ### Futuro do SPFBL
 
-Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes peer-to-peer.
+Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes p2p:
+
+![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
 
 ### Forum SPFBL
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
 
-![Forum SPFBL](https://groups.google.com/forum/#!forum/spfbl "Forum SPFBL")
+![Forum SPFBL](https://groups.google.com/forum/\#!forum/spfbl "Forum SPFBL")
