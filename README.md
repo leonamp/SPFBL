@@ -124,7 +124,7 @@ OK
 
 É possível adicionar destinatários na lista spamtrap do SPFBL.
 
-Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a denúncia automática e manda o MTA discartar silencionsamente a mensagem.
+Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a denúncia automática e manda o MTA descartar silencionsamente a mensagem.
 
 Para visualizar a lista de spamtrap:
 ```
@@ -150,16 +150,16 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifidadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
+O SPFBL retorna todos os qualificadores do SPF convencional mais três qualificadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
 
-* PASS <ticket>: permitir o recebimento da mensagem.
-* FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
-* SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
-* NEUTRAL <ticket>: permitir o recebimento da mensagem.
-* NONE <ticket>: permitir o recebimento da mensagem.
-* LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
-* BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
-* SPAMTRAP: discartar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+* PASS <ticket>: permite o recebimento da mensagem.
+* FAIL: rejeita o recebimento da mensagem e informar à origem o descumprimento do SPF.
+* SOFTFAIL <ticket>: permite o recebimento da mensagem mas marca como suspeita.
+* NEUTRAL <ticket>: permite o recebimento da mensagem.
+* NONE <ticket>: permite o recebimento da mensagem.
+* LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
+* BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
+* SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 
 ##### Método de listagem
 
