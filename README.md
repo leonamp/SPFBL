@@ -154,12 +154,12 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifica
 
 * PASS <ticket>: permite o recebimento da mensagem.
 * FAIL: rejeita o recebimento da mensagem e informar à origem o descumprimento do SPF.
-* SOFTFAIL <ticket>: permite o recebimento da mensagem mas marcar como suspeita.
+* SOFTFAIL <ticket>: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL <ticket>: permite o recebimento da mensagem.
 * NONE <ticket>: permite o recebimento da mensagem.
-* LISTED: rejeita o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
-* BLOCKED: rejeita o recebimento da mensagem e informar à origem o bloqueio permanente.
-* SPAMTRAP: descarta silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+* LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
+* BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
+* SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 
 ##### Método de listagem
 
