@@ -305,4 +305,4 @@ Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais i
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
 
-![Forum SPFBL](https://groups.google.com/forum/\#!forum/spfbl "Forum SPFBL")
+![Forum SPFBL](https://groups.google.com/d/forum/spfbl "Forum SPFBL")
