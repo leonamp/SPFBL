@@ -274,6 +274,8 @@ public final class QuerySPF extends Server {
                                     type = "SPFHM";
                                 } else if (query.startsWith("SPAM ")) {
                                     type = "SPFSP";
+                                } else if (query.startsWith("CHECK ")) {
+                                    type = "SPFCK";
                                 }
                             }
                             // Enviando resposta.
