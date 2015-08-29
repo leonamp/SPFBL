@@ -27,6 +27,19 @@ case $1 in
 	'block')
 		case $2 in
 			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser bloqueado, com endereço completo.
+				#    1. domínio: o domínio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
+				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "3" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block add sender\n"
 				else
@@ -50,6 +63,19 @@ case $1 in
 				fi
 			;;
 			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser desbloqueado, com endereço completo.
+				#    1. domínio: o domínio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
+				#    1. caixa postal: a caixa postal que deve ser desbloqueada, com arroba (ex: www-data@)
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "3" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block drop sender\n"
 				else
@@ -73,6 +99,14 @@ case $1 in
 				fi
 			;;
 			'show')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block show\n"
 				else
@@ -96,6 +130,34 @@ case $1 in
 		esac
 	;;
 	'check')
+		# Parâmetros de entrada:
+		#
+		#    1. IP: o IPv4 ou IPv6 do host de origem.
+		#    2. email: o email do remetente.
+		#    3. HELO: o HELO passado pelo host de origem.
+		#
+		# Saídas com qualificadores e os tokens com suas probabilidades:
+		#
+		#    <quaificador>\n
+		#    <token> <probabilidade>\n
+		#    <token> <probabilidade>\n
+		#    <token> <probabilidade>\n
+		#    ...
+		#
+		# Códigos de saída:
+		#
+		#    0: não especificado.
+		#    1: qualificador NEUTRAL.
+		#    2: qualificador PASS.
+		#    3: qualificador FAIL.
+		#    4: qualificador SOFTFAIL.
+		#    5: qualificador NONE.
+		#    6: erro temporário.
+		#    7: erro permanente.
+		#    8: listado em lista negra.
+		#    9: timeout de conexão.
+		#    10: parâmetros inválidos.
+		
 		if [ $# -lt "4" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 check ip email helo\n"
 		else
@@ -137,6 +199,22 @@ case $1 in
 		fi
 	;;
 	'spam')
+		# Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
+		#
+		# Com posse do ticket, ele envia a reclamação ao serviço SPFBL para contabilização de reclamação.
+		#
+		# Parâmetros de entrada:
+		#  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
+		#
+		# Códigos de saída:
+		#  0. Ticket enviado com sucesso.
+		#  1. Arquivo inexistente.
+		#  2. Arquivo não contém ticket.
+		#  3. Erro no envio do ticket.
+		#  4. Timeout no envio do ticket.
+		#  5. Parâmetro inválido.
+		#  6. Ticket inválido.
+		
 		if [ $# -lt "2" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
@@ -188,6 +266,22 @@ case $1 in
 		fi
 	;;
 	'ham')
+		# Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
+		#
+		# Com posse do ticket, ele solicita a revogação da reclamação ao serviço SPFBL.
+		#
+		# Parâmetros de entrada:
+		#  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
+		#
+		# Códigos de saída:
+		#  0. Reclamação revogada com sucesso.
+		#  1. Arquivo inexistente.
+		#  2. Arquivo não contém ticket.
+		#  3. Erro no envio do ticket.
+		#  4. Timeout no envio do ticket.
+		#  5. Parâmetro inválido.
+		#  6. Ticket inválido.
+		
 		if [ $# -lt "2" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
@@ -239,6 +333,51 @@ case $1 in
 		fi
 	;;
 	'query')
+		# A saída deste programa deve ser incorporada ao cabeçalho
+		# Received-SPFBL da mensagem de e-mail que gerou a consulta.
+		#
+		# Exemplo:
+		#
+		#    Received-SPFBL: PASS urNq9eFn65wKwDFGNsqCNYmywnlWmmilhZw5jdtvOr5jYk6mgkiWgQC1w696wT3ylP3r8qZnhOjwntTt5mCAuw==
+		#
+		# A informação que precede o qualificador é o ticket da consulta SPFBL.
+		# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL, 
+		# onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
+		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
+		#
+		# Parâmetros de entrada:
+		#
+		#    1. IP: o IPv4 ou IPv6 do host de origem.
+		#    2. email: o email do remetente (opcional).
+		#    3. HELO: o HELO passado pelo host de origem.
+		#    4. recipient: o destinátario da mensagem (opcional se não utilizar spamtrap).
+		#
+		# Saídas com qualificadores e as ações:
+		#
+		#    PASS <ticket>: permitir o recebimento da mensagem.
+		#    FAIL: rejeitar o recebimento da mensagem e informar à origem o descumprimento do SPF.
+		#    SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
+		#    NEUTRAL <ticket>: permitir o recebimento da mensagem.
+		#    NONE <ticket>: permitir o recebimento da mensagem.
+		#    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+		#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
+		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+		#
+		# Códigos de saída:
+		#
+		#    0: não especificado.
+		#    1: qualificador NEUTRAL.
+		#    2: qualificador PASS.
+		#    3: qualificador FAIL.
+		#    4: qualificador SOFTFAIL.
+		#    5: qualificador NONE.
+		#    6: erro temporário.
+		#    7: erro permanente.
+		#    8: listado em lista negra.
+		#    9: timeout de conexão.
+		#    10: bloqueado permanentemente.
+		#    11: spamtrap.
+		
 		if [ $# -lt "5" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 query ip email helo recipient\n"
 		else
@@ -285,6 +424,17 @@ case $1 in
 	'trap')
 		case $2 in
 			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser bloqueado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "3" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
 				else
@@ -308,6 +458,17 @@ case $1 in
 				fi
 			;;
 			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser desbloqueado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "3" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
 				else
@@ -331,6 +492,14 @@ case $1 in
 				fi
 			;;
 			'show')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar bloqueio.
+				#    2: timeout de conexão.
+				
 				if [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
 				else
