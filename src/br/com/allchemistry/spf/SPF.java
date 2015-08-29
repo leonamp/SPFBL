@@ -2667,32 +2667,45 @@ public final class SPF implements Serializable {
                         tokenSet.add(ownerid);
                     }
                 }
-                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
-                String ticket;
+                // Calcula frequencia de consultas.
+                SPF.addQuery(tokenSet);
+//                String ticket;
                 if (CacheTrap.contains(client, recipient)) {
                     // Spamtrap. Denúnica automática.
                     long time2 = System.currentTimeMillis();
-                    ticket = SPF.getTicketComplain(tokenSet);
+                    String ticket = SPF.createTicket(tokenSet);
+                    Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
                     TreeSet<String> complainSet = CacheComplain.add(ticket);
-                    Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                    Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
                     // Bloqueio. Denúnica automática.
                     long time2 = System.currentTimeMillis();
-                    ticket = SPF.getTicketComplain(tokenSet);
+                    String ticket = SPF.createTicket(tokenSet);
+                    Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
                     TreeSet<String> complainSet = CacheComplain.add(ticket);
-                    Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                    Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=REJECT [RBL] "
                             + sender + " is permanently blocked in this server.\n\n";
-                } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
-                    // Não gerou ticket porque está listado.
+                } else if (SPF.isBlacklisted(tokenSet)) {
+                    // Pelo menos um token está listado.
                     long ttl = SPF.getComplainTTL(tokenSet);
                     int days = (int) (ttl / 1440);
                     return "action=REJECT [RBL] "
                             + "You are blocked in this "
                             + "server for " + days + " days.\n\n";
+//                } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
+//                    // Não gerou ticket porque está listado.
+//                    long ttl = SPF.getComplainTTL(tokenSet);
+//                    int days = (int) (ttl / 1440);
+//                    return "action=REJECT [RBL] "
+//                            + "You are blocked in this "
+//                            + "server for " + days + " days.\n\n";
                 } else {
                     // Adcionar ticket ao cabeçalho da mensagem.
+                    long time2 = System.currentTimeMillis();
+                    String ticket = SPF.createTicket(tokenSet);
+                    Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result
                             + " " + ticket + "\n\n";
@@ -2862,7 +2875,9 @@ public final class SPF implements Serializable {
 //                                    tokenSet.add(owner_c);
 //                                }
                             }
-                            String ticket;
+                            // Calcula frequencia de consultas.
+                            SPF.addQuery(tokenSet);
+//                            String ticket;
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
                                 TreeMap<String, Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
@@ -2883,29 +2898,38 @@ public final class SPF implements Serializable {
                                     result += token + " " + frequency + " " + status.name() + " "
                                             + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
+                                return result;
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Spamtrap. Denunciar automaticamente.
                                 long time2 = System.currentTimeMillis();
-                                ticket = SPF.getTicketComplain(tokenSet);
+                                String ticket = SPF.createTicket(tokenSet);
+                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
-                                Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                                Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "SPAMTRAP\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
                                 // Bloqueio. Denunciar automaticamente.
                                 long time2 = System.currentTimeMillis();
-                                ticket = SPF.getTicketComplain(tokenSet);
+                                String ticket = SPF.createTicket(tokenSet);
+                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
-                                Server.logQuery(time2, "SPFSP", client, "SPAM" + ticket, "OK " + complainSet);
+                                Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "BLOCKED\n";
-                            } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
-                                // Se não retornou ticket,
-                                // significa que pelo menos um token
-                                // do conjunto está em lista negra.
+                            } else if (SPF.isBlacklisted(tokenSet)) {
+                                // Pelo menos um token do 
+                                // conjunto está em lista negra.
                                 return "LISTED\n";
+//                            } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
+//                                // Se não retornou ticket,
+//                                // significa que pelo menos um token
+//                                // do conjunto está em lista negra.
+//                                return "LISTED\n";
                             } else {
                                 // Anexando ticket ao resultado.
-                                result += " " + ticket + "\n";
-                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
+                                long time2 = System.currentTimeMillis();
+                                String ticket = SPF.createTicket(tokenSet);
+                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                                return result + " " + ticket + "\n";
                             }
                         }
                     } catch (ProcessException ex) {
@@ -2929,8 +2953,8 @@ public final class SPF implements Serializable {
             return "ERROR: FATAL\n";
         }
     }
-
-    public static String getTicketComplain(TreeSet<String> tokenSet) throws ProcessException {
+    
+    public static String createTicket(TreeSet<String> tokenSet) throws ProcessException {
         String ticket = Server.getNewTicketDate();
         for (String token : tokenSet) {
             ticket += " " + token;
@@ -2938,16 +2962,24 @@ public final class SPF implements Serializable {
         return Server.encrypt(ticket);
     }
 
-    public static String getTicketIfAllow(TreeSet<String> tokenSet) throws ProcessException {
-        if (isBlacklisted(tokenSet)) {
-            // Representa ameaça.
-            // Não gerar ticket.
-            return null;
-        } else {
-            // Não representa ameaça.
-            return getTicketComplain(tokenSet);
-        }
-    }
+//    public static String getTicketComplain(TreeSet<String> tokenSet) throws ProcessException {
+//        String ticket = Server.getNewTicketDate();
+//        for (String token : tokenSet) {
+//            ticket += " " + token;
+//        }
+//        return Server.encrypt(ticket);
+//    }
+
+//    public static String getTicketIfAllow(TreeSet<String> tokenSet) throws ProcessException {
+//        if (isBlacklisted(tokenSet)) {
+//            // Representa ameaça.
+//            // Não gerar ticket.
+//            return null;
+//        } else {
+//            // Não representa ameaça.
+//            return getTicketComplain(tokenSet);
+//        }
+//    }
 
     private static Date getTicketDate(String date) throws ProcessException {
         try {
@@ -2975,7 +3007,8 @@ public final class SPF implements Serializable {
                 // Ticket vencido com mais de 5 dias.
                 throw new ProcessException("ERROR: TICKET EXPIRED");
             } else {
-                StringTokenizer tokenizer = new StringTokenizer(complain.substring(index + 1), " ");
+                complain = complain.substring(index + 1);
+                StringTokenizer tokenizer = new StringTokenizer(complain, " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
                     CacheDistribution.get(token, true).addSpam();
@@ -3019,6 +3052,15 @@ public final class SPF implements Serializable {
             return Server.formatTicketDate(date);
         }
     }
+    
+    public static void addQuery(TreeSet<String> tokenSet) {
+        for (String token : tokenSet) {
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution != null) {
+                distribution.addQuery();
+            }
+        }
+    }
 
     public static long getComplainTTL(String token) {
         Distribution distribution = CacheDistribution.get(token, false);
@@ -3050,22 +3092,37 @@ public final class SPF implements Serializable {
             // Considerar que não está listado.
             return false;
         } else {
-            return distribution.isBlacklisted(false);
+            return distribution.isBlacklisted(
+//                    false
+            );
         }
     }
 
+//    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
+//        boolean blacklisted = false;
+//        for (String token : tokenSet) {
+//            Distribution distribution = CacheDistribution.get(token, false);
+//            if (distribution == null) {
+//                // Distribuição não encontrada.
+//                // Considerar que não está listado.
+//            } else if (distribution.isBlacklisted(true)) {
+//                blacklisted = true;
+//            }
+//        }
+//        return blacklisted;
+//    }
+    
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
-        boolean blacklisted = false;
         for (String token : tokenSet) {
             Distribution distribution = CacheDistribution.get(token, false);
             if (distribution == null) {
                 // Distribuição não encontrada.
                 // Considerar que não está listado.
-            } else if (distribution.isBlacklisted(true)) {
-                blacklisted = true;
+            } else if (distribution.isBlacklisted()) {
+                return true;
             }
         }
-        return blacklisted;
+        return false;
     }
 
     /**
@@ -3077,6 +3134,11 @@ public final class SPF implements Serializable {
         GRAY, // Graylisted
         BLACK; // Blacklisted
     }
+    
+    /**
+     * Constante que determina o limiar de listagem.
+     */
+    private static final float LIMIAR = 0.0625f;
 
     /**
      * Classe que representa a distribuição binomial entre SPAM e HAM. O valor
@@ -3226,11 +3288,11 @@ public final class SPF implements Serializable {
             float max = probability[2];
             if (max == 0.0f) {
                 status = Status.WHITE;
-            } else if (min > 0.0625f) {
+            } else if (min > LIMIAR) {
                 status = Status.BLACK;
-            } else if (status == Status.GRAY && min > 0.03125f) {
+            } else if (status == Status.GRAY && min > LIMIAR/2) {
                 status = Status.BLACK;
-            } else if (status == Status.BLACK && max < 0.03125f) {
+            } else if (status == Status.BLACK && max < LIMIAR/2) {
                 status = Status.GRAY;
             }
             return status;
@@ -3242,10 +3304,12 @@ public final class SPF implements Serializable {
          * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
-        public boolean isBlacklisted(boolean query) {
-            if (query) {
-                addQuery();
-            }
+        public boolean isBlacklisted(
+//                boolean query
+        ) {
+//            if (query) {
+//                addQuery();
+//            }
             return getStatus() == Status.BLACK;
         }
 
