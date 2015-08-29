@@ -152,11 +152,11 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 O SPFBL retorna todos os qualificadores do SPF convencional mais três qualificadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
 
-* PASS <ticket>: permite o recebimento da mensagem.
+* PASS &lt;ticket&gt;: permite o recebimento da mensagem.
 * FAIL: rejeita o recebimento da mensagem e informa à origem o descumprimento do SPF.
-* SOFTFAIL <ticket>: permite o recebimento da mensagem mas marca como suspeita.
-* NEUTRAL <ticket>: permite o recebimento da mensagem.
-* NONE <ticket>: permite o recebimento da mensagem.
+* SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
+* NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
+* NONE &lt;ticket&gt;: permite o recebimento da mensagem.
 * LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
