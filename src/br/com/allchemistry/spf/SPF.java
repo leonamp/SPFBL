@@ -1869,9 +1869,21 @@ public final class SPF implements Serializable {
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
+        
+        private static boolean isValid(String recipient) {
+            if (recipient == null) {
+                return false;
+            } else if (Domain.isEmail(recipient)) {
+                return true;
+            } else if (recipient.startsWith("@") && Domain.containsDomain(recipient)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
 
         public static synchronized boolean add(String recipient) throws ProcessException {
-            if (recipient == null || !Domain.isEmail(recipient)) {
+            if (!isValid(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
             } else if (SET.add(recipient.toLowerCase())) {
                 CHANGED = true;
@@ -1882,7 +1894,9 @@ public final class SPF implements Serializable {
         }
 
         public static synchronized boolean add(String client, String recipient) throws ProcessException {
-            if (recipient == null || !Domain.isEmail(recipient)) {
+            if (client == null) {
+                throw new ProcessException("ERROR: CLIENT INVALID");
+            } else if (!isValid(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
             } else if (SET.add(client + ':' + recipient.toLowerCase())) {
                 CHANGED = true;
@@ -1893,7 +1907,7 @@ public final class SPF implements Serializable {
         }
 
         public static synchronized boolean drop(String recipient) throws ProcessException {
-            if (recipient == null || !Domain.isEmail(recipient)) {
+            if (!isValid(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
             } else if (SET.remove(recipient.toLowerCase())) {
                 CHANGED = true;
@@ -1904,7 +1918,9 @@ public final class SPF implements Serializable {
         }
 
         public static synchronized boolean drop(String client, String recipient) throws ProcessException {
-            if (recipient == null || !Domain.isEmail(recipient)) {
+            if (client == null) {
+                throw new ProcessException("ERROR: CLIENT INVALID");
+            } else if (!isValid(recipient)) {
                 throw new ProcessException("ERROR: RECIPIENT INVALID");
             } else if (SET.remove(client + ':' + recipient.toLowerCase())) {
                 CHANGED = true;
@@ -1927,13 +1943,20 @@ public final class SPF implements Serializable {
         }
 
         public static boolean contains(String client, String recipient) {
-            if (recipient == null || !Domain.isEmail(recipient)) {
+            if (client == null) {
+                return false;
+            } else if (!isValid(recipient)) {
                 return false;
             } else {
                 recipient = recipient.toLowerCase();
+                String domain = recipient.substring(recipient.lastIndexOf('@'));
                 if (SET.contains(recipient)) {
                     return true;
+                } else if (SET.contains(domain)) {
+                    return true;
                 } else if (SET.contains(client + ':' + recipient)) {
+                    return true;
+                } else if (SET.contains(client + ':' + domain)) {
                     return true;
                 } else {
                     return false;
@@ -2027,7 +2050,9 @@ public final class SPF implements Serializable {
         }
 
         public static synchronized boolean add(String client, String token) throws ProcessException {
-            if ((token = correctToken(token)) == null) {
+            if (client == null) {
+                throw new ProcessException("ERROR: CLIENT INVALID");
+            } else if ((token = correctToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.add(client + ':' + token.toLowerCase())) {
                 CHANGED = true;
@@ -2071,7 +2096,9 @@ public final class SPF implements Serializable {
         }
 
         public static synchronized boolean drop(String client, String token) throws ProcessException {
-            if ((token = correctToken(token)) == null) {
+            if (client == null) {
+                throw new ProcessException("ERROR: CLIENT INVALID");
+            } else if ((token = correctToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.remove(client + ':' + token.toLowerCase())) {
                 CHANGED = true;
@@ -2744,7 +2771,7 @@ public final class SPF implements Serializable {
             if (query.length() == 0) {
                 return "ERROR: QUERY\n";
             } else {
-                long time = System.currentTimeMillis();
+//                long time = System.currentTimeMillis();
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
@@ -2901,19 +2928,19 @@ public final class SPF implements Serializable {
                                 return result;
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Spamtrap. Denunciar automaticamente.
-                                long time2 = System.currentTimeMillis();
+                                long time = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
-                                Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "SPAMTRAP\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
                                 // Bloqueio. Denunciar automaticamente.
-                                long time2 = System.currentTimeMillis();
+                                long time = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
-                                Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet)) {
                                 // Pelo menos um token do 
@@ -2926,9 +2953,9 @@ public final class SPF implements Serializable {
 //                                return "LISTED\n";
                             } else {
                                 // Anexando ticket ao resultado.
-                                long time2 = System.currentTimeMillis();
+                                long time = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                                 return result + " " + ticket + "\n";
                             }
                         }
