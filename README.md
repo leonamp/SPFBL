@@ -6,21 +6,21 @@ O serviço SPFBL é uma junção dos conceitos de SPF e DNSBL.
 
 O propósito deste serviço é melhorar o processamento SPF e reduzir a quantidade de consultas externas de um servidor de e-mail, na qual utiliza SPF e pelo menos um serviço qualquer de DNSBL.
 
-Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, onde um exemplo é o script "spfblquery.sh".
+Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh".
 
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
 ```
-user:~# ./spfblquery.sh "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
+user:~# ./spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
 PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
 ```
 
 Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para uma possível denúncia de SPAM futura.
 
-Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo script "spfblspam.sh", que vai extrair o ticket contido no campo "Received-SPFBL" e enviá-lo ao serviço SPFBL:
+Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo comando "spfbl.sh spam", que vai extrair o ticket contido no campo "Received-SPFBL" e enviá-lo ao serviço SPFBL:
 
 ```
-user:~# ./spfblspam.sh <caminho da mensagem SPAM>
+user:~# ./spfbl.sh spam <caminho da mensagem SPAM>
 Reclamação SPFBL enviada com sucesso.
 ```
 
@@ -104,19 +104,19 @@ As opções de bloqueio são:
 
 Para visualizar a lista de bloqueios arbitrários:
 ```
-user:~# ./spfblblockview.sh <remetente>
+user:~# ./spfbl.sh block show
 EMPTY
 ```
 
 Para adicionar um bloqueio arbitrário:
 ```
-user:~# ./spfblblockadd.sh <remetente>
+user:~# ./spfbl.sh block add <remetente>
 OK
 ```
 
 Para remover um bloqueio arbitrário:
 ```
-user:~# ./spfblblockdrop.sh <remetente>
+user:~# ./spfbl.sh block drop <remetente>
 OK
 ```
 
@@ -128,19 +128,19 @@ Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL real
 
 Para visualizar a lista de spamtrap:
 ```
-user:~# ./spfbltrapview.sh <destinatário>
+user:~# ./spfbl.sh trap show
 EMPTY
 ```
 
 Para adicionar um spamtrap:
 ```
-user:~# ./spfbltrapadd.sh <destinatário>
+user:~# ./spfbl.sh trap add <destinatário>
 OK
 ```
 
-Para remover um bspamtrap:
+Para remover um spamtrap:
 ```
-user:~# ./spfbltrapdrop.sh <destinatário>
+user:~# ./spfbl.sh trap drop <destinatário>
 OK
 ```
 
@@ -152,11 +152,11 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 O SPFBL retorna todos os qualificadores do SPF convencional mais três qualificadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
 
-* PASS <ticket>: permite o recebimento da mensagem.
-* FAIL: rejeita o recebimento da mensagem e informar à origem o descumprimento do SPF.
-* SOFTFAIL <ticket>: permite o recebimento da mensagem mas marca como suspeita.
-* NEUTRAL <ticket>: permite o recebimento da mensagem.
-* NONE <ticket>: permite o recebimento da mensagem.
+* PASS &lt;ticket&gt;: permite o recebimento da mensagem.
+* FAIL: rejeita o recebimento da mensagem e informa à origem o descumprimento do SPF.
+* SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
+* NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
+* NONE &lt;ticket&gt;: permite o recebimento da mensagem.
 * LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
@@ -188,7 +188,7 @@ Responsabilizar o HELO, quando um hostname for válido e aponta para o IP, é mo
 É possível fazer uma consulta de checagem SPFBL. Este tipo de consulta não retorna ticket, mas mostra todos os responsáveis considerados pelo SPFBL, de modo que o administrador possa entender melhor a resposta de uma consulta normal SPFBL.
 
 ```
-user:~# ./spfblcheck.sh 191.243.197.31 op4o@adsensum.com.br smtp-197-31.adsensum.com.br
+user:~# ./spfbl.sh check 191.243.197.31 op4o@adsensum.com.br smtp-197-31.adsensum.com.br
 PASS
 .adsensum.com.br 2656±1218s GRAY 0.061
 013.566.954/0001-08 2831±714s BLACK 0.108
@@ -208,33 +208,33 @@ check_policy_service inet:<IP do servidor SPFBL>:9877
 
 Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_rcpt":
 ```
-# Use spfblquery.sh to perform SPFBL check.
+# Use 'spfbl.sh query' to perform SPFBL check.
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
-    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = SPF check failed.
+    message = [SPFBL] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = [SPFBL] SPF check failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = SPF check error.
+    message = [SPFBL] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] SPF check error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = SPF check unknown.
+    message = [SPFBL] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = [SPFBL] SPF check unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   drop
-    message = You are blocked in this server for seven days.
-    log_message = SPF check listed.
+    message = [SPFBL] You are blocked in this server for seven days.
+    log_message = [SPFBL] SPF check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = You are permanently blocked on this server.
-    log_message = SPF check blocked.
+    message = [SPFBL] You are permanently blocked on this server.
+    log_message = [SPFBL] SPF check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = SPF check spamtrap.
+    log_message = [SPFBL] SPF check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
    warn
       condition = ${if def:acl_c_spfbl {true}{false}}
@@ -246,31 +246,31 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
 ```
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfblquery.sh "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
-    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = SPF check failed.
+    message = [SPFBL] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = [SPFBL] SPF check failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = SPF check error.
+    message = [SPFBL] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] SPF check error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = SPF check unknown.
+    message = [SPFBL] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = [SPFBL] SPF check unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   drop
-    message = You are blocked in this server for seven days.
-    log_message = SPF check listed.
+    message = [SPFBL] You are blocked in this server for seven days.
+    log_message = [SPFBL] SPF check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = You are permanently blocked on this server.
-    log_message = SPF check blocked.
+    message = [SPFBL] You are permanently blocked on this server.
+    log_message = [SPFBL] SPF check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = SPF check spamtrap.
+    log_message = [SPFBL] SPF check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
