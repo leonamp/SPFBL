@@ -314,6 +314,11 @@ public abstract class Server extends Thread {
         log(time, "TIKET", query + " => " + tokenSet);
     }
     
+    public static synchronized void logPeerSend(long time,
+            InetAddress ipAddress, String token, String result) {
+        logQuery(time, "PEERS", ipAddress, token, result);
+    }
+    
     /**
      * Registra as consultas DNS.
      */
@@ -873,24 +878,105 @@ public abstract class Server extends Thread {
                         SPF.addProvider(provider);
                     }
                     result = "OK\n";
-                } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
-                    String action = tokenizer.nextToken();
-                    if (action.equals("ADD")) {
-                        // Comando para adicionar bloqueio de remetente.
-                        while (tokenizer.hasMoreTokens()) {
-                            String provider = tokenizer.nextToken();
-                            SPF.addBlock(provider);
+                } else if (command.startsWith("BLOCK ADD ")) {
+                    String query = command.substring(10).trim();
+                    tokenizer = new StringTokenizer(query, " ");
+                    while (tokenizer.hasMoreElements()) {
+                        try {
+                            String blockedToken = tokenizer.nextToken();
+                            boolean added = SPF.addBlock(blockedToken);
+                            if (result == null) {
+                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                            } else {
+                                result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                            }
+                        } catch (ProcessException ex) {
+                            result = ex.getMessage() + "\n";
                         }
-                        result = "OK\n";
-                    } else if (action.equals("DROP")) {
-                        // Comando para adicionar bloqueio de remetente.
-                        while (tokenizer.hasMoreTokens()) {
-                            String provider = tokenizer.nextToken();
-                            SPF.dropBlock(provider);
+                    }
+                    if (result == null) {
+                        result = "ERROR: COMMAND";
+                    }
+                    SPF.storeBlock();
+                } else if (command.startsWith("BLOCK DROP ")) {
+                    String query = command.substring(11).trim();
+                    tokenizer = new StringTokenizer(query, " ");
+                    while (tokenizer.hasMoreElements()) {
+                        try {
+                            String blockedToken = tokenizer.nextToken();
+                            boolean droped = SPF.dropBlock(blockedToken);
+                            if (result == null) {
+                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                            } else {
+                                result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                            }
+                        } catch (ProcessException ex) {
+                            result = ex.getMessage() + "\n";
                         }
-                        result = "OK\n";
+                    }
+                    if (result == null) {
+                        result = "ERROR: COMMAND";
+                    }
+                    SPF.storeBlock();
+                } else if (command.equals("BLOCK SHOW")) {
+                    // Mecanismo de visualização de bloqueios de remetentes.
+                    for (String sender : SPF.getBlockSet()) {
+                        if (result == null) {
+                            result = sender + "\n";
+                        } else {
+                            result += sender + "\n";
+                        }
+                    }
+                    if (result == null) {
+                        result = "EMPTY\n";
+                    }
+                } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
+                        String peer = tokenizer.nextToken();
+                        int index = peer.indexOf(':');
+                        if (index == -1) {
+                            result = "ERROR: COMMAND";
+                        } else {
+                            String address = peer.substring(0, index);
+                            String port = peer.substring(index + 1);
+                            try {
+                                boolean added = SPF.addPeer(address, port);
+                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                SPF.storePeer();
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        String peer = tokenizer.nextToken();
+                        int index = peer.indexOf(':');
+                        if (index == -1) {
+                            result = "ERROR: COMMAND";
+                        } else {
+                            String address = peer.substring(0, index);
+                            String port = peer.substring(index + 1);
+                            try {
+                                boolean added = SPF.addPeer(address, port);
+                                result = (added ? "DROPED" : "NOT FOUND") + "\n";
+                                SPF.storePeer();
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (String sender : SPF.getPeerSet()) {
+                            if (result == null) {
+                                result = sender + "\n";
+                            } else {
+                                result += sender + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "EMPTY\n";
+                        }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "ERROR: COMMAND";
                     }
                 } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
                     // Comando para adicionar um palpite SPF.
