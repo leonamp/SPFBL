@@ -214,27 +214,27 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
-    message = [SPFBL] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = [SPFBL] SPF check failed.
+    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = [SPFBL] failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = [SPFBL] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] SPF check error.
+    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = [SPFBL] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = [SPFBL] SPF check unknown.
+    message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = [SPFBL] unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   drop
-    message = [SPFBL] You are blocked in this server for seven days.
-    log_message = [SPFBL] SPF check listed.
+    message = [RBL] you are temporarily blocked on this server.
+    log_message = [SPFBL] listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = [SPFBL] You are permanently blocked on this server.
-    log_message = [SPFBL] SPF check blocked.
+    message = [RBL] you are permanently blocked in this server.
+    log_message = [SPFBL] blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = [SPFBL] SPF check spamtrap.
+    log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
    warn
       condition = ${if def:acl_c_spfbl {true}{false}}
@@ -250,27 +250,27 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
-    message = [SPFBL] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = [SPFBL] SPF check failed.
+    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
+    log_message = [SPFBL] failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = [SPFBL] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] SPF check error.
+    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = [SPFBL] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = [SPFBL] SPF check unknown.
+    message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = [SPFBL] unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   drop
-    message = [SPFBL] You are blocked in this server for seven days.
-    log_message = [SPFBL] SPF check listed.
+    message = [RBL] you are temporarily blocked on this server.
+    log_message = [SPFBL] listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = [SPFBL] You are permanently blocked on this server.
-    log_message = [SPFBL] SPF check blocked.
+    message = [RBL] you are permanently blocked in this server.
+    log_message = [SPFBL] blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = [SPFBL] SPF check spamtrap.
+    log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
