@@ -245,6 +245,28 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    /**
+     * Verifica se o endereço contém um domínio.
+     * @param address o endereço a ser verificado.
+     * @return verdadeiro se o endereço contém um domínio.
+     */
+    public static boolean isHostname(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            address = address.trim();
+            if (SubnetIPv4.isValidIPv4(address)) {
+                return false;
+            } else {
+                address = address.toLowerCase();
+                return Pattern.matches(
+                        "^((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
+                        );
+
+            }
+        }
+    }
+    
     public static void main(String[] args) {
         try {
             System.out.println(isEmail("joana.mon,,te@web-sx12.dexonbr.com.br"));

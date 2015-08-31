@@ -4,10 +4,11 @@
  */
 package br.com.allchemistry.core;
 
-import br.com.allchemistry.dnsbl.QueryDNSBL;
+import br.com.allchemistry.spf.PeerUDP;
 import br.com.allchemistry.whois.QueryTCP;
 import br.com.allchemistry.whois.QueryUDP;
 import br.com.allchemistry.spf.QuerySPF;
+import java.net.InetAddress;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -15,6 +16,16 @@ import br.com.allchemistry.spf.QuerySPF;
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
 public class Main {
+    
+    private static PeerUDP peerUDP;
+    
+    public static void sendTokenToPeer(
+            String token,
+            InetAddress address,
+            int port
+            ) throws ProcessException {
+        peerUDP.send(token, address, port);
+    }
 
     /**
      * @param args the command line arguments
@@ -29,7 +40,9 @@ public class Main {
             new QueryTCP(port+1).start();
             new QueryUDP(port+1, size).start();
             new QuerySPF(port+2).start();
-            new QueryDNSBL().start();
+            peerUDP = new PeerUDP(port+2, size);
+            peerUDP.start();
+//            new QueryDNSBL().start();
         } catch (Exception ex) {
             Server.logError(ex);
             printHelp();

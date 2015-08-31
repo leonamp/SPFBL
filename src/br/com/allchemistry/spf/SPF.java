@@ -4,6 +4,7 @@
  */
 package br.com.allchemistry.spf;
 
+import br.com.allchemistry.core.Main;
 import br.com.allchemistry.core.NormalDistribution;
 import br.com.allchemistry.whois.Domain;
 import br.com.allchemistry.core.ProcessException;
@@ -1875,7 +1876,7 @@ public final class SPF implements Serializable {
                 return false;
             } else if (Domain.isEmail(recipient)) {
                 return true;
-            } else if (recipient.startsWith("@") && Domain.containsDomain(recipient)) {
+            } else if (recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1))) {
                 return true;
             } else {
                 return false;
@@ -2048,6 +2049,19 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        public static synchronized boolean addAndDisseminate(String token) {
+            if (token == null) {
+                return false;
+            } else if (SET.add(token)) {
+                // Disseminar informação via P2P.
+                CachePeer.send(token);
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
 
         public static synchronized boolean add(String client, String token) throws ProcessException {
             if (client == null) {
@@ -2110,11 +2124,21 @@ public final class SPF implements Serializable {
 
         public static synchronized TreeSet<String> get(String client) throws ProcessException {
             TreeSet<String> blockSet = new TreeSet<String>();
-            for (String sender : SET) {
-                if (sender.startsWith(client + ':')) {
-                    int index = sender.indexOf(':') + 1;
-                    sender = sender.substring(index);
-                    blockSet.add(sender);
+            for (String token : SET) {
+                if (token.startsWith(client + ':')) {
+                    int index = token.indexOf(':') + 1;
+                    token = token.substring(index);
+                    blockSet.add(token);
+                }
+            }
+            return blockSet;
+        }
+        
+        public static synchronized TreeSet<String> get() throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            for (String token : SET) {
+                if (!token.contains(":")) {
+                    blockSet.add(token);
                 }
             }
             return blockSet;
@@ -2249,6 +2273,165 @@ public final class SPF implements Serializable {
     public static TreeSet<String> getBlockSet(String client) throws ProcessException {
         return CacheBlock.get(client);
     }
+    
+    public static TreeSet<String> getBlockSet() throws ProcessException {
+        return CacheBlock.get();
+    }
+    
+    /**
+     * Classe que representa o cache de peers que serão atualizados.
+     */
+    private static class CachePeer {
+
+        /**
+         * Mapa de registros de peers <endereço,porta>.
+         */
+        private static final HashMap<InetAddress,Integer> MAP = new HashMap<InetAddress,Integer>();
+        
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+        
+        public static synchronized void send(String token) {
+            for (InetAddress address : MAP.keySet()) {
+                long time = System.currentTimeMillis();
+                int port = MAP.get(address);
+                String result;
+                try {
+                    Main.sendTokenToPeer(token, address, port);
+                    result = "OK";
+                } catch (ProcessException ex) {
+                    result = ex.getMessage();
+                }
+                Server.logPeerSend(time, address, token, result);
+            }
+        }
+        
+        public static synchronized boolean add(String address,
+                String port) throws ProcessException {
+            try {
+                int portInt = Integer.parseInt(port);
+                return add(address, portInt);
+            } catch (NumberFormatException ex) {
+                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
+            }
+        }
+        
+        public static synchronized boolean add(String address,
+                Integer port) throws ProcessException {
+            try {
+                InetAddress inetAddress = InetAddress.getByName(address);
+                if (port == null || port < 1 || port > 65535) {
+                    throw new ProcessException("ERROR: PEER PORT INVALID");
+                } else if (!port.equals(MAP.put(inetAddress, port))) {
+                    CHANGED = true;
+                    // Enviar imediatamente todos os 
+                    // tokens bloqueados na base atual.
+                    TreeMap<String,Distribution> distributionSet =
+                            CacheDistribution.getMap();
+                    for (String token : distributionSet.keySet()) {
+                        Distribution distribution = distributionSet.get(token);
+                        if (distribution.isBlocked()) {
+                            long time = System.currentTimeMillis();
+                            String result;
+                            try {
+                                Main.sendTokenToPeer(token, inetAddress, port);
+                                result = "OK";
+                            } catch (ProcessException ex) {
+                                result = ex.toString();
+                            }
+                            Server.logPeerSend(time, inetAddress, token, result);
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            } catch (UnknownHostException ex) {
+                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+            }
+        }
+        
+        public static synchronized boolean drop(
+                String address) throws ProcessException {
+            try {
+                InetAddress inetAddress = InetAddress.getByName(address);
+                if (MAP.remove(inetAddress) == null) {
+                    return false;
+                } else {
+                    CHANGED = true;
+                    return true;
+                }
+            } catch (UnknownHostException ex) {
+                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+            }
+        }
+        
+        public static synchronized TreeSet<String> get() throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            for (InetAddress inetAddress : MAP.keySet()) {
+                int port = MAP.get(inetAddress);
+                String result = inetAddress + ":" + port;
+                blockSet.add(result);
+            }
+            return blockSet;
+        }
+
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("peer.map");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(MAP, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+
+        private static synchronized void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("peer.map");
+            if (file.exists()) {
+                try {
+                    HashMap<InetAddress,Integer> map;
+                    FileInputStream fileInputStream = new FileInputStream(file);
+                    try {
+                        map = SerializationUtils.deserialize(fileInputStream);
+                    } finally {
+                        fileInputStream.close();
+                    }
+                    MAP.putAll(map);
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+    }
+    
+    public static boolean addPeer(String address, int port) throws ProcessException {
+        return CachePeer.add(address, port);
+    }
+    
+    public static boolean addPeer(String address, String port) throws ProcessException {
+        return CachePeer.add(address, port);
+    }
+
+    public static boolean dropPeer(String sender) throws ProcessException {
+        return CachePeer.drop(sender);
+    }
+    
+    public static TreeSet<String> getPeerSet() throws ProcessException {
+        return CachePeer.get();
+    }
 
     /**
      * Classe que representa o cache de "best-guess" exclusivos.
@@ -2333,6 +2516,10 @@ public final class SPF implements Serializable {
     public static void storeBlock() {
         CacheBlock.store();
     }
+    
+    public static void storePeer() {
+        CachePeer.store();
+    }
 
     public static void storeTrap() {
         CacheTrap.store();
@@ -2350,6 +2537,7 @@ public final class SPF implements Serializable {
         CacheBlock.store();
         CacheGuess.store();
         CacheHELO.store();
+        CachePeer.store();
     }
 
     /**
@@ -2364,6 +2552,7 @@ public final class SPF implements Serializable {
         CacheBlock.load();
         CacheGuess.load();
         CacheHELO.load();
+        CachePeer.load();
     }
 
     /**
@@ -2641,7 +2830,6 @@ public final class SPF implements Serializable {
                 } else {
                     result = spf.getResult(ip);
                 }
-                long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String ownerid = null;
                 if (result.equals("FAIL")) {
@@ -2696,14 +2884,13 @@ public final class SPF implements Serializable {
                 }
                 // Calcula frequencia de consultas.
                 SPF.addQuery(tokenSet);
-//                String ticket;
                 if (CacheTrap.contains(client, recipient)) {
                     // Spamtrap. Denúnica automática.
-                    long time2 = System.currentTimeMillis();
+                    long time = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                    Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                     TreeSet<String> complainSet = CacheComplain.add(ticket);
-                    Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                    Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
                     // Bloqueio. Denúnica automática.
@@ -2713,29 +2900,20 @@ public final class SPF implements Serializable {
                     TreeSet<String> complainSet = CacheComplain.add(ticket);
                     Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=REJECT [RBL] "
-                            + sender + " is permanently blocked in this server.\n\n";
+                            + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet)) {
                     // Pelo menos um token está listado.
-                    long ttl = SPF.getComplainTTL(tokenSet);
-                    int days = (int) (ttl / 1440);
-                    return "action=REJECT [RBL] "
-                            + "You are blocked in this "
-                            + "server for " + days + " days.\n\n";
-//                } else if ((ticket = SPF.getTicketIfAllow(tokenSet)) == null) {
-//                    // Não gerou ticket porque está listado.
 //                    long ttl = SPF.getComplainTTL(tokenSet);
 //                    int days = (int) (ttl / 1440);
-//                    return "action=REJECT [RBL] "
-//                            + "You are blocked in this "
-//                            + "server for " + days + " days.\n\n";
+                    return "action=REJECT [RBL] "
+                            + "you are temporarily blocked on this server.\n\n";
                 } else {
                     // Adcionar ticket ao cabeçalho da mensagem.
-                    long time2 = System.currentTimeMillis();
+                    long time = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time2, ip + " " + sender + " " + helo, tokenSet);
+                    Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
                     return "action=PREPEND "
-                            + "Received-SPFBL: " + result
-                            + " " + ticket + "\n\n";
+                            + "Received-SPFBL: " + result + " " + ticket + "\n\n";
                 }
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: SPF PARSE")) {
@@ -3101,16 +3279,16 @@ public final class SPF implements Serializable {
         }
     }
 
-    private static synchronized long getComplainTTL(TreeSet<String> tokenSet) {
-        long ttl = 0;
-        for (String token : tokenSet) {
-            long ttlNew = getComplainTTL(token);
-            if (ttl < ttlNew) {
-                ttl = ttlNew;
-            }
-        }
-        return ttl;
-    }
+//    private static synchronized long getComplainTTL(TreeSet<String> tokenSet) {
+//        long ttl = 0;
+//        for (String token : tokenSet) {
+//            long ttlNew = getComplainTTL(token);
+//            if (ttl < ttlNew) {
+//                ttl = ttlNew;
+//            }
+//        }
+//        return ttl;
+//    }
 
     public static boolean isBlacklisted(String token) {
         Distribution distribution = CacheDistribution.get(token, false);
@@ -3118,38 +3296,23 @@ public final class SPF implements Serializable {
             // Distribuição não encontrada.
             // Considerar que não está listado.
             return false;
+        } else if (distribution.isBlocked()) {
+            // Inclusão e disseminação de bloqueio por P2P.
+            CacheBlock.addAndDisseminate(token);
+            return true;
         } else {
-            return distribution.isBlacklisted(
-//                    false
-            );
+            return distribution.isBlacklisted();
         }
     }
-
-//    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
-//        boolean blacklisted = false;
-//        for (String token : tokenSet) {
-//            Distribution distribution = CacheDistribution.get(token, false);
-//            if (distribution == null) {
-//                // Distribuição não encontrada.
-//                // Considerar que não está listado.
-//            } else if (distribution.isBlacklisted(true)) {
-//                blacklisted = true;
-//            }
-//        }
-//        return blacklisted;
-//    }
     
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
+        boolean blacklisted = false;
         for (String token : tokenSet) {
-            Distribution distribution = CacheDistribution.get(token, false);
-            if (distribution == null) {
-                // Distribuição não encontrada.
-                // Considerar que não está listado.
-            } else if (distribution.isBlacklisted()) {
-                return true;
+            if (isBlacklisted(token)) {
+                blacklisted = true;
             }
         }
-        return false;
+        return blacklisted;
     }
 
     /**
@@ -3159,7 +3322,9 @@ public final class SPF implements Serializable {
 
         WHITE, // Whitelisted
         GRAY, // Graylisted
-        BLACK; // Blacklisted
+        BLACK, // Blacklisted
+        BLOCK; // Blocked
+        
     }
     
     /**
@@ -3310,17 +3475,23 @@ public final class SPF implements Serializable {
          * @return o status atual da distribuição.
          */
         public synchronized Status getStatus() {
-            float[] probability = getSpamProbability();
-            float min = probability[0];
-            float max = probability[2];
-            if (max == 0.0f) {
-                status = Status.WHITE;
-            } else if (min > LIMIAR) {
-                status = Status.BLACK;
-            } else if (status == Status.GRAY && min > LIMIAR/2) {
-                status = Status.BLACK;
-            } else if (status == Status.BLACK && max < LIMIAR/2) {
-                status = Status.GRAY;
+            if (status != Status.BLOCK) {
+                float[] probability = getSpamProbability();
+                float min = probability[0];
+                float max = probability[2];
+                if (max == 1.0 && min > 0.5f && complain > 32) {
+                    // Condição especial que bloqueia 
+                    // definitivamente o responsável.
+                    status = Status.BLOCK;
+                } else if (max == 0.0f) {
+                    status = Status.WHITE;
+                } else if (min > LIMIAR) {
+                    status = Status.BLACK;
+                } else if (status == Status.GRAY && min > LIMIAR/2) {
+                    status = Status.BLACK;
+                } else if (status == Status.BLACK && max < LIMIAR/2) {
+                    status = Status.GRAY;
+                }
             }
             return status;
         }
@@ -3331,13 +3502,12 @@ public final class SPF implements Serializable {
          * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
-        public boolean isBlacklisted(
-//                boolean query
-        ) {
-//            if (query) {
-//                addQuery();
-//            }
-            return getStatus() == Status.BLACK;
+        public boolean isBlacklisted() {
+            return getStatus().ordinal() >= Status.BLACK.ordinal();
+        }
+        
+        public boolean isBlocked() {
+            return getStatus() == Status.BLOCK;
         }
 
         public synchronized void removeSpam() {
