@@ -3330,7 +3330,7 @@ public final class SPF implements Serializable {
     /**
      * Constante que determina o limiar de listagem.
      */
-    private static final float LIMIAR = 0.0625f;
+    private static final float LIMIAR = 0.25f;
 
     /**
      * Classe que representa a distribuição binomial entre SPAM e HAM. O valor
