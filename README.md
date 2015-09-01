@@ -163,11 +163,13 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifica
 
 ##### Método de listagem
 
-O SPFBL mantém uma flag para cada responsável. Esta flag tem três estados: WHITE, GRAY e BLACK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima da mensagem ser SPAM:
+O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: WHITE, GRAY, BLACK e BLOCK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima da mensagem ser SPAM:
 
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/flagFSM.png "flagFSM.png")
 
 Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
+
+Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio permanente, retornando BLOCKED. Esta transição é utilizada para disseminar a lista de bloqueio entre pools via P2P. Deve haver concenso total dentro do mesmo pool para passar a diante o bloqueio para outros pools associados.
 
 ##### Fluxo do SPFBL
 
