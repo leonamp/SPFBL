@@ -190,8 +190,18 @@ public abstract class Server extends Thread {
      */
     private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
     
+    private static long LAST_TICKET_TIME = 0;
+    
     public static synchronized String getNewTicketDate() {
-        return FORMAT_DATE_TICKET.format(new Date());
+        long time = System.currentTimeMillis();
+        if (time == LAST_TICKET_TIME) {
+            // Não permite criar dois tickets 
+            // exatamente com a mesma data para 
+            // que o hash fique sempre diferente.
+            time++;
+        }
+        LAST_TICKET_TIME = time;
+        return FORMAT_DATE_TICKET.format(new Date(time));
     }
     
     public static synchronized String formatTicketDate(Date date) {
@@ -518,6 +528,16 @@ public abstract class Server extends Thread {
             result = result.replace("\n", "\\n");
         }
         log(time, type, client + ": " + query + " => " + result);
+    }
+    
+    public static synchronized void logQuery(
+            long time,
+            String type,
+            String query, String result) {
+        if (result != null) {
+            result = result.replace("\n", "\\n");
+        }
+        log(time, type, query + " => " + result);
     }
     
     /**
@@ -888,7 +908,7 @@ public abstract class Server extends Thread {
                             if (result == null) {
                                 result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                             } else {
-                                result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                             }
                         } catch (ProcessException ex) {
                             result = ex.getMessage() + "\n";
@@ -908,7 +928,7 @@ public abstract class Server extends Thread {
                             if (result == null) {
                                 result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                             } else {
-                                result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                             }
                         } catch (ProcessException ex) {
                             result = ex.getMessage() + "\n";
