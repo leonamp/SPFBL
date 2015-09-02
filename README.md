@@ -164,6 +164,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifica
 * LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
+* GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 
 ##### Método de listagem
 
