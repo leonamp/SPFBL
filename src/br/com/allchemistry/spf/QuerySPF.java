@@ -160,7 +160,7 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
                                         result = ex.getMessage() + "\n";
@@ -183,7 +183,7 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
                                         result = ex.getMessage() + "\n";
@@ -220,7 +220,7 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
                                         result = ex.getMessage() + "\n";
@@ -243,7 +243,7 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
                                         result = ex.getMessage() + "\n";

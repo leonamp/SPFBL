@@ -5,10 +5,8 @@
 package br.com.allchemistry.spf;
 
 import br.com.allchemistry.core.ProcessException;
-import br.com.allchemistry.whois.*;
 import br.com.allchemistry.core.Server;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
