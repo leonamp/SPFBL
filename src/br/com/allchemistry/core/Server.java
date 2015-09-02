@@ -969,20 +969,13 @@ public abstract class Server extends Thread {
                             }
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String peer = tokenizer.nextToken();
-                        int index = peer.indexOf(':');
-                        if (index == -1) {
-                            result = "ERROR: COMMAND";
-                        } else {
-                            String address = peer.substring(0, index);
-                            String port = peer.substring(index + 1);
-                            try {
-                                boolean added = SPF.addPeer(address, port);
-                                result = (added ? "DROPED" : "NOT FOUND") + "\n";
-                                SPF.storePeer();
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
+                        String address = tokenizer.nextToken();
+                        try {
+                            boolean droped = SPF.dropPeer(address);
+                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                            SPF.storePeer();
+                        } catch (ProcessException ex) {
+                            result = ex.getMessage() + "\n";
                         }
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String sender : SPF.getPeerSet()) {

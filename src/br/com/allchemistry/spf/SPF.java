@@ -2425,8 +2425,8 @@ public final class SPF implements Serializable {
         return CachePeer.add(address, port);
     }
 
-    public static boolean dropPeer(String sender) throws ProcessException {
-        return CachePeer.drop(sender);
+    public static boolean dropPeer(String address) throws ProcessException {
+        return CachePeer.drop(address);
     }
     
     public static TreeSet<String> getPeerSet() throws ProcessException {
