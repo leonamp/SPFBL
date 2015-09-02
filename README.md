@@ -144,6 +144,10 @@ user:~# ./spfbl.sh trap drop <destinatário>
 OK
 ```
 
+##### Greylisting
+
+A mensagem será atrasada sempre que o responsável estiver com status GRAY e a probabilidade SPAM mínima dele for inferior à variável pseudo-aleatória.
+
 ### Funcionamento
 
 A seguir é mostrado como o SPFBL funciona internamente.
@@ -238,7 +242,11 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   discard
     log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
-   warn
+  defer
+    message = [RBL] you are greylisted on this server.
+    log_message = [SPFBL] greylisting.
+    condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
+  warn
       condition = ${if def:acl_c_spfbl {true}{false}}
       add_header = Received-SPFBL: $acl_c_spfbl
 ```
@@ -274,6 +282,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   discard
     log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
+  defer
+    message = [RBL] you are greylisted on this server.
+    log_message = [SPFBL] greylisting.
+    condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
