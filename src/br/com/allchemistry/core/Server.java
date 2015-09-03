@@ -194,11 +194,11 @@ public abstract class Server extends Thread {
     
     public static synchronized String getNewTicketDate() {
         long time = System.currentTimeMillis();
-        if (time == LAST_TICKET_TIME) {
+        if (time <= LAST_TICKET_TIME) {
             // Não permite criar dois tickets 
             // exatamente com a mesma data para 
             // que o hash fique sempre diferente.
-            time++;
+            time = LAST_TICKET_TIME + 1;
         }
         LAST_TICKET_TIME = time;
         return FORMAT_DATE_TICKET.format(new Date(time));
@@ -1003,7 +1003,7 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
-                } else if (token.equals("REPUTATION")) {
+                } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
@@ -1024,6 +1024,25 @@ public abstract class Server extends Thread {
                         }
                     }
                     result = stringBuilder.toString();
+                } else if (token.equals("WHITE") && tokenizer.hasMoreElements()) {
+                    while (tokenizer.hasMoreElements()) {
+                        try {
+                            token = tokenizer.nextToken();
+                            boolean whited = SPF.white(token);
+                            if (result == null) {
+                                result = (whited ? "WHITED" : "NOT FOUND") + "\n";
+                            } else {
+                                result += (whited ? "WHITED" : "NOT FOUND") + "\n";
+                            }
+                        } catch (Exception ex) {
+                            if (result == null) {
+                                result = ex.getMessage() + "\n";
+                            } else {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                    }
+                    SPF.storeDistribution();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {

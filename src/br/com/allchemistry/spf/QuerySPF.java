@@ -163,7 +163,11 @@ public final class QuerySPF extends Server {
                                             result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -186,7 +190,11 @@ public final class QuerySPF extends Server {
                                             result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -223,7 +231,11 @@ public final class QuerySPF extends Server {
                                             result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -246,7 +258,11 @@ public final class QuerySPF extends Server {
                                             result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {

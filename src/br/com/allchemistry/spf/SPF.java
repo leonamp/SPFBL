@@ -2278,6 +2278,16 @@ public final class SPF implements Serializable {
         return CacheBlock.get();
     }
     
+    public static boolean white(String token) {
+        Distribution distribution = CacheDistribution.get(token, false);
+        if (distribution == null) {
+            return false;
+        } else {
+            distribution.white();
+            return true;
+        }
+    }
+    
     /**
      * Classe que representa o cache de peers que serão atualizados.
      */
@@ -2523,6 +2533,10 @@ public final class SPF implements Serializable {
 
     public static void storeTrap() {
         CacheTrap.store();
+    }
+    
+    public static void storeDistribution() {
+        CacheDistribution.store();
     }
 
     /**
@@ -2909,10 +2923,10 @@ public final class SPF implements Serializable {
                     // Pelo menos um token está listado.
                     return "action=REJECT [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
-                } else if (SPF.isGreylisted(tokenSet)) {
-                    // Pelo menos um token está listado.
-                    return "action=DEFER [RBL] "
-                            + "you are greylisted on this server.\n\n";
+//                } else if (SPF.isGreylisted(tokenSet)) {
+//                    // Pelo menos um token está listado.
+//                    return "action=DEFER [RBL] "
+//                            + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
@@ -3124,10 +3138,10 @@ public final class SPF implements Serializable {
                                 // Pelo menos um token do 
                                 // conjunto está em lista negra.
                                 return "LISTED\n";
-                            } else if (SPF.isGreylisted(tokenSet)) {
-                                // Pelo menos um token do 
-                                // conjunto está em greylisting.
-                                return "GREYLIST\n";
+//                            } else if (SPF.isGreylisted(tokenSet)) {
+//                                // Pelo menos um token do 
+//                                // conjunto está em greylisting.
+//                                return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
@@ -3357,6 +3371,16 @@ public final class SPF implements Serializable {
                 return 0;
             } else {
                 return ttl;
+            }
+        }
+        
+        public boolean white() {
+            if (status == Status.WHITE) {
+                return false;
+            } else {
+                status = Status.WHITE;
+                CacheDistribution.CHANGED = true;
+                return true;
             }
         }
 
