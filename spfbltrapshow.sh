@@ -17,7 +17,7 @@
 
 recipient=$1
 
-response=$(echo "TRAP SHOW" | nc -w 5 54.94.137.168 9877)
+response=$(echo "TRAP SHOW" | nc 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 
