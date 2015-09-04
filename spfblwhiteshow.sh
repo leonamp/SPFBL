@@ -1,26 +1,23 @@
 #!/bin/bash
 #
-# Este é um script em BASH que remove um destinatário da lista spamtrap do SPFBL.
+# Este é um script em BASH que visualiza a lista spamtrap do SPFBL.
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
 # ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
 #
-# Parâmetros de entrada:
-#
-#    1. recipient: o destinatário que deve ser desbloqueado, com endereço completo.
-#
+# Parâmetros de entrada: nenhum.
 #
 # Códigos de saída:
 #
-#    0: desbloqueado com sucesso.
-#    1: erro ao tentar adicionar bloqueio.
+#    0: visualizado com sucesso.
+#    1: erro ao tentar visualizar bloqueio.
 #    2: timeout de conexão.
 #
 
 recipient=$1
 
-response=$(echo "TRAP DROP $recipient" | nc 54.94.137.168 9877)
+response=$(echo "WHITE SHOW" | nc 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 

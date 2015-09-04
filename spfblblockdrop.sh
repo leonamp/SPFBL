@@ -22,7 +22,7 @@
 
 sender=$1
 
-response=$(echo "BLOCK DROP $sender" | nc -w 5 54.94.137.168 9877)
+response=$(echo "BLOCK DROP $sender" | nc 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 
