@@ -190,8 +190,18 @@ public abstract class Server extends Thread {
      */
     private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
     
+    private static long LAST_TICKET_TIME = 0;
+    
     public static synchronized String getNewTicketDate() {
-        return FORMAT_DATE_TICKET.format(new Date());
+        long time = System.currentTimeMillis();
+        if (time <= LAST_TICKET_TIME) {
+            // Não permite criar dois tickets 
+            // exatamente com a mesma data para 
+            // que o hash fique sempre diferente.
+            time = LAST_TICKET_TIME + 1;
+        }
+        LAST_TICKET_TIME = time;
+        return FORMAT_DATE_TICKET.format(new Date(time));
     }
     
     public static synchronized String formatTicketDate(Date date) {
@@ -518,6 +528,16 @@ public abstract class Server extends Thread {
             result = result.replace("\n", "\\n");
         }
         log(time, type, client + ": " + query + " => " + result);
+    }
+    
+    public static synchronized void logQuery(
+            long time,
+            String type,
+            String query, String result) {
+        if (result != null) {
+            result = result.replace("\n", "\\n");
+        }
+        log(time, type, query + " => " + result);
     }
     
     /**
@@ -888,7 +908,7 @@ public abstract class Server extends Thread {
                             if (result == null) {
                                 result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                             } else {
-                                result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                             }
                         } catch (ProcessException ex) {
                             result = ex.getMessage() + "\n";
@@ -908,7 +928,7 @@ public abstract class Server extends Thread {
                             if (result == null) {
                                 result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                             } else {
-                                result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                             }
                         } catch (ProcessException ex) {
                             result = ex.getMessage() + "\n";
@@ -949,20 +969,13 @@ public abstract class Server extends Thread {
                             }
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String peer = tokenizer.nextToken();
-                        int index = peer.indexOf(':');
-                        if (index == -1) {
-                            result = "ERROR: COMMAND";
-                        } else {
-                            String address = peer.substring(0, index);
-                            String port = peer.substring(index + 1);
-                            try {
-                                boolean added = SPF.addPeer(address, port);
-                                result = (added ? "DROPED" : "NOT FOUND") + "\n";
-                                SPF.storePeer();
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
+                        String address = tokenizer.nextToken();
+                        try {
+                            boolean droped = SPF.dropPeer(address);
+                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                            SPF.storePeer();
+                        } catch (ProcessException ex) {
+                            result = ex.getMessage() + "\n";
                         }
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String sender : SPF.getPeerSet()) {
@@ -990,7 +1003,7 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
-                } else if (token.equals("REPUTATION")) {
+                } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
                     TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
@@ -1011,6 +1024,25 @@ public abstract class Server extends Thread {
                         }
                     }
                     result = stringBuilder.toString();
+                } else if (token.equals("WHITE") && tokenizer.hasMoreElements()) {
+                    while (tokenizer.hasMoreElements()) {
+                        try {
+                            token = tokenizer.nextToken();
+                            boolean whited = SPF.white(token);
+                            if (result == null) {
+                                result = (whited ? "WHITED" : "NOT FOUND") + "\n";
+                            } else {
+                                result += (whited ? "WHITED" : "NOT FOUND") + "\n";
+                            }
+                        } catch (Exception ex) {
+                            if (result == null) {
+                                result = ex.getMessage() + "\n";
+                            } else {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                    }
+                    SPF.storeDistribution();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {

@@ -160,10 +160,14 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -183,10 +187,14 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -220,10 +228,14 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "OK\n";
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -243,10 +255,14 @@ public final class QuerySPF extends Server {
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "OK\n";
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         }
                                     } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
                                     }
                                 }
                                 if (result == null) {
@@ -258,6 +274,74 @@ public final class QuerySPF extends Server {
                                 type = "STRAP";
                                 // Mecanismo de visualização de bloqueios de remetentes.
                                 for (String recipient : SPF.getTrapSet(client)) {
+                                    if (result == null) {
+                                        result = recipient + "\n";
+                                    } else {
+                                        result += recipient + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (line.startsWith("WHITE ADD ")) {
+                                query = line.substring(6).trim();
+                                type = "WHITE";
+                                // Mecanismo de adição de whitelist.
+                                line = line.substring(10);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String recipient = tokenizer.nextToken();
+                                        boolean added = SPF.addWhite(client, recipient);
+                                        if (result == null) {
+                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                        } else {
+                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                        }
+                                    } catch (ProcessException ex) {
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeWhite();
+                            } else if (line.startsWith("WHITE DROP ")) {
+                                query = line.substring(6).trim();
+                                type = "WHITE";
+                                // Mecanismo de remoção de whitelist.
+                                line = line.substring(11);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String recipient = tokenizer.nextToken();
+                                        boolean droped = SPF.dropWhite(client, recipient);
+                                        if (result == null) {
+                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                        } else {
+                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                        }
+                                    } catch (ProcessException ex) {
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
+                                SPF.storeWhite();
+                            } else if (line.equals("WHITE SHOW")) {
+                                query = line.substring(6).trim();
+                                type = "WHITE";
+                                // Mecanismo de visualização de bloqueios de remetentes.
+                                for (String recipient : SPF.getWhiteSet(client)) {
                                     if (result == null) {
                                         result = recipient + "\n";
                                     } else {

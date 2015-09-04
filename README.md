@@ -144,6 +144,32 @@ user:~# ./spfbl.sh trap drop <destinatário>
 OK
 ```
 
+##### Whitelist
+
+É possível adicionar remetentes na lista branca.
+
+Para visualizar a lista branca:
+```
+user:~# ./spfblwhiteshow.sh
+EMPTY
+```
+
+Para adicionar um remetente:
+```
+user:~# ./spfblwhiteadd.sh <remetente>
+OK
+```
+
+Para remover um remetente:
+```
+user:~# ./spfblwhitedrop.sh <remetente>
+OK
+```
+
+##### Greylisting
+
+A mensagem será atrasada sempre que o responsável estiver com status GRAY e a probabilidade SPAM mínima dele for inferior à variável pseudo-aleatória.
+
 ### Funcionamento
 
 A seguir é mostrado como o SPFBL funciona internamente.
@@ -160,6 +186,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifica
 * LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
+* GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 
 ##### Método de listagem
 
@@ -238,7 +265,11 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   discard
     log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
-   warn
+  defer
+    message = [RBL] you are greylisted on this server.
+    log_message = [SPFBL] greylisting.
+    condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
+  warn
       condition = ${if def:acl_c_spfbl {true}{false}}
       add_header = Received-SPFBL: $acl_c_spfbl
 ```
@@ -274,6 +305,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   discard
     log_message = [SPFBL] spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
+  defer
+    message = [RBL] you are greylisted on this server.
+    log_message = [SPFBL] greylisting.
+    condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
@@ -292,7 +327,7 @@ Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste ja
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
 ```
-sudo java -jar SPFBL.jar 9875 512 >> log.001.txt &
+java -jar SPFBL.jar 9875 512 >> log.001.txt &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
@@ -302,6 +337,18 @@ O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar cor
 Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes p2p:
 
 ![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
+
+Aqui vemos um exemplo de rede com três pools, onde cada pool tem um servidor, cada servidor SPFBL tem três servidores de e-mail e cada servidor de e-mail tem três usuários.
+
+Responsabilidades dos elementos:
+
+* Usuário: denunciar as mensagens SPAM que passam para ele utilizando de ferramentas disponibilizadas pelo administrador do seu MX.
+* Administrador do MX: fornecer ferramentas de denúncia para seus usuários e bloquear permanentemente as fontes SPAM 100% comprovadas.
+* Administrador do pool: criar regras de utilização do pool, onde os administradores MX decidem se desejam aderir ao pool, verifiar se as regras estão sendo cumpridas e se conectar a outros pools que tenham ideais semelhantes ao dele.
+
+O ideia de se conectar a outros pool que com semelhança de ideais serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
+
+A rede deve auto-organizar-se de forma descentralizada.
 
 ### Forum SPFBL
 

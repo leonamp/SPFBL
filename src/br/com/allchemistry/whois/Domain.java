@@ -710,6 +710,23 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static Date getCreated(String address) throws ProcessException {
+        if (address == null) {
+            return null;
+        } else {
+            Domain domain = Domain.getDomain(address);
+            if (domain == null) {
+                return null;
+            } else {
+                return domain.created;
+            }
+        }
+    }
+    
+    public Date getCreated() {
+        return created;
+    }
+    
     /**
      * Armazenamento de cache em disco.
      */
