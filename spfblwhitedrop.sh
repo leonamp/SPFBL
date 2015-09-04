@@ -20,7 +20,7 @@
 
 recipient=$1
 
-response=$(echo "TRAP DROP $recipient" | nc 54.94.137.168 9877)
+response=$(echo "WHITE DROP $recipient" | nc 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 

@@ -36,6 +36,7 @@
 #    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 #    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 #    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 #
 # Códigos de saída:
 #
@@ -51,6 +52,7 @@
 #    9: timeout de conexão.
 #    10: bloqueado permanentemente.
 #    11: spamtrap.
+#    12: greylisting.
 #
 
 ip=$1
@@ -72,6 +74,10 @@ if [[ $qualifier == "TIMEOUT" ]]; then
 
         exit 9
         
+elif [[ $qualifier == "GREYLIST" ]]; then
+
+	exit 12
+	
 elif [[ $qualifier == "SPAMTRAP" ]]; then
 
 	exit 11

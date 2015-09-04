@@ -17,7 +17,7 @@
 
 sender=$1
 
-response=$(echo "BLOCK SHOW" | nc -w 5 54.94.137.168 9877)
+response=$(echo "BLOCK SHOW" | nc 54.94.137.168 9877)
 
 if [[ $response == "" ]]; then
 
