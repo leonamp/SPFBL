@@ -316,6 +316,18 @@ Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais i
 
 ![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
 
+Aqui vemos um exemplo de rede com três pools, onde cada pool tem um servidor, cada servidor SPFBL tem três servidores de e-mail e cada servidor de e-mail tem três usuários.
+
+Responsabilidades dos elementos:
+
+* Usuário: denunciar as mensagens SPAM que passam para ele utilizando de ferramentas disponibilizadas pelo administrador do seu MX.
+* Administrador do MX: fornecer ferramentas de denúncia para seus usuários e bloquear permanentemente as fontes SPAM 100% comprovadas.
+* Administrador do pool: criar regras de utilização do pool, onde os administradores MX decidem se desejam aderir ao pool, verifiar se as regras estão sendo cumpridas e se conectar a outros pools que tenham ideais semelhantes ao dele.
+
+O ideia de se conectar a outros pool que com semelhança de ideais serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
+
+A rede deve auto-organizar-se de forma descentralizada.
+
 ### Forum SPFBL
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
