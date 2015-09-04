@@ -144,6 +144,28 @@ user:~# ./spfbl.sh trap drop <destinatário>
 OK
 ```
 
+##### Whitelist
+
+É possível adicionar remetentes na lista branca.
+
+Para visualizar a lista branca:
+```
+user:~# ./spfblwhiteshow.sh
+EMPTY
+```
+
+Para adicionar um remetente:
+```
+user:~# ./spfblwhiteadd.sh <remetente>
+OK
+```
+
+Para remover um remetente:
+```
+user:~# ./spfblwhitedrop.sh <remetente>
+OK
+```
+
 ##### Greylisting
 
 A mensagem será atrasada sempre que o responsável estiver com status GRAY e a probabilidade SPAM mínima dele for inferior à variável pseudo-aleatória.
