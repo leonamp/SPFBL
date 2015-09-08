@@ -3100,16 +3100,16 @@ public final class SPF implements Serializable {
                     Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
-                } else if (SPF.isBlacklisted(tokenSet)) {
-                    // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
-                    // Pelo menos um token está listado.
-                    return "action=REJECT [RBL] "
-                            + "you are temporarily blocked on this server.\n\n";
-//                } else if (SPF.isGreylisted(tokenSet)) {
+//                } else if (SPF.isBlacklisted(tokenSet)) {
+//                    // Calcula frequencia de consultas.
+//                    SPF.addQuery(tokenSet);
 //                    // Pelo menos um token está listado.
-//                    return "action=DEFER [RBL] "
-//                            + "you are greylisted on this server.\n\n";
+//                    return "action=REJECT [RBL] "
+//                            + "you are temporarily blocked on this server.\n\n";
+                } else if (SPF.isGreylisted(tokenSet)) {
+                    // Pelo menos um token está listado.
+                    return "action=DEFER [RBL] "
+                            + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
@@ -3323,16 +3323,16 @@ public final class SPF implements Serializable {
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
                                 Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "BLOCKED\n";
-                            } else if (SPF.isBlacklisted(tokenSet)) {
-                                // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
-                                // Pelo menos um token do 
-                                // conjunto está em lista negra.
-                                return "LISTED\n";
-//                            } else if (SPF.isGreylisted(tokenSet)) {
+//                            } else if (SPF.isBlacklisted(tokenSet)) {
+//                                // Calcula frequencia de consultas.
+//                                SPF.addQuery(tokenSet);
 //                                // Pelo menos um token do 
-//                                // conjunto está em greylisting.
-//                                return "GREYLIST\n";
+//                                // conjunto está em lista negra.
+//                                return "LISTED\n";
+                            } else if (SPF.isGreylisted(tokenSet)) {
+                                // Pelo menos um token do 
+                                // conjunto está em greylisting.
+                                return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
@@ -3485,25 +3485,24 @@ public final class SPF implements Serializable {
         double pMin = 0.0d;
         for (String token : tokenSet) {
             Distribution distribution = CacheDistribution.get(token, false);
-            if (distribution != null
-                    && distribution.getStatus() == Status.GRAY
+            if (distribution != null && distribution.isGreylisted()
                     && pMin < distribution.getMinSpamProbability()) {
                 pMin = distribution.getMinSpamProbability();
             }
         }
-        // Condição pseudo-aleatória.
+        // Condição pseudo-aleatória temporária.
         return pMin < Math.random();
     }
     
-    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
-        boolean blacklisted = false;
-        for (String token : tokenSet) {
-            if (isBlacklisted(token)) {
-                blacklisted = true;
-            }
-        }
-        return blacklisted;
-    }
+//    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
+//        boolean blacklisted = false;
+//        for (String token : tokenSet) {
+//            if (isBlacklisted(token)) {
+//                blacklisted = true;
+//            }
+//        }
+//        return blacklisted;
+//    }
 
     /**
      * Enumeração do status da distribuição.
@@ -3708,6 +3707,17 @@ public final class SPF implements Serializable {
         
         public boolean isBlocked() {
             return getStatus() == Status.BLOCK;
+        }
+        
+        public boolean isGreylisted() {
+            // Considerar temporariamente BLACK como greylisted.
+            switch (getStatus()) {
+                case GRAY:
+                case BLACK:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         public synchronized void removeSpam() {
