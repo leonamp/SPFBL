@@ -108,29 +108,17 @@ public final class SPF implements Serializable {
     private static LinkedList<String> getRegistrySPF(String hostname) throws ProcessException {
         try {
             LinkedList<String> registryList = new LinkedList<String>();
-            try {
-                Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                        "dns:/" + hostname, new String[]{"SPF"});
-                Attribute attribute = attributes.get("SPF");
-                if (attribute != null) {
-                    for (int index = 0; index < attribute.size(); index++) {
-                        String registry = (String) attribute.get(index);
-                        if (registry.contains("v=spf1 ")) {
-                            registry = fixRegistry(registry);
-                            if (!registryList.contains(registry)) {
-                                registryList.add(registry);
-                            }
-                        }
-                    }
-                }
-            } catch (InvalidAttributeIdentifierException ex) {
-                // Não encontrou registro SPF.
-            }
-            if (registryList.isEmpty()) {
+            if (CacheGuess.contains(hostname)) {
+                // Sempre que houver registro de 
+                // chute, sobrepor registro atual.
+                registryList.add(CacheGuess.get(hostname));
+            } else {
+                // Caso contrário procurar nos 
+                // registros oficiais do domínio.
                 try {
                     Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostname, new String[]{"TXT"});
-                    Attribute attribute = attributes.get("TXT");
+                            "dns:/" + hostname, new String[]{"SPF"});
+                    Attribute attribute = attributes.get("SPF");
                     if (attribute != null) {
                         for (int index = 0; index < attribute.size(); index++) {
                             String registry = (String) attribute.get(index);
@@ -141,25 +129,45 @@ public final class SPF implements Serializable {
                                 }
                             }
                         }
-
                     }
-                } catch (InvalidAttributeIdentifierException ex2) {
-                    // Não encontrou registro TXT.
+                } catch (InvalidAttributeIdentifierException ex) {
+                    // Não encontrou registro SPF.
+                }
+                if (registryList.isEmpty()) {
+                    try {
+                        Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
+                                "dns:/" + hostname, new String[]{"TXT"});
+                        Attribute attribute = attributes.get("TXT");
+                        if (attribute != null) {
+                            for (int index = 0; index < attribute.size(); index++) {
+                                String registry = (String) attribute.get(index);
+                                if (registry.contains("v=spf1 ")) {
+                                    registry = fixRegistry(registry);
+                                    if (!registryList.contains(registry)) {
+                                        registryList.add(registry);
+                                    }
+                                }
+                            }
+
+                        }
+                    } catch (InvalidAttributeIdentifierException ex2) {
+                        // Não encontrou registro TXT.
+                    }
                 }
             }
             if (registryList.isEmpty()) {
-                hostname = "." + hostname;
-                if (CacheGuess.contains(hostname)) {
-                    // Significa que um palpite SPF 
-                    // foi registrado ara este host.
-                    // Neste caso utilizar o paltpite.
-                    registryList.add(CacheGuess.get(hostname));
-                } else {
+//                hostname = "." + hostname;
+//                if (CacheGuess.contains(hostname)) {
+//                    // Significa que um palpite SPF 
+//                    // foi registrado ara este host.
+//                    // Neste caso utilizar o paltpite.
+//                    registryList.add(CacheGuess.get(hostname));
+//                } else {
                     // Se não hoouver palpite específico para o host,
                     // utilizar o palpite padrão.
                     // http://www.openspf.org/FAQ/Best_guess_record
                     registryList.add(CacheGuess.BEST_GUESS);
-                }
+//                }
             }
             return registryList;
         } catch (NamingException ex) {
@@ -2640,10 +2648,16 @@ public final class SPF implements Serializable {
         }
 
         public static boolean contains(String host) {
+            if (!host.startsWith(".")) {
+                host = "." + host;
+            }
             return MAP.containsKey(host);
         }
 
         public static String get(String host) {
+            if (!host.startsWith(".")) {
+                host = "." + host;
+            }
             return MAP.get(host);
         }
 
@@ -3100,14 +3114,12 @@ public final class SPF implements Serializable {
                     Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
-//                } else if (SPF.isBlacklisted(tokenSet)) {
-//                    // Calcula frequencia de consultas.
-//                    SPF.addQuery(tokenSet);
-//                    // Pelo menos um token está listado.
-//                    return "action=REJECT [RBL] "
-//                            + "you are temporarily blocked on this server.\n\n";
-                } else if (SPF.isGreylisted(tokenSet)) {
+                } else if (SPF.isBlacklisted(tokenSet)) {
                     // Pelo menos um token está listado.
+                    return "action=DEFER [RBL] "
+                            + "you are temporarily blocked on this server.\n\n";
+                } else if (SPF.isGreylisted(tokenSet)) {
+                    // Pelo menos um token está em greylisting.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
                 } else {
@@ -3323,12 +3335,10 @@ public final class SPF implements Serializable {
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
                                 Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "BLOCKED\n";
-//                            } else if (SPF.isBlacklisted(tokenSet)) {
-//                                // Calcula frequencia de consultas.
-//                                SPF.addQuery(tokenSet);
-//                                // Pelo menos um token do 
-//                                // conjunto está em lista negra.
-//                                return "LISTED\n";
+                            } else if (SPF.isBlacklisted(tokenSet)) {
+                                // Pelo menos um token do 
+                                // conjunto está em lista negra.
+                                return "LISTED\n";
                             } else if (SPF.isGreylisted(tokenSet)) {
                                 // Pelo menos um token do 
                                 // conjunto está em greylisting.
@@ -3482,27 +3492,29 @@ public final class SPF implements Serializable {
     }
     
     private static boolean isGreylisted(TreeSet<String> tokenSet) {
-        double pMin = 0.0d;
-        for (String token : tokenSet) {
-            Distribution distribution = CacheDistribution.get(token, false);
-            if (distribution != null && distribution.isGreylisted()
-                    && pMin < distribution.getMinSpamProbability()) {
-                pMin = distribution.getMinSpamProbability();
-            }
-        }
-        // Condição pseudo-aleatória temporária.
-        return pMin < Math.random();
-    }
-    
-//    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
-//        boolean blacklisted = false;
+        // TODO: implementar mecanismo de greylisting.
+        return false;
+//        double pMin = 0.0d;
 //        for (String token : tokenSet) {
-//            if (isBlacklisted(token)) {
-//                blacklisted = true;
+//            Distribution distribution = CacheDistribution.get(token, false);
+//            if (distribution != null && distribution.isGreylisted()
+//                    && pMin < distribution.getMinSpamProbability()) {
+//                pMin = distribution.getMinSpamProbability();
 //            }
 //        }
-//        return blacklisted;
-//    }
+//        // Condição pseudo-aleatória temporária.
+//        return pMin < Math.random();
+    }
+    
+    private static boolean isBlacklisted(TreeSet<String> tokenSet) {
+        boolean blacklisted = false;
+        for (String token : tokenSet) {
+            if (isBlacklisted(token)) {
+                blacklisted = true;
+            }
+        }
+        return blacklisted;
+    }
 
     /**
      * Enumeração do status da distribuição.
@@ -3712,7 +3724,7 @@ public final class SPF implements Serializable {
         public boolean isGreylisted() {
             // Considerar temporariamente BLACK como greylisted.
             switch (getStatus()) {
-                case GRAY:
+//                case GRAY: // Considerar somente BLACK por enquanto.
                 case BLACK:
                     return true;
                 default:
