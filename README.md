@@ -206,7 +206,7 @@ O SPFBL utiliza deste fluxo para determinar responsável e se o mesmo está list
 
 ##### Tipos de responsável
 
-Sempre que o qualificador do SPFBL for PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TDL BR.
+Sempre que o qualificador do SPFBL for PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TLD BR.
 
 Quando o qualificador for diferente de PASS, então o responsável considerado é o HELO ou o IP. Será considerado o HELO, com domínio e CNPJ ou CPF, se este for o reverso válido do IP. Caso contrário, o responsável é o IP.
 
@@ -322,7 +322,7 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tdl.set e trap.set.
+Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tld.set e trap.set.
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
