@@ -1733,6 +1733,7 @@ public final class SPF implements Serializable {
 
         public static synchronized void drop(String token) {
             if (MAP.remove(token) != null) {
+                CacheBlock.dropExact(token);
                 CHANGED = true;
             }
         }
@@ -1805,7 +1806,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
 
-        public static synchronized void add(String domain) throws ProcessException {
+        public static synchronized boolean add(String domain) throws ProcessException {
             domain = Domain.extractHost(domain, false);
             if (!Domain.containsDomain(domain)) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
@@ -1813,12 +1814,36 @@ public final class SPF implements Serializable {
                 domain = "@" + domain;
                 if (SET.add(domain)) {
                     CHANGED = true;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+        
+        public static synchronized boolean drop(String domain) throws ProcessException {
+            domain = Domain.extractHost(domain, false);
+            if (!Domain.containsDomain(domain)) {
+                throw new ProcessException("ERROR: PROVIDER INVALID");
+            } else {
+                domain = "@" + domain;
+                if (SET.remove(domain)) {
+                    CHANGED = true;
+                    return true;
+                } else {
+                    return false;
                 }
             }
         }
 
         public static boolean contains(String host) {
             return SET.contains(host);
+        }
+        
+        public static synchronized TreeSet<String> get() throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            blockSet.addAll(SET);
+            return blockSet;
         }
 
         private static synchronized void store() {
@@ -1861,8 +1886,12 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static void addProvider(String provider) throws ProcessException {
-        CacheProvider.add(provider);
+    public static boolean addProvider(String provider) throws ProcessException {
+        return CacheProvider.add(provider);
+    }
+    
+    public static boolean dropProvider(String provider) throws ProcessException {
+        return CacheProvider.drop(provider);
     }
     
     /**
@@ -1885,6 +1914,8 @@ public final class SPF implements Serializable {
             } else if (Domain.isEmail(sender)) {
                 return true;
             } else if (sender.startsWith("@") && Domain.containsDomain(sender.substring(1))) {
+                return true;
+            } else if (sender.startsWith(".") && Domain.containsDomain(sender.substring(1))) {
                 return true;
             } else {
                 return false;
@@ -1967,10 +1998,26 @@ public final class SPF implements Serializable {
                     return true;
                 } else if (SET.contains(client + ':' + domain)) {
                     return true;
+                } else if (containsHost(client, domain.substring(1))) {
+                    return true;
                 } else {
                     return false;
                 }
             }
+        }
+        
+        private static boolean containsHost(String client, String host) {
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                if (SET.contains(token)) {
+                    return true;
+                } else if (SET.contains(client + ':' + token)) {
+                    return true;
+                }
+            } while (host.contains("."));
+            return false;
         }
 
         private static synchronized void store() {
@@ -2284,6 +2331,15 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        public static synchronized boolean dropExact(String token) {
+            if (SET.remove(token)) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
 
         public static synchronized boolean drop(String client, String token) throws ProcessException {
             if (client == null) {
@@ -2317,6 +2373,12 @@ public final class SPF implements Serializable {
                     blockSet.add(token);
                 }
             }
+            return blockSet;
+        }
+        
+        public static synchronized TreeSet<String> getAll() throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            blockSet.addAll(SET);
             return blockSet;
         }
 
@@ -2450,17 +2512,27 @@ public final class SPF implements Serializable {
         return CacheBlock.get(client);
     }
     
+    public static TreeSet<String> getProviderSet() throws ProcessException {
+        return CacheProvider.get();
+    }
+    
     public static TreeSet<String> getBlockSet() throws ProcessException {
         return CacheBlock.get();
     }
     
-    public static boolean white(String token) {
+    public static TreeSet<String> getAllBlockSet() throws ProcessException {
+        return CacheBlock.getAll();
+    }
+    
+    public static boolean clear(String token) {
         Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
             return false;
-        } else {
-            distribution.white();
+        } else if (distribution.clear()) {
+            CacheBlock.dropExact(token);
             return true;
+        } else {
+            return false;
         }
     }
     
@@ -2518,7 +2590,7 @@ public final class SPF implements Serializable {
                             CacheDistribution.getMap();
                     for (String token : distributionSet.keySet()) {
                         Distribution distribution = distributionSet.get(token);
-                        if (distribution.isBlocked()) {
+                        if (distribution.isBlocked(token)) {
                             long time = System.currentTimeMillis();
                             String result;
                             try {
@@ -2618,6 +2690,10 @@ public final class SPF implements Serializable {
     public static TreeSet<String> getPeerSet() throws ProcessException {
         return CachePeer.get();
     }
+    
+    public static TreeSet<String> getGuessSet() throws ProcessException {
+        return CacheGuess.get();
+    }
 
     /**
      * Classe que representa o cache de "best-guess" exclusivos.
@@ -2636,14 +2712,30 @@ public final class SPF implements Serializable {
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
-
-        public static synchronized void add(String hostname,
+        
+        public static synchronized boolean add(String hostname,
                 String spf) throws ProcessException {
             hostname = Domain.extractHost(hostname, false);
             if (!Domain.containsDomain(hostname)) {
                 throw new ProcessException("ERROR: HOSTNAME INVALID");
             } else if (!spf.equals(MAP.put("." + hostname, spf))) {
                 CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public static synchronized boolean drop(
+                String hostname) throws ProcessException {
+            hostname = Domain.extractHost(hostname, false);
+            if (!Domain.containsDomain(hostname)) {
+                throw new ProcessException("ERROR: HOSTNAME INVALID");
+            } else if (MAP.remove(hostname) == null) {
+                return false;
+            } else {
+                CHANGED = true;
+                return true;
             }
         }
 
@@ -2652,6 +2744,15 @@ public final class SPF implements Serializable {
                 host = "." + host;
             }
             return MAP.containsKey(host);
+        }
+        
+        public static TreeSet<String> get() {
+            TreeSet<String> guessSet = new TreeSet<String>();
+            for (String domain : MAP.keySet()) {
+                String spf = MAP.get(domain);
+                guessSet.add(domain + " \"" + spf + "\"");
+            }
+            return guessSet;
         }
 
         public static String get(String host) {
@@ -2701,12 +2802,24 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static void addGuess(String host, String spf) throws ProcessException {
-        CacheGuess.add(host, spf);
+    public static boolean addGuess(String host, String spf) throws ProcessException {
+        return CacheGuess.add(host, spf);
+    }
+    
+    public static boolean dropGuess(String host) throws ProcessException {
+        return CacheGuess.drop(host);
+    }
+    
+    public static void storeProvider() {
+        CacheProvider.store();
     }
 
     public static void storeBlock() {
         CacheBlock.store();
+    }
+    
+    public static void storeGuess() {
+        CacheGuess.store();
     }
     
     public static void storePeer() {
@@ -3142,7 +3255,7 @@ public final class SPF implements Serializable {
                 } else if (ex.getMessage().equals("ERROR: RESERVED")) {
                     return "action=REJECT [SPF] "
                             + "The domain of "
-                            + sender + " is a reserved TDL.\n\n";
+                            + sender + " is a reserved TLD.\n\n";
                 } else {
                     return "action=DEFER [SPF] "
                             + "A transient error occurred when "
@@ -3296,7 +3409,7 @@ public final class SPF implements Serializable {
                                     if (distributionMap.containsKey(token)) {
                                         Distribution distribution = distributionMap.get(token);
                                         probability = distribution.getMinSpamProbability();
-                                        status = distribution.getStatus();
+                                        status = distribution.getStatus(token);
                                         frequency = distribution.getFrequencyLiteral();
                                     } else {
                                         probability = 0.0f;
@@ -3482,12 +3595,8 @@ public final class SPF implements Serializable {
             // Distribuição não encontrada.
             // Considerar que não está listado.
             return false;
-        } else if (distribution.isBlocked()) {
-            // Inclusão e disseminação de bloqueio por P2P.
-            CacheBlock.addAndDisseminate(token);
-            return true;
         } else {
-            return distribution.isBlacklisted();
+            return distribution.isBlacklisted(token);
         }
     }
     
@@ -3576,10 +3685,11 @@ public final class SPF implements Serializable {
             }
         }
         
-        public boolean white() {
+        public boolean clear() {
             if (status == Status.WHITE) {
                 return false;
             } else {
+                complain = 0;
                 status = Status.WHITE;
                 CacheDistribution.CHANGED = true;
                 return true;
@@ -3633,6 +3743,10 @@ public final class SPF implements Serializable {
         public synchronized float getMinSpamProbability() {
             return getSpamProbability()[0];
         }
+        
+        public synchronized float getMaxSpamProbability() {
+            return getSpamProbability()[2];
+        }
 
         private synchronized float[] getSpamProbability() {
             float[] probability = new float[3];
@@ -3685,8 +3799,14 @@ public final class SPF implements Serializable {
          *
          * @return o status atual da distribuição.
          */
-        public synchronized Status getStatus() {
-            if (status != Status.BLOCK) {
+        public synchronized Status getStatus(String token) {
+            if (status == Status.BLOCK) {
+                float max = getMaxSpamProbability();
+                if (max < LIMIAR/2) {
+                    status = Status.GRAY;
+                    CacheBlock.dropExact(token);
+                }
+            } else {
                 float[] probability = getSpamProbability();
                 float min = probability[0];
                 float max = probability[2];
@@ -3694,6 +3814,7 @@ public final class SPF implements Serializable {
                     // Condição especial que bloqueia 
                     // definitivamente o responsável.
                     status = Status.BLOCK;
+                    CacheBlock.addAndDisseminate(token);
                 } else if (max == 0.0f) {
                     status = Status.WHITE;
                 } else if (min > LIMIAR) {
@@ -3713,17 +3834,17 @@ public final class SPF implements Serializable {
          * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
-        public boolean isBlacklisted() {
-            return getStatus().ordinal() >= Status.BLACK.ordinal();
+        public boolean isBlacklisted(String token) {
+            return getStatus(token).ordinal() >= Status.BLACK.ordinal();
         }
         
-        public boolean isBlocked() {
-            return getStatus() == Status.BLOCK;
+        public boolean isBlocked(String token) {
+            return getStatus(token) == Status.BLOCK;
         }
         
-        public boolean isGreylisted() {
+        public boolean isGreylisted(String token) {
             // Considerar temporariamente BLACK como greylisted.
-            switch (getStatus()) {
+            switch (getStatus(token)) {
 //                case GRAY: // Considerar somente BLACK por enquanto.
                 case BLACK:
                     return true;

@@ -31,15 +31,15 @@ import org.apache.commons.lang3.SerializationUtils;
  * <h2>Mecanismo de busca</h2>
  * A busca no cache é realizada com esta chave. 
  * Porém é possível buscar um registro de domínio pelo host.
- * Caso o TDL do domínio seja conhecido, 
+ * Caso o TLD do domínio seja conhecido, 
  * o host é convertido em domínio e a busca é realizada em O(1).
- * Caso o TDL do host não seja conhecido,
+ * Caso o TLD do host não seja conhecido,
  * Uma consulta no WHOIS é realizada pelo, 
  * onde o mesmo retorna o registro do domínio correto.
  * Com posse deste domínio correto, 
- * o novo TDL é encontrado e adicionado no conjunto de TDLs conhecidos.
+ * o novo TLD é encontrado e adicionado no conjunto de TLDs conhecidos.
  * O mecanismo é totalmente automático, portanto não existe 
- * necessidade de manter e administrar uma lista de TDLs manualmente.
+ * necessidade de manter e administrar uma lista de TLDs manualmente.
  * 
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
@@ -149,16 +149,16 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
-     * Extrai o domínio pelos TDLs conhecidos.
+     * Extrai o domínio pelos TLDs conhecidos.
      * @param address o endereço que contém o domínio.
      * @param se o ponto deve ser mantido na resposta.
-     * @return o domínio pelos TDLs conhecidos.
-     * @throws ProcessException se o endereço for um TDL.
+     * @return o domínio pelos TLDs conhecidos.
+     * @throws ProcessException se o endereço for um TLD.
      */
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
         address = "." + extractHost(address, false);
-        if (TDL_SET.contains(address)) {
+        if (TLD_SET.contains(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
@@ -168,8 +168,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 if (endIndex == -1) {
                     break;
                 } else {
-                    String tdl = address.substring(endIndex);
-                    if (TDL_SET.contains(tdl)) {
+                    String tld = address.substring(endIndex);
+                    if (TLD_SET.contains(tld)) {
                         if (pontuacao) {
                             return address.substring(beginIndex-1);
                         } else {
@@ -188,13 +188,13 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
-     * Extrai o TDL do endereço.
-     * @param address o endereço que contém o TDL.
+     * Extrai o TLD do endereço.
+     * @param address o endereço que contém o TLD.
      * @throws se o ponto de ser mantido.
-     * @return o TDLs do endereço.
+     * @return o TLDs do endereço.
      * @throws se houve faha na extração do domínio.
      */
-    public static String extractTDL(String address,
+    public static String extractTLD(String address,
             boolean ponto) throws ProcessException {
         int lastIndex = address.length() - 1;
         int beginIndex = 0;
@@ -203,12 +203,12 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (endIndex == -1) {
                 break;
             } else {
-                String tdl = address.substring(endIndex);
-                if (TDL_SET.contains(tdl)) {
+                String tld = address.substring(endIndex);
+                if (TLD_SET.contains(tld)) {
                     if (ponto) {
-                        return tdl;
+                        return tld;
                     } else {
-                        return tdl.substring(1);
+                        return tld.substring(1);
                     }
                 }
                 beginIndex = endIndex + 1;
@@ -296,11 +296,11 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
-     * Verifica se o endereço é um TDL válido.
+     * Verifica se o endereço é um TLD válido.
      * @param address o endereço a ser verificado.
-     * @return verdadeiro se o endereço é um TDL válido.
+     * @return verdadeiro se o endereço é um TLD válido.
      */
-    public static boolean isTDL(String address) {
+    public static boolean isTLD(String address) {
         address = address.trim();
         address = address.toLowerCase();
         return Pattern.matches(
@@ -309,14 +309,14 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
-     * Conjunto de todos os top domain level (TDL) conhecidos.
+     * Conjunto de todos os top domain level (TLD) conhecidos.
      */
-    public static final HashSet<String> TDL_SET = new HashSet<String>();
+    public static final HashSet<String> TLD_SET = new HashSet<String>();
     
     /**
      * Flag que indica se o cache foi modificado.
      */
-    private static boolean TDL_CHANGED = false;
+    private static boolean TLD_CHANGED = false;
 
     /**
      * Intancia um novo registro de domínio.
@@ -334,35 +334,41 @@ public class Domain implements Serializable, Comparable<Domain> {
         return domain.equals(domainResult);
     }
     
-    public static synchronized void addTDL(String tdl) throws ProcessException {
-        if (tdl.charAt(0) != '.') {
-            // Corrigir TDL sem ponto.
-            tdl = "." + tdl;
+    public static synchronized TreeSet<String> getTLDSet() throws ProcessException {
+        TreeSet<String> tldSet = new TreeSet<String>();
+        tldSet.addAll(TLD_SET);
+        return tldSet;
+    }
+    
+    public static synchronized void addTLD(String tld) throws ProcessException {
+        if (tld.charAt(0) != '.') {
+            // Corrigir TLD sem ponto.
+            tld = "." + tld;
         }
-        if (Domain.isTDL(tdl)) {
-            tdl = tdl.toLowerCase();
-            if (TDL_SET.add(tdl)) {
+        if (Domain.isTLD(tld)) {
+            tld = tld.toLowerCase();
+            if (TLD_SET.add(tld)) {
                 // Atualiza flag de atualização.
-                TDL_CHANGED = true;
+                TLD_CHANGED = true;
             }
         } else {
-            throw new ProcessException("ERROR: TDL INVALID");
+            throw new ProcessException("ERROR: TLD INVALID");
         }
     }
     
-    public static synchronized void removeTDL(String tdl) throws ProcessException {
-        if (tdl.charAt(0) != '.') {
-            // Corrigir TDL sem ponto.
-            tdl = "." + tdl;
+    public static synchronized void removeTLD(String tld) throws ProcessException {
+        if (tld.charAt(0) != '.') {
+            // Corrigir TLD sem ponto.
+            tld = "." + tld;
         }
-        if (Domain.isTDL(tdl)) {
-            tdl = tdl.toLowerCase();
-            if (TDL_SET.remove(tdl)) {
+        if (Domain.isTLD(tld)) {
+            tld = tld.toLowerCase();
+            if (TLD_SET.remove(tld)) {
                 // Atualiza flag de atualização.
-                TDL_CHANGED = true;
+                TLD_CHANGED = true;
             }
         } else {
-            throw new ProcessException("ERROR: TDL INVALID");
+            throw new ProcessException("ERROR: TLD INVALID");
         }
     }
     
@@ -403,10 +409,10 @@ public class Domain implements Serializable, Comparable<Domain> {
                     if (line.startsWith("domain:")) {
                         int index = line.indexOf(':') + 1;
                         domainResult = line.substring(index).trim();
-                        // Descobre o TDL do domínio e adiciona no conjunto.
+                        // Descobre o TLD do domínio e adiciona no conjunto.
                         index = domainResult.indexOf('.');
-                        String tdl = domainResult.substring(index);
-                        addTDL(tdl);
+                        String tld = domainResult.substring(index);
+                        addTLD(tld);
                     } else if (line.startsWith("owner:")) {
                         int index = line.indexOf(':') + 1;
                         ownerNew = line.substring(index).trim();
@@ -732,7 +738,7 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static void store() {
         storeDomain();
-        storeTDL();
+        storeTLD();
     }
     
     private static synchronized void storeDomain() {
@@ -755,16 +761,16 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    private static synchronized void storeTDL() {
-        if (TDL_CHANGED) {
+    private static synchronized void storeTLD() {
+        if (TLD_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("tdl.set");
+                File file = new File("tld.set");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(TDL_SET, outputStream);
+                    SerializationUtils.serialize(TLD_SET, outputStream);
                     // Atualiza flag de atualização.
-                    TDL_CHANGED = false;
+                    TLD_CHANGED = false;
                 } finally {
                     outputStream.close();
                 }
@@ -797,7 +803,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         }
         time = System.currentTimeMillis();
-        file = new File("tdl.set");
+        file = new File("tld.set");
         if (file.exists()) {
             try {
                 HashSet<String> set;
@@ -807,7 +813,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } finally {
                     fileInputStream.close();
                 }
-                TDL_SET.addAll(set);
+                TLD_SET.addAll(set);
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -962,7 +968,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Atualizando campos do registro.
             if (!domain.refresh()) {
                 // Domínio real do resultado WHOIS não bate com o registro.
-                // Pode haver a criação de uma nova TDL.
+                // Pode haver a criação de uma nova TLD.
                 // Apagando registro de domínio do cache.
                 removeDomain(domain);
                 // Segue para nova consulta.
@@ -986,10 +992,10 @@ public class Domain implements Serializable, Comparable<Domain> {
             addDomain(domain);
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: RESERVED")) {
-                // A chave de busca é um TDL.
-                if (TDL_SET.add(host)) {
+                // A chave de busca é um TLD.
+                if (TLD_SET.add(host)) {
                     // Atualiza flag de atualização.
-                    TDL_CHANGED = true;
+                    TLD_CHANGED = true;
                 }
             }
             throw ex;
@@ -1045,7 +1051,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return domain;
                 } else {
                     // Domínio real do resultado WHOIS não bate com o registro.
-                    // Pode haver a criação de uma nova TDL.
+                    // Pode haver a criação de uma nova TLD.
                     // Apagando registro de domínio do cache.
                     removeDomain(domain);
                     // Segue para nova consulta.
@@ -1079,10 +1085,10 @@ public class Domain implements Serializable, Comparable<Domain> {
             return domain;
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: RESERVED")) {
-                // A chave de busca é um TDL.
-                if (TDL_SET.add(host)) {
+                // A chave de busca é um TLD.
+                if (TLD_SET.add(host)) {
                     // Atualiza flag de atualização.
-                    TDL_CHANGED = true;
+                    TLD_CHANGED = true;
                 }
             }
             throw ex;
