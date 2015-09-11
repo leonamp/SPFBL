@@ -965,9 +965,14 @@ public final class SPF implements Serializable {
 
         public MechanismIPv6(String expression) {
             super(expression);
-            int index = expression.indexOf(':');
-            String inetnum = expression.substring(index + 1);
-            index = inetnum.indexOf('/');
+            String inetnum;
+            if (expression.startsWith("ip")) {
+                int index = expression.indexOf(':');
+                inetnum = expression.substring(index + 1);
+            } else {
+                inetnum = expression;
+            }
+            int index = inetnum.indexOf('/');
             if (index == -1) {
                 this.mask = SubnetIPv6.getMaskIPv6(128);
                 this.address = SubnetIPv6.split(inetnum);
