@@ -183,7 +183,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais três qualifica
 * SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
-* LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
+* LISTED: atrasa o recebimento da mensagem e informa à origem a listagem temporária em blacklist.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
@@ -370,6 +370,16 @@ Responsabilidades dos elementos:
 O ideia de se conectar a outros pool que com semelhança de ideais serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
 A rede deve auto-organizar-se de forma descentralizada.
+
+### Pools conhecidos em funcionamento
+
+Aqui informamos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
+
+Abertos:
+* MatrixDefense: 54.94.137.168:9877 <leandro@allchemistry.com.br>
+
+Fechados:
+* MX-Protection: 177.154.143.206:9877 <gtec77@gmail.com>
 
 ### Forum SPFBL
 
