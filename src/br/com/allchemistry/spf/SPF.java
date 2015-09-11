@@ -2795,7 +2795,7 @@ public final class SPF implements Serializable {
             hostname = Domain.extractHost(hostname, false);
             if (!Domain.containsDomain(hostname)) {
                 throw new ProcessException("ERROR: HOSTNAME INVALID");
-            } else if (MAP.remove(hostname) == null) {
+            } else if (MAP.remove("." + hostname) == null) {
                 return false;
             } else {
                 CHANGED = true;
