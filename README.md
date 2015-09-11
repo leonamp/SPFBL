@@ -233,6 +233,27 @@ O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pe
 check_policy_service inet:<IP do servidor SPFBL>:9877
 ```
 
+##### Integração nativa Zimbra
+
+O SPFBL tem integração nativa com o Zimbra.
+
+Para utilizar o serviço SPFBL pelo Zimbra 8.5.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/postfix_recipient_restrictions.cf":
+```
+check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
+Para utilizar o serviço SPFBL pelo Zimbra 8.6.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/zmconfigd/smtpd_recipient_restrictions.cf":
+```
+check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
+Após adicionar a linha, renicie o serviço:
+```
+zmconfigdctl restart
+zmmtactl stop
+zmmtactl start
+```
+
 ##### Integração com Exim
 
 Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_rcpt":
