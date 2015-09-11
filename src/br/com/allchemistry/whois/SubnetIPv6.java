@@ -166,8 +166,14 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         int p6 = splitedIP[5] & 0xFFFF;
         int p7 = splitedIP[6] & 0xFFFF;
         int p8 = splitedIP[7] & 0xFFFF;
-        return p1 + ":" + p2 + ":" + p3 + ":" + p4 + ":" +
-                p5 + ":" + p6 + ":" + p7 + ":" + p8;
+        return Integer.toHexString(p1) + ":" +
+                Integer.toHexString(p2) + ":" +
+                Integer.toHexString(p3) + ":" +
+                Integer.toHexString(p4) + ":" +
+                Integer.toHexString(p5) + ":" +
+                Integer.toHexString(p6) + ":" +
+                Integer.toHexString(p7) + ":" +
+                Integer.toHexString(p8);
     }
     
     /**
