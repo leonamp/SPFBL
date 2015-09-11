@@ -1989,7 +1989,8 @@ public final class SPF implements Serializable {
                 return false;
             } else {
                 sender = sender.toLowerCase();
-                String domain = sender.substring(sender.lastIndexOf('@'));
+                int index2 = sender.lastIndexOf('@');
+                String domain = sender.substring(index2);
                 if (SET.contains(sender)) {
                     return true;
                 } else if (SET.contains(domain)) {
@@ -2001,6 +2002,24 @@ public final class SPF implements Serializable {
                 } else if (containsHost(client, domain.substring(1))) {
                     return true;
                 } else {
+                    int index3 = domain.length();
+                    while ((index3 = domain.lastIndexOf('.', index3-1)) > index2) {
+                        String subdomain = domain.substring(0, index3 + 1);
+                        if (SET.contains(subdomain)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subdomain)) {
+                            return true;
+                        }
+                    }
+                    int index4 = sender.length();
+                    while ((index4 = sender.lastIndexOf('.', index4-1)) > index2) {
+                        String subsender = sender.substring(0, index4 + 1);
+                        if (SET.contains(subsender)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subsender)) {
+                            return true;
+                        }
+                    }
                     return false;
                 }
             }
@@ -2173,6 +2192,7 @@ public final class SPF implements Serializable {
                 return false;
             } else {
                 recipient = recipient.toLowerCase();
+                int index2 = recipient.lastIndexOf('@');
                 String domain = recipient.substring(recipient.lastIndexOf('@'));
                 if (SET.contains(recipient)) {
                     return true;
@@ -2183,6 +2203,24 @@ public final class SPF implements Serializable {
                 } else if (SET.contains(client + ':' + domain)) {
                     return true;
                 } else {
+                    int index3 = domain.length();
+                    while ((index3 = domain.lastIndexOf('.', index3-1)) > index2) {
+                        String subdomain = domain.substring(0, index3 + 1);
+                        if (SET.contains(subdomain)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subdomain)) {
+                            return true;
+                        }
+                    }
+                    int index4 = recipient.length();
+                    while ((index4 = recipient.lastIndexOf('.', index4-1)) > index2) {
+                        String subrecipient = recipient.substring(0, index4 + 1);
+                        if (SET.contains(subrecipient)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subrecipient)) {
+                            return true;
+                        }
+                    }
                     return false;
                 }
             }
@@ -2395,8 +2433,10 @@ public final class SPF implements Serializable {
             }
             if (sender != null && sender.contains("@")) {
                 sender = sender.toLowerCase();
-                String part = sender.substring(0, sender.indexOf('@') + 1);
-                String domain = sender.substring(sender.lastIndexOf('@'));
+                int index1 = sender.indexOf('@');
+                int index2 = sender.lastIndexOf('@');
+                String part = sender.substring(0, index1 + 1);
+                String domain = sender.substring(index2);
                 if (SET.contains(sender)) {
                     return true;
                 } else if (SET.contains(client + ':' + sender)) {
@@ -2411,6 +2451,25 @@ public final class SPF implements Serializable {
                     return true;
                 } else if (containsHost(client, domain.substring(1))) {
                     return true;
+                } else {
+                    int index3 = domain.length();
+                    while ((index3 = domain.lastIndexOf('.', index3-1)) > index2) {
+                        String subdomain = domain.substring(0, index3 + 1);
+                        if (SET.contains(subdomain)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subdomain)) {
+                            return true;
+                        }
+                    }
+                    int index4 = sender.length();
+                    while ((index4 = sender.lastIndexOf('.', index4-1)) > index2) {
+                        String subsender = sender.substring(0, index4 + 1);
+                        if (SET.contains(subsender)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subsender)) {
+                            return true;
+                        }
+                    }
                 }
             }
             if ((helo = Domain.extractHost(helo, true)) != null) {
@@ -3227,6 +3286,11 @@ public final class SPF implements Serializable {
                     Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
+                } else if (SPF.isBlocked(tokenSet)) {
+                    // Calcula frequencia de consultas.
+                    SPF.addQuery(tokenSet);
+                    return "action=REJECT [RBL] "
+                            + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet)) {
                     // Pelo menos um token está listado.
                     return "action=DEFER [RBL] "
@@ -3448,6 +3512,12 @@ public final class SPF implements Serializable {
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
                                 Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "BLOCKED\n";
+                            } else if (SPF.isBlocked(tokenSet)) {
+                                // Calcula frequencia de consultas.
+                                SPF.addQuery(tokenSet);
+                                // Pelo menos um token do 
+                                // conjunto está bloqueado.
+                                return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet)) {
                                 // Pelo menos um token do 
                                 // conjunto está em lista negra.
@@ -3600,19 +3670,20 @@ public final class SPF implements Serializable {
         }
     }
     
+    public static boolean isBlocked(String token) {
+        Distribution distribution = CacheDistribution.get(token, false);
+        if (distribution == null) {
+            // Distribuição não encontrada.
+            // Considerar que não está listado.
+            return false;
+        } else {
+            return distribution.isBlocked(token);
+        }
+    }
+    
     private static boolean isGreylisted(TreeSet<String> tokenSet) {
         // TODO: implementar mecanismo de greylisting.
         return false;
-//        double pMin = 0.0d;
-//        for (String token : tokenSet) {
-//            Distribution distribution = CacheDistribution.get(token, false);
-//            if (distribution != null && distribution.isGreylisted()
-//                    && pMin < distribution.getMinSpamProbability()) {
-//                pMin = distribution.getMinSpamProbability();
-//            }
-//        }
-//        // Condição pseudo-aleatória temporária.
-//        return pMin < Math.random();
     }
     
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
@@ -3623,6 +3694,16 @@ public final class SPF implements Serializable {
             }
         }
         return blacklisted;
+    }
+    
+    private static boolean isBlocked(TreeSet<String> tokenSet) {
+        boolean blocked = false;
+        for (String token : tokenSet) {
+            if (isBlocked(token)) {
+                blocked = true;
+            }
+        }
+        return blocked;
     }
 
     /**
@@ -3835,22 +3916,11 @@ public final class SPF implements Serializable {
          * @return verdadeiro se o estado atual da distribuição é blacklisted.
          */
         public boolean isBlacklisted(String token) {
-            return getStatus(token).ordinal() >= Status.BLACK.ordinal();
+            return getStatus(token) == Status.BLACK;
         }
         
         public boolean isBlocked(String token) {
             return getStatus(token) == Status.BLOCK;
-        }
-        
-        public boolean isGreylisted(String token) {
-            // Considerar temporariamente BLACK como greylisted.
-            switch (getStatus(token)) {
-//                case GRAY: // Considerar somente BLACK por enquanto.
-                case BLACK:
-                    return true;
-                default:
-                    return false;
-            }
         }
 
         public synchronized void removeSpam() {
