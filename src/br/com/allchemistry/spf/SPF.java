@@ -1592,6 +1592,22 @@ public final class SPF implements Serializable {
                 }
             }
         }
+        
+        private static synchronized HashMap<String,Complain> get() {
+            HashMap<String,Complain> complainMap = new HashMap<String,Complain>();
+            complainMap.putAll(MAP);
+            return complainMap;
+        }
+        
+        private static synchronized boolean drop(String ticket) {
+            if (MAP.remove(ticket) == null) {
+                return false;
+            } else {
+                CHANGED = true;
+                return true;
+            }
+        }
+        
         /**
          * Timer que controla as reclamações.
          */
@@ -1606,11 +1622,12 @@ public final class SPF implements Serializable {
             TIMER.schedule(
                     new TimerTask() {
                 @Override
-                public synchronized void run() {
+                public void run() {
                     LinkedList<String> expiredTicket = new LinkedList<String>();
                     // Verificar reclamações vencidas.
-                    for (String ticket : MAP.keySet()) {
-                        Complain complain = MAP.get(ticket);
+                    HashMap<String,Complain> complainMap = get();
+                    for (String ticket : complainMap.keySet()) {
+                        Complain complain = complainMap.get(ticket);
                         if (complain.isExpired7()) {
                             complain.removeComplains();
                             expiredTicket.add(ticket);
@@ -1618,8 +1635,7 @@ public final class SPF implements Serializable {
                     }
                     // Remover todos os tickets processados.
                     for (String ticket : expiredTicket) {
-                        MAP.remove(ticket);
-                        CHANGED = true;
+                        drop(ticket);
                     }
                     // Apagar todas as distribuições vencidas.
                     CacheDistribution.dropExpired();
