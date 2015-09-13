@@ -238,7 +238,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 address = address.toLowerCase();
                 return Pattern.matches(
                         "^([a-zA-Z0-9._%+=-]+@)?"
-                        + "((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
+                        + "(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                         );
 
             }
@@ -260,7 +260,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             } else {
                 address = address.toLowerCase();
                 return Pattern.matches(
-                        "^((?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
+                        "^(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                         );
 
             }
@@ -269,7 +269,8 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     public static void main(String[] args) {
         try {
-            System.out.println(isEmail("joana.mon,,te@web-sx12.dexonbr.com.br"));
+            String hostname = Domain.extractHost("_spf.google.com", false);
+            System.out.println(Domain.containsDomain(hostname));
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
