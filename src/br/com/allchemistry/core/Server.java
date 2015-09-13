@@ -354,6 +354,14 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as consultas de mecanismo exists de SPF.
+     */
+    public static synchronized void logMecanismExists(long time, 
+            String host, String result) {
+        log(time, "SPFEX", host + " => " + result);
+    }
+    
+    /**
      * Registra as consultas de mecanismo MX de SPF.
      */
     public static synchronized void logMecanismMX(long time, 
