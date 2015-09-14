@@ -1101,6 +1101,7 @@ public abstract class Server extends Thread {
                             boolean added = SPF.addGuess(domain, spf);
                             result = (added ? "ADDED" : "REPLACED") + "\n";
                             SPF.storeGuess();
+                            SPF.storeSPF();
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
@@ -1109,6 +1110,7 @@ public abstract class Server extends Thread {
                         boolean droped = SPF.dropGuess(domain);
                         result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                         SPF.storeGuess();
+                        SPF.storeSPF();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String guess : SPF.getGuessSet()) {
                             if (result == null) {
