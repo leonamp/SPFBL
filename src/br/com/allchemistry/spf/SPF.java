@@ -380,6 +380,8 @@ public final class SPF implements Serializable {
                         // Nada deve ser feito.
                     } else if (token.equals("v=msv1")) {
                         // Nada deve ser feito.
+                    } else if (token.equals("+")) {
+                        // Ignorar qualificadores isolados.
                     } else if (token.startsWith("t=") && token.length() == 32) {
                         // Nada deve ser feito.
                     } else if (isMechanismAll(token)) {
@@ -480,7 +482,7 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismIPv4(String token) {
         return Pattern.matches(
-                "^(\\+|-|~|\\?)?ip4:"
+                "^((\\+|-|~|\\?)?ipv?4:)?"
                 + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
                 + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
                 + "(/[0-9]{1,2})?"
@@ -514,7 +516,7 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismIPv6(String token) {
         return Pattern.matches(
-                "^(\\+|-|~|\\?)?ip6:"
+                "^((\\+|-|~|\\?)?ipv?6:)?"
                 + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
                 + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
@@ -587,6 +589,7 @@ public final class SPF implements Serializable {
         hostname = hostname.replace("%{i}", ip);
         hostname = hostname.replace("%{h}", helo);
         hostname = hostname.replace("%{d}", domain);
+        hostname = hostname.replace("%{s}", sender);
         return hostname;
     }
 
@@ -729,7 +732,9 @@ public final class SPF implements Serializable {
             return null; // Evita looping infinito.
         } else if (mechanismList == null) {
             throw new ProcessException("ERROR: HOST NOT FOUND");
-        } else if (redirect == null) {
+        } else
+//            if (redirect == null)
+            {
             hostVisitedSet.add(getHostname());
             for (Mechanism mechanism : mechanismList) {
                 if (mechanism instanceof MechanismInclude) {
@@ -752,22 +757,30 @@ public final class SPF implements Serializable {
                             throw ex;
                         }
                     }
-                } else if (mechanism instanceof MechanismExists) {
-                    MechanismExists exists = (MechanismExists) mechanism;
-                    if (exists.exists(ip, sender, helo)) {
-                        return exists.getQualifier();
-                    }
+//                } else if (mechanism instanceof MechanismExists) {
+//                    MechanismExists exists = (MechanismExists) mechanism;
+//                    if (exists.match(ip, sender, helo)) {
+//                        return exists.getQualifier();
+//                    }
                 } else if (mechanism instanceof MechanismPTR) {
-                    if (deep == 0 && mechanism.match(ip)) {
+                    if (deep == 0 && mechanism.match(ip, sender, helo)) {
                         // Mecanismo PTR só será processado
                         // no primeiro nível da árvore.
                         return mechanism.getQualifier();
                     }
-                } else if (mechanism.match(ip)) {
+                } else if (mechanism.match(ip, sender, helo)) {
                     return mechanism.getQualifier();
                 }
             }
-            if (error) {
+            if (redirect != null) {
+//                hostVisitedSet.add(getHostname());
+                SPF spf = CacheSPF.get(redirect);
+                if (spf == null) {
+                    return null;
+                } else {
+                    return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
+                }
+            } else if (error) {
                 // Foi encontrado um erro em algum mecanismos
                 // na qual os demais não tiveram macth.
                 throw new ProcessException("ERROR: SPF PARSE");
@@ -780,10 +793,10 @@ public final class SPF implements Serializable {
                 // Pode ser nulo caso o registro não apresente o mecanismo all.
                 return all;
             }
-        } else {
-            hostVisitedSet.add(getHostname());
-            SPF spf = CacheSPF.get(redirect);
-            return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
+//        } else {
+//            hostVisitedSet.add(getHostname());
+//            SPF spf = CacheSPF.get(redirect);
+//            return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
         }
     }
 
@@ -856,7 +869,8 @@ public final class SPF implements Serializable {
             }
         }
 
-        public abstract boolean match(String ip) throws ProcessException;
+        public abstract boolean match(String ip,
+                String sender, String helo) throws ProcessException;
 
         public Qualifier getQualifier() {
             return qualifier;
@@ -957,7 +971,7 @@ public final class SPF implements Serializable {
         }
 
         @Override
-        public boolean match(String ip) {
+        public boolean match(String ip, String sender, String helo) {
             if (isReserved()) {
                 // Sempre que estiver apontando para
                 // blocos reservados, ignorar o mecanismo.
@@ -983,13 +997,15 @@ public final class SPF implements Serializable {
         public MechanismIPv6(String expression) {
             super(expression);
             String inetnum;
-            if (expression.startsWith("ip")) {
-                int index = expression.indexOf(':');
-                inetnum = expression.substring(index + 1);
-            } else {
+            int index = expression.indexOf(':');
+            try {
+                String first = expression.substring(0, index);
+                Integer.parseInt(first, 16);
                 inetnum = expression;
+            } catch (NumberFormatException ex) {
+                inetnum = expression.substring(index + 1);
             }
-            int index = inetnum.indexOf('/');
+            index = inetnum.indexOf('/');
             if (index == -1) {
                 this.mask = SubnetIPv6.getMaskIPv6(128);
                 this.address = SubnetIPv6.split(inetnum);
@@ -1000,7 +1016,7 @@ public final class SPF implements Serializable {
         }
 
         @Override
-        public boolean match(String ip) {
+        public boolean match(String ip, String sender, String helo) {
             if (SubnetIPv6.isValidIPv6(ip)) {
                 short[] address2 = SubnetIPv6.split(ip);
                 for (int i = 0; i < 8; i++) {
@@ -1026,34 +1042,42 @@ public final class SPF implements Serializable {
 
         public MechanismA(String expression, boolean load) {
             super(expression);
-            if (load) {
-                loadList();
+            if (load && !expression.contains("%")) {
+                loadList("", "", "");
             }
         }
+        
+        private String getHostname(String ip, String sender, String helo) {
+            String expression = getExpression();
+            if (!Character.isLetter(expression.charAt(0))) {
+                // Expressão com qualificador.
+                // Extrair qualificador.
+                expression = expression.substring(1);
+            }
+            int index = expression.indexOf(':') + 1;
+            expression = expression.substring(index);
+            expression = expand(expression, ip, sender, helo);
+            return expression;
+        }
 
-        private synchronized void loadList() {
+        private synchronized void loadList(String ip, String sender, String helo) {
             if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
-                String expression = getExpression();
-                if (!Character.isLetter(expression.charAt(0))) {
-                    // Expressão com qualificador.
-                    // Extrair qualificador.
-                    expression = expression.substring(1);
-                }
+                String hostname = getHostname(ip, sender, helo);
                 String hostName;
                 String hostNameCIDR;
-                int indexDomain = expression.indexOf(':');
-                int indexPrefix = expression.indexOf('/');
+                int indexDomain = hostname.indexOf(':');
+                int indexPrefix = hostname.indexOf('/');
                 if (indexDomain > 0 && indexPrefix > indexDomain) {
-                    hostName = expression.substring(indexDomain + 1, indexPrefix);
-                    hostNameCIDR = expression.substring(indexDomain + 1);
+                    hostName = hostname.substring(indexDomain + 1, indexPrefix);
+                    hostNameCIDR = hostname.substring(indexDomain + 1);
                 } else if (indexDomain > 0) {
-                    hostName = expression.substring(indexDomain + 1);
-                    hostNameCIDR = expression.substring(indexDomain + 1);
+                    hostName = hostname.substring(indexDomain + 1);
+                    hostNameCIDR = hostname.substring(indexDomain + 1);
                 } else {
-                    hostName = getHostname();
-                    hostNameCIDR = getHostname();
+                    hostName = hostname;
+                    hostNameCIDR = hostname;
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
@@ -1075,7 +1099,7 @@ public final class SPF implements Serializable {
                                 }
                             }
                             if (indexPrefix > 0) {
-                                hostAddress += expression.substring(indexPrefix);
+                                hostAddress += hostname.substring(indexPrefix);
                             }
                             mechanismList.add(new MechanismIPv4(hostAddress));
                         }
@@ -1090,15 +1114,17 @@ public final class SPF implements Serializable {
                 } catch (NamingException ex) {
                     Server.logMecanismA(time, hostNameCIDR, "ERROR " + ex.getMessage());
                 }
-                loaded = true;
+                if (!getExpression().contains("%")) {
+                    loaded = true;
+                }
             }
         }
 
         @Override
-        public boolean match(String ip) throws ProcessException {
-            loadList();
+        public boolean match(String ip, String sender, String helo) throws ProcessException {
+            loadList(ip, sender, helo);
             for (Mechanism mechanism : mechanismList) {
-                if (mechanism.match(ip)) {
+                if (mechanism.match(ip, sender, helo)) {
                     return true;
                 }
             }
@@ -1117,34 +1143,42 @@ public final class SPF implements Serializable {
 
         public MechanismMX(String expression, boolean load) {
             super(expression);
-            if (load) {
-                loadList();
+            if (load && !expression.contains("%")) {
+                loadList("", "", "");
             }
         }
+        
+        private String getHostname(String ip, String sender, String helo) {
+            String expression = getExpression();
+            if (!Character.isLetter(expression.charAt(0))) {
+                // Expressão com qualificador.
+                // Extrair qualificador.
+                expression = expression.substring(1);
+            }
+            int index = expression.indexOf(':') + 1;
+            expression = expression.substring(index);
+            expression = expand(expression, ip, sender, helo);
+            return expression;
+        }
 
-        private synchronized void loadList() {
+        private synchronized void loadList(String ip, String sender, String helo) {
             if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
-                String expression = getExpression();
-                if (!Character.isLetter(expression.charAt(0))) {
-                    // Expressão com qualificador.
-                    // Extrair qualificador.
-                    expression = expression.substring(1);
-                }
+                String hostname = getHostname(ip, sender, helo);
                 String hostName;
                 String hostNameCIDR;
-                int indexDomain = expression.indexOf(':');
-                int indexPrefix = expression.indexOf('/');
+                int indexDomain = hostname.indexOf(':');
+                int indexPrefix = hostname.indexOf('/');
                 if (indexDomain > 0 && indexPrefix > indexDomain) {
-                    hostName = expression.substring(indexDomain + 1, indexPrefix);
-                    hostNameCIDR = expression.substring(indexDomain + 1);
+                    hostName = hostname.substring(indexDomain + 1, indexPrefix);
+                    hostNameCIDR = hostname.substring(indexDomain + 1);
                 } else if (indexDomain > 0) {
-                    hostName = expression.substring(indexDomain + 1);
-                    hostNameCIDR = expression.substring(indexDomain + 1);
+                    hostName = hostname.substring(indexDomain + 1);
+                    hostNameCIDR = hostname.substring(indexDomain + 1);
                 } else {
-                    hostName = getHostname();
-                    hostNameCIDR = getHostname();
+                    hostName = hostname;
+                    hostNameCIDR = hostname;
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
@@ -1159,13 +1193,13 @@ public final class SPF implements Serializable {
                             hostAddress = hostAddress.substring(indexSpace);
                             if (SubnetIPv4.isValidIPv4(hostAddress)) {
                                 if (indexPrefix > 0) {
-                                    hostAddress += expression.substring(indexPrefix);
+                                    hostAddress += hostname.substring(indexPrefix);
                                 }
                                 mechanismList.add(new MechanismIPv4(hostAddress));
                                 resultSet.add(hostAddress);
                             } else if (SubnetIPv6.isValidIPv6(hostAddress)) {
                                 if (indexPrefix > 0) {
-                                    hostAddress += expression.substring(indexPrefix);
+                                    hostAddress += hostname.substring(indexPrefix);
                                 }
                                 mechanismList.add(new MechanismIPv6(hostAddress));
                                 resultSet.add(hostAddress);
@@ -1179,7 +1213,7 @@ public final class SPF implements Serializable {
                                             String host4Address = (String) attributeA.get(i);
                                             if (SubnetIPv4.isValidIPv4(host4Address)) {
                                                 if (indexPrefix > 0) {
-                                                    host4Address += expression.substring(indexPrefix);
+                                                    host4Address += hostname.substring(indexPrefix);
                                                 }
                                                 mechanismList.add(new MechanismIPv4(host4Address));
                                                 resultSet.add(host4Address);
@@ -1225,15 +1259,17 @@ public final class SPF implements Serializable {
                 } catch (NamingException ex) {
                     Server.logMecanismMX(time, hostNameCIDR, "ERROR " + ex.getMessage());
                 }
-                loaded = true;
+                if (!getExpression().contains("%")) {
+                    loaded = true;
+                }
             }
         }
 
         @Override
-        public boolean match(String ip) throws ProcessException {
-            loadList();
+        public boolean match(String ip, String sender, String helo) throws ProcessException {
+            loadList(ip, sender, helo);
             for (Mechanism mechanism : mechanismList) {
-                if (mechanism.match(ip)) {
+                if (mechanism.match(ip, sender, helo)) {
                     return true;
                 }
             }
@@ -1251,19 +1287,28 @@ public final class SPF implements Serializable {
         public MechanismPTR(String expression) {
             super(expression);
         }
+        
+        private String getHostname(String ip, String sender, String helo) {
+            String expression = getExpression();
+            int index = expression.indexOf(':') + 1;
+            expression = expression.substring(index);
+            expression = expand(expression, ip, sender, helo);
+            return expression;
+        }
 
         @Override
-        public synchronized boolean match(String ip) throws ProcessException {
-            String expression = getExpression();
-            String domain;
-            int index = expression.indexOf(':');
+        public synchronized boolean match(
+                String ip, String sender,
+                String helo) throws ProcessException {
+            String hostname = getHostname(ip, sender, helo);
+            int index = hostname.indexOf(':');
             if (index > 0) {
-                domain = "." + expression.substring(index + 1);
+                hostname = "." + hostname.substring(index + 1);
             } else {
-                domain = "." + getHostname();
+                hostname = "." + hostname;
             }
-            for (String hostname : SPF.getReverse(ip)) {
-                if (hostname.endsWith(domain)) {
+            for (String reverse : SPF.getReverse(ip)) {
+                if (reverse.endsWith(hostname)) {
                     return true;
                 }
             }
@@ -1377,8 +1422,9 @@ public final class SPF implements Serializable {
             expression = expand(expression, ip, sender, helo);
             return expression;
         }
-        
-        public boolean exists(String ip, String sender, String helo) {
+
+        @Override
+        public boolean match(String ip, String sender, String helo) throws ProcessException {
             long time = System.currentTimeMillis();
             String hostname = getHostname(ip, sender, helo);
             try {
@@ -1399,11 +1445,6 @@ public final class SPF implements Serializable {
                 Server.logMecanismA(time, hostname, "ERROR " + ex.getMessage());
                 return false;
             }
-        }
-
-        @Override
-        public boolean match(String ip) throws ProcessException {
-            throw new ProcessException("ERROR: FATAL ERROR"); // Não pode fazer o match direto.
         }
     }
 
@@ -1440,7 +1481,7 @@ public final class SPF implements Serializable {
         }
 
         @Override
-        public boolean match(String ip) throws ProcessException {
+        public boolean match(String ip, String sender, String helo) throws ProcessException {
             throw new ProcessException("ERROR: FATAL ERROR"); // Não pode fazer o match direto.
         }
     }
@@ -1472,6 +1513,17 @@ public final class SPF implements Serializable {
         private static synchronized void add(SPF spf) {
             MAP.put(spf.getHostname(), spf);
             CHANGED = true;
+        }
+        
+        public static void refresh(String address,
+                boolean load) throws ProcessException {
+            String host = Domain.extractHost(address, false);
+            if (host != null) {
+                SPF spf = MAP.get(host);
+                if (spf != null) {
+                    spf.refresh(load);
+                }
+            }
         }
 
         /**
@@ -2850,6 +2902,7 @@ public final class SPF implements Serializable {
             if (!Domain.containsDomain(hostname)) {
                 throw new ProcessException("ERROR: HOSTNAME INVALID");
             } else if (!spf.equals(MAP.put("." + hostname, spf))) {
+                CacheSPF.refresh(hostname, true);
                 CHANGED = true;
                 return true;
             } else {
@@ -2865,6 +2918,7 @@ public final class SPF implements Serializable {
             } else if (MAP.remove("." + hostname) == null) {
                 return false;
             } else {
+                CacheSPF.refresh(hostname, true);
                 CHANGED = true;
                 return true;
             }
@@ -2967,6 +3021,10 @@ public final class SPF implements Serializable {
 
     public static void storeDistribution() {
         CacheDistribution.store();
+    }
+    
+    public static void storeSPF() {
+        CacheSPF.store();
     }
 
     /**
