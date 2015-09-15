@@ -841,8 +841,6 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Houve falha para encontrar os registros.
             Server.logCheckDNS(time, host, "ERROR " + ex.getMessage());
             throw new ProcessException("ERROR: NSLOOKUP", ex);
-        } finally {
-            
         }
     }
     
@@ -1009,8 +1007,12 @@ public class Domain implements Serializable, Comparable<Domain> {
                 Domain domain = getDomain(address);
                 return domain.get("ownerid", false);
             } catch (ProcessException ex) {
-                Server.logError(ex);
-                return null;
+                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else {
+                    Server.logError(ex);
+                    return null;
+                }
             }
         } else {
             return null;

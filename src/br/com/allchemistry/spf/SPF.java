@@ -45,35 +45,39 @@ import javax.naming.directory.InvalidAttributeIdentifierException;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
- * Representa o registro SPF de um deterninado hostname. Implementação da RFC 4408,
- exceto os Macros da seção 8 por enquanto.
-
- Quando a consulta é feita, o resultado do SPF é considerado para determinar o
- responsável pela mensagem. Uma vez encontrado o responsável, um ticket SPFBL
- é gerado através de criptografia na base 64. Este ticket é enviado juntamente
- o qualificador SPF da consulta. O cliente da consulta deve extrair o ticket
- do resultado e adicionar no cabeçalho da mensagem utilizando o campo
- "Received-SPFBL".
-
- A regra de determinação de responsabilidade é usada para gerar o ticket SPFBL
- e funciona da seguinte forma: 1. Se retornar PASS, o remetente é o
- responsável pela mensagem ou 2. Caso contrário, o hostname é responsável pela
- mensagem.
-
- No primeiro caso, onde o remetente é responsável pela mensagem, o ticket é
- gerado com a seguinte regra: 1. Se o domínio do rementente estiver na lista
- de provedores, então o endereço de e-mail completo é utilizado ou 2. Caso
- contrário, o hostname e domínio do rementente são utilizados.
-
- No segundo caso, onde o hostname é responsável pela mensagem, o ticket é gerado
- com a seguinte regra: 1. Se o HELO apontar para o IP, então o próprio HELO e
- o domínio do HELO são utilizados ou 2. Caso contrário, o IP é utilizado.
-
- Todas as consultas são registradas numa distribuição de probabilidade, onde é
- possível alternar de HAM para SPAM utilizando o ticket gerado. Uma vez
- recebida a reclamação com o ticket, o serviço descriptografa o ticket e
- extrai os responsaveis pelo envio.
- *
+ * Representa o registro SPF de um deterninado hostname.
+ * 
+ * Implementação da RFC 7208, com algumas 
+ * modificações para atender condições específicas.
+ * 
+ * Quando a consulta é feita, o resultado do SPF é considerado para determinar o
+ * responsável pela mensagem. Uma vez encontrado o responsável, um ticket SPFBL
+ * é gerado através de criptografia na base 64. Este ticket é enviado juntamente
+ * o qualificador SPF da consulta. O cliente da consulta deve extrair o ticket
+ * do resultado e adicionar no cabeçalho da mensagem utilizando o campo
+ * "Received-SPFBL".
+ * 
+ * A regra de determinação de responsabilidade é usada para gerar o ticket SPFBL
+ * e funciona da seguinte forma:
+ *    1. Se retornar PASS, o remetente é o responsável pela mensagem ou
+ *    2. Caso contrário, o hostname é responsável pela mensagem.
+ * 
+ * No primeiro caso, onde o remetente é responsável pela mensagem, o ticket é
+ * gerado com a seguinte regra:
+ *    1. Se o domínio do rementente estiver na lista de provedores, 
+ *       então o endereço de e-mail completo é utilizado ou
+ *    2. Caso contrário, o hostname e domínio do rementente são utilizados.
+ * 
+ * No segundo caso, onde o hostname é responsável pela mensagem, o ticket é gerado
+ * com a seguinte regra:
+ *    1. Se o HELO apontar para o IP, então o próprio HELO e 
+ *       o domínio do HELO são utilizados ou
+ *    2. Caso contrário, o IP é utilizado.
+ * 
+ * Todas as consultas são registradas numa distribuição de probabilidade, onde é
+ * possível alternar de HAM para SPAM utilizando o ticket gerado. Uma vez
+ * recebida a reclamação com o ticket, o serviço descriptografa o ticket e
+ * extrai os responsaveis pelo envio.
  *
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
@@ -604,7 +608,7 @@ public final class SPF implements Serializable {
                 "^"
                 + "(\\+|-|~|\\?)?a"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "(/[0-9]{1,2})?"
+                + "(/[0-9]{1,2})?(//[0-9]{1,3})?"
                 + "$", token.toLowerCase());
     }
 
@@ -618,7 +622,7 @@ public final class SPF implements Serializable {
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?mx"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "(\\.|/[0-9]{1,2})?"
+                + "(\\.|/[0-9]{1,2})?(//[0-9]{1,3})?"
                 + "$", token.toLowerCase());
     }
 
@@ -757,11 +761,6 @@ public final class SPF implements Serializable {
                             throw ex;
                         }
                     }
-//                } else if (mechanism instanceof MechanismExists) {
-//                    MechanismExists exists = (MechanismExists) mechanism;
-//                    if (exists.match(ip, sender, helo)) {
-//                        return exists.getQualifier();
-//                    }
                 } else if (mechanism instanceof MechanismPTR) {
                     if (deep == 0 && mechanism.match(ip, sender, helo)) {
                         // Mecanismo PTR só será processado
@@ -1047,16 +1046,19 @@ public final class SPF implements Serializable {
             }
         }
         
-        private String getHostname(String ip, String sender, String helo) {
+        private String getExpression(String ip, String sender, String helo) {
             String expression = getExpression();
+            expression = expand(expression, ip, sender, helo);
             if (!Character.isLetter(expression.charAt(0))) {
                 // Expressão com qualificador.
                 // Extrair qualificador.
                 expression = expression.substring(1);
             }
-            int index = expression.indexOf(':') + 1;
-            expression = expression.substring(index);
-            expression = expand(expression, ip, sender, helo);
+            if (expression.startsWith("a:")) {
+                expression = expression.substring(2);
+            } else if (expression.startsWith("a")) {
+                expression = SPF.this.getHostname() + expression.substring(1);
+            }
             return expression;
         }
 
@@ -1064,31 +1066,29 @@ public final class SPF implements Serializable {
             if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
-                String hostname = getHostname(ip, sender, helo);
-                String hostName;
-                String hostNameCIDR;
-                int indexDomain = hostname.indexOf(':');
-                int indexPrefix = hostname.indexOf('/');
-                if (indexDomain > 0 && indexPrefix > indexDomain) {
-                    hostName = hostname.substring(indexDomain + 1, indexPrefix);
-                    hostNameCIDR = hostname.substring(indexDomain + 1);
-                } else if (indexDomain > 0) {
-                    hostName = hostname.substring(indexDomain + 1);
-                    hostNameCIDR = hostname.substring(indexDomain + 1);
-                } else {
-                    hostName = hostname;
-                    hostNameCIDR = hostname;
+                String expression = getExpression(ip, sender, helo);
+                String hostname = expression;
+                String maskIPv4 = null;
+                String maskIPv6 = null;
+                int indexIPv6Prefix = hostname.indexOf("//");
+                if (indexIPv6Prefix != -1) {
+                    maskIPv6 = hostname.substring(indexIPv6Prefix + 2);
+                    hostname = hostname.substring(0, indexIPv6Prefix);
+                }
+                int indexIPv4Prefix = hostname.indexOf('/');
+                if (indexIPv4Prefix != -1) {
+                    maskIPv4 = hostname.substring(indexIPv4Prefix + 1);
+                    hostname = hostname.substring(0, indexIPv4Prefix);
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
                     Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostName, new String[]{"A"});
-                    Attribute attribute = attributes.get("A");
-                    if (attribute != null) {
-                        NamingEnumeration enumeration = attribute.getAll();
+                            "dns:/" + hostname, new String[]{"A", "AAAA"});
+                    Attribute attributeA = attributes.get("A");
+                    if (attributeA != null) {
+                        NamingEnumeration enumeration = attributeA.getAll();
                         while (enumeration.hasMoreElements()) {
                             String hostAddress = (String) enumeration.next();
-                            resultSet.add(hostAddress);
                             int indexSpace = hostAddress.indexOf(' ') + 1;
                             hostAddress = hostAddress.substring(indexSpace);
                             if (!SubnetIPv4.isValidIPv4(hostAddress)) {
@@ -1098,23 +1098,45 @@ public final class SPF implements Serializable {
                                     // Registro A não encontrado.
                                 }
                             }
-                            if (indexPrefix > 0) {
-                                hostAddress += hostname.substring(indexPrefix);
+                            if (maskIPv4 != null) {
+                                hostAddress += "/" + maskIPv4;
                             }
                             mechanismList.add(new MechanismIPv4(hostAddress));
+                            resultSet.add(hostAddress);
                         }
                     }
-                    Server.logMecanismA(time, hostName, resultSet.toString());
+                    Attribute attributeAAAA = attributes.get("AAAA");
+                    if (attributeAAAA != null) {
+                        NamingEnumeration enumeration = attributeAAAA.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String hostAddress = (String) enumeration.next();
+                            int indexSpace = hostAddress.indexOf(' ') + 1;
+                            hostAddress = hostAddress.substring(indexSpace);
+                            if (!SubnetIPv6.isValidIPv6(hostAddress)) {
+                                try {
+                                    hostAddress = InetAddress.getByName(hostAddress).getHostAddress();
+                                } catch (UnknownHostException ex) {
+                                    // Registro AAAA não encontrado.
+                                }
+                            }
+                            if (maskIPv6 != null) {
+                                hostAddress += "/" + maskIPv6;
+                            }
+                            mechanismList.add(new MechanismIPv6(hostAddress));
+                            resultSet.add(hostAddress);
+                        }
+                    }
+                    Server.logMecanismA(time, expression, resultSet.toString());
                 } catch (CommunicationException ex) {
-                    Server.logMecanismA(time, hostNameCIDR, "TIMEOUT");
+                    Server.logMecanismA(time, expression, "TIMEOUT");
                 } catch (NameNotFoundException ex) {
-                    Server.logMecanismA(time, hostNameCIDR, "NOT FOUND");
+                    Server.logMecanismA(time, expression, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
-                    Server.logMecanismA(time, hostNameCIDR, "NOT FOUND");
+                    Server.logMecanismA(time, expression, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismA(time, hostNameCIDR, "ERROR " + ex.getMessage());
+                    Server.logMecanismA(time, expression, "ERROR " + ex.getMessage());
                 }
-                if (!getExpression().contains("%")) {
+                if (!expression.contains("%")) {
                     loaded = true;
                 }
             }
@@ -1148,16 +1170,19 @@ public final class SPF implements Serializable {
             }
         }
         
-        private String getHostname(String ip, String sender, String helo) {
+        private String getExpression(String ip, String sender, String helo) {
             String expression = getExpression();
+            expression = expand(expression, ip, sender, helo);
             if (!Character.isLetter(expression.charAt(0))) {
                 // Expressão com qualificador.
                 // Extrair qualificador.
                 expression = expression.substring(1);
             }
-            int index = expression.indexOf(':') + 1;
-            expression = expression.substring(index);
-            expression = expand(expression, ip, sender, helo);
+            if (expression.startsWith("mx:")) {
+                expression = expression.substring(3);
+            } else if (expression.startsWith("mx")) {
+                expression = SPF.this.getHostname() + expression.substring(2);
+            }
             return expression;
         }
 
@@ -1165,25 +1190,24 @@ public final class SPF implements Serializable {
             if (!loaded) {
                 long time = System.currentTimeMillis();
                 // Carregamento de lista.
-                String hostname = getHostname(ip, sender, helo);
-                String hostName;
-                String hostNameCIDR;
-                int indexDomain = hostname.indexOf(':');
-                int indexPrefix = hostname.indexOf('/');
-                if (indexDomain > 0 && indexPrefix > indexDomain) {
-                    hostName = hostname.substring(indexDomain + 1, indexPrefix);
-                    hostNameCIDR = hostname.substring(indexDomain + 1);
-                } else if (indexDomain > 0) {
-                    hostName = hostname.substring(indexDomain + 1);
-                    hostNameCIDR = hostname.substring(indexDomain + 1);
-                } else {
-                    hostName = hostname;
-                    hostNameCIDR = hostname;
+                String expression = getExpression(ip, sender, helo);
+                String hostname = expression;
+                String maskIPv4 = null;
+                String maskIPv6 = null;
+                int indexIPv6Prefix = hostname.indexOf("//");
+                if (indexIPv6Prefix != -1) {
+                    maskIPv6 = hostname.substring(indexIPv6Prefix + 2);
+                    hostname = hostname.substring(0, indexIPv6Prefix);
+                }
+                int indexIPv4Prefix = hostname.indexOf('/');
+                if (indexIPv4Prefix != -1) {
+                    maskIPv4 = hostname.substring(indexIPv4Prefix + 1);
+                    hostname = hostname.substring(0, indexIPv4Prefix);
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
                     Attributes attributesMX = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostName, new String[]{"MX"});
+                            "dns:/" + hostname, new String[]{"MX"});
                     Attribute attributeMX = attributesMX.get("MX");
                     if (attributeMX != null) {
                         NamingEnumeration enumeration = attributeMX.getAll();
@@ -1192,72 +1216,85 @@ public final class SPF implements Serializable {
                             int indexSpace = hostAddress.indexOf(' ') + 1;
                             hostAddress = hostAddress.substring(indexSpace);
                             if (SubnetIPv4.isValidIPv4(hostAddress)) {
-                                if (indexPrefix > 0) {
-                                    hostAddress += hostname.substring(indexPrefix);
+                                if (maskIPv4 != null) {
+                                    hostAddress += "/" + maskIPv4;
                                 }
                                 mechanismList.add(new MechanismIPv4(hostAddress));
                                 resultSet.add(hostAddress);
                             } else if (SubnetIPv6.isValidIPv6(hostAddress)) {
-                                if (indexPrefix > 0) {
-                                    hostAddress += hostname.substring(indexPrefix);
+                                if (maskIPv6 != null) {
+                                    hostAddress += "/" + maskIPv6;
                                 }
                                 mechanismList.add(new MechanismIPv6(hostAddress));
                                 resultSet.add(hostAddress);
                             } else {
                                 try {
                                     Attributes attributesA = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                            "dns:/" + hostAddress, new String[]{"A"});
+                                            "dns:/" + hostAddress, new String[]{"A", "AAAA"});
                                     Attribute attributeA = attributesA.get("A");
                                     if (attributeA != null) {
                                         for (int i = 0; i < attributeA.size(); i++) {
                                             String host4Address = (String) attributeA.get(i);
                                             if (SubnetIPv4.isValidIPv4(host4Address)) {
-                                                if (indexPrefix > 0) {
-                                                    host4Address += hostname.substring(indexPrefix);
+                                                if (maskIPv4 != null) {
+                                                    host4Address += "/" + maskIPv4;
                                                 }
                                                 mechanismList.add(new MechanismIPv4(host4Address));
                                                 resultSet.add(host4Address);
                                             }
                                         }
                                     }
+                                    Attribute attributeAAAA = attributesA.get("AAAA");
+                                    if (attributeAAAA != null) {
+                                        for (int i = 0; i < attributeAAAA.size(); i++) {
+                                            String host6Address = (String) attributeAAAA.get(i);
+                                            if (SubnetIPv6.isValidIPv6(host6Address)) {
+                                                if (maskIPv6 != null) {
+                                                    host6Address += "/" + maskIPv6;
+                                                }
+                                                mechanismList.add(new MechanismIPv6(host6Address));
+                                                resultSet.add(host6Address);
+                                            }
+                                        }
+                                    }
                                 } catch (NamingException ex) {
                                     // Endereço não encontrado.
                                 }
-                                if (indexPrefix == -1) {
-                                    // Se não houver definição CIDR,
-                                    // considerar também os endereços IPv6
-                                    // para ficar compatível com pilha dupla.
-                                    // Isto não é um padrão SPF mas não há
-                                    // prejuízo algum no uso deste conceito.
-                                    try {
-                                        Attributes attributesAAAA = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                                "dns:/" + hostAddress, new String[]{"AAAA"});
-                                        Attribute attributeAAAA = attributesAAAA.get("AAAA");
-                                        if (attributeAAAA != null) {
-                                            for (int i = 0; i < attributeAAAA.size(); i++) {
-                                                String host6Address = (String) attributeAAAA.get(i);
-                                                if (SubnetIPv6.isValidIPv6(host6Address)) {
-                                                    mechanismList.add(new MechanismIPv6(host6Address));
-                                                    resultSet.add(host6Address);
-                                                }
-                                            }
-                                        }
-                                    } catch (NamingException ex) {
-                                        // Endereço não encontrado.
-                                    }
-                                }
+//                                if (indexPrefix == -1) {
+//                                    // Se não houver definição CIDR,
+//                                    // considerar também os endereços IPv6
+//                                    // para ficar compatível com pilha dupla.
+//                                    // Isto não é um padrão SPF mas não há
+//                                    // prejuízo algum no uso deste conceito.
+//                                    try {
+//                                        Attributes attributesAAAA = Server.INITIAL_DIR_CONTEXT.getAttributes(
+//                                                "dns:/" + hostAddress, new String[]{"AAAA"});
+//                                        Attribute attributeAAAA = attributesAAAA.get("AAAA");
+//                                        if (attributeAAAA != null) {
+//                                            for (int i = 0; i < attributeAAAA.size(); i++) {
+//                                                String host6Address = (String) attributeAAAA.get(i);
+//                                                if (SubnetIPv6.isValidIPv6(host6Address)) {
+//                                                    mechanismList.add(new MechanismIPv6(host6Address));
+//                                                    resultSet.add(host6Address);
+//                                                }
+//                                            }
+//                                        }
+//                                    } catch (NamingException ex) {
+//                                        // Endereço não encontrado.
+//                                    }
+//                                }
                             }
                         }
                     }
-                    Server.logMecanismMX(time, hostNameCIDR, resultSet.toString());
+                    Server.logMecanismMX(time, expression, resultSet.toString());
                 } catch (CommunicationException ex) {
-                    Server.logMecanismMX(time, hostNameCIDR, "TIMEOUT");
+                    Server.logMecanismMX(time, expression, "TIMEOUT");
                 } catch (NameNotFoundException ex) {
-                    Server.logMecanismMX(time, hostNameCIDR, "NOT FOUND");
+                    Server.logMecanismMX(time, expression, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
-                    Server.logMecanismMX(time, hostNameCIDR, "NOT FOUND");
+                    Server.logMecanismMX(time, expression, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismMX(time, hostNameCIDR, "ERROR " + ex.getMessage());
+                    Server.logMecanismMX(time, expression, "ERROR " + ex.getMessage());
                 }
                 if (!getExpression().contains("%")) {
                     loaded = true;
@@ -1488,7 +1525,7 @@ public final class SPF implements Serializable {
 
     @Override
     public String toString() {
-        return hostname;
+        return hostname + " " + mechanismList + " " + redirect + " " + all;
     }
 
     /**
@@ -2667,7 +2704,21 @@ public final class SPF implements Serializable {
 
     public static void main(String[] args) {
         try {
-            System.out.println(expand("%{i}._ip.%{h}._ehlo.%{d}._spf.vali.email", "192.161.146.71", "support@uber.com", "out4.pod4.sac1.zdsys.com"));
+//            String ip = "200.160.2.5";
+            String ip = "2001:12ff:0:2::5";
+            String sender = "remetente@registro.br";
+            String helo = "mailx.registro.br";
+            SPF spf = CacheSPF.get("registro.br");
+            for (Mechanism mechamism : spf.mechanismList) {
+                if (mechamism instanceof MechanismA) {
+                    MechanismA mechanismA = (MechanismA) mechamism;
+                    System.out.println(mechanismA.match(ip, sender, helo));
+                } else if (mechamism instanceof MechanismMX) {
+                    MechanismMX mechanismMX = (MechanismMX) mechamism;
+                    System.out.println(mechanismMX.match(ip, sender, helo));
+                }
+            }
+            System.out.println(spf);
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
