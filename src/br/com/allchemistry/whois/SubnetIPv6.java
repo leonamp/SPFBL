@@ -408,6 +408,8 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
                 return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
             } else {
                 Server.logError(ex);
                 return null;

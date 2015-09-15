@@ -604,6 +604,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o token é um mecanismo a válido.
      */
     private static boolean isMechanismA(String token) {
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^"
                 + "(\\+|-|~|\\?)?a"
@@ -619,6 +620,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o token é um mecanismo mx válido.
      */
     private static boolean isMechanismMX(String token) {
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?mx"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
@@ -633,6 +635,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o token é um mecanismo ptr válido.
      */
     private static boolean isMechanismPTR(String token) {
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?ptr"
                 + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
@@ -646,7 +649,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o token é um mecanismo existis válido.
      */
     private static boolean isMechanismExistis(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "sub.domain.tld");
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?exists:"
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
@@ -660,10 +663,10 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o token é um mecanismo include válido.
      */
     private static boolean isMechanismInclude(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "sub.domain.tld");
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^(\\+|-|~|\\?)?include:"
-                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+                + "(\\.?(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
                 + "$", token.toLowerCase());
     }
 
@@ -2936,8 +2939,9 @@ public final class SPF implements Serializable {
 
         /**
          * http://www.openspf.org/FAQ/Best_guess_record
+         * porém compatível com IPv6
          */
-        private static final String BEST_GUESS = "v=spf1 a/24 mx/24 ptr ?all";
+        private static final String BEST_GUESS = "v=spf1 a/24//48 mx/24//48 ptr ?all";
         /**
          * Mapa de registros manuais de SPF caso o domínio não tenha um.
          */

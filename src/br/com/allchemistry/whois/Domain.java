@@ -1009,6 +1009,8 @@ public class Domain implements Serializable, Comparable<Domain> {
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
                     return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
                 } else {
                     Server.logError(ex);
                     return null;
