@@ -358,6 +358,16 @@ public abstract class Subnet implements Serializable {
         }
     }
     
+    public static String reverse(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.reverse(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.reverse(ip);
+        } else {
+            return null;
+        }
+    }
+    
     /**
      * Verifica se um IP é válido na notação de IP.
      * @param ip o IP a ser verificado.
