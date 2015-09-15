@@ -1046,7 +1046,7 @@ public final class SPF implements Serializable {
         public MechanismA(String expression, boolean load) {
             super(expression);
             if (load && !expression.contains("%")) {
-                loadList("", "", "");
+                loadList("127.0.0.1", "sender@domain.tld", "host.domain.tld");
             }
         }
         
@@ -1170,7 +1170,7 @@ public final class SPF implements Serializable {
         public MechanismMX(String expression, boolean load) {
             super(expression);
             if (load && !expression.contains("%")) {
-                loadList("", "", "");
+                loadList("127.0.0.1", "sender@domain.tld", "host.domain.tld");
             }
         }
         
@@ -1559,13 +1559,18 @@ public final class SPF implements Serializable {
             CHANGED = true;
         }
         
-        public static void refresh(String address,
+        public static boolean refresh(String address,
                 boolean load) throws ProcessException {
             String host = Domain.extractHost(address, false);
-            if (host != null) {
+            if (host == null) {
+                return false;
+            } else {
                 SPF spf = MAP.get(host);
-                if (spf != null) {
+                if (spf == null) {
+                    return false;
+                } else {
                     spf.refresh(load);
+                    return true;
                 }
             }
         }
@@ -3549,6 +3554,13 @@ public final class SPF implements Serializable {
                         result = "ALREADY REMOVED\n";
                     } else {
                         result = "OK " + tokenSet + "\n";
+                    }
+                } else if (firstToken.equals("REFRESH") && tokenizer.countTokens() == 1) {
+                    String address = tokenizer.nextToken();
+                    if (CacheSPF.refresh(address, true)) {
+                        result = "UPDATED\n";
+                    } else {
+                        result = "NOT LOADED\n";
                     }
                 } else if ((firstToken.equals("SPF") || tokenizer.countTokens() == 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
