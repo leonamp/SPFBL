@@ -594,6 +594,7 @@ public final class SPF implements Serializable {
         hostname = hostname.replace("%{h}", helo);
         hostname = hostname.replace("%{d}", domain);
         hostname = hostname.replace("%{s}", sender);
+        hostname = hostname.replace("%{ir}", Subnet.reverse(ip));
         return hostname;
     }
 
@@ -1382,6 +1383,9 @@ public final class SPF implements Serializable {
                 address1 = SubnetIPv6.splitByte(ip);
                 for (byte octeto : address1) {
                     String hexPart = Integer.toHexString((int) octeto & 0xFF);
+                    if (hexPart.length() == 1) {
+                        hexPart = "0" + hexPart;
+                    }
                     for (char digit : hexPart.toCharArray()) {
                         reverse = digit + "." + reverse;
                     }

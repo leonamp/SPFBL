@@ -135,6 +135,15 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
         return address;
     }
     
+    public static String reverse(String ip) {
+        byte[] splitedIP = SubnetIPv4.split(ip);
+        int octet1 = splitedIP[0] & 0xFF;
+        int octet2 = splitedIP[1] & 0xFF;
+        int octet3 = splitedIP[2] & 0xFF;
+        int octet4 = splitedIP[3] & 0xFF;
+        return octet4 + "." + octet3 + "." + octet2 + "." + octet1;
+    }
+    
     /**
      * Meio mais seguro de padronizar os endereços IP.
      * @param ip o endereço IPv4.

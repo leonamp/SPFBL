@@ -151,6 +151,21 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         return mask;
     }
     
+    public static String reverse(String ip) {
+        String reverse = "";
+        byte[] address = splitByte(ip);
+        for (byte octeto : address) {
+            String hexPart = Integer.toHexString((int) octeto & 0xFF);
+            if (hexPart.length() == 1) {
+                hexPart = "0" + hexPart;
+            }
+            for (char digit : hexPart.toCharArray()) {
+                reverse = digit + "." + reverse;
+            }
+        }
+        return reverse;
+    }
+    
     /**
      * Meio mais seguro de padronizar os endereços IP.
      * @param ip o endereço IPv6.
