@@ -78,8 +78,8 @@ public class Main {
         System.out.println("      Store cache in disk.");
         System.out.println("   PROVIDER");
         System.out.println("      Add a e-mail provider.");
-        System.out.println("   TDL");
-        System.out.println("      Add a TDL.");
+        System.out.println("   TLD");
+        System.out.println("      Add a TLD.");
         System.out.println();
         System.out.println("Error messages:");
         System.out.println("   Any error message starts with 'ERROR: ' string and before comes de message.");
@@ -87,7 +87,7 @@ public class Main {
         System.out.println("   DOMAIN NOT FOUND");
         System.out.println("      No one domain is found to host.");
         System.out.println("   RESERVED");
-        System.out.println("      The query key is a reserved TDL.");
+        System.out.println("      The query key is a reserved TLD.");
         System.out.println("   SUBNET NOT FOUND");
         System.out.println("      No one sunbbet is found to IP.");
         System.out.println("   WAITING");

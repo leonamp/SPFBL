@@ -354,6 +354,14 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as consultas de mecanismo exists de SPF.
+     */
+    public static synchronized void logMecanismExists(long time, 
+            String host, String result) {
+        log(time, "SPFEX", host + " => " + result);
+    }
+    
+    /**
      * Registra as consultas de mecanismo MX de SPF.
      */
     public static synchronized void logMecanismMX(long time, 
@@ -884,71 +892,161 @@ public abstract class Server extends Thread {
                     // Comando para gravar o cache em disco.
                     result = "OK\n";
                     storeCache();
-                } else if (token.equals("TDL") && tokenizer.hasMoreTokens()) {
-                    // Comando para adicionar TDLs.
-                    while (tokenizer.hasMoreTokens()) {
-                        String tdl = tokenizer.nextToken();
-                        Domain.addTDL(tdl);
-                    }
-                    result = "OK\n";
-                } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
-                    // Comando para adicionar provedor de e-mail.
-                    while (tokenizer.hasMoreTokens()) {
-                        String provider = tokenizer.nextToken();
-                        SPF.addProvider(provider);
-                    }
-                    result = "OK\n";
-                } else if (command.startsWith("BLOCK ADD ")) {
-                    String query = command.substring(10).trim();
-                    tokenizer = new StringTokenizer(query, " ");
-                    while (tokenizer.hasMoreElements()) {
-                        try {
-                            String blockedToken = tokenizer.nextToken();
-                            boolean added = SPF.addBlock(blockedToken);
-                            if (result == null) {
-                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                            } else {
-                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                            }
-                        } catch (ProcessException ex) {
-                            result = ex.getMessage() + "\n";
+                } else if (token.equals("TLD") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar TLDs.
+                        while (tokenizer.hasMoreTokens()) {
+                            String tld = tokenizer.nextToken();
+                            Domain.addTLD(tld);
                         }
-                    }
-                    if (result == null) {
-                        result = "ERROR: COMMAND";
-                    }
-                    SPF.storeBlock();
-                } else if (command.startsWith("BLOCK DROP ")) {
-                    String query = command.substring(11).trim();
-                    tokenizer = new StringTokenizer(query, " ");
-                    while (tokenizer.hasMoreElements()) {
-                        try {
-                            String blockedToken = tokenizer.nextToken();
-                            boolean droped = SPF.dropBlock(blockedToken);
-                            if (result == null) {
-                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                            } else {
-                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                            }
-                        } catch (ProcessException ex) {
-                            result = ex.getMessage() + "\n";
+                        result = "OK\n";
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreTokens()) {
+                            token = tokenizer.nextToken();
+                            Domain.removeTLD(token);
                         }
-                    }
-                    if (result == null) {
-                        result = "ERROR: COMMAND";
-                    }
-                    SPF.storeBlock();
-                } else if (command.equals("BLOCK SHOW")) {
-                    // Mecanismo de visualização de bloqueios de remetentes.
-                    for (String sender : SPF.getBlockSet()) {
+                        result = "OK\n";
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (String tld : Domain.getTLDSet()) {
+                            if (result == null) {
+                                result = tld + "\n";
+                            } else {
+                                result += tld + "\n";
+                            }
+                        }
                         if (result == null) {
-                            result = sender + "\n";
-                        } else {
-                            result += sender + "\n";
+                            result = "EMPTY\n";
                         }
+                    } else {
+                        result = "ERROR: COMMAND";
                     }
-                    if (result == null) {
-                        result = "EMPTY\n";
+                } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar provedor de e-mail.
+                        while (tokenizer.hasMoreTokens()) {
+                            try {
+                                String provider = tokenizer.nextToken();
+                                boolean added = SPF.addProvider(provider);
+                                if (result == null) {
+                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                } else {
+                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "ERROR: COMMAND";
+                        }
+                        SPF.storeProvider();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar provedor de e-mail.
+                        while (tokenizer.hasMoreTokens()) {
+                            try {
+                                String provider = tokenizer.nextToken();
+                                boolean droped = SPF.dropProvider(provider);
+                                if (result == null) {
+                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                } else {
+                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "ERROR: COMMAND";
+                        }
+                        SPF.storeProvider();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        // Mecanismo de visualização de provedores.
+                        for (String provider : SPF.getProviderSet()) {
+                            if (result == null) {
+                                result = provider + "\n";
+                            } else {
+                                result += provider + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND";
+                    }
+                } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String blockedToken = tokenizer.nextToken();
+                                boolean added = SPF.addBlock(blockedToken);
+                                if (result == null) {
+                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                } else {
+                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "ERROR: COMMAND";
+                        }
+                        SPF.storeBlock();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String blockedToken = tokenizer.nextToken();
+                                boolean droped = SPF.dropBlock(blockedToken);
+                                if (result == null) {
+                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                } else {
+                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "ERROR: COMMAND";
+                        }
+                        SPF.storeBlock();
+                    } else if (token.equals("SHOW")) {
+                        if (!tokenizer.hasMoreTokens()) {
+                            // Mecanismo de visualização 
+                            // de bloqueios de remetentes.
+                            for (String sender : SPF.getBlockSet()) {
+                                if (result == null) {
+                                    result = sender + "\n";
+                                } else {
+                                    result += sender + "\n";
+                                }
+                            }
+                            if (result == null) {
+                                result = "EMPTY\n";
+                            }
+                        } else if (tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                // Mecanismo de visualização de 
+                                // todos os bloqueios de remetentes.
+                                for (String sender : SPF.getAllBlockSet()) {
+                                    if (result == null) {
+                                        result = sender + "\n";
+                                    } else {
+                                        result += sender + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
+                            }
+                        }
+                    } else {
+                        result = "ERROR: COMMAND";
                     }
                 } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -992,16 +1090,40 @@ public abstract class Server extends Thread {
                         result = "ERROR: COMMAND";
                     }
                 } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
-                    // Comando para adicionar um palpite SPF.
-                    String domain = tokenizer.nextToken();
-                    int beginIndex = command.indexOf('"') + 1;
-                    int endIndex = command.lastIndexOf('"');
-                    if (beginIndex > 0 && endIndex > beginIndex) {
-                        String spf = command.substring(beginIndex, endIndex);
-                        SPF.addGuess(domain, spf);
-                        result = "OK\n";
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar um palpite SPF.
+                        String domain = tokenizer.nextToken();
+                        int beginIndex = command.indexOf('"') + 1;
+                        int endIndex = command.lastIndexOf('"');
+                        if (beginIndex > 0 && endIndex > beginIndex) {
+                            String spf = command.substring(beginIndex, endIndex);
+                            boolean added = SPF.addGuess(domain, spf);
+                            result = (added ? "ADDED" : "REPLACED") + "\n";
+                            SPF.storeGuess();
+                            SPF.storeSPF();
+                        } else {
+                            result = "ERROR: COMMAND\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        String domain = tokenizer.nextToken();
+                        boolean droped = SPF.dropGuess(domain);
+                        result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                        SPF.storeGuess();
+                        SPF.storeSPF();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (String guess : SPF.getGuessSet()) {
+                            if (result == null) {
+                                result = guess + "\n";
+                            } else {
+                                result += guess + "\n";
+                            }
+                        }
+                        if (result == null) {
+                            result = "EMPTY\n";
+                        }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "ERROR: COMMAND";
                     }
                 } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
                     // Comando para verificar a reputação dos tokens.
@@ -1011,7 +1133,7 @@ public abstract class Server extends Thread {
                         Distribution distribution = distributionMap.get(tokenReputation);
                         float probability = distribution.getMinSpamProbability();
                         if (probability > 0.0f && distribution.hasFrequency()) {
-                            Status status = distribution.getStatus();
+                            Status status = distribution.getStatus(tokenReputation);
                             String frequency = distribution.getFrequencyLiteral();
                             stringBuilder.append(tokenReputation);
                             stringBuilder.append(' ');
@@ -1024,15 +1146,15 @@ public abstract class Server extends Thread {
                         }
                     }
                     result = stringBuilder.toString();
-                } else if (token.equals("WHITE") && tokenizer.hasMoreElements()) {
+                } else if (token.equals("CLEAR") && tokenizer.hasMoreElements()) {
                     while (tokenizer.hasMoreElements()) {
                         try {
                             token = tokenizer.nextToken();
-                            boolean whited = SPF.white(token);
+                            boolean cleared = SPF.clear(token);
                             if (result == null) {
-                                result = (whited ? "WHITED" : "NOT FOUND") + "\n";
+                                result = (cleared ? "CLEARED" : "NOT FOUND") + "\n";
                             } else {
-                                result += (whited ? "WHITED" : "NOT FOUND") + "\n";
+                                result += (cleared ? "CLEARED" : "NOT FOUND") + "\n";
                             }
                         } catch (Exception ex) {
                             if (result == null) {
@@ -1063,18 +1185,6 @@ public abstract class Server extends Thread {
                             result += "UNDEFINED\n";
                         }
                     }
-                } else if (token.equals("DROPDISTRIBUTION") && tokenizer.hasMoreTokens()) {
-                    while (tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        SPF.dropDistribution(token);
-                    }
-                    result = "OK\n";
-                } else if (token.equals("DROPTDL") && tokenizer.hasMoreTokens()) {
-                    while (tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        Domain.removeTDL(token);
-                    }
-                    result = "OK\n";
                 } else if (token.equals("REFRESH") && tokenizer.hasMoreTokens()) {
                     // Comando para atualizar registro em cache.
                     while (tokenizer.hasMoreTokens()) {
