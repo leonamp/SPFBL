@@ -312,6 +312,8 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
                 return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
             } else {
                 Server.logError(ex);
                 return null;
