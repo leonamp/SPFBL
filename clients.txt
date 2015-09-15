@@ -17,8 +17,9 @@
 69.162.91.240/28	smuxbr@gmail.com			Roberto Lima
 192.169.80.20/30	smuxbr@gmail.com			Roberto Lima
 187.17.176.0/20		nandolavras@gmail.com			Fernando José
-177.154.143.192/27	gian@live.com				Gian BR
+177.154.143.192/27	gian@live.com				Gian
 200.9.78.0/24		nolinux@gmail.com			Roberto Almeida
 201.59.102.240/28	nolinux@gmail.com			Roberto Almeida
 189.45.12.0/24		rafael@nbtelecom.com.br			Rafael Stein
 189.45.8.0/24		rafael@nbtelecom.com.br			Rafael Stein
+177.47.25.128/26	filipealvarez@gmail.com			Filipe Alvarez
