@@ -166,9 +166,9 @@ user:~# ./spfblwhitedrop.sh <remetente>
 OK
 ```
 
-##### Greylisting
+##### Greylisting (temporariamente desativado)
 
-A mensagem será atrasada sempre que o responsável estiver com status GRAY e a probabilidade SPAM mínima dele for inferior à variável pseudo-aleatória.
+A mensagem será atrasada sempre que o responsável estiver com status GRAY e não houver uma mesma tentativa em a 10min antes.
 
 ### Funcionamento
 
@@ -176,14 +176,14 @@ A seguir é mostrado como o SPFBL funciona internamente.
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais três qualificadores novos, chamados LISTED, BLOCKED e SPAMTRAP:
+O SPFBL retorna todos os qualificadores do SPF convencional mais quatro qualificadores novos, chamados LISTED, BLOCKED, SPAMTRAP e GREYLIST:
 
 * PASS &lt;ticket&gt;: permite o recebimento da mensagem.
 * FAIL: rejeita o recebimento da mensagem e informa à origem o descumprimento do SPF.
 * SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
-* LISTED: rejeita o recebimento da mensagem e informa à origem a listagem em blacklist por sete dias.
+* LISTED: atrasa o recebimento da mensagem e informa à origem a listagem temporária em blacklist.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
@@ -200,13 +200,13 @@ Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio
 
 ##### Fluxo do SPFBL
 
-O SPFBL utiliza deste fluxo para determinar responsável e se o mesmo está listado:
+O SPFBL utiliza deste fluxo para determinar responsável pelo envio da mensagem e qual ação o MX deve tomar:
 
 ![flowchartSPFBL](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
 
 ##### Tipos de responsável
 
-Sempre que o qualificador do SPFBL for PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TDL BR.
+Sempre que o qualificador do SPFBL for PASS, o responsável considerado é o próprio remetente ou o domínio do remetente. Será considerado o remetente se o domínio dele estiver registrado no SPFBL como provedor de e-mail, como por exemplo: @hotmail.com, @gmail.com, @yahoo.com, etc. Caso contrário, o responsável é o domínio do remetente, mais o CNPJ ou CPF deste domínio quando este for da TLD BR.
 
 Quando o qualificador for diferente de PASS, então o responsável considerado é o HELO ou o IP. Será considerado o HELO, com domínio e CNPJ ou CPF, se este for o reverso válido do IP. Caso contrário, o responsável é o IP.
 
@@ -231,6 +231,27 @@ Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, tem
 O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pelo Postfix, basta adicionar a seguinte linha no arquivo main.cf:
 ```
 check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
+##### Integração nativa Zimbra
+
+O SPFBL tem integração nativa com o Zimbra.
+
+Para utilizar o serviço SPFBL pelo Zimbra 8.5.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/postfix_recipient_restrictions.cf":
+```
+check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
+Para utilizar o serviço SPFBL pelo Zimbra 8.6.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/zmconfigd/smtpd_recipient_restrictions.cf":
+```
+check_policy_service inet:<IP do servidor SPFBL>:9877
+```
+
+Após adicionar a linha, renicie o serviço:
+```
+zmconfigdctl restart
+zmmtactl stop
+zmmtactl start
 ```
 
 ##### Integração com Exim
@@ -270,8 +291,8 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = [SPFBL] greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   warn
-      condition = ${if def:acl_c_spfbl {true}{false}}
-      add_header = Received-SPFBL: $acl_c_spfbl
+    condition = ${if def:acl_c_spfbl {true}{false}}
+    add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
 ##### Integração com Exim do cPanel
@@ -322,7 +343,7 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tdl.set e trap.set.
+Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tld.set e trap.set.
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
@@ -334,7 +355,7 @@ O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar cor
 
 ### Futuro do SPFBL
 
-Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes p2p:
+Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes P2P:
 
 ![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
 
@@ -344,11 +365,21 @@ Responsabilidades dos elementos:
 
 * Usuário: denunciar as mensagens SPAM que passam para ele utilizando de ferramentas disponibilizadas pelo administrador do seu MX.
 * Administrador do MX: fornecer ferramentas de denúncia para seus usuários e bloquear permanentemente as fontes SPAM 100% comprovadas.
-* Administrador do pool: criar regras de utilização do pool, onde os administradores MX decidem se desejam aderir ao pool, verifiar se as regras estão sendo cumpridas e se conectar a outros pools que tenham ideais semelhantes ao dele.
+* Administrador do pool: criar regras de utilização do pool, onde os administradores MX decidem se desejam aderir ao pool, verifiar se as regras estão sendo cumpridas e se conectar a outros pools que tenham ideais de bloqueio semelhantes ao dele.
 
-O ideia de se conectar a outros pool que com semelhança de ideais serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
+O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
-A rede deve auto-organizar-se de forma descentralizada.
+A rede SPFBL deve auto-organizar-se de forma descentralizada.
+
+### Pools conhecidos em funcionamento
+
+Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
+
+Abertos:
+* MatrixDefense: 54.94.137.168:9877 <leandro@allchemistry.com.br>
+
+Fechados:
+* MX-Protection: 177.154.143.206:9877 <gtec77@gmail.com>
 
 ### Forum SPFBL
 

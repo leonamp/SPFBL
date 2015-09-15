@@ -151,6 +151,21 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         return mask;
     }
     
+    public static String reverse(String ip) {
+        String reverse = "";
+        byte[] address = splitByte(ip);
+        for (byte octeto : address) {
+            String hexPart = Integer.toHexString((int) octeto & 0xFF);
+            if (hexPart.length() == 1) {
+                hexPart = "0" + hexPart;
+            }
+            for (char digit : hexPart.toCharArray()) {
+                reverse = digit + "." + reverse;
+            }
+        }
+        return reverse;
+    }
+    
     /**
      * Meio mais seguro de padronizar os endereços IP.
      * @param ip o endereço IPv6.
@@ -166,8 +181,14 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         int p6 = splitedIP[5] & 0xFFFF;
         int p7 = splitedIP[6] & 0xFFFF;
         int p8 = splitedIP[7] & 0xFFFF;
-        return p1 + ":" + p2 + ":" + p3 + ":" + p4 + ":" +
-                p5 + ":" + p6 + ":" + p7 + ":" + p8;
+        return Integer.toHexString(p1) + ":" +
+                Integer.toHexString(p2) + ":" +
+                Integer.toHexString(p3) + ":" +
+                Integer.toHexString(p4) + ":" +
+                Integer.toHexString(p5) + ":" +
+                Integer.toHexString(p6) + ":" +
+                Integer.toHexString(p7) + ":" +
+                Integer.toHexString(p8);
     }
     
     /**
@@ -401,6 +422,8 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
             return subnet.get("ownerid", false);
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                 return null;
             } else {
                 Server.logError(ex);

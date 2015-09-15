@@ -33,7 +33,7 @@
 #    SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
 #    NEUTRAL <ticket>: permitir o recebimento da mensagem.
 #    NONE <ticket>: permitir o recebimento da mensagem.
-#    LISTED ***obsoleto***: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+#    LISTED: atrasar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 #    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 #    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 #    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
@@ -48,7 +48,7 @@
 #    5: qualificador NONE.
 #    6: erro temporário.
 #    7: erro permanente.
-#    8: listado em lista negra. ***obsoleto***
+#    8: listado em lista negra.
 #    9: timeout de conexão.
 #    10: bloqueado permanentemente.
 #    11: spamtrap.
