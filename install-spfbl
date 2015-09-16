@@ -40,18 +40,12 @@ fi
 # This command not will copy myself heh
 mv SPFBL-master/*.sh /etc/spfbl
 
-# Enable SPFBL autostart
-mv /etc/spfbl/spfbl-startup.sh /etc/init.d/
-
-if [ -f /etc/redhat-release ]; then
-    chkconfig spfbl-startup on
-else
-    update-rc.d spfbl-startup.sh defaults 100
-fi
-# Store SPFBL core to /opt
+# Create spfbl folder
 if [ ! -d /opt/spfbl ]; then
     mkdir -p /opt/spfbl
 fi
+
+# Store SPFBL core to /opt
 mv SPFBL-master/dist /opt/spfbl
 mv SPFBL-master/*.set /opt/spfbl
 
@@ -65,8 +59,17 @@ if [ ! -d /var/lib/spfbl ]; then
     mkdir -p /var/lib/spfbl
 fi
 
+# Enable SPFBL autostart
+mv /etc/spfbl/spfbl-startup.sh /etc/init.d/
+
+#if [ -f /etc/redhat-release ]; then
+#    chkconfig spfbl-startup on
+#else
+    update-rc.d spfbl-startup.sh defaults 100
+#fi
+
 # Make log rotation
-mv SPFBL-master/logrotate/spfbl-rotate /etc/logrotate.d/spfbl
+mv SPFBL-master/spfbl-rotate /etc/logrotate.d/spfbl
 
 /etc/spfbl/spfbl-startup.sh
 
