@@ -486,7 +486,7 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismIPv4(String token) {
         return Pattern.matches(
-                "^((\\+|-|~|\\?)?ipv?4:)?"
+                "^((\\+|-|~|\\?)?ipv?4?:)?"
                 + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
                 + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
                 + "(/[0-9]{1,2})?"
@@ -520,7 +520,7 @@ public final class SPF implements Serializable {
      */
     private static boolean isMechanismIPv6(String token) {
         return Pattern.matches(
-                "^((\\+|-|~|\\?)?ipv?6:)?"
+                "^((\\+|-|~|\\?)?ipv?6?:)?"
                 + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
                 + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
                 + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
@@ -589,9 +589,12 @@ public final class SPF implements Serializable {
     private static String expand(String hostname,
             String ip, String sender, String helo) {
         int index = sender.indexOf('@');
+        String local = sender.substring(0, index);
         String domain = sender.substring(index + 1);
         hostname = hostname.replace("%{i}", ip);
         hostname = hostname.replace("%{h}", helo);
+        hostname = hostname.replace("%{l}", local);
+        hostname = hostname.replace("%{o}", domain);
         hostname = hostname.replace("%{d}", domain);
         hostname = hostname.replace("%{s}", sender);
         hostname = hostname.replace("%{ir}", Subnet.reverse(ip));
