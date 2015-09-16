@@ -18,10 +18,10 @@ echo "Setting up SPFBL Server..."
 echo "----------------------------"
 
 # Checking if your system is CentOS/RedHat or Debian Based.
-if [ -f /etc/redhat-release ]; then
-    yum -y install wget
+if [ -f /usr/bin/yum ]; then
+    yum -y upgrade >/dev/null && yum -y install unzip wget java-1.8.0-openjdk
 else
-    apt-get install -y unzip wget
+    apt-get update >/dev/null && apt-get install -y unzip wget default-jre
 fi
 
 # Download main distribution
@@ -43,7 +43,9 @@ mv SPFBL-master/*.sh /etc/spfbl
 # Enable SPFBL autostart
 mv /etc/spfbl/spfbl-startup.sh /etc/init.d/
 
-if [ ! -f /etc/redhat-release ]; then
+if [ -f /etc/redhat-release ]; then
+    chkconfig spfbl-startup on
+else
     update-rc.d spfbl-startup.sh defaults 100
 fi
 # Store SPFBL core to /opt
@@ -51,6 +53,7 @@ if [ ! -d /opt/spfbl ]; then
     mkdir -p /opt/spfbl
 fi
 mv SPFBL-master/dist /opt/spfbl
+mv SPFBL-master/*.set /opt/spfbl
 
 # Create log folder
 if [ ! -d /var/log/spfbl ]; then
