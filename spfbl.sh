@@ -224,7 +224,7 @@ case $1 in
 		if [ $# -lt "2" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
-			if [[ $2 =~ ^[a-zA-Z0-9/+=]+$ ]]; then
+			if [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$1" ]; then
@@ -291,7 +291,7 @@ case $1 in
 		if [ $# -lt "2" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
-			if [[ $2 =~ ^[a-zA-Z0-9/+]+$ ]]; then
+			if [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$1" ]; then
