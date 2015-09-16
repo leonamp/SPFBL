@@ -1,0 +1,7 @@
+/var/log/spfbl/*.log {
+daily
+rotate 1
+compress
+delaycompress
+create 644 root root
+}
