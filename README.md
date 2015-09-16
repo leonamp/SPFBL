@@ -168,7 +168,7 @@ OK
 
 ##### Greylisting (temporariamente desativado)
 
-A mensagem será atrasada sempre que o responsável estiver com status GRAY e não houver uma mesma tentativa em a 10min antes.
+A mensagem será atrasada sempre que o responsável estiver com status GRAY e não houver uma mesma tentativa a 10min antes.
 
 ### Funcionamento
 
@@ -343,7 +343,7 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, block.set, complain.map, distribution.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tld.set e trap.set.
+Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tld.set.
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
