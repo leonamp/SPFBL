@@ -348,7 +348,7 @@ Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste ja
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
 
 ```
-java -jar SPFBL.jar 9875 512 >> log.001.txt &
+java -jar /opt/spfbl/dist/SPFBL.jar 9875 512 >> log.001.txt &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
