@@ -58,7 +58,7 @@ if [ ! -d /var/log/spfbl ]; then
 fi
 
 # Create .map folder
-if [ ! /var/lib/spfbl ]; then
+if [ ! -d /var/lib/spfbl ]; then
     mkdir -p /var/lib/spfbl
 fi
 
