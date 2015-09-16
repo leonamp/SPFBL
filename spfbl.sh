@@ -6,6 +6,8 @@
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
 # ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
+
+### CONFIGURACOES ###
 IP_SERVIDOR="54.94.137.168"
 PORTA_SERVIDOR="9877"
 
@@ -22,6 +24,10 @@ export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 # trap add
 # trap drop
 # trap show
+# white add
+# white drop
+# white show
+# refresh
 
 case $1 in
 	'block')
@@ -45,7 +51,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -81,7 +87,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -110,7 +116,7 @@ case $1 in
 				if [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block show\n"
 				else
-					response=$(echo "BLOCK SHOW" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -165,7 +171,7 @@ case $1 in
 			email=$3
 			helo=$4
 
-			qualifier=$(echo "CHECK $ip $email $helo" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "CHECK $ip $email $helo" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
@@ -199,7 +205,7 @@ case $1 in
 		fi
 	;;
 	'spam')
-		# Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
+		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
 		#
 		# Com posse do ticket, ele envia a reclamação ao serviço SPFBL para contabilização de reclamação.
 		#
@@ -247,7 +253,7 @@ case $1 in
 				exit 6
 			else
 				# Registra reclamação SPFBL.
-				resposta=$(echo "SPAM $ticket" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+				resposta=$(echo "SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 				if [[ $resposta == "" ]]; then
 					echo "A reclamação SPFBL não foi enviada por timeout."
@@ -266,7 +272,7 @@ case $1 in
 		fi
 	;;
 	'ham')
-		# Este programa procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
+		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
 		#
 		# Com posse do ticket, ele solicita a revogação da reclamação ao serviço SPFBL.
 		#
@@ -281,7 +287,7 @@ case $1 in
 		#  4. Timeout no envio do ticket.
 		#  5. Parâmetro inválido.
 		#  6. Ticket inválido.
-		
+
 		if [ $# -lt "2" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
@@ -314,7 +320,7 @@ case $1 in
 				exit 6
 			else
 				# Registra reclamação SPFBL.
-				resposta=$(echo "HAM $ticket" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+				resposta=$(echo "HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 				if [[ $resposta == "" ]]; then
 					echo "A revogação SPFBL não foi enviada por timeout."
@@ -359,9 +365,10 @@ case $1 in
 		#    SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
 		#    NEUTRAL <ticket>: permitir o recebimento da mensagem.
 		#    NONE <ticket>: permitir o recebimento da mensagem.
-		#    LISTED: rejeitar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
+		#    LISTED: atrasar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 		#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
+		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#
 		# Códigos de saída:
 		#
@@ -377,6 +384,7 @@ case $1 in
 		#    9: timeout de conexão.
 		#    10: bloqueado permanentemente.
 		#    11: spamtrap.
+		#    12: greylisting.
 		
 		if [ $# -lt "5" ]; then
 			printf "Faltando parametro(s).\nSintaxe: $0 query ip email helo recipient\n"
@@ -386,7 +394,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
@@ -396,6 +404,8 @@ case $1 in
 
 			if [[ $qualifier == "TIMEOUT" ]]; then
 				exit 9
+			elif [[ $qualifier == "GREYLIST" ]]; then
+				exit 12
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED" ]]; then
@@ -434,13 +444,13 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
 				else
 					recipient=$3
 
-					response=$(echo "TRAP ADD $recipient" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -474,7 +484,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP DROP $recipient" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -503,7 +513,7 @@ case $1 in
 				if [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
 				else
-					response=$(echo "TRAP SHOW" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -521,5 +531,143 @@ case $1 in
 				fi
 			;;
 		esac
+	;;
+	'white')
+		case $2 in
+			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser bloqueado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "3" ]; then
+					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser desbloqueado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "3" ]; then
+					printf "Faltando parametro(s).\nSintaxe: $0 white drop recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'show')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "2" ]; then
+					printf "Faltando parametro(s).\nSintaxe: $0 white show\n"
+				else
+					response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+		esac
+	;;
+	'refresh')
+		# Parâmetros de entrada:
+		#
+		#    1. hostname: o nome do host cujo registro SPF que deve ser atualizado.
+		#
+		#
+		# Códigos de saída:
+		#
+		#    0: atualizado com sucesso.
+		#    1: registro não encontrado em cache.
+		#    2: erro ao processar atualização.
+		#    3: timeout de conexão.
+		
+		if [ $# -lt "2" ]; then
+			printf "Faltando parametro(s).\nSintaxe: $0 refresh hostname\n"
+		else
+			hostname=$2
+
+			response=$(echo "REFRESH $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		fi
 	;;
 esac
