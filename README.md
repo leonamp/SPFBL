@@ -150,19 +150,19 @@ OK
 
 Para visualizar a lista branca:
 ```
-user:~# ./spfblwhiteshow.sh
+user:~# ./spfbl.sh white show
 EMPTY
 ```
 
 Para adicionar um remetente:
 ```
-user:~# ./spfblwhiteadd.sh <remetente>
+user:~# ./spfbl.sh white add <remetente>
 OK
 ```
 
 Para remover um remetente:
 ```
-user:~# ./spfblwhitedrop.sh <remetente>
+user:~# ./spfbl.sh white drop <remetente>
 OK
 ```
 
@@ -260,7 +260,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
 ```
 # Use 'spfbl.sh query' to perform SPFBL check.
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
@@ -300,7 +300,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
 ```
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE )}{}}
   drop
