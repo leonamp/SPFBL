@@ -353,9 +353,9 @@ java -jar SPFBL.jar 9875 512 >> log.001.txt &
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
 
-### Futuro do SPFBL
+### Descentralização do SPFBL
 
-Existe várias evoluções possíveis para o serviço SPFBL. A evolução mais interessante, que está sendo discutida no momento, é a descentralização do processamento do SPFBL através de redes P2P:
+A descentralização do serviço SPFBL deve ser feito através de redes P2P:
 
 ![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
 
@@ -369,7 +369,7 @@ Responsabilidades dos elementos:
 
 O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
-A rede SPFBL deve auto-organizar-se de forma descentralizada.
+A rede SPFBL deve ser organizada de forma descentralizada.
 
 ### Pools conhecidos em funcionamento
 
