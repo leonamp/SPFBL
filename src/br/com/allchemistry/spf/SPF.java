@@ -2505,7 +2505,7 @@ public final class SPF implements Serializable {
                 throw new ProcessException("ERROR: CLIENT INVALID");
             } else if ((token = correctToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (SET.add(client + ':' + token.toLowerCase())) {
+            } else if (SET.add(client + ':' + token)) {
                 CHANGED = true;
                 return true;
             } else {
@@ -2514,22 +2514,41 @@ public final class SPF implements Serializable {
         }
 
         public static String correctToken(String token) throws ProcessException {
+            String qualif;
             if (token == null) {
                 return null;
-            } else if (Owner.isOwnerID(token)) {
-                return Owner.correctID(token);
+            } else if (token.contains(";")) {
+                int index = token.indexOf(';');
+                qualif = token.substring(index);
+                if (qualif.equals(";PASS")) {
+                    token = token.substring(0, index);
+                } else if (qualif.equals(";SOFTFAIL")) {
+                    token = token.substring(0, index);
+                } else if (qualif.equals(";NEUTRAL")) {
+                    token = token.substring(0, index);
+                } else if (qualif.equals(";NONE")) {
+                    token = token.substring(0, index);
+                } else {
+                    // Sintaxe com erro.
+                    return null;
+                }
+            } else {
+                qualif = "";
+            }
+            if (Owner.isOwnerID(token)) {
+                return Owner.correctID(token) + qualif;
             } else if (Domain.isEmail(token)) {
-                return token.toLowerCase();
+                return token.toLowerCase() + qualif;
             } else if (token.endsWith("@")) {
-                return token.toLowerCase();
+                return token.toLowerCase() + qualif;
             } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
-                return token.toLowerCase();
+                return token.toLowerCase() + qualif;
             } else if (!token.contains("@") && Domain.containsDomain(token)) {
-                return Domain.extractHost(token, true);
+                return Domain.extractHost(token, true) + qualif;
             } else if (token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
-                return Domain.extractHost(token, true);
+                return Domain.extractHost(token, true) + qualif;
             } else if (Subnet.isValidIP(token)) {
-                return Subnet.correctIP(token);
+                return Subnet.correctIP(token) + qualif;
             } else {
                 return null;
             }
@@ -2560,7 +2579,7 @@ public final class SPF implements Serializable {
                 throw new ProcessException("ERROR: CLIENT INVALID");
             } else if ((token = correctToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (SET.remove(client + ':' + token.toLowerCase())) {
+            } else if (SET.remove(client + ':' + token)) {
                 CHANGED = true;
                 return true;
             } else {
@@ -2598,12 +2617,16 @@ public final class SPF implements Serializable {
 
         public static boolean contains(String client,
                 String ip, String sender, String helo,
-                String ownerid) {
+                String ownerid, String qualifier) {
             if (ip != null) {
                 ip = Subnet.correctIP(ip);
                 if (SET.contains(ip)) {
                     return true;
+                } else if (SET.contains(ip + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + ip)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ip + ';' + qualifier)) {
                     return true;
                 }
             }
@@ -2615,17 +2638,29 @@ public final class SPF implements Serializable {
                 String domain = sender.substring(index2);
                 if (SET.contains(sender)) {
                     return true;
+                } else if (SET.contains(sender + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + sender)) {
+                    return true;
+                } else if (SET.contains(client + ':' + sender + ';' + qualifier)) {
                     return true;
                 } else if (SET.contains(part)) {
                     return true;
+                } else if (SET.contains(part + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + part)) {
+                    return true;
+                } else if (SET.contains(client + ':' + part + ';' + qualifier)) {
                     return true;
                 } else if (SET.contains(domain)) {
                     return true;
+                } else if (SET.contains(domain + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + domain)) {
                     return true;
-                } else if (containsHost(client, domain.substring(1))) {
+                } else if (SET.contains(client + ':' + domain + ';' + qualifier)) {
+                    return true;
+                } else if (containsHost(client, domain.substring(1), qualifier)) {
                     return true;
                 } else {
                     int index3 = domain.length();
@@ -2633,7 +2668,11 @@ public final class SPF implements Serializable {
                         String subdomain = domain.substring(0, index3 + 1);
                         if (SET.contains(subdomain)) {
                             return true;
+                        } else if (SET.contains(subdomain + ';' + qualifier)) {
+                            return true;
                         } else if (SET.contains(client + ':' + subdomain)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subdomain + ';' + qualifier)) {
                             return true;
                         }
                     }
@@ -2642,35 +2681,47 @@ public final class SPF implements Serializable {
                         String subsender = sender.substring(0, index4 + 1);
                         if (SET.contains(subsender)) {
                             return true;
+                        } else if (SET.contains(subsender + ';' + qualifier)) {
+                            return true;
                         } else if (SET.contains(client + ':' + subsender)) {
+                            return true;
+                        } else if (SET.contains(client + ':' + subsender + ';' + qualifier)) {
                             return true;
                         }
                     }
                 }
             }
             if ((helo = Domain.extractHost(helo, true)) != null) {
-                if (containsHost(client, helo)) {
+                if (containsHost(client, helo, qualifier)) {
                     return true;
                 }
             }
             if (ownerid != null) {
                 if (SET.contains(ownerid)) {
                     return true;
+                } else if (SET.contains(ownerid + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + ownerid)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ownerid + ';' + qualifier)) {
                     return true;
                 }
             }
             return false;
         }
 
-        private static boolean containsHost(String client, String host) {
+        private static boolean containsHost(String client, String host, String qualifier) {
             do {
                 int index = host.indexOf('.') + 1;
                 host = host.substring(index);
                 String token = '.' + host;
                 if (SET.contains(token)) {
                     return true;
+                } else if (SET.contains(token + ';' + qualifier)) {
+                    return true;
                 } else if (SET.contains(client + ':' + token)) {
+                    return true;
+                } else if (SET.contains(client + ':' + token + ';' + qualifier)) {
                     return true;
                 }
             } while (host.contains("."));
@@ -3472,7 +3523,7 @@ public final class SPF implements Serializable {
                     TreeSet<String> complainSet = CacheComplain.add(ticket);
                     Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
-                } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
+                } else if (CacheBlock.contains(client, ip, sender, helo, ownerid, result)) {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
                     // Bloqueio. Denúnica automática.
@@ -3706,7 +3757,7 @@ public final class SPF implements Serializable {
                                 TreeSet<String> complainSet = CacheComplain.add(ticket);
                                 Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
                                 return "SPAMTRAP\n";
-                            } else if (CacheBlock.contains(client, ip, sender, helo, ownerid)) {
+                            } else if (CacheBlock.contains(client, ip, sender, helo, ownerid, result)) {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
                                 // Bloqueio. Denunciar automaticamente.
