@@ -338,11 +338,31 @@ public abstract class Subnet implements Serializable {
         }
     }
     
+    public static String getBlock(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.getInetnum(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.getInetnum(ip);
+        } else {
+            return null;
+        }
+    }
+    
     public static String getOwnerID(String ip) {
         if (SubnetIPv4.isValidIPv4(ip)) {
             return SubnetIPv4.getOwnerID(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.getOwnerID(ip);
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getInetnum(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.getInetnum(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.getInetnum(ip);
         } else {
             return null;
         }

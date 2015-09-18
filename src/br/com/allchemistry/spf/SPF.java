@@ -2618,18 +2618,6 @@ public final class SPF implements Serializable {
         public static boolean contains(String client,
                 String ip, String sender, String helo,
                 String ownerid, String qualifier) {
-            if (ip != null) {
-                ip = Subnet.correctIP(ip);
-                if (SET.contains(ip)) {
-                    return true;
-                } else if (SET.contains(ip + ';' + qualifier)) {
-                    return true;
-                } else if (SET.contains(client + ':' + ip)) {
-                    return true;
-                } else if (SET.contains(client + ':' + ip + ';' + qualifier)) {
-                    return true;
-                }
-            }
             if (sender != null && sender.contains("@")) {
                 sender = sender.toLowerCase();
                 int index1 = sender.indexOf('@');
@@ -2705,6 +2693,30 @@ public final class SPF implements Serializable {
                     return true;
                 } else if (SET.contains(client + ':' + ownerid + ';' + qualifier)) {
                     return true;
+                }
+            }
+            if (ip != null) {
+                ip = Subnet.correctIP(ip);
+                if (SET.contains(ip)) {
+                    return true;
+                } else if (SET.contains(ip + ';' + qualifier)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ip)) {
+                    return true;
+                } else if (SET.contains(client + ':' + ip + ';' + qualifier)) {
+                    return true;
+                }
+                String inet = Subnet.getInetnum(ip);
+                if (inet != null) {
+                    if (SET.contains(inet)) {
+                        return true;
+                    } else if (SET.contains(inet + ';' + qualifier)) {
+                        return true;
+                    } else if (SET.contains(client + ':' + inet)) {
+                        return true;
+                    } else if (SET.contains(client + ':' + inet + ';' + qualifier)) {
+                        return true;
+                    }
                 }
             }
             return false;
@@ -3472,8 +3484,15 @@ public final class SPF implements Serializable {
                         tokenSet.add(sender);
                     } else {
                         // Não é um provedor então
-                        // o domínio deve ser listado.
-                        tokenSet.add(host);
+                        // o domínio e subdomínios devem ser listados.
+                        String dominio = "." + Domain.extractDomain(sender, false);
+                        String subdominio = host;
+                        while (!subdominio.equals(dominio)) {
+                            tokenSet.add(subdominio);
+                            int index = subdominio.indexOf('.', 1);
+                            subdominio = subdominio.substring(index);
+                        }
+                        tokenSet.add(dominio);
                         tokenSet.add(Domain.extractDomain(sender, true));
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
                             tokenSet.add(ownerid);
@@ -3485,8 +3504,14 @@ public final class SPF implements Serializable {
                     if (!helo.startsWith(".")) {
                         helo = "." + helo;
                     }
-                    tokenSet.add(helo);
-                    tokenSet.add(Domain.extractDomain(helo, true));
+                    String dominio = Domain.extractDomain(helo, true);
+                    String subdominio = helo;
+                    while (!subdominio.equals(dominio)) {
+                        tokenSet.add(subdominio);
+                        int index = subdominio.indexOf('.', 1);
+                        subdominio = subdominio.substring(index);
+                    }
+                    tokenSet.add(dominio);
                     if ((ownerid = Domain.getOwnerID(helo)) != null) {
                         tokenSet.add(ownerid);
                     }
@@ -3502,6 +3527,10 @@ public final class SPF implements Serializable {
                     }
                     if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                         tokenSet.add(ownerid);
+                    }
+                    String inetnum = Subnet.getInetnum(ip);
+                    if (inetnum != null) {
+                        tokenSet.add(inetnum);
                     }
                 }
                 if (CacheWhite.contains(client, sender)) {
@@ -3686,8 +3715,15 @@ public final class SPF implements Serializable {
                                     tokenSet.add(sender);
                                 } else {
                                     // Não é um provedor então
-                                    // o domínio deve ser listado.
-                                    tokenSet.add(host);
+                                    // o domínio e subdominios devem ser listados.
+                                    String dominio = "." + Domain.extractDomain(sender, false);
+                                    String subdominio = host;
+                                    while (!subdominio.equals(dominio)) {
+                                        tokenSet.add(subdominio);
+                                        int index = subdominio.indexOf('.', 1);
+                                        subdominio = subdominio.substring(index);
+                                    }
+                                    tokenSet.add(dominio);
                                     tokenSet.add(Domain.extractDomain(sender, true));
                                     if ((ownerid = Domain.getOwnerID(sender)) != null) {
                                         tokenSet.add(ownerid);
@@ -3699,8 +3735,14 @@ public final class SPF implements Serializable {
                                 if (!helo.startsWith(".")) {
                                     helo = "." + helo;
                                 }
-                                tokenSet.add(helo);
-                                tokenSet.add(Domain.extractDomain(helo, true));
+                                String dominio = Domain.extractDomain(helo, true);
+                                String subdominio = helo;
+                                while (!subdominio.equals(dominio)) {
+                                    tokenSet.add(subdominio);
+                                    int index = subdominio.indexOf('.', 1);
+                                    subdominio = subdominio.substring(index);
+                                }
+                                tokenSet.add(dominio);
                                 if ((ownerid = Domain.getOwnerID(helo)) != null) {
                                     tokenSet.add(ownerid);
                                 }
@@ -3716,6 +3758,10 @@ public final class SPF implements Serializable {
                                 }
                                 if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                                     tokenSet.add(ownerid);
+                                }
+                                String inetnum = Subnet.getInetnum(ip);
+                                if (inetnum != null) {
+                                    tokenSet.add(inetnum);
                                 }
                             }
                             if (firstToken.equals("CHECK")) {

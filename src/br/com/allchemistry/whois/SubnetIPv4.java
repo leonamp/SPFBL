@@ -330,6 +330,22 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
         }
     }
     
+    public static String getInetnum(String ip) {
+        try {
+            SubnetIPv4 subnet = getSubnet(ip);
+            return correctCIDR(subnet.get("inetnum", false));
+        } catch (ProcessException ex) {
+            if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
+            } else {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
     public static String getOwnerC(String ip) {
         try {
             SubnetIPv4 subnet = getSubnet(ip);

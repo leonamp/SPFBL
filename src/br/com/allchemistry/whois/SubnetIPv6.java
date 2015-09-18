@@ -9,6 +9,8 @@ import br.com.allchemistry.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -414,6 +416,49 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
         SubnetIPv6 subnet = new SubnetIPv6(result);
         subnet.server = server; // Temporário até final de transição.
         addSubnet(subnet);
+    }
+    
+    /**
+     * Corrige o endereço da notação CIDR para sem abreviação.
+     * @param inetnum o endereço com notação CIDR sem abreviação.
+     * @return o endereço da notação CIDR sem abreviação.
+     */
+    private static String correctCIDR(String inetnum) {
+        int index = inetnum.indexOf('/');
+        String ip = inetnum.substring(0, index);
+        String mask = inetnum.substring(index+1);
+        ArrayList<String> ipSequence = new ArrayList<String>(8);
+        StringTokenizer tokenizer = new StringTokenizer(ip, ":");
+        while (tokenizer.hasMoreTokens()) {
+            ipSequence.add(tokenizer.nextToken());
+        }
+        while (ipSequence.size() < 8) {
+            ipSequence.add("0");
+        }
+        return ipSequence.get(0) + ":" +
+                ipSequence.get(1) + ":" +
+                ipSequence.get(2) + ":" + 
+                ipSequence.get(3) + ":" + 
+                ipSequence.get(4) + ":" + 
+                ipSequence.get(5) + ":" + 
+                ipSequence.get(6) + ":" + 
+                ipSequence.get(7) + "/" + mask;
+    }
+    
+    public static String getInetnum(String ip) {
+        try {
+            SubnetIPv6 subnet = getSubnet(ip);
+            return correctCIDR(subnet.get("inetnum", false));
+        } catch (ProcessException ex) {
+            if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
+            } else {
+                Server.logError(ex);
+                return null;
+            }
+        }
     }
     
     public static String getOwnerID(String ip) {
