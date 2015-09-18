@@ -295,6 +295,16 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
+Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automaticamente utilizando a seguinte configuração na seção "acl_check_data":
+```
+  # Deny if the message contains malware
+  deny
+    condition = ${if < {$message_size}{16m}{true}{false}}
+    malware = *
+    message = This message was detected as possible malware ($malware_name).
+    log_message = malware detected. ${run{/usr/local/bin/exim4/spfblticket.sh $acl_c_spfblticket}{$value}{SPFBL ERROR}}.
+```
+
 ##### Integração com Exim do cPanel
 
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
