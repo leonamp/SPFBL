@@ -3719,7 +3719,7 @@ public final class SPF implements Serializable {
                                     // Não é um provedor então
                                     // o domínio e subdominios devem ser listados.
                                     String dominio = "." + Domain.extractDomain(sender, false);
-                                    String subdominio = host;
+                                    String subdominio = dominio;
                                     while (!subdominio.equals(dominio)) {
                                         tokenSet.add(subdominio);
                                         int index = subdominio.indexOf('.', 1);

@@ -85,9 +85,9 @@ public abstract class Subnet implements Serializable {
     
     public static String normalizeCIDR(String ip) {
         if (SubnetIPv4.isValidCIDRv4(ip)) {
-            return SubnetIPv4.normalizeIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            return SubnetIPv6.normalizeIPv6(ip);
+            return SubnetIPv4.normalizeCIDRv4(ip);
+        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
+            return SubnetIPv6.normalizeCIDRv6(ip);
         } else {
             return ip;
         }
@@ -95,9 +95,9 @@ public abstract class Subnet implements Serializable {
     
     public static String normalizeIP(String ip) {
         if (SubnetIPv4.isValidIPv4(ip)) {
-            return SubnetIPv4.normalizeCIDRv4(ip);
-        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
-            return SubnetIPv6.normalizeCIDRv6(ip);
+            return SubnetIPv4.normalizeIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.normalizeIPv6(ip);
         } else {
             return ip;
         }
