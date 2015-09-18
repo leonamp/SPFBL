@@ -39,6 +39,7 @@ import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
@@ -110,8 +111,8 @@ public final class SPF implements Serializable {
      * @throws ProcessException
      */
     private static LinkedList<String> getRegistrySPF(String hostname) throws ProcessException {
+        LinkedList<String> registryList = new LinkedList<String>();
         try {
-            LinkedList<String> registryList = new LinkedList<String>();
             if (CacheGuess.contains(hostname)) {
                 // Sempre que houver registro de
                 // chute, sobrepor registro atual.
@@ -173,6 +174,11 @@ public final class SPF implements Serializable {
                     registryList.add(CacheGuess.BEST_GUESS);
 //                }
             }
+            return registryList;
+        } catch (ServiceUnavailableException ex) {
+            // Sempre que houver falha de DNS,
+            // considerar sempre o best-guess.
+            registryList.add(CacheGuess.BEST_GUESS);
             return registryList;
         } catch (NamingException ex) {
             return null;
