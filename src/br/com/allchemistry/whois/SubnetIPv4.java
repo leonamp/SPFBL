@@ -48,7 +48,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
      * @param server o server que possui as informações daquele bloco.
      */
     protected SubnetIPv4(String inetnum, String server) {
-        super(inetnum = correctCIDR(inetnum), server);
+        super(inetnum = correctCIDRv4(inetnum), server);
         // Endereçamento do bloco.
         this.mask = getMaskNet(inetnum);
         this.address = getAddressNet(inetnum) & mask; // utiliza a máscara para garantir que o endereço passado seja o primeiro endereço do bloco.
@@ -95,7 +95,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
      * @param inetnum o endereço com notação CIDR sem abreviação.
      * @return o endereço da notação CIDR sem abreviação.
      */
-    private static String correctCIDR(String inetnum) {
+    protected static String correctCIDRv4(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String mask = inetnum.substring(index+1);
@@ -149,7 +149,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
      * @param ip o endereço IPv4.
      * @return o endereço IPv4 padronizado.
      */
-    public static String correctIP(String ip) {
+    public static String correctIPv4(String ip) {
         byte[] splitedIP = split(ip);
         int octet1 = splitedIP[0] & 0xFF;
         int octet2 = splitedIP[1] & 0xFF;
@@ -333,7 +333,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
     public static String getInetnum(String ip) {
         try {
             SubnetIPv4 subnet = getSubnet(ip);
-            return correctCIDR(subnet.get("inetnum", false));
+            return correctCIDRv4(subnet.get("inetnum", false));
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
                 return null;

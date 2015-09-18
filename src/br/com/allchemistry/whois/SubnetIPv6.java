@@ -173,7 +173,7 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
      * @param ip o endereço IPv6.
      * @return o endereço IPv6 padronizado.
      */
-    public static String correctIP(String ip) {
+    public static String correctIPv6(String ip) {
         short[] splitedIP = split(ip);
         int p1 = splitedIP[0] & 0xFFFF;
         int p2 = splitedIP[1] & 0xFFFF;
@@ -423,7 +423,7 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
      * @param inetnum o endereço com notação CIDR sem abreviação.
      * @return o endereço da notação CIDR sem abreviação.
      */
-    private static String correctCIDR(String inetnum) {
+    protected static String correctCIDRv6(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String mask = inetnum.substring(index+1);
@@ -448,7 +448,7 @@ public final class SubnetIPv6 extends Subnet implements Comparable<SubnetIPv6> {
     public static String getInetnum(String ip) {
         try {
             SubnetIPv6 subnet = getSubnet(ip);
-            return correctCIDR(subnet.get("inetnum", false));
+            return correctCIDRv6(subnet.get("inetnum", false));
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
                 return null;

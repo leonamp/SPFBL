@@ -83,11 +83,21 @@ public abstract class Subnet implements Serializable {
     // Temporário até final da transição.
     public abstract String getWhoisServer() throws ProcessException;
     
+    public static String correctCIDR(String ip) {
+        if (SubnetIPv4.isValidCIDRv4(ip)) {
+            return SubnetIPv4.correctIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.correctIPv6(ip);
+        } else {
+            return ip;
+        }
+    }
+    
     public static String correctIP(String ip) {
         if (SubnetIPv4.isValidIPv4(ip)) {
-            return SubnetIPv4.correctIP(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            return SubnetIPv6.correctIP(ip);
+            return SubnetIPv4.correctCIDRv4(ip);
+        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
+            return SubnetIPv6.correctCIDRv6(ip);
         } else {
             return ip;
         }
@@ -385,6 +395,16 @@ public abstract class Subnet implements Serializable {
             return SubnetIPv6.reverse(ip);
         } else {
             return null;
+        }
+    }
+    
+    public static boolean isValidCIDR(String ip) {
+        if (SubnetIPv4.isValidCIDRv4(ip)) {
+            return true;
+        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
+            return true;
+        } else {
+            return false;
         }
     }
     

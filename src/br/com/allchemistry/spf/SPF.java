@@ -2549,6 +2549,8 @@ public final class SPF implements Serializable {
                 return Domain.extractHost(token, true) + qualif;
             } else if (Subnet.isValidIP(token)) {
                 return Subnet.correctIP(token) + qualif;
+            } else if (Subnet.isValidCIDR(token)) {
+                return Subnet.correctCIDR(token) + qualif;
             } else {
                 return null;
             }
@@ -3520,10 +3522,10 @@ public final class SPF implements Serializable {
                     // o responsável é o dono do IP.
                     if (SubnetIPv4.isValidIPv4(ip)) {
                         // Formalizar notação IPv4.
-                        tokenSet.add(SubnetIPv4.correctIP(ip));
+                        tokenSet.add(SubnetIPv4.correctIPv4(ip));
                     } else if (SubnetIPv6.isValidIPv6(ip)) {
                         // Formalizar notação IPv6.
-                        tokenSet.add(SubnetIPv6.correctIP(ip));
+                        tokenSet.add(SubnetIPv6.correctIPv6(ip));
                     }
                     if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                         tokenSet.add(ownerid);
@@ -3751,10 +3753,10 @@ public final class SPF implements Serializable {
                                 // o responsável é o dono do IP.
                                 if (SubnetIPv4.isValidIPv4(ip)) {
                                     // Formalizar notação IPv4.
-                                    tokenSet.add(SubnetIPv4.correctIP(ip));
+                                    tokenSet.add(SubnetIPv4.correctIPv4(ip));
                                 } else if (SubnetIPv6.isValidIPv6(ip)) {
                                     // Formalizar notação IPv6.
-                                    tokenSet.add(SubnetIPv6.correctIP(ip));
+                                    tokenSet.add(SubnetIPv6.correctIPv6(ip));
                                 }
                                 if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                                     tokenSet.add(ownerid);
