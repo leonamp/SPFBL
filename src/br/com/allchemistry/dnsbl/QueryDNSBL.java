@@ -140,7 +140,7 @@ public final class QueryDNSBL extends Server {
                                     octeto = address[i];
                                     ip = ((int) octeto & 0xFF) + "." + ip;
                                 }
-                                ip = SubnetIPv4.correctIPv4(ip);
+                                ip = SubnetIPv4.normalizeIPv4(ip);
                                 if (SPF.isBlacklisted(ip)) {
                                     listed = true;
                                     ttl = SPF.getComplainTTL(ip);

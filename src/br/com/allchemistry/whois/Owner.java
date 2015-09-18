@@ -92,11 +92,11 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @throws QueryException se houver alguma falha da atualização do registro.
      */
     private Owner(String id) throws ProcessException {
-        this.ownerid = correctID(id);
+        this.ownerid = normalizeID(id);
         this.refresh();
     }
     
-    public static String correctID(String id) throws ProcessException {
+    public static String normalizeID(String id) throws ProcessException {
         if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
             return id;
         } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
@@ -364,7 +364,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @throws ProcessException se houver falha no processamento.
      */
     public static synchronized Owner removeOwner(String id) throws ProcessException {
-        String key = correctID(id);
+        String key = normalizeID(id);
         Owner owner = OWNER_MAP.remove(key);
         // Atualiza flag de atualização.
         OWNER_CHANGED = true;
@@ -382,7 +382,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @throws ProcessException se houver falha no processamento.
      */
     public static void refreshOwner(String id) throws ProcessException {
-        String key = correctID(id);
+        String key = normalizeID(id);
         // Busca eficiente O(1).
         if (OWNER_MAP.containsKey(key)) {
             // Owner encontrado.
@@ -413,7 +413,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @throws ProcessException se houver falha no processamento.
      */
     public static Owner getOwner(String id) throws ProcessException {
-        String key = correctID(id);
+        String key = normalizeID(id);
         // Busca eficiente O(1).
         if (OWNER_MAP.containsKey(key)) {
             // Owner encontrado.

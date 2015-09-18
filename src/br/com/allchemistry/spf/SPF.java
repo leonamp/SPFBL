@@ -2477,7 +2477,7 @@ public final class SPF implements Serializable {
         private static boolean CHANGED = false;
 
         public static synchronized boolean add(String token) throws ProcessException {
-            if ((token = correctToken(token)) == null) {
+            if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.add(token.toLowerCase())) {
                 CHANGED = true;
@@ -2503,7 +2503,7 @@ public final class SPF implements Serializable {
         public static synchronized boolean add(String client, String token) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((token = correctToken(token)) == null) {
+            } else if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.add(client + ':' + token)) {
                 CHANGED = true;
@@ -2513,7 +2513,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static String correctToken(String token) throws ProcessException {
+        public static String normalizeToken(String token) throws ProcessException {
             String qualif;
             if (token == null) {
                 return null;
@@ -2536,7 +2536,7 @@ public final class SPF implements Serializable {
                 qualif = "";
             }
             if (Owner.isOwnerID(token)) {
-                return Owner.correctID(token) + qualif;
+                return Owner.normalizeID(token) + qualif;
             } else if (Domain.isEmail(token)) {
                 return token.toLowerCase() + qualif;
             } else if (token.endsWith("@")) {
@@ -2548,16 +2548,16 @@ public final class SPF implements Serializable {
             } else if (token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
                 return Domain.extractHost(token, true) + qualif;
             } else if (Subnet.isValidIP(token)) {
-                return Subnet.correctIP(token) + qualif;
+                return Subnet.normalizeIP(token) + qualif;
             } else if (Subnet.isValidCIDR(token)) {
-                return Subnet.correctCIDR(token) + qualif;
+                return Subnet.normalizeCIDR(token) + qualif;
             } else {
                 return null;
             }
         }
 
         public static synchronized boolean drop(String token) throws ProcessException {
-            if ((token = correctToken(token)) == null) {
+            if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.remove(token)) {
                 CHANGED = true;
@@ -2579,7 +2579,7 @@ public final class SPF implements Serializable {
         public static synchronized boolean drop(String client, String token) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((token = correctToken(token)) == null) {
+            } else if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (SET.remove(client + ':' + token)) {
                 CHANGED = true;
@@ -2698,7 +2698,7 @@ public final class SPF implements Serializable {
                 }
             }
             if (ip != null) {
-                ip = Subnet.correctIP(ip);
+                ip = Subnet.normalizeIP(ip);
                 if (SET.contains(ip)) {
                     return true;
                 } else if (SET.contains(ip + ';' + qualifier)) {
@@ -3522,10 +3522,10 @@ public final class SPF implements Serializable {
                     // o responsável é o dono do IP.
                     if (SubnetIPv4.isValidIPv4(ip)) {
                         // Formalizar notação IPv4.
-                        tokenSet.add(SubnetIPv4.correctIPv4(ip));
+                        tokenSet.add(SubnetIPv4.normalizeIPv4(ip));
                     } else if (SubnetIPv6.isValidIPv6(ip)) {
                         // Formalizar notação IPv6.
-                        tokenSet.add(SubnetIPv6.correctIPv6(ip));
+                        tokenSet.add(SubnetIPv6.normalizeIPv6(ip));
                     }
                     if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                         tokenSet.add(ownerid);
@@ -3753,10 +3753,10 @@ public final class SPF implements Serializable {
                                 // o responsável é o dono do IP.
                                 if (SubnetIPv4.isValidIPv4(ip)) {
                                     // Formalizar notação IPv4.
-                                    tokenSet.add(SubnetIPv4.correctIPv4(ip));
+                                    tokenSet.add(SubnetIPv4.normalizeIPv4(ip));
                                 } else if (SubnetIPv6.isValidIPv6(ip)) {
                                     // Formalizar notação IPv6.
-                                    tokenSet.add(SubnetIPv6.correctIPv6(ip));
+                                    tokenSet.add(SubnetIPv6.normalizeIPv6(ip));
                                 }
                                 if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                                     tokenSet.add(ownerid);

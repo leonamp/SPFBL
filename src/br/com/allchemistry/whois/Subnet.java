@@ -83,21 +83,21 @@ public abstract class Subnet implements Serializable {
     // Temporário até final da transição.
     public abstract String getWhoisServer() throws ProcessException;
     
-    public static String correctCIDR(String ip) {
+    public static String normalizeCIDR(String ip) {
         if (SubnetIPv4.isValidCIDRv4(ip)) {
-            return SubnetIPv4.correctIPv4(ip);
+            return SubnetIPv4.normalizeIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
-            return SubnetIPv6.correctIPv6(ip);
+            return SubnetIPv6.normalizeIPv6(ip);
         } else {
             return ip;
         }
     }
     
-    public static String correctIP(String ip) {
+    public static String normalizeIP(String ip) {
         if (SubnetIPv4.isValidIPv4(ip)) {
-            return SubnetIPv4.correctCIDRv4(ip);
+            return SubnetIPv4.normalizeCIDRv4(ip);
         } else if (SubnetIPv6.isValidCIDRv6(ip)) {
-            return SubnetIPv6.correctCIDRv6(ip);
+            return SubnetIPv6.normalizeCIDRv6(ip);
         } else {
             return ip;
         }
