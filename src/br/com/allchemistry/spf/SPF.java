@@ -98,7 +98,9 @@ public final class SPF implements Serializable {
 
     private SPF(String hostname) throws ProcessException {
         this.hostname = hostname;
-        refresh(false);
+        // Sempre usar best-guess em caso de 
+        // indisponibilidade de DNS na primeira consulta.
+        refresh(false, true);
     }
 
     /**
@@ -107,10 +109,13 @@ public final class SPF implements Serializable {
      * registro.
      *
      * @param hostname o nome do hostname para consulta do SPF.
+     * @param bgWhenUnavailable usar best-guess quando 
+     * houver erro temporário para alcançar o registro.
      * @return o registro SPF consertado, padronuzado e mergeado.
      * @throws ProcessException
      */
-    private static LinkedList<String> getRegistrySPF(String hostname) throws ProcessException {
+    private static LinkedList<String> getRegistrySPF(String hostname,
+            boolean bgWhenUnavailable) throws ProcessException {
         LinkedList<String> registryList = new LinkedList<String>();
         try {
             if (CacheGuess.contains(hostname)) {
@@ -176,10 +181,13 @@ public final class SPF implements Serializable {
             }
             return registryList;
         } catch (ServiceUnavailableException ex) {
-            // Sempre que houver falha de DNS,
-            // considerar sempre o best-guess.
-            registryList.add(CacheGuess.BEST_GUESS);
-            return registryList;
+            if (bgWhenUnavailable) {
+                // Na indisponibilidade do DNS, considerar o best-guess.
+                registryList.add(CacheGuess.BEST_GUESS);
+                return registryList;
+            } else {
+                throw new ProcessException("ERROR: DNS UNAVAILABLE", ex);
+            }
         } catch (NamingException ex) {
             return null;
         } catch (Exception ex) {
@@ -338,9 +346,12 @@ public final class SPF implements Serializable {
      *
      * @throws ProcessException se houver falha no processamento.
      */
-    private void refresh(boolean load) throws ProcessException {
+    private void refresh(boolean load,
+            boolean bgWhenUnavailable) throws ProcessException {
         long time = System.currentTimeMillis();
-        LinkedList<String> registryList = getRegistrySPF(hostname);
+        LinkedList<String> registryList = getRegistrySPF(
+                hostname, bgWhenUnavailable
+        );
         if (registryList == null) {
             // Domínimo não encontrado.
             this.mechanismList = null;
@@ -1578,7 +1589,7 @@ public final class SPF implements Serializable {
                 if (spf == null) {
                     return false;
                 } else {
-                    spf.refresh(load);
+                    spf.refresh(load, false);
                     return true;
                 }
             }
@@ -1602,8 +1613,17 @@ public final class SPF implements Serializable {
                     add(spf);
                 } else {
                     if (spf.isRegistryExpired()) {
-                        // Atualiza o registro se ele for antigo demais.
-                        spf.refresh(false);
+                        try {
+                            // Atualiza o registro se ele for antigo demais.
+                            spf.refresh(false, false);
+                        } catch (ProcessException ex) {
+                            if (ex.getMessage().equals("ERROR: DNS UNAVAILABLE")) {
+                                // Manter registro anterior quando houver erro de DNS.
+                                Server.logDebug(address + ": SPF temporarily unavailable.");
+                            } else {
+                                throw ex;
+                            }
+                        }
                     }
                 }
                 spf.queries++; // Incrementa o contador de consultas.
@@ -1670,10 +1690,13 @@ public final class SPF implements Serializable {
             }
             if (spfMax != null && spfMax.queries > 3) {
                 try {
-                    spfMax.refresh(true);
+                    spfMax.refresh(true, false);
                 } catch (ProcessException ex) {
                     if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
                         Server.logDebug(spfMax.getHostname() + ": SPF registry cache removed.");
+                    } else if (ex.getMessage().equals("ERROR: DNS UNAVAILABLE")) {
+                        // Manter registro anterior quando houver erro de DNS.
+                        Server.logDebug(spfMax.getHostname() + ": SPF temporarily unavailable.");
                     } else {
                         Server.logError(ex);
                     }
@@ -3485,8 +3508,8 @@ public final class SPF implements Serializable {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
-                    String host = Domain.extractHost(sender, true);
-                    if (CacheProvider.contains(host)) {
+                    String mx = Domain.extractHost(sender, true);
+                    if (CacheProvider.contains(mx)) {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
                         tokenSet.add(sender);
@@ -3494,12 +3517,13 @@ public final class SPF implements Serializable {
                         // Não é um provedor então
                         // o domínio e subdomínios devem ser listados.
                         String dominio = "." + Domain.extractDomain(sender, false);
-                        String subdominio = host;
+                        String subdominio = dominio;
                         while (!subdominio.equals(dominio)) {
                             tokenSet.add(subdominio);
                             int index = subdominio.indexOf('.', 1);
                             subdominio = subdominio.substring(index);
                         }
+                        tokenSet.add(mx);
                         tokenSet.add(dominio);
                         tokenSet.add(Domain.extractDomain(sender, true));
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
