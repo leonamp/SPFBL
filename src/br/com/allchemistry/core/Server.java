@@ -252,7 +252,7 @@ public abstract class Server extends Thread {
      * @param type tipo de registro de LOG.
      * @param message a mensagem do registro de LOG.
      */
-    private static synchronized void log(long time, String type, String message) {
+    private static void log(long time, String type, String message) {
         int latencia = (int) (System.currentTimeMillis() - time);
         if (latencia > 9999) {
             // Para manter a formatação correta no LOG,
@@ -286,7 +286,7 @@ public abstract class Server extends Thread {
      * Registra as mensagens para depuração.
      * @param message a mensagem a ser registrada.
      */
-    public static synchronized void logDebug(String message) {
+    public static void logDebug(String message) {
         log(System.currentTimeMillis(), "DEBUG", message);
     }
     
@@ -294,7 +294,7 @@ public abstract class Server extends Thread {
      * Registra as gravações de cache em disco.
      * @param file o arquivo armazenado.
      */
-    public static synchronized void logStore(long time, File file) {
+    public static void logStore(long time, File file) {
         log(time, "STORE", file.getName());
     }
     
@@ -302,7 +302,7 @@ public abstract class Server extends Thread {
      * Registra os carregamentos de cache no disco.
      * @param file o arquivo carregado.
      */
-    public static synchronized void logLoad(long time, File file) {
+    public static void logLoad(long time, File file) {
         log(time, "LOADC", file.getName());
     }
     
@@ -310,7 +310,7 @@ public abstract class Server extends Thread {
      * Registra as mensagens de checagem DNS.
      * @param host o host que foi consultado.
      */
-    public static synchronized void logCheckDNS(
+    public static void logCheckDNS(
             long time, String host, String result) {
         log(time, "DNSCK", host + " => " + result);
     }
@@ -319,7 +319,7 @@ public abstract class Server extends Thread {
      * Registra os tiquetes processados.
      * @param tokenSet o conjunto de tokens.
      */
-    public static synchronized void logTicket(long time, 
+    public static void logTicket(long time, 
             String query, Set<String> tokenSet) {
         log(time, "TIKET", query + " => " + tokenSet);
     }
@@ -332,7 +332,7 @@ public abstract class Server extends Thread {
     /**
      * Registra as consultas DNS.
      */
-    public static synchronized void logLookupDNS(long time, 
+    public static void logLookupDNS(long time, 
             String type, String host, String result) {
         log(time, "DNSLK", type + " " + host + " => " + result);
     }
@@ -340,7 +340,7 @@ public abstract class Server extends Thread {
     /**
      * Registra as consultas DNS para HELO.
      */
-    public static synchronized void logLookupHELO(long time, 
+    public static void logLookupHELO(long time, 
             String host, String result) {
         log(time, "HELOL", host + " => " + result);
     }
@@ -348,7 +348,7 @@ public abstract class Server extends Thread {
     /**
      * Registra as consultas de mecanismo A de SPF.
      */
-    public static synchronized void logMecanismA(long time, 
+    public static void logMecanismA(long time, 
             String host, String result) {
         log(time, "SPFMA", host + " => " + result);
     }
@@ -356,7 +356,7 @@ public abstract class Server extends Thread {
     /**
      * Registra as consultas de mecanismo exists de SPF.
      */
-    public static synchronized void logMecanismExists(long time, 
+    public static void logMecanismExists(long time, 
             String host, String result) {
         log(time, "SPFEX", host + " => " + result);
     }
@@ -364,7 +364,7 @@ public abstract class Server extends Thread {
     /**
      * Registra as consultas de mecanismo MX de SPF.
      */
-    public static synchronized void logMecanismMX(long time, 
+    public static void logMecanismMX(long time, 
             String host, String result) {
         log(time, "SPFMX", host + " => " + result);
     }
@@ -372,7 +372,7 @@ public abstract class Server extends Thread {
     /**
      * Registra verificações de macth de HELO.
      */
-    public static synchronized void logMatchHELO(long time, 
+    public static void logMatchHELO(long time, 
             String query, String result) {
         log(time, "HELOM", query + " => " + result);
     }
@@ -380,7 +380,7 @@ public abstract class Server extends Thread {
     /**
      * Registra verificações de DNS reverso.
      */
-    public static synchronized void logReverseDNS(long time, 
+    public static void logReverseDNS(long time, 
             String ip, String result) {
         log(time, "DNSRV", ip + " => " + result);
     }
@@ -389,7 +389,7 @@ public abstract class Server extends Thread {
      * Registra as mensagens de erro.
      * @param message a mensagem a ser registrada.
      */
-    public static synchronized void logError(String message) {
+    public static void logError(String message) {
         log(System.currentTimeMillis(), "ERROR", message);
     }
     
@@ -400,7 +400,7 @@ public abstract class Server extends Thread {
      */
     public static synchronized void logError(Throwable ex) {
         if (ex != null) {
-            log(System.currentTimeMillis(), "ERROR", "Exception", ex);
+            log(System.currentTimeMillis(), "ERROR", ex.getMessage(), ex);
         }
     }
     
@@ -411,7 +411,7 @@ public abstract class Server extends Thread {
      * @param hostname o nome do host.
      * @param result o resultado SPF do host.
      */
-    public static synchronized void logLookupSPF(
+    public static void logLookupSPF(
             long time, String hostname, String result) {
         log(time, "SPFLK", hostname + " => " + result);
     }
@@ -432,7 +432,7 @@ public abstract class Server extends Thread {
      * Uma iniciativa para formalização das mensagens de log.
      * @param token o token SPF da mensagem original.
      */
-    public static synchronized void logHamSPF(Set<String> tokenSet) {
+    public static void logHamSPF(Set<String> tokenSet) {
         log(System.currentTimeMillis(), "SPFWL", tokenSet.toString());
     }
     
@@ -443,7 +443,7 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result o resultado a ser registrado.
      */
-    public static synchronized void logWhois(long time,
+    public static void logWhois(long time,
             String server, String query, String result) {
         result = result.replace("\r", "\\r");
         result = result.replace("\n", "\\n");
@@ -516,7 +516,7 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result a expressão do resultado.
      */
-    public static synchronized void logQuery(
+    public static void logQuery(
             long time,
             String type,
             InetAddress ipAddress,
@@ -527,7 +527,7 @@ public abstract class Server extends Thread {
         log(time, type, getLogClient(ipAddress) + ": " + query + " => " + result);
     }
     
-    public static synchronized void logQuery(
+    public static void logQuery(
             long time,
             String type,
             String client,
@@ -538,7 +538,7 @@ public abstract class Server extends Thread {
         log(time, type, client + ": " + query + " => " + result);
     }
     
-    public static synchronized void logQuery(
+    public static void logQuery(
             long time,
             String type,
             String query, String result) {
@@ -555,7 +555,7 @@ public abstract class Server extends Thread {
      * @param command a expressão do comando.
      * @param result a expressão do resultado.
      */
-    public static synchronized void logCommand(long time,
+    public static void logCommand(long time,
             InetAddress ipAddress, String command, String result) {
         result = result.replace("\n", "\\n");
         log(time, "CMMND", getLogClient(ipAddress) + ": " + command + " => " + result);

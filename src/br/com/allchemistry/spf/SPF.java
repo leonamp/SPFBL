@@ -209,7 +209,8 @@ public final class SPF implements Serializable {
         LinkedList<String> midleList = new LinkedList<String>();
         LinkedList<String> errorList = new LinkedList<String>();
         registry = registry.replace("\\\"", "\"");
-        registry = registry.replace('\"', ' ');
+        registry = registry.replace("\" \"", "");
+        registry = registry.replace("\"", "");
         StringTokenizer tokenizer = new StringTokenizer(registry, " ");
         while (tokenizer.hasMoreTokens()) {
             Boolean valid;
@@ -804,9 +805,13 @@ public final class SPF implements Serializable {
                     return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
                 }
             } else if (error) {
-                // Foi encontrado um erro em algum mecanismos
-                // na qual os demais não tiveram macth.
-                throw new ProcessException("ERROR: SPF PARSE");
+//                // Foi encontrado um erro em algum mecanismos
+//                // na qual os demais não tiveram macth.
+//                throw new ProcessException("ERROR: SPF PARSE");
+                
+                // Nova interpretação SPF para erro de sintaxe.
+                // Em caso de erro, retornar SOFTFAIL.
+                return Qualifier.SOFTFAIL;
             } else if (deep > 0) {
                 // O mecanismo all só deve ser
                 // processado no primeiro nível da árvore.
@@ -3537,7 +3542,7 @@ public final class SPF implements Serializable {
                         helo = "." + helo;
                     }
                     String dominio = Domain.extractDomain(helo, true);
-                    String subdominio = helo;
+                    String subdominio = Domain.extractHost(helo, true);
                     while (!subdominio.equals(dominio)) {
                         tokenSet.add(subdominio);
                         int index = subdominio.indexOf('.', 1);
@@ -3672,12 +3677,16 @@ public final class SPF implements Serializable {
                     }
                 } else if (firstToken.equals("REFRESH") && tokenizer.countTokens() == 1) {
                     String address = tokenizer.nextToken();
-                    if (CacheSPF.refresh(address, true)) {
-                        result = "UPDATED\n";
-                    } else {
-                        result = "NOT LOADED\n";
+                    try {
+                        if (CacheSPF.refresh(address, true)) {
+                            result = "UPDATED\n";
+                        } else {
+                            result = "NOT LOADED\n";
+                        }
+                    } catch (ProcessException ex) {
+                        result = ex.getMessage() + "\n";
                     }
-                } else if ((firstToken.equals("SPF") || tokenizer.countTokens() == 4)
+                } else if ((firstToken.equals("SPF") && tokenizer.countTokens() == 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
@@ -3768,7 +3777,7 @@ public final class SPF implements Serializable {
                                     helo = "." + helo;
                                 }
                                 String dominio = Domain.extractDomain(helo, true);
-                                String subdominio = helo;
+                                String subdominio = Domain.extractHost(helo, true);
                                 while (!subdominio.equals(dominio)) {
                                     tokenSet.add(subdominio);
                                     int index = subdominio.indexOf('.', 1);
@@ -3872,7 +3881,7 @@ public final class SPF implements Serializable {
                     } catch (ProcessException ex) {
                         if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
                             // Considerar FAIL sempre que o hostname não existir.
-                            return "FAIL";
+                            return "FAIL\n";
                         } else {
                             throw ex;
                         }
