@@ -3521,8 +3521,8 @@ public final class SPF implements Serializable {
                     } else {
                         // Não é um provedor então
                         // o domínio e subdomínios devem ser listados.
-                        String dominio = "." + Domain.extractDomain(sender, false);
-                        String subdominio = dominio;
+                        String dominio = Domain.extractDomain(mx.substring(1), true);
+                        String subdominio = "." + mx.substring(1);
                         while (!subdominio.equals(dominio)) {
                             tokenSet.add(subdominio);
                             int index = subdominio.indexOf('.', 1);
@@ -3530,7 +3530,6 @@ public final class SPF implements Serializable {
                         }
                         tokenSet.add(mx);
                         tokenSet.add(dominio);
-                        tokenSet.add(Domain.extractDomain(sender, true));
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
                             tokenSet.add(ownerid);
                         }
@@ -3749,23 +3748,23 @@ public final class SPF implements Serializable {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
-                                String host = Domain.extractHost(sender, true);
-                                if (CacheProvider.contains(host)) {
+                                String mx = Domain.extractHost(sender, true);
+                                if (CacheProvider.contains(mx)) {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
                                     tokenSet.add(sender);
                                 } else {
                                     // Não é um provedor então
                                     // o domínio e subdominios devem ser listados.
-                                    String dominio = "." + Domain.extractDomain(sender, false);
-                                    String subdominio = dominio;
+                                    String dominio = Domain.extractDomain(mx.substring(1), true);
+                                    String subdominio = "." + mx.substring(1);
                                     while (!subdominio.equals(dominio)) {
                                         tokenSet.add(subdominio);
                                         int index = subdominio.indexOf('.', 1);
                                         subdominio = subdominio.substring(index);
                                     }
+                                    tokenSet.add(mx);
                                     tokenSet.add(dominio);
-                                    tokenSet.add(Domain.extractDomain(sender, true));
                                     if ((ownerid = Domain.getOwnerID(sender)) != null) {
                                         tokenSet.add(ownerid);
                                     }
