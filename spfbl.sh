@@ -420,6 +420,11 @@ case $1 in
 				exit 5
 			elif [[ $qualifier == "PASS "* ]]; then
 				exit 2
+			elif [[ $qualifier == "FAIL "* ]]; then
+			        # Retornou FAIL com ticket então
+			        # significa que está em whitelist.
+			        # Retornar como se fosse SOFTFAIL.
+				exit 4
 			elif [[ $qualifier == "FAIL" ]]; then
 				exit 3
 			elif [[ $qualifier == "SOFTFAIL "* ]]; then
