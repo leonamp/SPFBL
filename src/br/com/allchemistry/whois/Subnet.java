@@ -23,7 +23,7 @@ import java.util.TreeSet;
  * 
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
-public abstract class Subnet implements Serializable {
+public abstract class Subnet implements Serializable, Comparable<Subnet> {
     
     private static final long serialVersionUID = 1L;
     
@@ -585,5 +585,24 @@ public abstract class Subnet implements Serializable {
     @Override
     public String toString() {
         return inetnum;
+    }
+
+    @Override
+    public int compareTo(Subnet other) {
+        if (this instanceof SubnetIPv4) {
+            if (other instanceof SubnetIPv4) {
+                return ((SubnetIPv4)this).compareTo((SubnetIPv4)other);
+            } else {
+                return -1;
+            }
+        } else if (this instanceof SubnetIPv6) {
+            if (other instanceof SubnetIPv6) {
+                return ((SubnetIPv6)this).compareTo((SubnetIPv6)other);
+            } else {
+                return 1;
+            }
+        } else {
+            return 0;
+        }
     }
 }

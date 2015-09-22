@@ -35,7 +35,9 @@ import org.apache.commons.lang3.SerializationUtils;
  * 
  * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
  */
-public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
+public final class SubnetIPv4 extends Subnet
+//implements Comparable<SubnetIPv4>
+{
     
     private static final long serialVersionUID = 1L;
     
@@ -479,7 +481,7 @@ public final class SubnetIPv4 extends Subnet implements Comparable<SubnetIPv4> {
         return this.address == (ip & mask);
     }
     
-    @Override
+//    @Override
     public int compareTo(SubnetIPv4 other) {
         return new Integer(this.address).compareTo(other.address);
     }

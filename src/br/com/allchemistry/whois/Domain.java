@@ -972,32 +972,33 @@ public class Domain implements Serializable, Comparable<Domain> {
                 removeDomain(domain);
                 // Segue para nova consulta.
             }
-        }
-        // Extrair o host se for e-mail.
-        String host = extractHost(address, false);
-        // Não encontrou o dominio em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(host);
-        // Verifica o DNS do host antes de fazer a consulta no WHOIS.
-        // Evita consulta desnecessária no WHOIS.
-        checkHost(host);
-        // Domínio existente.
-        // Realizando a consulta no WHOIS.
-        String result = Server.whois(host, server);
-        try {
-            Domain domain = new Domain(result);
-            domain.server = server; // Temporário até final de transição.
-            // Adicinando registro em cache.
-            addDomain(domain);
-        } catch (ProcessException ex) {
-            if (ex.getMessage().equals("ERROR: RESERVED")) {
-                // A chave de busca é um TLD.
-                if (TLD_SET.add(host)) {
-                    // Atualiza flag de atualização.
-                    TLD_CHANGED = true;
+        } else {
+            // Extrair o host se for e-mail.
+            String host = extractHost(address, false);
+            // Não encontrou o dominio em cache.
+            // Selecionando servidor da pesquisa WHOIS.
+            String server = getWhoisServer(host);
+            // Verifica o DNS do host antes de fazer a consulta no WHOIS.
+            // Evita consulta desnecessária no WHOIS.
+            checkHost(host);
+            // Domínio existente.
+            // Realizando a consulta no WHOIS.
+            String result = Server.whois(host, server);
+            try {
+                Domain domain = new Domain(result);
+                domain.server = server; // Temporário até final de transição.
+                // Adicinando registro em cache.
+                addDomain(domain);
+            } catch (ProcessException ex) {
+                if (ex.getMessage().equals("ERROR: RESERVED")) {
+                    // A chave de busca é um TLD.
+                    if (TLD_SET.add(host)) {
+                        // Atualiza flag de atualização.
+                        TLD_CHANGED = true;
+                    }
                 }
+                throw ex;
             }
-            throw ex;
         }
     }
     

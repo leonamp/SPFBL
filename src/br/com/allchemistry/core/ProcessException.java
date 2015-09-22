@@ -18,4 +18,13 @@ public class ProcessException extends Exception {
     public ProcessException(String message, Throwable cause) {
         super(message, cause);
     }
+
+    public String getErrorMessage() {
+        String message = getMessage();
+        if (message.startsWith("ERROR: ")) {
+            return message.substring(7);
+        } else {
+            return message;
+        }
+    }
 }

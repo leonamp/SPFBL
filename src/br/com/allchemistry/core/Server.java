@@ -19,9 +19,11 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.security.SecureRandom;
@@ -252,17 +254,22 @@ public abstract class Server extends Thread {
      * @param type tipo de registro de LOG.
      * @param message a mensagem do registro de LOG.
      */
-    private static void log(long time, String type, String message) {
+    private static void log(long time, String type, String message, String result) {
         int latencia = (int) (System.currentTimeMillis() - time);
         if (latencia > 9999) {
             // Para manter a formatação correta no LOG,
             // Registrar apenas latências até 9999, que tem 4 digitos.
             latencia = 9999;
         }
+        if (result != null) {
+            result = result.replace("\n", "\\n");
+            result = result.replace("\r", "\\r");
+        }
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date(time))
                 + " " + LATENCIA_FORMAT.format(latencia)
                 + " " + type + " " + message
+                + (result == null ? "" : " => " + result)
                 );
     }
     
@@ -274,11 +281,17 @@ public abstract class Server extends Thread {
      */
     private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
     
-    private static synchronized void log(long time,
+    private static void log(long time,
             String type, String message, Throwable ex) {
-        log(time, type, message);
-        if (ex != null) {
-            ex.printStackTrace(System.out);
+        log(time, type, message, (String) null);
+        if (ex == null) {
+            log(time, type, message, (String) null);
+        } else {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PrintStream printStream = new PrintStream(baos);
+            ex.printStackTrace(printStream);
+            printStream.close();
+            log(time, type, message, baos.toString());
         }
     }
     
@@ -287,7 +300,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logDebug(String message) {
-        log(System.currentTimeMillis(), "DEBUG", message);
+        log(System.currentTimeMillis(), "DEBUG", message, (String) null);
     }
     
     /**
@@ -295,7 +308,7 @@ public abstract class Server extends Thread {
      * @param file o arquivo armazenado.
      */
     public static void logStore(long time, File file) {
-        log(time, "STORE", file.getName());
+        log(time, "STORE", file.getName(), (String) null);
     }
     
     /**
@@ -303,7 +316,7 @@ public abstract class Server extends Thread {
      * @param file o arquivo carregado.
      */
     public static void logLoad(long time, File file) {
-        log(time, "LOADC", file.getName());
+        log(time, "LOADC", file.getName(), (String) null);
     }
     
     /**
@@ -312,7 +325,7 @@ public abstract class Server extends Thread {
      */
     public static void logCheckDNS(
             long time, String host, String result) {
-        log(time, "DNSCK", host + " => " + result);
+        log(time, "DNSCK", host, result);
     }
     
     /**
@@ -321,10 +334,10 @@ public abstract class Server extends Thread {
      */
     public static void logTicket(long time, 
             String query, Set<String> tokenSet) {
-        log(time, "TIKET", query + " => " + tokenSet);
+        log(time, "TIKET", query, tokenSet.toString());
     }
     
-    public static synchronized void logPeerSend(long time,
+    public static void logPeerSend(long time,
             InetAddress ipAddress, String token, String result) {
         logQuery(time, "PEERS", ipAddress, token, result);
     }
@@ -334,7 +347,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupDNS(long time, 
             String type, String host, String result) {
-        log(time, "DNSLK", type + " " + host + " => " + result);
+        log(time, "DNSLK", type + " " + host, result);
     }
     
     /**
@@ -342,7 +355,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupHELO(long time, 
             String host, String result) {
-        log(time, "HELOL", host + " => " + result);
+        log(time, "HELOL", host, result);
     }
     
     /**
@@ -350,7 +363,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismA(long time, 
             String host, String result) {
-        log(time, "SPFMA", host + " => " + result);
+        log(time, "SPFMA", host, result);
     }
     
     /**
@@ -358,7 +371,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismExists(long time, 
             String host, String result) {
-        log(time, "SPFEX", host + " => " + result);
+        log(time, "SPFEX", host, result);
     }
     
     /**
@@ -366,7 +379,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismMX(long time, 
             String host, String result) {
-        log(time, "SPFMX", host + " => " + result);
+        log(time, "SPFMX", host, result);
     }
     
     /**
@@ -374,7 +387,7 @@ public abstract class Server extends Thread {
      */
     public static void logMatchHELO(long time, 
             String query, String result) {
-        log(time, "HELOM", query + " => " + result);
+        log(time, "HELOM", query, result);
     }
     
     /**
@@ -382,7 +395,7 @@ public abstract class Server extends Thread {
      */
     public static void logReverseDNS(long time, 
             String ip, String result) {
-        log(time, "DNSRV", ip + " => " + result);
+        log(time, "DNSRV", ip, result);
     }
     
     /**
@@ -390,7 +403,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logError(String message) {
-        log(System.currentTimeMillis(), "ERROR", message);
+        log(System.currentTimeMillis(), "ERROR", message, (String) null);
     }
     
     /**
@@ -398,8 +411,11 @@ public abstract class Server extends Thread {
      * Uma iniciativa para formalização das mensagens de log.
      * @param ex a exceção a ser registrada.
      */
-    public static synchronized void logError(Throwable ex) {
-        if (ex != null) {
+    public static void logError(Throwable ex) {
+        if (ex instanceof ProcessException) {
+            ProcessException pex = (ProcessException) ex;
+            log(System.currentTimeMillis(), "ERROR", pex.getErrorMessage(), ex);
+        } else if (ex instanceof Exception) {
             log(System.currentTimeMillis(), "ERROR", ex.getMessage(), ex);
         }
     }
@@ -413,7 +429,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupSPF(
             long time, String hostname, String result) {
-        log(time, "SPFLK", hostname + " => " + result);
+        log(time, "SPFLK", hostname, result);
     }
     
     /**
@@ -422,7 +438,7 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result o resultado a ser registrado.
      */
-    public static synchronized void logQueryDNSBL(long time,
+    public static void logQueryDNSBL(long time,
             InetAddress ipAddress, String query, String result) {
         logQuery(time, "DNSBL", ipAddress, query, result);
     }
@@ -433,7 +449,7 @@ public abstract class Server extends Thread {
      * @param token o token SPF da mensagem original.
      */
     public static void logHamSPF(Set<String> tokenSet) {
-        log(System.currentTimeMillis(), "SPFWL", tokenSet.toString());
+        log(System.currentTimeMillis(), "SPFWL", tokenSet.toString(), (String) null);
     }
     
     /**
@@ -445,9 +461,7 @@ public abstract class Server extends Thread {
      */
     public static void logWhois(long time,
             String server, String query, String result) {
-        result = result.replace("\r", "\\r");
-        result = result.replace("\n", "\\n");
-        log(time, "WHOIS", server + " " + query + " => " + result);
+        log(time, "WHOIS", server + " " + query, result);
     }
     
     private static long lastClientsFileModified = 0;
@@ -521,10 +535,7 @@ public abstract class Server extends Thread {
             String type,
             InetAddress ipAddress,
             String query, String result) {
-        if (result != null) {
-            result = result.replace("\n", "\\n");
-        }
-        log(time, type, getLogClient(ipAddress) + ": " + query + " => " + result);
+        log(time, type, getLogClient(ipAddress) + ": " + query, result);
     }
     
     public static void logQuery(
@@ -532,21 +543,15 @@ public abstract class Server extends Thread {
             String type,
             String client,
             String query, String result) {
-        if (result != null) {
-            result = result.replace("\n", "\\n");
-        }
-        log(time, type, client + ": " + query + " => " + result);
+        log(time, type, client + ": " + query, result);
     }
     
-    public static void logQuery(
-            long time,
-            String type,
-            String query, String result) {
-        if (result != null) {
-            result = result.replace("\n", "\\n");
-        }
-        log(time, type, query + " => " + result);
-    }
+//    public static void logQuery(
+//            long time,
+//            String type,
+//            String query, String result) {
+//        log(time, type, query, result);
+//    }
     
     /**
      * Registra as mensagens de comando.
@@ -557,8 +562,7 @@ public abstract class Server extends Thread {
      */
     public static void logCommand(long time,
             InetAddress ipAddress, String command, String result) {
-        result = result.replace("\n", "\\n");
-        log(time, "CMMND", getLogClient(ipAddress) + ": " + command + " => " + result);
+        log(time, "CMMND", getLogClient(ipAddress) + ": " + command, result);
     }
     
     /**
