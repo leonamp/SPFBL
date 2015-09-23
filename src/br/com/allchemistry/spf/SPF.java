@@ -2598,7 +2598,7 @@ public final class SPF implements Serializable {
         public static synchronized boolean add(String token) throws ProcessException {
             if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (SET.add(token.toLowerCase())) {
+            } else if (SET.add(token)) {
                 CHANGED = true;
                 return true;
             } else {
@@ -2926,16 +2926,16 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static boolean addBlock(String sender) throws ProcessException {
-        return CacheBlock.add(sender);
+    public static boolean addBlock(String token) throws ProcessException {
+        return CacheBlock.add(token);
     }
 
     public static boolean addBlock(String client, String sender) throws ProcessException {
         return CacheBlock.add(client, sender);
     }
 
-    public static boolean dropBlock(String sender) throws ProcessException {
-        return CacheBlock.drop(sender);
+    public static boolean dropBlock(String token) throws ProcessException {
+        return CacheBlock.drop(token);
     }
 
     public static boolean dropBlock(String client, String sender) throws ProcessException {
