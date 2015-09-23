@@ -923,7 +923,7 @@ public abstract class Server extends Thread {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND";
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -943,7 +943,7 @@ public abstract class Server extends Thread {
                             }
                         }
                         if (result == null) {
-                            result = "ERROR: COMMAND";
+                            result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -962,7 +962,7 @@ public abstract class Server extends Thread {
                             }
                         }
                         if (result == null) {
-                            result = "ERROR: COMMAND";
+                            result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
@@ -978,7 +978,7 @@ public abstract class Server extends Thread {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND";
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -997,7 +997,7 @@ public abstract class Server extends Thread {
                             }
                         }
                         if (result == null) {
-                            result = "ERROR: COMMAND";
+                            result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1015,7 +1015,7 @@ public abstract class Server extends Thread {
                             }
                         }
                         if (result == null) {
-                            result = "ERROR: COMMAND";
+                            result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
                     } else if (token.equals("SHOW")) {
@@ -1050,7 +1050,7 @@ public abstract class Server extends Thread {
                             }
                         }
                     } else {
-                        result = "ERROR: COMMAND";
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1058,7 +1058,7 @@ public abstract class Server extends Thread {
                         String peer = tokenizer.nextToken();
                         int index = peer.indexOf(':');
                         if (index == -1) {
-                            result = "ERROR: COMMAND";
+                            result = "ERROR: COMMAND\n";
                         } else {
                             String address = peer.substring(0, index);
                             String port = peer.substring(index + 1);
@@ -1091,7 +1091,7 @@ public abstract class Server extends Thread {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND";
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1127,7 +1127,7 @@ public abstract class Server extends Thread {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND";
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
                     // Comando para verificar a reputação dos tokens.

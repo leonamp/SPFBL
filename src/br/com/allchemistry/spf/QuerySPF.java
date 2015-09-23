@@ -463,11 +463,12 @@ public final class QuerySPF extends Server {
         while (CONNECTION_COUNT > 0) {
             CONNECION_SEMAPHORE.acquire();
             Connection connection = CONNECTION_POLL.poll();
-            connection.close();
+            if (connection != null) {
+                connection.close();
+            }
             CONNECTION_COUNT--;
         }
         Server.logDebug("Unbinding querie SPF socket on port " + PORT + "...");
         SERVER_SOCKET.close();
-        
     }
 }

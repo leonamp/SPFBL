@@ -2020,39 +2020,61 @@ public final class SPF implements Serializable {
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
-
-        public static synchronized boolean add(String domain) throws ProcessException {
-            domain = Domain.extractHost(domain, false);
-            if (!Domain.containsDomain(domain)) {
-                throw new ProcessException("ERROR: PROVIDER INVALID");
+        
+        private static String normalize(String address) {
+            if (address == null) {
+                return null;
+            } else if (address.startsWith("@") && Domain.containsDomain(address.substring(1))) {
+                return address.toLowerCase();
+            } else if (address.startsWith(".") && Domain.containsDomain(address.substring(1))) {
+                return address.toLowerCase();
             } else {
-                domain = "@" + domain;
-                if (SET.add(domain)) {
-                    CHANGED = true;
-                    return true;
-                } else {
-                    return false;
-                }
+                return null;
             }
         }
 
-        public static synchronized boolean drop(String domain) throws ProcessException {
-            domain = Domain.extractHost(domain, false);
-            if (!Domain.containsDomain(domain)) {
+        public static synchronized boolean add(String address) throws ProcessException {
+            if ((address = normalize(address)) == null) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
+            } else if (SET.add(address)) {
+                CHANGED = true;
+                return true;
             } else {
-                domain = "@" + domain;
-                if (SET.remove(domain)) {
-                    CHANGED = true;
-                    return true;
-                } else {
-                    return false;
-                }
+                return false;
             }
         }
 
-        public static boolean contains(String host) {
-            return SET.contains(host);
+        public static synchronized boolean drop(String address) throws ProcessException {
+            if ((address = normalize(address)) == null) {
+                throw new ProcessException("ERROR: PROVIDER INVALID");
+            } else if (SET.remove(address)) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public static boolean contains(String address) {
+            if (address == null) {
+                return false;
+            } else {
+                return SET.contains(address);
+            }
+        }
+        
+        public static boolean contains(String ip, String helo) {
+            if (CacheHELO.match(ip, helo)) {
+                helo = Domain.extractHost(helo, true);
+                do {
+                    int index = helo.indexOf('.') + 1;
+                    helo = helo.substring(index);
+                    if (SET.contains('.' + helo)) {
+                        return true;
+                    }
+                } while (helo.contains("."));
+            }
+            return false;
         }
 
         public static synchronized TreeSet<String> get() throws ProcessException {
@@ -2123,35 +2145,37 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
 
-        private static String normalize(String sender) {
+        private static String normalize(String address) {
             String qualif = "";
-            if (sender == null) {
+            if (address == null) {
                 return null;
-            } else if (sender.contains(";")) {
-                int index = sender.indexOf(';');
-                qualif = sender.substring(index);
+            } else if (address.contains(";")) {
+                int index = address.indexOf(';');
+                qualif = address.substring(index);
                 if (qualif.equals(";PASS")) {
-                    sender = sender.substring(0, index);
+                    address = address.substring(0, index);
                 } else if (qualif.equals(";FAIL")) {
-                    sender = sender.substring(0, index);
+                    address = address.substring(0, index);
                 } else if (qualif.equals(";SOFTFAIL")) {
-                    sender = sender.substring(0, index);
+                    address = address.substring(0, index);
                 } else if (qualif.equals(";NEUTRAL")) {
-                    sender = sender.substring(0, index);
+                    address = address.substring(0, index);
                 } else if (qualif.equals(";NONE")) {
-                    sender = sender.substring(0, index);
+                    address = address.substring(0, index);
                 } else {
                     // Sintaxe com erro.
                     return null;
                 }
             }
-            sender = sender.toLowerCase();
-            if (Domain.isEmail(sender)) {
-                return sender + qualif;
-            } else if (sender.startsWith("@") && Domain.containsDomain(sender.substring(1))) {
-                return sender + qualif;
-            } else if (sender.startsWith(".") && Domain.containsDomain(sender.substring(1))) {
-                return sender + qualif;
+            address = address.toLowerCase();
+            if (Domain.isEmail(address)) {
+                return address + qualif;
+            } else if (address.startsWith("@") && Domain.containsDomain(address.substring(1))) {
+                return address + qualif;
+            } else if (address.startsWith(".") && Domain.containsDomain(address.substring(1))) {
+                return address + qualif;
+            } else if (!address.startsWith(".") && Domain.containsDomain(address)) {
+                return "." + address + qualif;
             } else {
                 return null;
             }
@@ -2216,8 +2240,30 @@ public final class SPF implements Serializable {
             }
             return whiteSet;
         }
+        
+        public static boolean containsHELO(String client, String ip, String helo) {
+            if (helo == null) {
+                return false;
+            } else if ((helo = normalize(helo)) == null) {
+                return false;
+            } else if (CacheHELO.match(ip, helo)) {
+                helo = Domain.extractHost(helo, true);
+                do {
+                    int index = helo.indexOf('.') + 1;
+                    helo = helo.substring(index);
+                    if (SET.contains('.' + helo)) {
+                        return true;
+                    } else if (SET.contains(client + ":." + helo)) {
+                        return true;
+                    }
+                } while (helo.contains("."));
+                return false;
+            } else {
+                return false;
+            }
+        }
 
-        public static boolean contains(String client,
+        public static boolean containsSender(String client,
                 String sender, String qualifier) {
             if (client == null) {
                 return false;
@@ -3542,7 +3588,7 @@ public final class SPF implements Serializable {
                 }
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String ownerid = null;
-                if (result.equals("FAIL") && !CacheWhite.contains(client, sender, result)) {
+                if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
                     return "action=REJECT "
@@ -3551,7 +3597,7 @@ public final class SPF implements Serializable {
                             + "Please see http://www.openspf.org/why.html?"
                             + "sender=" + sender + "&"
                             + "ip=" + ip + " for details.\n\n";
-                } else if (result.equals("PASS")) {
+                } else if (result.equals("PASS") || CacheProvider.contains(ip, helo)) {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
@@ -3611,7 +3657,16 @@ public final class SPF implements Serializable {
                         tokenSet.add(inetnum);
                     }
                 }
-                if (CacheWhite.contains(client, sender, result)) {
+                if (CacheWhite.containsSender(client, sender, result)) {
+                    // Calcula frequencia de consultas.
+                    SPF.addQuery(tokenSet);
+                    // Adcionar ticket ao cabeçalho da mensagem.
+                    long time = System.currentTimeMillis();
+                    String ticket = SPF.createTicket(tokenSet);
+                    Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
+                    return "action=PREPEND "
+                            + "Received-SPFBL: " + result + " " + ticket + "\n\n";
+                } else if (CacheWhite.containsHELO(client, ip, helo)) {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
                     // Adcionar ticket ao cabeçalho da mensagem.
@@ -3784,11 +3839,11 @@ public final class SPF implements Serializable {
                             }
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             String ownerid = null;
-                            if (result.equals("FAIL") && !CacheWhite.contains(client, sender, result)) {
+                            if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
-                            } else if (result.equals("PASS")) {
+                            } else if (result.equals("PASS") || CacheProvider.contains(ip, helo)) {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
@@ -3869,7 +3924,15 @@ public final class SPF implements Serializable {
                                             + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
                                 return result;
-                            } else if (CacheWhite.contains(client, sender, result)) {
+                            } else if (CacheWhite.containsSender(client, sender, result)) {
+                                // Calcula frequencia de consultas.
+                                SPF.addQuery(tokenSet);
+                                // Anexando ticket ao resultado.
+                                long time = System.currentTimeMillis();
+                                String ticket = SPF.createTicket(tokenSet);
+                                Server.logTicket(time, ip + " " + sender + " " + helo, tokenSet);
+                                return result + " " + ticket + "\n";
+                            } else if (CacheWhite.containsHELO(client, ip, helo)) {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
                                 // Anexando ticket ao resultado.
