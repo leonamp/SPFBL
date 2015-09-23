@@ -290,6 +290,10 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     message = [RBL] you are greylisted on this server.
     log_message = [SPFBL] greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
+  defer
+    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] timeout.
+    condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
@@ -340,6 +344,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     message = [RBL] you are greylisted on this server.
     log_message = [SPFBL] greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
+  defer
+    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = [SPFBL] timeout.
+    condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
     condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
