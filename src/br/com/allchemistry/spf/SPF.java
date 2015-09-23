@@ -3488,13 +3488,21 @@ public final class SPF implements Serializable {
 
         public static void dropExpired() {
             TreeSet<String> distributionKeySet = new TreeSet<String>();
-            distributionKeySet.addAll(MAP.keySet());
+            distributionKeySet.addAll(keySet());
             for (String helo : distributionKeySet) {
-                HELO heloObj = MAP.get(helo);
+                HELO heloObj = get(helo);
                 if (heloObj != null && heloObj.isExpired7()) {
                     drop(helo);
                 }
             }
+        }
+        
+        private static synchronized Collection<String> keySet() {
+            return MAP.keySet();
+        }
+        
+        private static synchronized HELO get(String key) {
+            return MAP.get(key);
         }
 
         /**
@@ -3503,12 +3511,14 @@ public final class SPF implements Serializable {
         private static void refresh() {
             String heloMax = null;
             HELO heloObjMax = null;
-            for (String helo : MAP.keySet()) {
-                HELO heloObj = MAP.get(helo);
-                if (heloObjMax == null) {
-                    heloObjMax = heloObj;
-                } else if (heloObjMax.queryCount < heloObj.queryCount) {
-                    heloObjMax = heloObj;
+            for (String helo : keySet()) {
+                HELO heloObj = get(helo);
+                if (heloObj != null) {
+                    if (heloObjMax == null) {
+                        heloObjMax = heloObj;
+                    } else if (heloObjMax.queryCount < heloObj.queryCount) {
+                        heloObjMax = heloObj;
+                    }
                 }
             }
             if (heloMax != null && heloObjMax != null
@@ -3597,7 +3607,7 @@ public final class SPF implements Serializable {
                             + "Please see http://www.openspf.org/why.html?"
                             + "sender=" + sender + "&"
                             + "ip=" + ip + " for details.\n\n";
-                } else if (result.equals("PASS") || CacheProvider.contains(ip, helo)) {
+                } else if (result.equals("PASS") || (!result.equals("NONE") && CacheProvider.contains(ip, helo))) {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
@@ -3843,7 +3853,7 @@ public final class SPF implements Serializable {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
-                            } else if (result.equals("PASS") || CacheProvider.contains(ip, helo)) {
+                            } else if (result.equals("PASS") || (!result.equals("NONE") && CacheProvider.contains(ip, helo))) {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
