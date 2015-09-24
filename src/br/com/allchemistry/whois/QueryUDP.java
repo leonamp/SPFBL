@@ -126,10 +126,10 @@ public final class QueryUDP extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Atualiza registros quase expirando durante a consulta.
-                    Server.tryBackugroundRefresh();
-                    // Armazena todos os registros atualizados durante a consulta.
-                    Server.storeCache();
+//                    // Atualiza registros quase expirando durante a consulta.
+//                    Server.tryBackugroundRefresh();
+//                    // Armazena todos os registros atualizados durante a consulta.
+//                    Server.storeCache();
                     // Oferece a conexão ociosa na última posição da lista.
                     CONNECTION_POLL.offer(this);
                     CONNECION_SEMAPHORE.release();

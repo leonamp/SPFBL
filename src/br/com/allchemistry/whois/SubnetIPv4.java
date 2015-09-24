@@ -325,6 +325,10 @@ public final class SubnetIPv4 extends Subnet
                 return null;
             } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                 return null;
+            } else if (ex.getMessage().equals("ERROR: SUBNET NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
             } else {
                 Server.logError(ex);
                 return null;
@@ -341,6 +345,10 @@ public final class SubnetIPv4 extends Subnet
                 return null;
             } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                 return null;
+            } else if (ex.getMessage().equals("ERROR: SUBNET NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
             } else {
                 Server.logError(ex);
                 return null;
@@ -354,6 +362,12 @@ public final class SubnetIPv4 extends Subnet
             return subnet.get("owner-c", false);
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: SUBNET NOT FOUND")) {
+                return null;
+            } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                 return null;
             } else {
                 Server.logError(ex);

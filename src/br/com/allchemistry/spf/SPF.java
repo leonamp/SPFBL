@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -127,8 +128,9 @@ public final class SPF implements Serializable {
                 // Caso contrário procurar nos
                 // registros oficiais do domínio.
                 try {
-                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostname, new String[]{"SPF"});
+                    Attributes attributes = Server.getAttributesDNS(
+                            hostname, new String[]{"SPF"}
+                            );
                     Attribute attribute = attributes.get("SPF");
                     if (attribute != null) {
                         for (int index = 0; index < attribute.size(); index++) {
@@ -146,8 +148,9 @@ public final class SPF implements Serializable {
                 }
                 if (registryList.isEmpty()) {
                     try {
-                        Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                "dns:/" + hostname, new String[]{"TXT"});
+                        Attributes attributes = Server.getAttributesDNS(
+                                hostname, new String[]{"TXT"}
+                                );
                         Attribute attribute = attributes.get("TXT");
                         if (attribute != null) {
                             for (int index = 0; index < attribute.size(); index++) {
@@ -1112,8 +1115,9 @@ public final class SPF implements Serializable {
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
-                    Attributes attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostname, new String[]{"A", "AAAA"});
+                    Attributes attributes = Server.getAttributesDNS(
+                            hostname, new String[]{"A"}
+                            );
                     Attribute attributeA = attributes.get("A");
                     if (attributeA != null) {
                         NamingEnumeration enumeration = attributeA.getAll();
@@ -1135,6 +1139,9 @@ public final class SPF implements Serializable {
                             resultSet.add(hostAddress);
                         }
                     }
+                    attributes = Server.getAttributesDNS(
+                            hostname, new String[]{"AAAA"}
+                            );
                     Attribute attributeAAAA = attributes.get("AAAA");
                     if (attributeAAAA != null) {
                         NamingEnumeration enumeration = attributeAAAA.getAll();
@@ -1236,8 +1243,9 @@ public final class SPF implements Serializable {
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<String>();
-                    Attributes attributesMX = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostname, new String[]{"MX"});
+                    Attributes attributesMX = Server.getAttributesDNS(
+                            hostname, new String[]{"MX"}
+                            );
                     Attribute attributeMX = attributesMX.get("MX");
                     if (attributeMX != null) {
                         NamingEnumeration enumeration = attributeMX.getAll();
@@ -1259,8 +1267,9 @@ public final class SPF implements Serializable {
                                 resultSet.add(hostAddress);
                             } else {
                                 try {
-                                    Attributes attributesA = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                            "dns:/" + hostAddress, new String[]{"A", "AAAA"});
+                                    Attributes attributesA = Server.getAttributesDNS(
+                                            hostAddress, new String[]{"A"}
+                                            );
                                     Attribute attributeA = attributesA.get("A");
                                     if (attributeA != null) {
                                         for (int i = 0; i < attributeA.size(); i++) {
@@ -1274,6 +1283,9 @@ public final class SPF implements Serializable {
                                             }
                                         }
                                     }
+                                    attributesA = Server.getAttributesDNS(
+                                            hostAddress, new String[]{"AAAA"}
+                                            );
                                     Attribute attributeAAAA = attributesA.get("AAAA");
                                     if (attributeAAAA != null) {
                                         for (int i = 0; i < attributeAAAA.size(); i++) {
@@ -1419,8 +1431,9 @@ public final class SPF implements Serializable {
             } else {
                 throw new ProcessException("ERROR: DNS REVERSE");
             }
-            Attributes atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                    "dns:/" + reverse, new String[]{"PTR"});
+            Attributes atributes = Server.getAttributesDNS(
+                    reverse, new String[]{"PTR"}
+                    );
             Attribute attributePTR = atributes.get("PTR");
             for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
                 try {
@@ -1432,8 +1445,9 @@ public final class SPF implements Serializable {
                         host = host.substring(0, host.length() - 1);
                     }
                     if (SubnetIPv4.isValidIPv4(ip)) {
-                        atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                "dns:/" + host, new String[]{"A"});
+                        atributes = Server.getAttributesDNS(
+                                host, new String[]{"A"}
+                                );
                         Attribute attributeA = atributes.get("A");
                         for (int indexA = 0; indexA < attributeA.size(); indexA++) {
                             String ipA = (String) attributeA.get(indexA);
@@ -1444,8 +1458,9 @@ public final class SPF implements Serializable {
                             }
                         }
                     } else if (SubnetIPv6.isValidIPv6(ip)) {
-                        atributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                                "dns:/" + host, new String[]{"AAAA"});
+                        atributes = Server.getAttributesDNS(
+                                host, new String[]{"AAAA"}
+                                );
                         Attribute attributeAAAA = atributes.get("AAAA");
                         for (int indexAAAA = 0; indexAAAA < attributeAAAA.size(); indexAAAA++) {
                             String ipAAAA = (String) attributeAAAA.get(indexAAAA);
@@ -1498,8 +1513,9 @@ public final class SPF implements Serializable {
             long time = System.currentTimeMillis();
             String hostname = getHostname(ip, sender, helo);
             try {
-                Server.INITIAL_DIR_CONTEXT.getAttributes(
-                        "dns:/" + hostname, new String[]{"A","AAAA"});
+                Server.getAttributesDNS(
+                        hostname, new String[]{"A"}
+                        );
                 Server.logMecanismA(time, hostname, "EXISTS");
                 return true;
             } catch (CommunicationException ex) {
@@ -1712,7 +1728,7 @@ public final class SPF implements Serializable {
                     }
                 }
             }
-            store();
+//            store(); // Problema de deadlock.
         }
     }
     private static final Semaphore REFRESH_SEMAPHORE = new Semaphore(1);
@@ -1831,6 +1847,19 @@ public final class SPF implements Serializable {
                     for (String ticket : expiredTicket) {
                         drop(ticket);
                     }
+                    // Atualiza registro SPF mais consultado.
+                    SPF.tryRefresh();
+                    // Atualiza registros quase expirando durante a consulta.
+                    Server.tryBackugroundRefresh();
+                    // Armazena todos os registros atualizados durante a consulta.
+                    Server.storeCache();
+                }
+            }, 60000, 60000 // Frequência de 1 minuto.
+                    );
+            TIMER.schedule(
+                    new TimerTask() {
+                @Override
+                public void run() {
                     // Apagar todas as distribuições vencidas.
                     CacheDistribution.dropExpired();
                     // Apagar todas os registros de DNS de HELO vencidos.
@@ -3346,15 +3375,26 @@ public final class SPF implements Serializable {
             public synchronized void refresh(String hostname) throws NamingException {
                 long time = System.currentTimeMillis();
                 try {
-                    this.attributes = Server.INITIAL_DIR_CONTEXT.getAttributes(
-                            "dns:/" + hostname, new String[]{"A", "AAAA"});
-                    this.queryCount = 0;
-                    CHANGED = true;
+                    this.attributes = Server.getAttributesDNS(
+                            hostname, new String[]{"A"}
+                            );
                     if (attributes == null) {
                         Server.logLookupHELO(time, hostname, "NXDOMAIN");
                     } else {
+                        Attributes attributesAAAA = Server.getAttributesDNS(
+                                hostname, new String[]{"AAAA"}
+                                );
+                        if (attributesAAAA != null) {
+                            Enumeration enumeration = attributesAAAA.getAll();
+                            while (enumeration.hasMoreElements()) {
+                                Attribute attribute = (Attribute) enumeration.nextElement();
+                                attributes.put(attribute);
+                            }
+                        }
                         Server.logLookupHELO(time, hostname, attributes.toString());
                     }
+                    this.queryCount = 0;
+                    CHANGED = true;
                 } catch (NameNotFoundException ex) {
                     this.attributes = null;
                     this.queryCount = 0;
@@ -3487,18 +3527,22 @@ public final class SPF implements Serializable {
         }
 
         public static void dropExpired() {
-            TreeSet<String> distributionKeySet = new TreeSet<String>();
-            distributionKeySet.addAll(keySet());
-            for (String helo : distributionKeySet) {
+            for (String helo : MAP.keySet()) {
                 HELO heloObj = get(helo);
                 if (heloObj != null && heloObj.isExpired7()) {
-                    drop(helo);
+                    if (MAP.remove(helo) != null) {
+                        CHANGED = true;
+                    }
                 }
             }
         }
         
         private static synchronized Collection<String> keySet() {
             return MAP.keySet();
+        }
+        
+        private static synchronized Collection<HELO> values() {
+            return MAP.values();
         }
         
         private static synchronized HELO get(String key) {
@@ -3511,14 +3555,11 @@ public final class SPF implements Serializable {
         private static void refresh() {
             String heloMax = null;
             HELO heloObjMax = null;
-            for (String helo : keySet()) {
-                HELO heloObj = get(helo);
-                if (heloObj != null) {
-                    if (heloObjMax == null) {
-                        heloObjMax = heloObj;
-                    } else if (heloObjMax.queryCount < heloObj.queryCount) {
-                        heloObjMax = heloObj;
-                    }
+            for (HELO heloObj : values()) {
+                if (heloObjMax == null) {
+                    heloObjMax = heloObj;
+                } else if (heloObjMax.queryCount < heloObj.queryCount) {
+                    heloObjMax = heloObj;
                 }
             }
             if (heloMax != null && heloObjMax != null
@@ -3529,7 +3570,7 @@ public final class SPF implements Serializable {
                     Server.logError(ex);
                 }
             }
-            store();
+//            store(); // Problema de deadlock.
         }
 
         private static synchronized void store() {
@@ -4140,11 +4181,12 @@ public final class SPF implements Serializable {
     }
 
     private static boolean isGreylisted(TreeSet<String> tokenSet) {
-        // TODO: implementar mecanismo de greylisting.
+        // TODO: implementar mecanismo de atrazo personalizado.
         return false;
     }
 
     private static boolean isBlacklisted(TreeSet<String> tokenSet) {
+        // TODO: implementar mecanismo de atrazo personalizado.
         boolean blacklisted = false;
         for (String token : tokenSet) {
             if (isBlacklisted(token)) {

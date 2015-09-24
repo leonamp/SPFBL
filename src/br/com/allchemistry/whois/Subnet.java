@@ -209,15 +209,20 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         handle.setEmail(e_mail);
                         handle.setCreated(created2);
                         handle.setChanged(changed2);
-                    } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
-                        // Informação reduzida devido ao estouro de limite de consultas.
-                        reducedNew = true;
                     } else if (line.startsWith("% Permission denied.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Permissão negada.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
+                    } else if (line.startsWith("% Query rate limit exceeded")) {
+                        Server.acquireWhoisQuery();
+                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
+                    } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
+                        // Informação reduzida devido ao estouro de limite de consultas.
+                        Server.acquireWhoisQuery();
+                        reducedNew = true;
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
-                        throw new ProcessException("ERROR: WHOIS CONCURRENT");
+                        Server.acquireWhoisQuery();
+                        throw new ProcessException("ERROR: WHOIS CONNECTION LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
                     }

@@ -376,8 +376,8 @@ public final class QuerySPF extends Server {
                                 query, result
                                 );
                         // Atualiza registro mais consultado.
-                        SPF.tryRefresh();
-                        Server.tryBackugroundRefresh();
+//                        SPF.tryRefresh();
+//                        Server.tryBackugroundRefresh();
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);

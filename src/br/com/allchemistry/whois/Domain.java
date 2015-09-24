@@ -18,7 +18,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.TreeSet;
-import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import javax.naming.NameNotFoundException;
 import org.apache.commons.lang3.SerializationUtils;
@@ -531,8 +530,12 @@ public class Domain implements Serializable, Comparable<Domain> {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                         throw new ProcessException("ERROR: WHOIS CONCURRENT");
+                    } else if (line.startsWith("% Query rate limit exceeded")) {
+                        Server.acquireWhoisQuery();
+                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
+                        Server.acquireWhoisQuery();
                         reducedNew = true;
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
@@ -832,7 +835,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         long time = System.currentTimeMillis();
         try {
             // Verifica se o domínio tem algum registro de diretório válido.
-            Server.INITIAL_DIR_CONTEXT.getAttributes("dns:/" + host, null);
+            Server.getAttributesDNS(host, null);
             Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
@@ -1009,6 +1012,10 @@ public class Domain implements Serializable, Comparable<Domain> {
                 return domain.get("ownerid", false);
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
                     return null;
                 } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                     return null;

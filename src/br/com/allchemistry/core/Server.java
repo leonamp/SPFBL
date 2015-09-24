@@ -45,6 +45,9 @@ import java.util.concurrent.Semaphore;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
@@ -94,12 +97,12 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         SPF.load();
-   }
+    }
     
     /**
      * Armazenamento de cache em disco.
      */
-    protected static void storeCache() {
+    public static void storeCache() {
         Owner.store();
         Domain.store();
         AutonomousSystem.store();
@@ -261,9 +264,13 @@ public abstract class Server extends Thread {
             // Registrar apenas latências até 9999, que tem 4 digitos.
             latencia = 9999;
         }
+        if (message != null) {
+            message = message.replace("\r", "\\r");
+            message = message.replace("\n", "\\n");
+        }
         if (result != null) {
-            result = result.replace("\n", "\\n");
             result = result.replace("\r", "\\r");
+            result = result.replace("\n", "\\n");
         }
         System.out.println(
                 FORMAT_DATE_LOG.format(new Date(time))
@@ -282,16 +289,17 @@ public abstract class Server extends Thread {
     private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
     
     private static void log(long time,
-            String type, String message, Throwable ex) {
-        log(time, type, message, (String) null);
-        if (ex == null) {
-            log(time, type, message, (String) null);
-        } else {
+            String type,
+//            String message,
+            Throwable ex) {
+        if (ex != null) {
+//            log(time, type, message, (String) null);
+//        } else {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream printStream = new PrintStream(baos);
             ex.printStackTrace(printStream);
             printStream.close();
-            log(time, type, message, baos.toString());
+            log(time, type, baos.toString(), (String) null);
         }
     }
     
@@ -414,9 +422,9 @@ public abstract class Server extends Thread {
     public static void logError(Throwable ex) {
         if (ex instanceof ProcessException) {
             ProcessException pex = (ProcessException) ex;
-            log(System.currentTimeMillis(), "ERROR", pex.getErrorMessage(), ex);
+            log(System.currentTimeMillis(), "ERROR", pex.getErrorMessage(), (String) null);
         } else if (ex instanceof Exception) {
-            log(System.currentTimeMillis(), "ERROR", ex.getMessage(), ex);
+            log(System.currentTimeMillis(), "ERROR", ex);
         }
     }
     
@@ -580,6 +588,7 @@ public abstract class Server extends Thread {
         WHOIS_SEMAPHORE_TIMER.cancel();
         // Finaliza timer SPF.
         SPF.cancel();
+        
         // Armazena os registros em disco.
         storeCache();
     }
@@ -625,7 +634,7 @@ public abstract class Server extends Thread {
      * Controla a taxa de 30 consultas no intervalo de 5 minutos.
      * @throws ProcessException se houver falha no processo.
      */
-    private static void acquireWhoisQuery() throws ProcessException {
+    public static void acquireWhoisQuery() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
         WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, 5 * 60 * 1000); // Libera o direito à consulta em 5 min.
         WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
@@ -724,8 +733,11 @@ public abstract class Server extends Thread {
     /**
      * Consulta de registros de nome de domínio.
      */
-    public static InitialDirContext INITIAL_DIR_CONTEXT;
+    private static InitialDirContext INITIAL_DIR_CONTEXT;
     
+    public static Attributes getAttributesDNS(String hostname, String[] types) throws NamingException {
+        return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
+    }
     
     static {
         try {
