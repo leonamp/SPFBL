@@ -1851,8 +1851,6 @@ public final class SPF implements Serializable {
                     SPF.tryRefresh();
                     // Atualiza registros quase expirando durante a consulta.
                     Server.tryBackugroundRefresh();
-                    // Armazena todos os registros atualizados durante a consulta.
-                    Server.storeCache();
                 }
             }, 60000, 60000 // Frequência de 1 minuto.
                     );
@@ -1860,10 +1858,14 @@ public final class SPF implements Serializable {
                     new TimerTask() {
                 @Override
                 public void run() {
+                    // TODO: implementar a remoção de registros SPF expirados. 
+                    
                     // Apagar todas as distribuições vencidas.
                     CacheDistribution.dropExpired();
                     // Apagar todas os registros de DNS de HELO vencidos.
                     CacheHELO.dropExpired();
+                    // Armazena todos os registros atualizados durante a consulta.
+                    Server.storeCache();
                 }
             }, 3600000, 3600000 // Frequência de 1 hora.
                     );
@@ -3526,7 +3528,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static void dropExpired() {
+        public static synchronized void dropExpired() {
             for (String helo : MAP.keySet()) {
                 HELO heloObj = get(helo);
                 if (heloObj != null && heloObj.isExpired7()) {
@@ -3616,7 +3618,10 @@ public final class SPF implements Serializable {
     protected static String processPostfixSPF(
             String client, String ip, String sender, String helo,
             String recipient) throws ProcessException {
-        if (sender != null && sender.length() > 0 && !Domain.isEmail(sender)) {
+        if (sender != null && sender.trim().length() == 0) {
+            sender = null;
+        }
+        if (sender != null && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
         } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
@@ -3648,7 +3653,7 @@ public final class SPF implements Serializable {
                             + "Please see http://www.openspf.org/why.html?"
                             + "sender=" + sender + "&"
                             + "ip=" + ip + " for details.\n\n";
-                } else if (result.equals("PASS") || (!result.equals("NONE") && CacheProvider.contains(ip, helo))) {
+                } else if (result.equals("PASS") || (sender != null && CacheProvider.contains(ip, helo))) {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
@@ -3894,7 +3899,7 @@ public final class SPF implements Serializable {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
-                            } else if (result.equals("PASS") || (!result.equals("NONE") && CacheProvider.contains(ip, helo))) {
+                            } else if (result.equals("PASS") || (sender != null && CacheProvider.contains(ip, helo))) {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
@@ -4267,7 +4272,7 @@ public final class SPF implements Serializable {
         }
 
         public boolean clear() {
-            if (status == Status.WHITE) {
+            if (complain == 0) {
                 return false;
             } else {
                 complain = 0;

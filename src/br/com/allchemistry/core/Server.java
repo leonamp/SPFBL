@@ -588,7 +588,6 @@ public abstract class Server extends Thread {
         WHOIS_SEMAPHORE_TIMER.cancel();
         // Finaliza timer SPF.
         SPF.cancel();
-        
         // Armazena os registros em disco.
         storeCache();
     }
