@@ -3418,7 +3418,7 @@ public final class SPF implements Serializable {
          * @throws Exception
          */
         private static Attributes getAttributes(String hostname) throws NamingException {
-            HELO heloObj = MAP.get(hostname);
+            HELO heloObj = get(hostname);
             if (heloObj == null) {
                 heloObj = new HELO(hostname);
                 put(hostname, heloObj);
@@ -3528,13 +3528,11 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static synchronized void dropExpired() {
-            for (String helo : MAP.keySet()) {
+        public static void dropExpired() {
+            for (String helo : keySet()) {
                 HELO heloObj = get(helo);
                 if (heloObj != null && heloObj.isExpired7()) {
-                    if (MAP.remove(helo) != null) {
-                        CHANGED = true;
-                    }
+                    drop(helo);
                 }
             }
         }
