@@ -371,6 +371,15 @@ java -jar /opt/spfbl/dist/SPFBL.jar 9875 512 >> log.001.txt &
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
 
+### Como parar o serviço SPFBL
+
+O serviço SPFBL não tem ainda um script para ser parado, mas é possível usar este comando para pará-lo:
+```
+echo "SHUTDOWN" | nc 127.0.0.1 9875
+```
+
+O script de inicio e parada do SPFBL na inicialização do sistema operacional está sendo desenvolvido.
+
 ### Descentralização do SPFBL
 
 A descentralização do serviço SPFBL deve ser feito através de redes P2P:
@@ -397,7 +406,7 @@ Abertos:
 Fechados:
 * MX-Protection: 177.154.143.206:9877 <gtec77@gmail.com>
 
-### Forum SPFBL
+### Forum de discussão SPFBL
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
 
