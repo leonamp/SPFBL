@@ -387,8 +387,6 @@ Responsabilidades dos elementos:
 
 O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
-A rede SPFBL deve ser organizada de forma descentralizada.
-
 ### Pools conhecidos em funcionamento
 
 Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
@@ -403,4 +401,4 @@ Fechados:
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
 
-![https://groups.google.com/d/forum/spfbl](https://groups.google.com/d/forum/spfbl "https://groups.google.com/d/forum/spfbl")
+<https://groups.google.com/d/forum/spfbl>
