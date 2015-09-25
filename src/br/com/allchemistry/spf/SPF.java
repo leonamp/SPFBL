@@ -2095,7 +2095,7 @@ public final class SPF implements Serializable {
         }
         
         public static boolean contains(String ip, String helo) {
-            if (CacheHELO.match(ip, helo)) {
+            if (CacheHELO.match(ip, helo, false)) {
                 helo = Domain.extractHost(helo, true);
                 do {
                     int index = helo.indexOf('.') + 1;
@@ -2277,7 +2277,7 @@ public final class SPF implements Serializable {
                 return false;
             } else if ((helo = normalize(helo)) == null) {
                 return false;
-            } else if (CacheHELO.match(ip, helo)) {
+            } else if (CacheHELO.match(ip, helo, false)) {
                 helo = Domain.extractHost(helo, true);
                 do {
                     int index = helo.indexOf('.') + 1;
@@ -3023,7 +3023,7 @@ public final class SPF implements Serializable {
                 String result;
                 try {
                     Main.sendTokenToPeer(token, address, port);
-                    result = "OK";
+                    result = "SENT";
                 } catch (ProcessException ex) {
                     result = ex.getMessage();
                 }
@@ -3060,7 +3060,7 @@ public final class SPF implements Serializable {
                             String result;
                             try {
                                 Main.sendTokenToPeer(token, inetAddress, port);
-                                result = "OK";
+                                result = "SENT";
                             } catch (ProcessException ex) {
                                 result = ex.toString();
                             }
@@ -3441,7 +3441,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static boolean match(String ip, String helo) {
+        public static boolean match(String ip, String helo, boolean log) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
                 // o HELO é nulo.
                 return false;
@@ -3453,7 +3453,9 @@ public final class SPF implements Serializable {
                 try {
                     Attribute attribute = getAttribute(helo, "A");
                     if (attribute == null) {
-                        Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
+                        if (log) {
+                            Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
+                        }
                         return false;
                     } else {
                         int address = SubnetIPv4.getAddressIP(ip);
@@ -3464,19 +3466,27 @@ public final class SPF implements Serializable {
                             hostAddress = hostAddress.substring(indexSpace);
                             if (SubnetIPv4.isValidIPv4(hostAddress)) {
                                 if (address == SubnetIPv4.getAddressIP(hostAddress)) {
-                                    Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    if (log) {
+                                        Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    }
                                     return true;
                                 }
                             }
                         }
-                        Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        if (log) {
+                            Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        }
                         return false;
                     }
                 } catch (CommunicationException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    if (log) {
+                        Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    }
                     return false;
                 } catch (NamingException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                    if (log) {
+                        Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                    }
                     return false;
                 }
             } else if (SubnetIPv6.isValidIPv6(ip)) {
@@ -3484,7 +3494,9 @@ public final class SPF implements Serializable {
                 try {
                     Attribute attribute = getAttribute(helo, "AAAA");
                     if (attribute == null) {
-                        Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
+                        if (log) {
+                            Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
+                        }
                         return false;
                     } else {
                         short[] address = SubnetIPv6.split(ip);
@@ -3495,19 +3507,27 @@ public final class SPF implements Serializable {
                             hostAddress = hostAddress.substring(indexSpace);
                             if (SubnetIPv6.isValidIPv6(hostAddress)) {
                                 if (Arrays.equals(address, SubnetIPv6.split(hostAddress))) {
-                                    Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    if (log) {
+                                        Server.logMatchHELO(time, helo + " " + ip, "MATCH");
+                                    }
                                     return true;
                                 }
                             }
                         }
-                        Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        if (log) {
+                            Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
+                        }
                         return false;
                     }
                 } catch (CommunicationException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    if (log) {
+                        Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
+                    }
                     return false;
                 } catch (NamingException ex) {
-                    Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                    if (log) {
+                        Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                    }
                     return false;
                 }
             } else {
@@ -3676,7 +3696,7 @@ public final class SPF implements Serializable {
                             tokenSet.add(ownerid);
                         }
                     }
-                } else if (CacheHELO.match(ip, helo)) {
+                } else if (CacheHELO.match(ip, helo, true)) {
                     // Se o HELO apontar para o IP,
                     // então o dono do HELO é o responsável.
                     if (!helo.startsWith(".")) {
@@ -3922,7 +3942,7 @@ public final class SPF implements Serializable {
                                         tokenSet.add(ownerid);
                                     }
                                 }
-                            } else if (CacheHELO.match(ip, helo)) {
+                            } else if (CacheHELO.match(ip, helo, true)) {
                                 // Se o HELO apontar para o IP,
                                 // então o dono do HELO é o responsável.
                                 if (!helo.startsWith(".")) {
