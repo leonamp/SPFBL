@@ -171,7 +171,7 @@ case $1 in
 			email=$3
 			helo=$4
 
-			qualifier=$(echo "CHECK $ip $email $helo" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "CHECK '$ip' '$email' '$helo'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
@@ -394,7 +394,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc -w 10 $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc -w 5 $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
