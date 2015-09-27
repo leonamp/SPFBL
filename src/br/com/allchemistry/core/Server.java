@@ -341,8 +341,13 @@ public abstract class Server extends Thread {
      * @param tokenSet o conjunto de tokens.
      */
     public static void logTicket(long time, 
-            String query, Set<String> tokenSet) {
-        log(time, "TIKET", query, tokenSet.toString());
+            String ip, String sender, String helo,
+            Set<String> tokenSet) {
+        if (sender == null) {
+            log(time, "TIKET", ip + " " + helo, tokenSet.toString());
+        } else {
+            log(time, "TIKET", ip + " " + sender + " " + helo, tokenSet.toString());
+        }
     }
     
     public static void logPeerSend(long time,
@@ -396,6 +401,14 @@ public abstract class Server extends Thread {
     public static void logMatchHELO(long time, 
             String query, String result) {
         log(time, "HELOM", query, result);
+    }
+    
+    /**
+     * Registra interações de atrazo programado.
+     */
+    public static void logDefer(long time, 
+            String id, String result) {
+        log(time, "DEFER", id, result);
     }
     
     /**
