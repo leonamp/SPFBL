@@ -3925,6 +3925,7 @@ public final class SPF implements Serializable {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String fluxo;
                 String ownerid = null;
+                Date created = null;
                 if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
@@ -3957,6 +3958,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(dominio);
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
                             tokenSet.add(ownerid);
+                            created = Domain.getCreated(sender);
                         }
                     }
                     fluxo = sender + ">" + recipient;
@@ -3976,8 +3978,9 @@ public final class SPF implements Serializable {
                     tokenSet.add(dominio);
                     if ((ownerid = Domain.getOwnerID(helo)) != null) {
                         tokenSet.add(ownerid);
+                        created = Domain.getCreated(helo);
                     }
-                    fluxo = sender + ">" + helo + ">" + recipient;
+                    fluxo = sender + ">" + dominio + ">" + recipient;
                 } else {
                     // Em qualquer outro caso,
                     // o responsável é o dono do IP.
@@ -4046,6 +4049,10 @@ public final class SPF implements Serializable {
                     // Pelo menos um token está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
+                } else if (isTooNew(created) && CacheDefer.defer(fluxo, 1440)) {
+                    // Domínio muito novo com atrazo programado de 1 dia.
+                    return "action=DEFER [RBL] "
+                            + "you are greylisted on this server.\n\n";
                 } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                     // Pelo menos um token está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
@@ -4083,6 +4090,16 @@ public final class SPF implements Serializable {
                             + "Try again later.\n\n";
                 }
             }
+        }
+    }
+    
+    private static boolean isTooNew(Date created) {
+        if (created == null) {
+            return false;
+        } else {
+            long time = System.currentTimeMillis() - created.getTime();
+            int days = (int) (time / Server.DAY_TIME);
+            return days < 7;
         }
     }
 
@@ -4185,6 +4202,7 @@ public final class SPF implements Serializable {
                             }
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             String ownerid = null;
+                            Date created = null;
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
@@ -4213,6 +4231,7 @@ public final class SPF implements Serializable {
                                     tokenSet.add(dominio);
                                     if ((ownerid = Domain.getOwnerID(sender)) != null) {
                                         tokenSet.add(ownerid);
+                                        created = Domain.getCreated(sender);
                                     }
                                     fluxo = mx + ">" + recipient;
                                 }
@@ -4232,6 +4251,7 @@ public final class SPF implements Serializable {
                                 tokenSet.add(dominio);
                                 if ((ownerid = Domain.getOwnerID(helo)) != null) {
                                     tokenSet.add(ownerid);
+                                    created = Domain.getCreated(helo);
                                 }
                                 fluxo = helo + ">" + recipient;
                             } else {
@@ -4320,6 +4340,9 @@ public final class SPF implements Serializable {
                             } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1440)) {
                                 // Pelo menos um token do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
+                            } else if (isTooNew(created) && CacheDefer.defer(fluxo, 1440)) {
+                                // Domínio muito novo com atrazo programado de 1 dia.
+                                return "GREYLIST\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um token do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
