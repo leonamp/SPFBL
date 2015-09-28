@@ -1,6 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project-private xmlns="http://www.netbeans.org/ns/project-private/1">
-    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="46"/>
+    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="48">
+        <file>
+            <url>src/br/com/allchemistry/whois/Subnet.java</url>
+            <bookmark id="48">
+                <name/>
+                <line>465</line>
+                <key/>
+            </bookmark>
+        </file>
+        <file>
+            <url>src/br/com/allchemistry/whois/Domain.java</url>
+            <bookmark id="47">
+                <name/>
+                <line>934</line>
+                <key/>
+            </bookmark>
+        </file>
+    </editor-bookmarks>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
             <file>file:/C:/Users/Leandro/Dropbox/Projects/SPFBL/src/br/com/allchemistry/core/Server.java</file>
