@@ -3980,7 +3980,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(ownerid);
                         created = Domain.getCreated(helo);
                     }
-                    fluxo = sender + ">" + dominio + ">" + recipient;
+                    fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
                 } else {
                     // Em qualquer outro caso,
                     // o responsável é o dono do IP.
@@ -4216,7 +4216,6 @@ public final class SPF implements Serializable {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
                                     tokenSet.add(sender);
-                                    fluxo = sender + ">" + recipient;
                                 } else {
                                     // Não é um provedor então
                                     // o domínio e subdominios devem ser listados.
@@ -4233,8 +4232,8 @@ public final class SPF implements Serializable {
                                         tokenSet.add(ownerid);
                                         created = Domain.getCreated(sender);
                                     }
-                                    fluxo = mx + ">" + recipient;
                                 }
+                                fluxo = sender + ">" + recipient;
                             } else if (CacheHELO.match(ip, helo, true)) {
                                 // Se o HELO apontar para o IP,
                                 // então o dono do HELO é o responsável.
@@ -4253,7 +4252,7 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ownerid);
                                     created = Domain.getCreated(helo);
                                 }
-                                fluxo = helo + ">" + recipient;
+                                fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
                             } else {
                                 // Em qualquer outro caso,
                                 // o responsável é o dono do IP.
@@ -4273,7 +4272,7 @@ public final class SPF implements Serializable {
                                 if (inetnum != null) {
                                     tokenSet.add(inetnum);
                                 }
-                                fluxo = ip + ">" + recipient;
+                                fluxo = sender + ">" + ip + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
