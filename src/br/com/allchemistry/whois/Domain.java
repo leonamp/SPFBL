@@ -100,6 +100,15 @@ public class Domain implements Serializable, Comparable<Domain> {
         return expiredTime > REFRESH_TIME;
     }
     
+    /**
+     * Verifica se o registro atual expirou três dia.
+     * @return verdadeiro se o registro atual expirou três dia.
+     */
+    public boolean isRegistryExpired3() {
+        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        return expiredTime > 3;
+    }
+    
 //    /**
 //     * Verifica se o registro atual está quase expirando.
 //     * @return verdadeiro se o registro atual está quase expirando.
@@ -531,11 +540,11 @@ public class Domain implements Serializable, Comparable<Domain> {
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                         throw new ProcessException("ERROR: WHOIS CONCURRENT");
                     } else if (line.startsWith("% Query rate limit exceeded")) {
-                        Server.acquireWhoisQuery();
+                        Server.removeWhoisQuery();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
-                        Server.acquireWhoisQuery();
+                        Server.removeWhoisQuery();
                         reducedNew = true;
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
@@ -923,13 +932,15 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean backgroundRefresh() {
         Domain domainMax = null;
         for (Domain domain : getDomainSet()) {
-            if (domain.reduced || domain.queries > 3) {
-                if (domainMax == null) {
-                    domainMax = domain;
-                } else if (domainMax.queries < domain.queries) {
-                    domainMax = domain;
-                } else if (domainMax.lastRefresh > domain.lastRefresh) {
-                    domainMax = domain;
+            if (domain.isReduced() || domain.isRegistryExpired()) {
+                if (domain.queries > 3) {
+                    if (domainMax == null) {
+                        domainMax = domain;
+                    } else if (domainMax.queries < domain.queries) {
+                        domainMax = domain;
+                    } else if (domainMax.lastRefresh > domain.lastRefresh) {
+                        domainMax = domain;
+                    }
                 }
             }
         }

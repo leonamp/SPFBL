@@ -41,6 +41,7 @@ import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -620,7 +621,9 @@ public abstract class Server extends Thread {
      * Semáphoro que controla o número máximo de consultas no WHOIS.
      * Controla a taxa de 30 consultas no intervalo de 5 minutos.
      */
-    private static final Semaphore WHOIS_QUERY_SEMAPHORE = new Semaphore(30);
+    private static final int WHOIS_QUERY_LIMIT = 30; // Taxa de 30 consultas.
+    private static final int WHOIS_FREQUENCY = 5 * 60 * 1000; // Libera o direito à consulta em 5 min.
+    private static final Semaphore WHOIS_QUERY_SEMAPHORE = new Semaphore(WHOIS_QUERY_LIMIT);
     
     /**
      * Classe de tarefa que adquire e libera o semáforo de consulta comum do WHOIS.
@@ -648,7 +651,19 @@ public abstract class Server extends Thread {
      */
     public static void acquireWhoisQuery() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
-        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, 5 * 60 * 1000); // Libera o direito à consulta em 5 min.
+        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, WHOIS_FREQUENCY);
+        WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
+    }
+    
+    /**
+     * Remove o direito a uma consulta comum no WHOIS por um dia.
+     * As vezes a consulta WHOIS restringe as consultas.
+     * Este método é uma forma de reduzir drasticamente a frequência.
+     * @throws ProcessException se houver falha no processo.
+     */
+    public static void removeWhoisQuery() throws ProcessException {
+        WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
+        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, DAY_TIME);
         WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
     }
     
@@ -810,7 +825,7 @@ public abstract class Server extends Thread {
     public static synchronized void tryBackugroundRefresh() {
         // Evita que muitos processos fiquem 
         // presos aguardando a liberação do método.
-        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == 30) {
+        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             backgroundRefresh();
         }
     }
@@ -819,7 +834,7 @@ public abstract class Server extends Thread {
      * Atualiza os registros quase expirando.
      */
     public static synchronized boolean backgroundRefresh() {
-        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == 30) {
+        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             if (Domain.backgroundRefresh()) {
                 return true;
             } else if (Subnet.backgroundRefresh()) {
@@ -943,7 +958,7 @@ public abstract class Server extends Thread {
                                 result += tld + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -966,7 +981,7 @@ public abstract class Server extends Thread {
                                 result = ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
@@ -985,7 +1000,7 @@ public abstract class Server extends Thread {
                                 result = ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
@@ -998,7 +1013,63 @@ public abstract class Server extends Thread {
                                 result += provider + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("IGNORE") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar provedor de e-mail.
+                        while (tokenizer.hasMoreTokens()) {
+                            try {
+                                String ignore = tokenizer.nextToken();
+                                boolean added = SPF.addIgnore(ignore);
+                                if (result == null) {
+                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                } else {
+                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null || result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeIgnore();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        // Comando para adicionar provedor de e-mail.
+                        while (tokenizer.hasMoreTokens()) {
+                            try {
+                                String ignore = tokenizer.nextToken();
+                                boolean droped = SPF.dropIgnore(ignore);
+                                if (result == null) {
+                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                } else {
+                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result == null || result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeIgnore();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        // Mecanismo de visualização de provedores.
+                        TreeSet<String> ignoreSet = SPF.getIgnoreSet();
+                        for (String ignore : ignoreSet) {
+                            if (result == null) {
+                                result = ignore + "\n";
+                            } else {
+                                result += ignore + "\n";
+                            }
+                        }
+                        if (result == null || result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1020,7 +1091,7 @@ public abstract class Server extends Thread {
                                 result = ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
@@ -1038,7 +1109,7 @@ public abstract class Server extends Thread {
                                 result = ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
@@ -1053,7 +1124,7 @@ public abstract class Server extends Thread {
                                     result += sender + "\n";
                                 }
                             }
-                            if (result == null) {
+                            if (result == null || result.length() == 0) {
                                 result = "EMPTY\n";
                             }
                         } else if (tokenizer.countTokens() == 1) {
@@ -1068,7 +1139,7 @@ public abstract class Server extends Thread {
                                         result += sender + "\n";
                                     }
                                 }
-                                if (result == null) {
+                                if (result == null || result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             }
@@ -1111,7 +1182,7 @@ public abstract class Server extends Thread {
                                 result += sender + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1147,7 +1218,7 @@ public abstract class Server extends Thread {
                                 result += guess + "\n";
                             }
                         }
-                        if (result == null) {
+                        if (result == null || result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1185,7 +1256,7 @@ public abstract class Server extends Thread {
                                 result += (cleared ? "CLEARED" : "NOT FOUND") + "\n";
                             }
                         } catch (Exception ex) {
-                            if (result == null) {
+                            if (result == null || result.length() == 0) {
                                 result = ex.getMessage() + "\n";
                             } else {
                                 result += ex.getMessage() + "\n";

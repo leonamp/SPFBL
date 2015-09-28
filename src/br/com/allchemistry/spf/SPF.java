@@ -1849,10 +1849,17 @@ public final class SPF implements Serializable {
                     }
                     // Atualiza registro SPF mais consultado.
                     SPF.tryRefresh();
-                    // Atualiza registros quase expirando durante a consulta.
-                    Server.tryBackugroundRefresh();
                 }
             }, 60000, 60000 // Frequência de 1 minuto.
+                    );
+            TIMER.schedule(
+                    new TimerTask() {
+                @Override
+                public void run() {
+                    // Atualiza registros WHOIS expirando.
+                    Server.tryBackugroundRefresh();
+                }
+            }, 600000, 600000 // Frequência de 10 minutos.
                     );
             TIMER.schedule(
                     new TimerTask() {
@@ -2639,19 +2646,6 @@ public final class SPF implements Serializable {
             }
         }
 
-//        public static synchronized boolean addAndDisseminate(String token) {
-//            if (token == null) {
-//                return false;
-//            } else if (SET.add(token)) {
-//                // Disseminar informação via P2P.
-//                CachePeer.send(token);
-//                CHANGED = true;
-//                return true;
-//            } else {
-//                return false;
-//            }
-//        }
-
         private static synchronized boolean add(String client, String token) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
@@ -3011,6 +3005,139 @@ public final class SPF implements Serializable {
             return false;
         }
     }
+    
+    /**
+     * Classe que representa o cache de tokens 
+     * que devem ser ignorados na reclamação.
+     */
+    private static class CacheIgnore {
+
+        /**
+         * Conjunto de remetentes em ignorelist.
+         */
+        private static final HashSet<String> SET = new HashSet<String>();
+        /**
+         * Flag que indica se o cache foi modificado.
+         */
+        private static boolean CHANGED = false;
+
+        private static String normalize(String token) {
+            try {
+                if (token == null) {
+                    return null;
+                } else if (Owner.isOwnerID(token)) {
+                    return Owner.normalizeID(token);
+                } else if (Domain.isEmail(token)) {
+                    return token.toLowerCase();
+                } else if (token.endsWith("@")) {
+                    return token.toLowerCase();
+                } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
+                    return token.toLowerCase();
+                } else if (!token.contains("@") && Domain.containsDomain(token)) {
+                    return Domain.extractHost(token, true);
+                } else if (token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
+                    return Domain.extractHost(token, true);
+                } else if (Subnet.isValidIP(token)) {
+                    return Subnet.normalizeIP(token);
+                } else if (Subnet.isValidCIDR(token)) {
+                    return Subnet.normalizeCIDR(token);
+                } else {
+                    return null;
+                }
+            } catch (ProcessException ex) {
+                return null;
+            }
+        }
+        
+        private static synchronized TreeSet<String> get() throws ProcessException {
+            TreeSet<String> ignoreSet = new TreeSet<String>();
+            ignoreSet.addAll(SET);
+            return ignoreSet;
+        }
+
+        private static synchronized boolean add(String token) throws ProcessException {
+            if ((token = normalize(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.add(token)) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        private static synchronized boolean drop(String token) throws ProcessException {
+            if ((token = normalize(token)) == null) {
+                throw new ProcessException("ERROR: TOKEN INVALID");
+            } else if (SET.remove(token)) {
+                CHANGED = true;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        private static boolean contains(String token) {
+            if (token == null) {
+                return false;
+            } else if ((token = normalize(token)) == null) {
+                return false;
+            } else {
+                return SET.contains(token);
+            }
+        }
+
+        private static synchronized void store() {
+            if (CHANGED) {
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("ignore.set");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(SET, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+
+        private static synchronized void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("ignore.set");
+            if (file.exists()) {
+                try {
+                    Set<String> set;
+                    FileInputStream fileInputStream = new FileInputStream(file);
+                    try {
+                        set = SerializationUtils.deserialize(fileInputStream);
+                    } finally {
+                        fileInputStream.close();
+                    }
+                    SET.addAll(set);
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+    }
+
+    public static boolean addIgnore(String sender) throws ProcessException {
+        return CacheIgnore.add(sender);
+    }
+
+    public static boolean dropIgnore(String sender) throws ProcessException {
+        return CacheIgnore.drop(sender);
+    }
+
+    public static TreeSet<String> getIgnoreSet() throws ProcessException {
+        return CacheIgnore.get();
+    }
 
     /**
      * Classe que representa o cache de peers que serão atualizados.
@@ -3292,6 +3419,10 @@ public final class SPF implements Serializable {
     public static void storeProvider() {
         CacheProvider.store();
     }
+    
+    public static void storeIgnore() {
+        CacheIgnore.store();
+    }
 
     public static void storeBlock() {
         CacheBlock.store();
@@ -3331,6 +3462,7 @@ public final class SPF implements Serializable {
         CacheProvider.store();
         CacheTrap.store();
         CacheWhite.store();
+        CacheIgnore.store();
         CacheBlock.store();
         CacheGuess.store();
         CacheHELO.store();
@@ -3348,6 +3480,7 @@ public final class SPF implements Serializable {
         CacheProvider.load();
         CacheTrap.load();
         CacheWhite.load();
+        CacheIgnore.load();
         CacheBlock.load();
         CacheGuess.load();
         CacheHELO.load();
@@ -3671,6 +3804,7 @@ public final class SPF implements Serializable {
             if (id == null) {
                 return false;
             } else {
+                id = id.trim().toLowerCase();
                 long now = System.currentTimeMillis();
                 Long start = get(id);
                 if (start == null) {
@@ -3678,7 +3812,7 @@ public final class SPF implements Serializable {
                     put(id, start);
                     return true;
                 } else if (start < (now - minutes * 60 * 1000)) {
-                    drop(id);
+                    end(id);
                     return false;
                 } else {
                     return true;
@@ -3686,11 +3820,19 @@ public final class SPF implements Serializable {
             }
         }
         
-        private static synchronized void drop(String id) {
+        private static synchronized void end(String id) {
             long now = System.currentTimeMillis();
             if (MAP.remove(id) != null) {
                 CHANGED = true;
                 Server.logDefer(now, id, "END");
+            }
+        }
+        
+        private static synchronized void drop(String id) {
+            long now = System.currentTimeMillis();
+            if (MAP.remove(id) != null) {
+                CHANGED = true;
+                Server.logDefer(now, id, "EXPIRED");
             }
         }
 
@@ -3756,6 +3898,9 @@ public final class SPF implements Serializable {
         if (sender != null && sender.trim().length() == 0) {
             sender = null;
         }
+        if (!Domain.isEmail(recipient)) {
+            recipient = null;
+        }
         if (sender != null && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
@@ -3798,7 +3943,6 @@ public final class SPF implements Serializable {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
                         tokenSet.add(sender);
-                        fluxo = sender + ">" + recipient;
                     } else {
                         // Não é um provedor então
                         // o domínio e subdomínios devem ser listados.
@@ -3814,8 +3958,8 @@ public final class SPF implements Serializable {
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
                             tokenSet.add(ownerid);
                         }
-                        fluxo = mx + ">" + recipient;
                     }
+                    fluxo = sender + ">" + recipient;
                 } else if (CacheHELO.match(ip, helo, true)) {
                     // Se o HELO apontar para o IP,
                     // então o dono do HELO é o responsável.
@@ -3833,7 +3977,7 @@ public final class SPF implements Serializable {
                     if ((ownerid = Domain.getOwnerID(helo)) != null) {
                         tokenSet.add(ownerid);
                     }
-                    fluxo = helo + ">" + recipient;
+                    fluxo = sender + ">" + helo + ">" + recipient;
                 } else {
                     // Em qualquer outro caso,
                     // o responsável é o dono do IP.
@@ -3852,7 +3996,7 @@ public final class SPF implements Serializable {
                     if (inetnum != null) {
                         tokenSet.add(inetnum);
                     }
-                    fluxo = ip + ">" + recipient;
+                    fluxo = sender + ">" + ip + ">" + recipient;
                 }
                 if (CacheWhite.containsSender(client, sender, result)) {
                     // Calcula frequencia de consultas.
@@ -4006,7 +4150,7 @@ public final class SPF implements Serializable {
                             if (sender.length() == 0) {
                                 sender = null;
                             }
-                            if (recipient.length() == 0) {
+                            if (!Domain.isEmail(recipient)) {
                                 recipient = null;
                             }
                         } else {
@@ -4252,8 +4396,10 @@ public final class SPF implements Serializable {
                 StringTokenizer tokenizer = new StringTokenizer(complain, " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
-                    CacheDistribution.get(token, true).addSpam();
-                    tokenSet.add(token);
+                    if (!CacheIgnore.contains(token)) {
+                        CacheDistribution.get(token, true).addSpam();
+                        tokenSet.add(token);
+                    }
                 }
             }
         }

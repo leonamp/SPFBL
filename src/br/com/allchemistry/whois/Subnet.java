@@ -214,14 +214,13 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                     } else if (line.startsWith("% Permissão negada.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Query rate limit exceeded")) {
-                        Server.acquireWhoisQuery();
+                        Server.removeWhoisQuery();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
-                        Server.acquireWhoisQuery();
+                        Server.removeWhoisQuery();
                         reducedNew = true;
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
-                        Server.acquireWhoisQuery();
                         throw new ProcessException("ERROR: WHOIS CONNECTION LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
@@ -277,6 +276,15 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public boolean isRegistryExpired() {
         int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > REFRESH_TIME;
+    }
+    
+    /**
+     * Verifica se o registro atual expirou três dia.
+     * @return verdadeiro se o registro atual expirou três dia.
+     */
+    public boolean isRegistryExpired3() {
+        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        return expiredTime > 3;
     }
     
 //    /**
@@ -455,13 +463,15 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static synchronized boolean backgroundRefresh() {
         Subnet subnetMax = null;
         for (Subnet subnet : getSubnetSet()) {
-            if (subnet.reduced || subnet.queries > 3) {
-                if (subnetMax == null) {
-                    subnetMax = subnet;
-                } else if (subnetMax.queries < subnet.queries) {
-                    subnetMax = subnet;
-                } else if (subnetMax.lastRefresh > subnet.lastRefresh) {
-                    subnetMax = subnet;
+            if (subnet.isReduced() || subnet.isRegistryExpired()) {
+                if (subnet.queries > 3) {
+                    if (subnetMax == null) {
+                        subnetMax = subnet;
+                    } else if (subnetMax.queries < subnet.queries) {
+                        subnetMax = subnet;
+                    } else if (subnetMax.lastRefresh > subnet.lastRefresh) {
+                        subnetMax = subnet;
+                    }
                 }
             }
         }
