@@ -471,7 +471,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                         int index = line.indexOf(':') + 1;
                         String valor = line.substring(index).trim();
                         if (valor.startsWith("before ")) {
-                            index = line.indexOf(' ');
+                            index = line.indexOf(' ') - 1;
                             valor = valor.substring(index);
                         }
                         createdNew = DATE_FORMATTER.parse(valor);

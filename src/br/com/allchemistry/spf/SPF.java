@@ -4049,10 +4049,10 @@ public final class SPF implements Serializable {
                     // Pelo menos um token está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
-                } else if (isTooNew(created) && CacheDefer.defer(fluxo, 1440)) {
-                    // Domínio muito novo com atrazo programado de 1 dia.
-                    return "action=DEFER [RBL] "
-                            + "you are greylisted on this server.\n\n";
+//                } else if (isTooNew(created) && CacheDefer.defer(fluxo, 60)) {
+//                    // Domínio muito novo com atrazo programado de 1 hora.
+//                    return "action=DEFER [RBL] "
+//                            + "you are greylisted on this server.\n\n";
                 } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                     // Pelo menos um token está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
@@ -4339,9 +4339,9 @@ public final class SPF implements Serializable {
                             } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1440)) {
                                 // Pelo menos um token do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
-                            } else if (isTooNew(created) && CacheDefer.defer(fluxo, 1440)) {
-                                // Domínio muito novo com atrazo programado de 1 dia.
-                                return "GREYLIST\n";
+//                            } else if (isTooNew(created) && CacheDefer.defer(fluxo, 60)) {
+//                                // Domínio muito novo com atrazo programado de 1 hora.
+//                                return "GREYLIST\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um token do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";

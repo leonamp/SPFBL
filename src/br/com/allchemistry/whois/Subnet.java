@@ -180,7 +180,12 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         nameServerListNew.add(nserver);
                     } else if (line.startsWith("created:")) {
                         int index = line.indexOf(':') + 1;
-                        createdNew = DATE_FORMATTER.parse(line.substring(index).trim());
+                        String valor = line.substring(index).trim();
+                        if (valor.startsWith("before ")) {
+                            index = line.indexOf(' ') - 1;
+                            valor = valor.substring(index);
+                        }
+                        createdNew = DATE_FORMATTER.parse(valor);
                     } else if (line.startsWith("changed:")) {
                         int index = line.indexOf(':') + 1;
                         changedNew = DATE_FORMATTER.parse(line.substring(index).trim());
