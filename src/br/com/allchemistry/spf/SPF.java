@@ -3925,7 +3925,7 @@ public final class SPF implements Serializable {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String fluxo;
                 String ownerid = null;
-                Date created = null;
+//                Date created = null;
                 if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
@@ -3958,7 +3958,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(dominio);
                         if ((ownerid = Domain.getOwnerID(sender)) != null) {
                             tokenSet.add(ownerid);
-                            created = Domain.getCreated(sender);
+//                            created = Domain.getCreated(sender);
                         }
                     }
                     fluxo = sender + ">" + recipient;
@@ -3978,7 +3978,7 @@ public final class SPF implements Serializable {
                     tokenSet.add(dominio);
                     if ((ownerid = Domain.getOwnerID(helo)) != null) {
                         tokenSet.add(ownerid);
-                        created = Domain.getCreated(helo);
+//                        created = Domain.getCreated(helo);
                     }
                     fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
                 } else {
@@ -4057,10 +4057,10 @@ public final class SPF implements Serializable {
                     // Pelo menos um token está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
-                    // SOFTFAIL com atrazo programado de 1min.
-                    return "action=DEFER [RBL] "
-                            + "you are greylisted on this server.\n\n";
+//                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
+//                    // SOFTFAIL com atrazo programado de 1min.
+//                    return "action=DEFER [RBL] "
+//                            + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
@@ -4093,15 +4093,15 @@ public final class SPF implements Serializable {
         }
     }
     
-    private static boolean isTooNew(Date created) {
-        if (created == null) {
-            return false;
-        } else {
-            long time = System.currentTimeMillis() - created.getTime();
-            int days = (int) (time / Server.DAY_TIME);
-            return days < 7;
-        }
-    }
+//    private static boolean isTooNew(Date created) {
+//        if (created == null) {
+//            return false;
+//        } else {
+//            long time = System.currentTimeMillis() - created.getTime();
+//            int days = (int) (time / Server.DAY_TIME);
+//            return days < 7;
+//        }
+//    }
 
     /**
      * Processa a consulta e retorna o resultado.
@@ -4202,7 +4202,7 @@ public final class SPF implements Serializable {
                             }
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             String ownerid = null;
-                            Date created = null;
+//                            Date created = null;
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result)) {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
@@ -4230,7 +4230,7 @@ public final class SPF implements Serializable {
                                     tokenSet.add(dominio);
                                     if ((ownerid = Domain.getOwnerID(sender)) != null) {
                                         tokenSet.add(ownerid);
-                                        created = Domain.getCreated(sender);
+//                                        created = Domain.getCreated(sender);
                                     }
                                 }
                                 fluxo = sender + ">" + recipient;
@@ -4250,7 +4250,7 @@ public final class SPF implements Serializable {
                                 tokenSet.add(dominio);
                                 if ((ownerid = Domain.getOwnerID(helo)) != null) {
                                     tokenSet.add(ownerid);
-                                    created = Domain.getCreated(helo);
+//                                    created = Domain.getCreated(helo);
                                 }
                                 fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
                             } else {
@@ -4345,9 +4345,9 @@ public final class SPF implements Serializable {
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um token do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
-                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
-                                // SOFTFAIL com atrazo de 1min.
-                                return "GREYLIST\n";
+//                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
+//                                // SOFTFAIL com atrazo de 1min.
+//                                return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
