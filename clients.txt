@@ -23,3 +23,5 @@
 189.45.12.0/24		rafael@nbtelecom.com.br			Rafael Stein
 189.45.8.0/24		rafael@nbtelecom.com.br			Rafael Stein
 177.47.25.128/26	filipealvarez@gmail.com			Filipe Alvarez
+186.225.239.128/25	alex.montoanelli@unetvale.net		Alex Montoanelli
+187.103.128.0/20	jniltinho@gmail.com			Nilton OS
