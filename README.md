@@ -259,6 +259,12 @@ zmmtactl start
 Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_rcpt":
 ```
 # Use 'spfbl.sh query' to perform SPFBL check.
+  drop
+    message = Invalid MAIL FROM address. Use a valid e-mail address.
+    log_message = invalid sender.
+    condition = ${if match {$sender_address}{^([[:alnum:]][[:alnum:].+_=-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{false}{true}}
+    condition = ${if match {$sender_address}{^SRS0(=|\\+)[[:alnum:]/+]+=[[:alnum:]]+=(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
+    condition = ${if match {$sender_address}{^prvs=[[:alnum:]]+=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
   warn
     set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
@@ -313,6 +319,12 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
 
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
 ```
+  drop
+    message = Invalid MAIL FROM address. Use a valid e-mail address.
+    log_message = invalid sender.
+    condition = ${if match {$sender_address}{^([[:alnum:]][[:alnum:].+_=-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{false}{true}}
+    condition = ${if match {$sender_address}{^SRS0(=|\\+)[[:alnum:]/+]+=[[:alnum:]]+=(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
+    condition = ${if match {$sender_address}{^prvs=[[:alnum:]]+=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
   warn
     set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
