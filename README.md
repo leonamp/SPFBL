@@ -413,10 +413,10 @@ O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve
 Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
 
 Abertos:
-* MatrixDefense: 54.94.137.168:9877 <leandro@allchemistry.com.br>
+* MatrixDefense: leandro@allchemistry.com.br
 
 Fechados:
-* MX-Protection: 177.154.143.206:9877 <gtec77@gmail.com>
+* MX-Protection: gtec77@gmail.com
 
 ### Forum de discussão SPFBL
 
