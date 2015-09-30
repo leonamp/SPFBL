@@ -1758,7 +1758,11 @@ public final class SPF implements Serializable {
         /**
          * Mapa de reclamações com seus respectivos tickets.
          */
-        private static final HashMap<String, Complain> MAP = new HashMap<String, Complain>();
+        private static final HashMap<String,Complain> MAP = new HashMap<String,Complain>();
+        /**
+         * Conjunto de tickets de reclamações.
+         */
+        private static final HashSet<String> SET = new HashSet<String>();
         /**
          * Flag que indica se o cache de reclamações foi modificado.
          */
@@ -1780,25 +1784,42 @@ public final class SPF implements Serializable {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
+                try {
+                    long time = System.currentTimeMillis();
+                    File file = new File("complain.set");
+                    FileOutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        SerializationUtils.serialize(SET, outputStream);
+                        CHANGED = false;
+                    } finally {
+                        outputStream.close();
+                    }
+                    Server.logStore(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
             }
         }
 
         private static synchronized void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("complain.map");
-            if (file.exists()) {
-                try {
-                    HashMap<String, Complain> map;
-                    FileInputStream fileInputStream = new FileInputStream(file);
+            {
+                long time = System.currentTimeMillis();
+                File file = new File("complain.map");
+                if (file.exists()) {
                     try {
-                        map = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
+                        HashMap<String, Complain> map;
+                        FileInputStream fileInputStream = new FileInputStream(file);
+                        try {
+                            map = SerializationUtils.deserialize(fileInputStream);
+                        } finally {
+                            fileInputStream.close();
+                        }
+                        MAP.putAll(map);
+                        SET.addAll(MAP.keySet());
+                        Server.logLoad(time, file);
+                    } catch (Exception ex) {
+                        Server.logError(ex);
                     }
-                    MAP.putAll(map);
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
                 }
             }
         }
@@ -1810,12 +1831,16 @@ public final class SPF implements Serializable {
         }
 
         private static synchronized boolean drop(String ticket) {
+            if (SET.remove(ticket)) {
+                CHANGED = true;
+            }
             if (MAP.remove(ticket) == null) {
                 return false;
             } else {
                 CHANGED = true;
                 return true;
             }
+            
         }
 
         /**
@@ -1892,6 +1917,7 @@ public final class SPF implements Serializable {
             } else {
                 Complain complain = new Complain(ticket);
                 MAP.put(ticket, complain);
+                SET.add(ticket);
                 CHANGED = true;
                 return complain.getTokenSet();
             }
@@ -1909,6 +1935,7 @@ public final class SPF implements Serializable {
                 return null;
             } else {
                 complain.removeComplains();
+                SET.remove(ticket);
                 CHANGED = true;
                 return complain.getTokenSet();
             }
@@ -2629,7 +2656,8 @@ public final class SPF implements Serializable {
         /**
          * Conjunto de remetentes bloqueados.
          */
-        private static final HashSet<String> SET = new HashSet<String>();
+        private static final TreeSet<String> SET = new TreeSet<String>();
+        
         /**
          * Flag que indica se o cache foi modificado.
          */
@@ -2681,7 +2709,9 @@ public final class SPF implements Serializable {
             } else {
                 qualif = "";
             }
-            if (Owner.isOwnerID(token)) {
+            if (isWhois(token)) {
+                return token;
+            } else if (Owner.isOwnerID(token)) {
                 return Owner.normalizeID(token) + qualif;
             } else if (Domain.isEmail(token)) {
                 return token.toLowerCase() + qualif;
@@ -2700,6 +2730,10 @@ public final class SPF implements Serializable {
             } else {
                 return null;
             }
+        }
+        
+        private static boolean isWhois(String token) {
+            return Pattern.matches("^WHOIS(/[a-z-]+)+=[a-zA-Z0-9@.]+$", token);
         }
 
         private static synchronized boolean drop(String token) throws ProcessException {
@@ -2748,6 +2782,20 @@ public final class SPF implements Serializable {
             TreeSet<String> blockSet = new TreeSet<String>();
             for (String token : SET) {
                 if (token.startsWith(client + ':')) {
+                    int index = token.indexOf(':') + 1;
+                    token = token.substring(index);
+                    blockSet.add(token);
+                }
+            }
+            return blockSet;
+        }
+        
+        private static synchronized TreeSet<String> getAll(String client) throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            for (String token : SET) {
+                if (!token.contains(":")) {
+                    blockSet.add(token);
+                } else if (token.startsWith(client + ':')) {
                     int index = token.indexOf(':') + 1;
                     token = token.substring(index);
                     blockSet.add(token);
@@ -2831,6 +2879,28 @@ public final class SPF implements Serializable {
                         } else if (SET.contains(client + ':' + subsender)) {
                             return true;
                         } else if (SET.contains(client + ':' + subsender + ';' + qualifier)) {
+                            return true;
+                        }
+                    }
+                }
+                if (sender.endsWith(".br")) {
+                    for (String token : SET.subSet("WHOIS/", false, "WHOIS<", false)) {
+                        int indexKey = token.indexOf('/');
+                        int indexValue = token.indexOf('=');
+                        String key = token.substring(indexKey + 1, indexValue);
+                        String criterion = token.substring(indexValue + 1);
+                        String value = Domain.getValue(sender, key);
+                        if (criterion.equals(value)) {
+                            return true;
+                        }
+                    }
+                    for (String token : SET.subSet(client + ":WHOIS/", false, client + ":WHOIS<", false)) {
+                        int indexKey = token.indexOf('/');
+                        int indexValue = token.indexOf('=');
+                        String key = token.substring(indexKey + 1, indexValue);
+                        String criterion = token.substring(indexValue + 1);
+                        String value = Domain.getValue(sender, key);
+                        if (criterion.equals(value)) {
                             return true;
                         }
                     }
@@ -2981,6 +3051,10 @@ public final class SPF implements Serializable {
     public static TreeSet<String> getBlockSet(String client) throws ProcessException {
         return CacheBlock.get(client);
     }
+    
+    public static TreeSet<String> getAllBlockSet(String client) throws ProcessException {
+        return CacheBlock.getAll(client);
+    }
 
     public static TreeSet<String> getProviderSet() throws ProcessException {
         return CacheProvider.get();
@@ -3077,14 +3151,79 @@ public final class SPF implements Serializable {
             }
         }
 
+//        private static boolean contains(String token) {
+//            if (token == null) {
+//                return false;
+//            } else if ((token = normalize(token)) == null) {
+//                return false;
+//            } else {
+//                return SET.contains(token);
+//            }
+//        }
+        
         private static boolean contains(String token) {
-            if (token == null) {
+            if ((token = normalize(token)) == null) {
                 return false;
-            } else if ((token = normalize(token)) == null) {
+            } else if (token.contains("@")) {
+                token = token.toLowerCase();
+                int index1 = token.indexOf('@');
+                int index2 = token.lastIndexOf('@');
+                String part = token.substring(0, index1 + 1);
+                String domain = token.substring(index2);
+                if (SET.contains(token)) {
+                    return true;
+                } else if (SET.contains(part)) {
+                    return true;
+                } else if (SET.contains(domain)) {
+                    return true;
+                } else if (containsHost(domain.substring(1))) {
+                    return true;
+                } else {
+                    int index3 = domain.length();
+                    while ((index3 = domain.lastIndexOf('.', index3-1)) > index2) {
+                        String subdomain = domain.substring(0, index3 + 1);
+                        if (SET.contains(subdomain)) {
+                            return true;
+                        }
+                    }
+                    int index4 = token.length();
+                    while ((index4 = token.lastIndexOf('.', index4-1)) > index2) {
+                        String subsender = token.substring(0, index4 + 1);
+                        if (SET.contains(subsender)) {
+                            return true;
+                        }
+                    }
+                }
                 return false;
+            } else if (Subnet.isValidIP(token)) {
+                token = Subnet.normalizeIP(token);
+                if (SET.contains(token)) {
+                    return true;
+                }
+                String inet = Subnet.getInetnum(token);
+                if (inet != null) {
+                    if (SET.contains(inet)) {
+                        return true;
+                    }
+                }
+                return false;
+            } else if (containsHost(token)) {
+                return true;
             } else {
                 return SET.contains(token);
             }
+        }
+
+        private static boolean containsHost(String host) {
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                if (SET.contains(token)) {
+                    return true;
+                }
+            } while (host.contains("."));
+            return false;
         }
 
         private static synchronized void store() {
@@ -3700,8 +3839,10 @@ public final class SPF implements Serializable {
             }
         }
         
-        private static synchronized Collection<String> keySet() {
-            return MAP.keySet();
+        private static synchronized TreeSet<String> keySet() {
+            TreeSet<String> keySet = new TreeSet<String>();
+            keySet.addAll(MAP.keySet());
+            return keySet;
         }
         
         private static synchronized Collection<HELO> values() {
@@ -3845,7 +3986,9 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized Collection<String> keySet() {
-            return MAP.keySet();
+            TreeSet<String> keySet = new TreeSet<String>();
+            keySet.addAll(MAP.keySet());
+            return keySet;
         }
         
         private static synchronized Long get(String id) {
@@ -3923,6 +4066,7 @@ public final class SPF implements Serializable {
                     result = spf.getResult(ip, sender, helo);
                 }
                 TreeSet<String> tokenSet = new TreeSet<String>();
+                String origem;
                 String fluxo;
                 String ownerid = null;
 //                Date created = null;
@@ -3944,6 +4088,7 @@ public final class SPF implements Serializable {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
                         tokenSet.add(sender);
+                        origem = sender;
                     } else {
                         // Não é um provedor então
                         // o domínio e subdomínios devem ser listados.
@@ -3960,8 +4105,9 @@ public final class SPF implements Serializable {
                             tokenSet.add(ownerid);
 //                            created = Domain.getCreated(sender);
                         }
+                        origem = mx;
                     }
-                    fluxo = sender + ">" + recipient;
+                    fluxo = origem + ">" + recipient;
                 } else if (CacheHELO.match(ip, helo, true)) {
                     // Se o HELO apontar para o IP,
                     // então o dono do HELO é o responsável.
@@ -3980,7 +4126,8 @@ public final class SPF implements Serializable {
                         tokenSet.add(ownerid);
 //                        created = Domain.getCreated(helo);
                     }
-                    fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
+                    origem = sender + ">" + dominio.substring(1);
+                    fluxo = origem + ">" + recipient;
                 } else {
                     // Em qualquer outro caso,
                     // o responsável é o dono do IP.
@@ -3999,7 +4146,8 @@ public final class SPF implements Serializable {
                     if (inetnum != null) {
                         tokenSet.add(inetnum);
                     }
-                    fluxo = sender + ">" + ip + ">" + recipient;
+                    origem = sender + ">" + ip;
+                    fluxo = origem + ">" + recipient;
                 }
                 if (CacheWhite.containsSender(client, sender, result)) {
                     // Calcula frequencia de consultas.
@@ -4045,11 +4193,11 @@ public final class SPF implements Serializable {
                     SPF.addQuery(tokenSet);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
-                } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1440)) {
+                } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
                     // Pelo menos um token está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
-//                } else if (isTooNew(created) && CacheDefer.defer(fluxo, 60)) {
+//                } else if (isTooNew(created) && CacheDefer.defer(origem, 55)) {
 //                    // Domínio muito novo com atrazo programado de 1 hora.
 //                    return "action=DEFER [RBL] "
 //                            + "you are greylisted on this server.\n\n";
@@ -4057,7 +4205,7 @@ public final class SPF implements Serializable {
                     // Pelo menos um token está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-//                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
+//                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
 //                    // SOFTFAIL com atrazo programado de 1min.
 //                    return "action=DEFER [RBL] "
 //                            + "you are greylisted on this server.\n\n";
@@ -4144,6 +4292,27 @@ public final class SPF implements Serializable {
                     } catch (ProcessException ex) {
                         result = ex.getMessage() + "\n";
                     }
+                } else if (firstToken.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
+                    // Comando para verificar a reputação dos tokens.
+                    StringBuilder stringBuilder = new StringBuilder();
+                    TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
+                    for (String tokenReputation : distributionMap.keySet()) {
+                        Distribution distribution = distributionMap.get(tokenReputation);
+                        float probability = distribution.getMinSpamProbability();
+                        if (probability > 0.0f && distribution.hasFrequency()) {
+                            Status status = distribution.getStatus(tokenReputation);
+                            String frequency = distribution.getFrequencyLiteral();
+                            stringBuilder.append(tokenReputation);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(frequency);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(status);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
+                            stringBuilder.append('\n');
+                        }
+                    }
+                    result = stringBuilder.toString();
                 } else if ((firstToken.equals("SPF") && tokenizer.countTokens() == 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
@@ -4153,6 +4322,7 @@ public final class SPF implements Serializable {
                         String sender;
                         String helo;
                         String recipient;
+                        String origem;
                         String fluxo;
                         if (firstToken.equals("SPF")) {
                             // Nova formatação de consulta.
@@ -4216,6 +4386,7 @@ public final class SPF implements Serializable {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
                                     tokenSet.add(sender);
+                                    origem = sender;
                                 } else {
                                     // Não é um provedor então
                                     // o domínio e subdominios devem ser listados.
@@ -4232,8 +4403,9 @@ public final class SPF implements Serializable {
                                         tokenSet.add(ownerid);
 //                                        created = Domain.getCreated(sender);
                                     }
+                                    origem = mx;
                                 }
-                                fluxo = sender + ">" + recipient;
+                                fluxo = origem + ">" + recipient;
                             } else if (CacheHELO.match(ip, helo, true)) {
                                 // Se o HELO apontar para o IP,
                                 // então o dono do HELO é o responsável.
@@ -4252,7 +4424,8 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ownerid);
 //                                    created = Domain.getCreated(helo);
                                 }
-                                fluxo = sender + ">" + dominio.substring(1) + ">" + recipient;
+                                origem = sender + ">" + dominio.substring(1);
+                                fluxo = origem + ">" + recipient;
                             } else {
                                 // Em qualquer outro caso,
                                 // o responsável é o dono do IP.
@@ -4272,7 +4445,8 @@ public final class SPF implements Serializable {
                                 if (inetnum != null) {
                                     tokenSet.add(inetnum);
                                 }
-                                fluxo = sender + ">" + ip + ">" + recipient;
+                                origem = sender + ">" + ip;
+                                fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
@@ -4336,16 +4510,16 @@ public final class SPF implements Serializable {
                                 SPF.addQuery(tokenSet);
                                 // Pelo menos um token do conjunto está bloqueado.
                                 return "BLOCKED\n";
-                            } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1440)) {
+                            } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
                                 // Pelo menos um token do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
-//                            } else if (isTooNew(created) && CacheDefer.defer(fluxo, 60)) {
+//                            } else if (isTooNew(created) && CacheDefer.defer(origem, 55)) {
 //                                // Domínio muito novo com atrazo programado de 1 hora.
 //                                return "GREYLIST\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um token do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
-//                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 10)) {
+//                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
 //                                // SOFTFAIL com atrazo de 1min.
 //                                return "GREYLIST\n";
                             } else {
@@ -4559,9 +4733,11 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Constante que determina o limiar de listagem.
+     * Constantes que determinam os limiares de listagem.
      */
-    private static final float LIMIAR = 0.25f;
+    private static final float LIMIAR1 = 0.25f;
+    private static final float LIMIAR2 = 0.50f;
+    private static final float LIMIAR3 = 0.75f;
 
     /**
      * Classe que representa a distribuição binomial entre SPAM e HAM. O valor
@@ -4723,7 +4899,7 @@ public final class SPF implements Serializable {
         public synchronized Status getStatus(String token) {
             if (status == Status.BLOCK) {
                 float max = getMaxSpamProbability();
-                if (max < LIMIAR/2) {
+                if (max < LIMIAR1) {
                     status = Status.GRAY;
                     CacheBlock.dropExact(token);
                 }
@@ -4731,7 +4907,7 @@ public final class SPF implements Serializable {
                 float[] probability = getSpamProbability();
                 float min = probability[0];
                 float max = probability[2];
-                if (min > 0.5f && max > 0.75 && complain > 7) {
+                if (min > LIMIAR2 && max > LIMIAR3 && complain > 7) {
                     // Condição especial que bloqueia
                     // definitivamente o responsável.
                     status = Status.BLOCK;
@@ -4739,11 +4915,11 @@ public final class SPF implements Serializable {
                     CachePeer.send(token);
                 } else if (max == 0.0f) {
                     status = Status.WHITE;
-                } else if (min > LIMIAR) {
+                } else if (min > LIMIAR1) {
                     status = Status.BLACK;
-                } else if (status == Status.GRAY && min > LIMIAR/2) {
+                } else if (status == Status.GRAY && min > LIMIAR1) {
                     status = Status.BLACK;
-                } else if (status == Status.BLACK && max < LIMIAR/2) {
+                } else if (status == Status.BLACK && max < LIMIAR1) {
                     status = Status.GRAY;
                 }
             }

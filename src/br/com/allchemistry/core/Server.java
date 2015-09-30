@@ -19,7 +19,6 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.InputStream;
@@ -33,7 +32,6 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.Set;
@@ -47,7 +45,6 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.naming.NamingException;
-import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
 import org.apache.commons.lang3.SerializationUtils;
@@ -664,7 +661,6 @@ public abstract class Server extends Thread {
     public static void removeWhoisQuery() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
         WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, DAY_TIME);
-        WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
     }
     
     /**
@@ -815,6 +811,7 @@ public abstract class Server extends Thread {
         }
         try {
             String result = outputStream.toString("ISO-8859-1");
+            result = result.replace("\r", "");
             logWhois(time, server, query, result);
             return result;
         } catch (UnsupportedEncodingException ex) {

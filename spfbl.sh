@@ -17,6 +17,7 @@ export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 # block add
 # block drop
 # block show
+# block show all
 # check
 # spam
 # ham
@@ -28,6 +29,7 @@ export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 # white drop
 # white show
 # refresh
+# reputation
 
 case $1 in
 	'block')
@@ -105,7 +107,8 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Parâmetros de entrada: nenhum.
+				# Parâmetros de entrada:
+				#    1: ALL: lista os bloqueios gerais (opcional)
 				#
 				# Códigos de saída:
 				#
@@ -113,7 +116,23 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				
-				if [ $# -lt "2" ]; then
+				if [ $3 == "all" ]; then
+                                        response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				elif [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block show\n"
 				else
 					response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -673,6 +692,31 @@ case $1 in
 			else
 				exit 2
 			fi
+		fi
+	;;
+	'reputation')
+		# Parâmetros de entrada: nenhum
+		#
+		# Códigos de saída:
+		#
+		#    0: listado com sucesso.
+		#    1: lista vazia.
+		#    2: timeout de conexão.
+		
+		response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			
+		if [[ $response == "" ]]; then
+			response="TIMEOUT"
+		fi
+			
+		echo "$response"
+
+		if [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response == "EMPTY" ]]; then
+			exit 1
+		else
+			exit 0
 		fi
 	;;
 esac

@@ -201,6 +201,20 @@ public final class QuerySPF extends Server {
                                     result = "ERROR: COMMAND";
                                 }
                                 SPF.storeBlock();
+                            } else if (line.equals("BLOCK SHOW ALL")) {
+                                query = line.substring(6).trim();
+                                type = "BLOCK";
+                                // Mecanismo de visualização de bloqueios de remetentes.
+                                for (String sender : SPF.getAllBlockSet(client)) {
+                                    if (result == null) {
+                                        result = sender + "\n";
+                                    } else {
+                                        result += sender + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
                             } else if (line.equals("BLOCK SHOW")) {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";

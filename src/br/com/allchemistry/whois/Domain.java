@@ -275,17 +275,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static void main(String[] args) {
-        try {
-            String hostname = Domain.extractHost("_spf.google.com", false);
-            System.out.println(Domain.containsDomain(hostname));
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            System.exit(0);
-        }
-    }
-    
     /**
      * Verifica se o endereço é um e-mail válido.
      * @param address o endereço a ser verificado.
@@ -378,6 +367,24 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         } else {
             throw new ProcessException("ERROR: TLD INVALID");
+        }
+    }
+    
+    public static void main(String[] args) {
+        try {
+            String result = "\n% Copyright (c) Nic.br\n%  The use of the data below is only permitted as described in\n%  full by the terms of use at http://registro.br/termo/en.html ,\n%  being prohibited its distribution, commercialization or\n%  reproduction, in particular, to use it for advertising or\n%  any similar purpose.\n%  2015-09-29 14:23:51 (BRT -03:00)\n\n% Query rate limit exceeded. Reduced information.\n% Use https://registro.br/cgi-bin/nicbr/busca_dominio for domain availability.\n\ndomain:      mandatudo.net.br\nowner:       Vitor Gilmar Pereira\ncountry:     BR\nowner-c:     VIGPE13\nadmin-c:     VIGPE13\ntech-c:      VIGPE13\nbilling-c:   VIGPE13\nnserver:     ns12.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nnserver:     pns11.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nnserver:     pns15.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nsaci:        yes\ncreated:     20150923 #14698273\nexpires:     20160923\nchanged:     20150923\nstatus:      published\n\nnic-hdl-br:  VIGPE13\nperson:      Vitor Gilmar Pereira\ncreated:     20130610\nchanged:     20140108\n\n% Security and mail abuse issues should also be addressed to\n% cert.br, http://www.cert.br/ , respectivelly to cert@cert.br\n% and mail-abuse@cert.br\n%\n% whois.registro.br accepts only direct match queries. Types\n% of queries are: domain (.br), registrant (tax ID), ticket,\n% provider, contact handle (ID), CIDR block, IP and ASN.\n\n";
+            Domain domain = Domain.getDomain("mandatudo.net.br");
+            for (int i = 0; i < 100; i++) {
+                try {
+                    System.out.println(domain.refresh(result));
+                } catch (ProcessException ex) {
+                    System.out.println(ex.getErrorMessage());
+                }
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        } finally {
+            System.exit(0);
         }
     }
     
@@ -539,13 +546,14 @@ public class Domain implements Serializable, Comparable<Domain> {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                         throw new ProcessException("ERROR: WHOIS CONCURRENT");
-                    } else if (line.startsWith("% Query rate limit exceeded")) {
-                        Server.removeWhoisQuery();
-                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
                         Server.removeWhoisQuery();
                         reducedNew = true;
+                    } else if (line.startsWith("% Query rate limit exceeded")) {
+                        // Restrição total devido ao estouro de limite de consultas.
+                        Server.removeWhoisQuery();
+                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
                     }
@@ -729,15 +737,58 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static Date getCreated(String address) throws ProcessException {
+    public static String getValue(String address, String key) {
+        if (address == null || key == null) {
+            return null;
+        } else {
+            try {
+                Domain domain = Domain.getDomain(address);
+                if (domain == null) {
+                    return null;
+                } else {
+                    return domain.get(key, false);
+                }
+            } catch (ProcessException ex) {
+                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        }
+    }
+    
+    public static Date getCreated(String address) {
         if (address == null) {
             return null;
         } else {
-            Domain domain = Domain.getDomain(address);
-            if (domain == null) {
-                return null;
-            } else {
-                return domain.created;
+            try {
+                Domain domain = Domain.getDomain(address);
+                if (domain == null) {
+                    return null;
+                } else {
+                    return domain.created;
+                }
+            } catch (ProcessException ex) {
+                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else {
+                    Server.logError(ex);
+                    return null;
+                }
             }
         }
     }
@@ -955,16 +1006,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                 return false;
             }
         }
-        
-//        Domain domain = DOMAIN_REFRESH.pollFirst();
-//        if (domain != null) {
-//            try {
-//                // Atualizando campos do registro.
-//                domain.refresh();
-//            } catch (Exception ex) {
-//                Server.logError(ex);
-//            }
-//        }
     }
     
     /**
@@ -1046,8 +1087,18 @@ public class Domain implements Serializable, Comparable<Domain> {
                 Domain domain = getDomain(address);
                 return domain.get("owner-c", false);
             } catch (ProcessException ex) {
-                Server.logError(ex);
-                return null;
+                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else {
+                    Server.logError(ex);
+                    return null;
+                }
             }
         } else {
             return null;
