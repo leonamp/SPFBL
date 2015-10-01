@@ -311,6 +311,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   drop
     message = Invalid MAIL FROM address. Use a valid e-mail address.
     log_message = invalid sender.
+    condition = ${if match {$sender_address}{^\$}{false}{true}}
     condition = ${if match {$sender_address}{^([[:alnum:]][[:alnum:].+_=-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{false}{true}}
     condition = ${if match {$sender_address}{^SRS0(=|\\+)[[:alnum:]/+]+=[[:alnum:]]+=(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
     condition = ${if match {$sender_address}{^prvs=[[:alnum:]]+=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
@@ -371,6 +372,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   drop
     message = Invalid MAIL FROM address. Use a valid e-mail address.
     log_message = invalid sender.
+    condition = ${if match {$sender_address}{^\$}{false}{true}}
     condition = ${if match {$sender_address}{^([[:alnum:]][[:alnum:].+_=-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{false}{true}}
     condition = ${if match {$sender_address}{^SRS0(=|\\+)[[:alnum:]/+]+=[[:alnum:]]+=(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
     condition = ${if match {$sender_address}{^prvs=[[:alnum:]]+=([[:alnum:]][[:alnum:]._-]*)@(([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\}))\$}{false}{true}}
