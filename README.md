@@ -134,7 +134,7 @@ Os elementos que podem ser adicionados nesta lista são:
 * CIDRv6
 * CNPJ
 * CPF
-* WHOIS/&lt;field&gt;[/&lt;field&gt;...]=value
+* WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
