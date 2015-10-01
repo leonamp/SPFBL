@@ -111,27 +111,29 @@ EMPTY
 Para adicionar um bloqueio arbitrário:
 ```
 user:~# ./spfbl.sh block add <remetente>
-OK
+ADDED
 ```
 
 Para remover um bloqueio arbitrário:
 ```
 user:~# ./spfbl.sh block drop <remetente>
-OK
+DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
 * .tld
 * .domain.ltd
 * .sub.domain.tld
-* @domain.tld[;<qualifier>]
-* @sub.domain.tld[;<qualifier>]
-* sender@[;<qualifier>]
-* sender@domain.tld[;<qualifier>]
+* @domain.tld\[;<qualifier>\]
+* @sub.domain.tld\[;<qualifier>\]
+* sender@\[;<qualifier>\]
+* sender@domain.tld\[;<qualifier>\]
 * IPv4
 * IPv6
 * CIDRv4
 * CIDRv6
+* CNPJ
+* CPF
 * WHOIS/<field>[/<field>...]=value
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
@@ -153,13 +155,13 @@ EMPTY
 Para adicionar um spamtrap:
 ```
 user:~# ./spfbl.sh trap add <destinatário>
-OK
+ADDED
 ```
 
 Para remover um spamtrap:
 ```
 user:~# ./spfbl.sh trap drop <destinatário>
-OK
+DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
@@ -183,27 +185,29 @@ EMPTY
 Para adicionar um remetente:
 ```
 user:~# ./spfbl.sh white add <remetente>
-OK
+ADDED
 ```
 
 Para remover um remetente:
 ```
 user:~# ./spfbl.sh white drop <remetente>
-OK
+DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
 * .tld
 * .domain.ltd
 * .sub.domain.tld
-* @domain.tld[;<qualifier>]
-* @sub.domain.tld[;<qualifier>]
-* sender@[;<qualifier>]
-* sender@domain.tld[;<qualifier>]
+* @domain.tld\[;<qualifier>\]
+* @sub.domain.tld\[;<qualifier>\]
+* sender@\[;<qualifier>\]
+* sender@domain.tld\[;<qualifier>\]
 * IPv4
 * IPv6
 * CIDRv4
 * CIDRv6
+* CNPJ
+* CPF
 
 ##### Greylisting
 
@@ -255,7 +259,7 @@ Quando o qualificador for diferente de PASS, então o responsável considerado �
 
 Responsabilizar o HELO, quando um hostname for válido e aponta para o IP, é motivado pela seguinte ideia: se um hostname tiver funcionando em pilha dupla, então haveria duas listagens distintas, uma para o IPv4 e outra para o IPv6. Listar o HELO resolve este problema pois não importa por qual versão de IP o host envie mensagens, ele será visto pelo SPFBL como uma única entidade.
 
-##### Consulta de checagem SPFBL
+##### Checagem SPFBL
 
 É possível fazer uma consulta de checagem SPFBL. Este tipo de consulta não retorna ticket, mas mostra todos os responsáveis considerados pelo SPFBL, de modo que o administrador possa entender melhor a resposta de uma consulta normal SPFBL.
 
