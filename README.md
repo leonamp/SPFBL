@@ -424,9 +424,9 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo SPFBL.jar e a pasta lib deste jar em qualquer local. Se for a primeira vez que o serviço é iniciado, copie também os seguintes arquivos de cache no mesmo local: as.map, domain.map, guess.map, handle.map, helo.map, ns.map, owner.map, provider.set, spf.map, subnet4.map, subnet6.map, tld.set.
+Para instalar o serviço basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./dist/lib" e "./data/" em "/opt/spfbl/dist/".
 
-Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando no mesmo local:
+Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
 java -jar /opt/spfbl/dist/SPFBL.jar 9875 512 >> log.001.txt &
