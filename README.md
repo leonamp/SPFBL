@@ -124,17 +124,17 @@ Os elementos que podem ser adicionados nesta lista são:
 * .tld
 * .domain.ltd
 * .sub.domain.tld
-* @domain.tld[;&lt;qualifier&lt;]
-* @sub.domain.tld[;&lt;qualifier&lt;]
-* sender@[;&lt;qualifier&lt;]
-* sender@domain.tld[;&lt;qualifier&lt;]
+* @domain.tld[;&lt;qualifier&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;]
+* sender@[;&lt;qualifier&gt;]
+* sender@domain.tld[;&lt;qualifier&gt;]
 * IPv4
 * IPv6
 * CIDRv4
 * CIDRv6
 * CNPJ
 * CPF
-* WHOIS/&lt;field&lt;[/&lt;field&lt;...]=value
+* WHOIS/&lt;field&gt;[/&lt;field&gt;...]=value
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
@@ -198,10 +198,10 @@ Os elementos que podem ser adicionados nesta lista são:
 * .tld
 * .domain.ltd
 * .sub.domain.tld
-* @domain.tld[;&lt;qualifier&lt;]
-* @sub.domain.tld[;&lt;qualifier&lt;]
-* sender@[;&lt;qualifier&lt;]
-* sender@domain.tld\[;&lt;qualifier&lt;]
+* @domain.tld[;&lt;qualifier&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;]
+* sender@[;&lt;qualifier&gt;]
+* sender@domain.tld\[;&lt;qualifier&gt;]
 * IPv4
 * IPv6
 * CIDRv4
