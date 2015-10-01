@@ -1,2 +1,11 @@
-.~lock.reputation.ods#
 /build/
+/data/block.set
+/data/complain.map
+/data/complain.set
+/data/defer.map
+/data/distribution.map
+/data/helo.map
+/data/peer.map
+/data/spf.map
+/data/trap.set
+/data/white.set
