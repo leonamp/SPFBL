@@ -971,9 +971,15 @@ public class Domain implements Serializable, Comparable<Domain> {
 //     */
 //    private static final TreeSet<Domain> DOMAIN_REFRESH = new TreeSet<Domain>();
     
-    private static synchronized TreeSet<Domain> getDomainSet() {
+    public static synchronized TreeSet<Domain> getDomainSet() {
         TreeSet<Domain> domainSet = new TreeSet<Domain>();
         domainSet.addAll(DOMAIN_MAP.values());
+        return domainSet;
+    }
+    
+    public static synchronized TreeSet<String> getDomainNameSet() {
+        TreeSet<String> domainSet = new TreeSet<String>();
+        domainSet.addAll(DOMAIN_MAP.keySet());
         return domainSet;
     }
     

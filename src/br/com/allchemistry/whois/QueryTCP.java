@@ -14,6 +14,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -107,20 +108,34 @@ public final class QueryTCP extends Server {
                 try {
                     long time = System.currentTimeMillis();
                     String query = null;
-                    String result = null;
+                    String result = "";
                     Socket socket = SOCKET_LIST.poll();
                     try {
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         query = bufferedReader.readLine();
-                        if (query != null) {
+                        if (query == null) {
+                            result = "ERROR: QUERY\n";
+                        } else if (query.equals("DOMAIN SHOW")) {
+                            TreeSet<String> domainSet = Domain.getDomainNameSet();
+                            if (domainSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String domain : domainSet) {
+                                    if (result == null || result.length() == 0) {
+                                        result = domain + "\n";
+                                    } else {
+                                        result += domain + "\n";
+                                    }
+                                }
+                            }
+                        } else {
                             result = QueryTCP.this.processWHOIS(query);
-                            // Enviando resposta.
-                            OutputStream outputStream = socket.getOutputStream();
-                            outputStream.write(result.getBytes("ISO-8859-1"));
-                            // Mede o tempo de resposta para estatísticas.
                         }
+                        // Enviando resposta.
+                        OutputStream outputStream = socket.getOutputStream();
+                        outputStream.write(result.getBytes("ISO-8859-1"));
                     } finally {
                         // Fecha conexão logo após resposta.
                         socket.close();
