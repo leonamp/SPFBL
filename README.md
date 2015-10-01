@@ -120,6 +120,24 @@ user:~# ./spfbl.sh block drop <remetente>
 OK
 ```
 
+Os elementos que podem ser adicionados nesta lista são:
+* .tld
+* .domain.ltd
+* .sub.domain.tld
+* @domain.tld[;<qualifier>]
+* @sub.domain.tld[;<qualifier>]
+* sender@[;<qualifier>]
+* sender@domain.tld[;<qualifier>]
+* IPv4
+* IPv6
+* CIDRv4
+* CIDRv6
+* WHOIS/<field>[/<field>...]=value
+
+Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
+
+No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU".
+
 ##### Spamtrap
 
 É possível adicionar destinatários na lista spamtrap do SPFBL.
@@ -144,6 +162,14 @@ user:~# ./spfbl.sh trap drop <destinatário>
 OK
 ```
 
+Os elementos que podem ser adicionados nesta lista são:
+* .tld
+* .domain.ltd
+* .sub.domain.tld
+* @domain.tld
+* @sub.domain.tld
+* recipient@domain.tld
+
 ##### Whitelist
 
 É possível adicionar remetentes na lista branca.
@@ -166,9 +192,26 @@ user:~# ./spfbl.sh white drop <remetente>
 OK
 ```
 
-##### Greylisting (temporariamente desativado)
+Os elementos que podem ser adicionados nesta lista são:
+* .tld
+* .domain.ltd
+* .sub.domain.tld
+* @domain.tld[;<qualifier>]
+* @sub.domain.tld[;<qualifier>]
+* sender@[;<qualifier>]
+* sender@domain.tld[;<qualifier>]
+* IPv4
+* IPv6
+* CIDRv4
+* CIDRv6
 
-A mensagem será atrasada sempre que o responsável estiver com status GRAY e não houver uma mesma tentativa a 10min antes.
+##### Greylisting
+
+A mensagem será atrasada 25min sempre que o responsável estiver com status GRAY.
+
+##### Listed
+
+A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLACK.
 
 ### Funcionamento
 
