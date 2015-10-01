@@ -569,7 +569,7 @@ public final class SubnetIPv6 extends Subnet
         if (SUBNET_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("subnet6.map");
+                File file = new File("./data/subnet6.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(SUBNET_MAP, outputStream);
@@ -590,7 +590,7 @@ public final class SubnetIPv6 extends Subnet
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("subnet6.map");
+        File file = new File("./data/subnet6.map");
         if (file.exists()) {
             try {
                 TreeMap<Long,SubnetIPv6> map;

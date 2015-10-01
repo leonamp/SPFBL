@@ -192,7 +192,7 @@ public class Handle implements Serializable, Comparable<Handle> {
         if (HANDLE_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("handle.map");
+                File file = new File("./data/handle.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(HANDLE_MAP, outputStream);
@@ -213,7 +213,7 @@ public class Handle implements Serializable, Comparable<Handle> {
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("handle.map");
+        File file = new File("./data/handle.map");
         if (file.exists()) {
             try {
                 HashMap<String, Handle> map;

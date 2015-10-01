@@ -438,7 +438,7 @@ public final class SubnetIPv4 extends Subnet
         if (SUBNET_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("subnet4.map");
+                File file = new File("./data/subnet4.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(SUBNET_MAP, outputStream);
@@ -459,7 +459,7 @@ public final class SubnetIPv4 extends Subnet
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("subnet4.map");
+        File file = new File("./data/subnet4.map");
         if (file.exists()) {
             try {
                 TreeMap<Integer, SubnetIPv4> map;

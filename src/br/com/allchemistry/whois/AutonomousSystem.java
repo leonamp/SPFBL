@@ -287,7 +287,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         if (AS_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("as.map");
+                File file = new File("./data/as.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(AS_MAP, outputStream);
@@ -308,7 +308,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("as.map");
+        File file = new File("./data/as.map");
         if (file.exists()) {
             try {
                 HashMap<String,AutonomousSystem> map;

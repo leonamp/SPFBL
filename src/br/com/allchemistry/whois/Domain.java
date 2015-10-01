@@ -809,7 +809,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (DOMAIN_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("domain.map");
+                File file = new File("./data/domain.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(DOMAIN_MAP, outputStream);
@@ -829,7 +829,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (TLD_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("tld.set");
+                File file = new File("./data/tld.set");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(TLD_SET, outputStream);
@@ -850,7 +850,7 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("domain.map");
+        File file = new File("./data/domain.map");
         if (file.exists()) {
             try {
                 HashMap<String, Domain> map;
@@ -867,7 +867,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         }
         time = System.currentTimeMillis();
-        file = new File("tld.set");
+        file = new File("./data/tld.set");
         if (file.exists()) {
             try {
                 HashSet<String> set;

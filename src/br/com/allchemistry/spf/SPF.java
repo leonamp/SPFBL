@@ -1663,7 +1663,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("spf.map");
+                    File file = new File("./data/spf.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -1680,7 +1680,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("spf.map");
+            File file = new File("./data/spf.map");
             if (file.exists()) {
                 try {
                     HashMap<String, SPF> map;
@@ -1772,7 +1772,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("complain.map");
+                    File file = new File("./data/complain.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -1786,7 +1786,7 @@ public final class SPF implements Serializable {
                 }
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("complain.set");
+                    File file = new File("./data/complain.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -1804,7 +1804,7 @@ public final class SPF implements Serializable {
         private static synchronized void load() {
             {
                 long time = System.currentTimeMillis();
-                File file = new File("complain.map");
+                File file = new File("./data/complain.map");
                 if (file.exists()) {
                     try {
                         HashMap<String, Complain> map;
@@ -1965,7 +1965,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("distribution.map");
+                    File file = new File("./data/distribution.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -1982,7 +1982,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("distribution.map");
+            File file = new File("./data/distribution.map");
             if (file.exists()) {
                 try {
                     HashMap<String, Distribution> map;
@@ -2154,7 +2154,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("provider.set");
+                    File file = new File("./data/provider.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -2171,7 +2171,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("provider.set");
+            File file = new File("./data/provider.set");
             if (file.exists()) {
                 try {
                     TreeSet<String> set;
@@ -2405,7 +2405,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("white.set");
+                    File file = new File("./data/white.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -2422,7 +2422,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("white.set");
+            File file = new File("./data/white.set");
             if (file.exists()) {
                 try {
                     Set<String> set;
@@ -2592,7 +2592,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("trap.set");
+                    File file = new File("./data/trap.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -2609,7 +2609,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("trap.set");
+            File file = new File("./data/trap.set");
             if (file.exists()) {
                 try {
                     Set<String> set;
@@ -2972,7 +2972,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("block.set");
+                    File file = new File("./data/block.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -2989,7 +2989,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("block.set");
+            File file = new File("./data/block.set");
             if (file.exists()) {
                 try {
                     Set<String> set;
@@ -3230,7 +3230,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("ignore.set");
+                    File file = new File("./data/ignore.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
@@ -3247,7 +3247,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("ignore.set");
+            File file = new File("./data/ignore.set");
             if (file.exists()) {
                 try {
                     Set<String> set;
@@ -3385,7 +3385,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("peer.map");
+                    File file = new File("./data/peer.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -3402,7 +3402,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("peer.map");
+            File file = new File("./data/peer.map");
             if (file.exists()) {
                 try {
                     HashMap<InetAddress,Integer> map;
@@ -3515,7 +3515,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("guess.map");
+                    File file = new File("./data/guess.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -3532,7 +3532,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("guess.map");
+            File file = new File("./data/guess.map");
             if (file.exists()) {
                 try {
                     HashMap<String, String> map;
@@ -3885,7 +3885,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("helo.map");
+                    File file = new File("./data/helo.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -3902,7 +3902,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("helo.map");
+            File file = new File("./data/helo.map");
             if (file.exists()) {
                 try {
                     HashMap<String, HELO> map;
@@ -4003,7 +4003,7 @@ public final class SPF implements Serializable {
             if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("defer.map");
+                    File file = new File("./data/defer.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(MAP, outputStream);
@@ -4020,7 +4020,7 @@ public final class SPF implements Serializable {
 
         private static synchronized void load() {
             long time = System.currentTimeMillis();
-            File file = new File("defer.map");
+            File file = new File("./data/defer.map");
             if (file.exists()) {
                 try {
                     HashMap<String,Long> map;

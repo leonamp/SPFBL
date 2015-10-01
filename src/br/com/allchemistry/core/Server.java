@@ -116,7 +116,7 @@ public abstract class Server extends Thread {
     private static SecretKey getPrivateKey() {
         if (privateKey == null) {
             try {
-                File file = new File("server.key");
+                File file = new File("./data/server.key");
                 if (file.exists()) {
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
@@ -487,7 +487,7 @@ public abstract class Server extends Thread {
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
     public static synchronized String getLogClient(InetAddress ipAddress) {
-        File clientsFile = new File("clients.txt");
+        File clientsFile = new File("./data/clients.txt");
         if (!clientsFile.exists()) {
             subnetClientsMap.clear();
         } else if (clientsFile.lastModified() > lastClientsFileModified) {

@@ -118,7 +118,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
         if (NS_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("ns.map");
+                File file = new File("./data/ns.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(NS_MAP, outputStream);
@@ -139,7 +139,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("ns.map");
+        File file = new File("./data/ns.map");
         if (file.exists()) {
             try {
                 HashMap<String, NameServer> map;

@@ -30,7 +30,7 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
-![Donate](https://github.com/leonamp/SPFBL/blob/master/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 ### Funcionalidades
 
@@ -241,7 +241,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais quatro qualific
 
 O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: WHITE, GRAY, BLACK e BLOCK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima da mensagem ser SPAM:
 
-![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/flagFSM.png "flagFSM.png")
+![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/doc/flagFSM.png "flagFSM.png")
 
 Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
 
@@ -251,7 +251,7 @@ Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio
 
 O SPFBL utiliza deste fluxo para determinar responsável pelo envio da mensagem e qual ação o MX deve tomar:
 
-![flowchartSPFBL](https://github.com/leonamp/SPFBL/blob/master/flowchartSPFBL.png "flowchartSPFBL.png")
+![flowchartSPFBL](https://github.com/leonamp/SPFBL/blob/master/doc/flowchartSPFBL.png "flowchartSPFBL.png")
 
 ##### Tipos de responsável
 
@@ -447,7 +447,7 @@ O script de inicio e parada do SPFBL na inicialização do sistema operacional e
 
 A descentralização do serviço SPFBL deve ser feito através de redes P2P:
 
-![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/p2pNetwork.png "p2pNetwork.png")
+![p2pNetwork](https://github.com/leonamp/SPFBL/blob/master/doc/p2pNetwork.png "p2pNetwork.png")
 
 Aqui vemos um exemplo de rede com três pools, onde cada pool tem um servidor, cada servidor SPFBL tem três servidores de e-mail e cada servidor de e-mail tem três usuários.
 

@@ -292,7 +292,7 @@ public class Owner implements Serializable, Comparable<Owner> {
         if (OWNER_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("owner.map");
+                File file = new File("./data/owner.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(OWNER_MAP, outputStream);
@@ -313,7 +313,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      */
     public static synchronized void load() {
         long time = System.currentTimeMillis();
-        File file = new File("owner.map");
+        File file = new File("./data/owner.map");
         if (file.exists()) {
             try {
                 HashMap<String, Owner> map;
