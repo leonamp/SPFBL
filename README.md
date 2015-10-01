@@ -209,6 +209,8 @@ Os elementos que podem ser adicionados nesta lista são:
 * CNPJ
 * CPF
 
+Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
+
 ##### Greylisting
 
 A mensagem será atrasada 25min sempre que o responsável estiver com status GRAY.
