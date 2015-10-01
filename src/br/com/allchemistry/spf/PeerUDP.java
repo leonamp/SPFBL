@@ -113,7 +113,9 @@ public final class PeerUDP extends Server {
                     String token = new String(data, "ISO-8859-1").trim();
                     String result;
                     try {
-                        if (SPF.addBlock(token)) {
+                        if (SPF.isIgnore(token)) {
+                            result = "IGNORED";
+                        } else if (SPF.addBlock(token)) {
                             result = "ADDED";
                         } else {
                             result = "ALREADY EXISTS";

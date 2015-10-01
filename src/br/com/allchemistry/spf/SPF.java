@@ -3265,13 +3265,17 @@ public final class SPF implements Serializable {
             }
         }
     }
-
-    public static boolean addIgnore(String sender) throws ProcessException {
-        return CacheIgnore.add(sender);
+    
+    public static boolean isIgnore(String token) {
+        return CacheIgnore.contains(token);
     }
 
-    public static boolean dropIgnore(String sender) throws ProcessException {
-        return CacheIgnore.drop(sender);
+    public static boolean addIgnore(String token) throws ProcessException {
+        return CacheIgnore.add(token);
+    }
+
+    public static boolean dropIgnore(String token) throws ProcessException {
+        return CacheIgnore.drop(token);
     }
 
     public static TreeSet<String> getIgnoreSet() throws ProcessException {
