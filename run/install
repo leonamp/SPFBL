@@ -19,7 +19,7 @@ echo "----------------------------"
 
 # Checking if your system is CentOS/RedHat or Debian Based.
 if [ -f /usr/bin/yum ]; then
-    yum -y upgrade >/dev/null && yum -y install unzip wget java-1.8.0-openjdk
+    yum -y upgrade >/dev/null && yum -y install nc unzip wget java-1.8.0-openjdk
 else
     apt-get update >/dev/null && apt-get install -y unzip wget default-jre
 fi
@@ -29,51 +29,51 @@ wget https://github.com/leonamp/SPFBL/archive/master.zip
 
 if [ -f master.zip ]; then
     unzip master.zip
-    chmod +x SPFBL-master/*.sh
+    chmod +x SPFBL-master/client/*.sh
+    chmod +x SPFBL-master/run/*
 fi
 
 # Move bash files to /etc
 if [ ! -d /etc/spfbl ]; then
     mkdir -p /etc/spfbl
+    mv SPFBL/client/*.sh /etc/spfbl/
 fi
-
-# This command not will copy myself heh
-mv SPFBL-master/*.sh /etc/spfbl
 
 # Create spfbl folder
 if [ ! -d /opt/spfbl ]; then
-    mkdir -p /opt/spfbl
+    mkdir -p /opt/spfbl/bin
+    mv SPFBL-master/run/spfbl-init.sh /opt/spfbl/bin/
+    # Store SPFBL core to /opt
+    mv SPFBL-master/dist/* /opt/spfbl/
+    mv SPFBL-master/data /opt/spfbl/
+    mv SPFBL-master/doc /opt/spfbl/
+    mv SPFBL-master/README.md /opt/spfbl/doc/
 fi
-
-# Store SPFBL core to /opt
-mv SPFBL-master/dist /opt/spfbl
-mv SPFBL-master/*.set /opt/spfbl
 
 # Create log folder
 if [ ! -d /var/log/spfbl ]; then
     mkdir -p /var/log/spfbl
 fi
 
-# Create .map folder
-if [ ! -d /var/lib/spfbl ]; then
-    mkdir -p /var/lib/spfbl
-fi
-
 # Enable SPFBL autostart
-mv /etc/spfbl/spfbl-startup.sh /etc/init.d/
-
-#if [ -f /etc/redhat-release ]; then
-#    chkconfig spfbl-startup on
-#else
-    update-rc.d spfbl-startup.sh defaults 100
-#fi
+if [ -f /etc/redhat-release ]; then
+    mv SPFBL-master/run/spfbl-init-centos /etc/init.d/spfbl
+    chkconfig --add spfbl
+    chkconfig spfbl on
+else
+    update-rc.d spfbl.sh defaults 100
+fi
 
 # Make log rotation
 mv SPFBL-master/spfbl-rotate /etc/logrotate.d/spfbl
 
-/etc/spfbl/spfbl-startup.sh
+if [ -f /etc/redhat-release ]; then
+    service spfbl start
+else
+    /opt/spfbl/bin/spfbl-init.sh start
+fi
 
-if [ "$(ps auxwf | grep SPFBL | wc -l)" -eq "1" ]; then
+if [ "$(ps auxwf | grep SPFBL | grep -v grep | wc -l)" -eq "1" ]; then
     echo "-------------------------------------------"
     echo "Done. Your SPFBL Server should almost UP!"
     echo "-------------------------------------------"
