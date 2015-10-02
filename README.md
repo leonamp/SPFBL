@@ -221,7 +221,15 @@ A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLA
 
 ### Funcionamento
 
-A seguir é mostrado como o SPFBL funciona internamente.
+O SPFBL contém uma tabela chamada REPUTATION onde são guardados todos os identificadores de fontes denunciadas com suas respectivas informações de listagem.
+
+O exemplo da tabela REPUTATION do MatrixDefence pode ser visto neste link: <https://github.com/leonamp/SPFBL/blob/master/doc/reputation.ods>.
+
+A tabela REPUTATION é formada por quatro colunas:
+* Responsável: o identificador do responsável pelo envio;
+* Frequência: a frequência mais recente de envio naquele pool;
+* Status: o status do identificador baseado no método de listagem abaixo e
+* SPAM: a probabilidade mínima de uma mensagem ser SPAM para aquele identificador no mesmo pool.
 
 ##### Respostas SPFBL
 
