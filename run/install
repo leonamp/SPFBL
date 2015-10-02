@@ -36,7 +36,7 @@ fi
 # Move bash files to /etc
 if [ ! -d /etc/spfbl ]; then
     mkdir -p /etc/spfbl
-    mv SPFBL/client/*.sh /etc/spfbl/
+    mv SPFBL-master/client/*.sh /etc/spfbl/
 fi
 
 # Create spfbl folder
