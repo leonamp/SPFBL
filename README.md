@@ -223,7 +223,7 @@ A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLA
 
 O SPFBL contém uma tabela chamada REPUTATION onde são guardados todos os identificadores de fontes denunciadas com suas respectivas informações de listagem.
 
-O exemplo da tabela REPUTATION do MatrixDefence pode ser visto neste link: <https://github.com/leonamp/SPFBL/blob/master/doc/reputation.ods>.
+O exemplo da tabela REPUTATION do MatrixDefence pode ser visto neste link: <https://github.com/leonamp/SPFBL/raw/master/doc/reputation.ods>.
 
 A tabela REPUTATION é formada por quatro colunas:
 * Responsável: o identificador do responsável pelo envio;
