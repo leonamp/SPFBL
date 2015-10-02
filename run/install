@@ -65,7 +65,7 @@ else
 fi
 
 # Make log rotation
-mv SPFBL-master/spfbl-rotate /etc/logrotate.d/spfbl
+mv SPFBL-master/run/spfbl-rotate /etc/logrotate.d/spfbl
 
 if [ -f /etc/redhat-release ]; then
     service spfbl start
