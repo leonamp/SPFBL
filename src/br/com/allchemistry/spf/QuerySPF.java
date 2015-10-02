@@ -6,6 +6,8 @@ package br.com.allchemistry.spf;
 
 import br.com.allchemistry.core.ProcessException;
 import br.com.allchemistry.core.Server;
+import br.com.allchemistry.spf.SPF.Distribution;
+import br.com.allchemistry.spf.SPF.Status;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +18,7 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
+import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -365,6 +368,32 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "EMPTY\n";
                                 }
+                            } else if (line.equals("REPUTATION")) {
+                                // Comando para verificar a reputação dos tokens.
+                                type = "REPUT";
+                                StringBuilder stringBuilder = new StringBuilder();
+                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
+                                if (distributionMap.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String tokenReputation : distributionMap.keySet()) {
+                                        Distribution distribution = distributionMap.get(tokenReputation);
+                                        float probability = distribution.getMinSpamProbability();
+                                        if (probability > 0.0f && distribution.hasFrequency()) {
+                                            Status status = distribution.getStatus(tokenReputation);
+                                            String frequency = distribution.getFrequencyLiteral();
+                                            stringBuilder.append(tokenReputation);
+                                            stringBuilder.append(' ');
+                                            stringBuilder.append(frequency);
+                                            stringBuilder.append(' ');
+                                            stringBuilder.append(status);
+                                            stringBuilder.append(' ');
+                                            stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
+                                            stringBuilder.append('\n');
+                                        }
+                                    }
+                                    result = stringBuilder.toString();
+                                }
                             } else {
                                 query = line.trim();
                                 result = SPF.processSPF(client, query);
@@ -389,9 +418,6 @@ public final class QuerySPF extends Server {
                                 socket.getInetAddress(),
                                 query, result
                                 );
-                        // Atualiza registro mais consultado.
-//                        SPF.tryRefresh();
-//                        Server.tryBackugroundRefresh();
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);

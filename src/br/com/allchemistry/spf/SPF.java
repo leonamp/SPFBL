@@ -4296,27 +4296,6 @@ public final class SPF implements Serializable {
                     } catch (ProcessException ex) {
                         result = ex.getMessage() + "\n";
                     }
-                } else if (firstToken.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
-                    // Comando para verificar a reputação dos tokens.
-                    StringBuilder stringBuilder = new StringBuilder();
-                    TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
-                    for (String tokenReputation : distributionMap.keySet()) {
-                        Distribution distribution = distributionMap.get(tokenReputation);
-                        float probability = distribution.getMinSpamProbability();
-                        if (probability > 0.0f && distribution.hasFrequency()) {
-                            Status status = distribution.getStatus(tokenReputation);
-                            String frequency = distribution.getFrequencyLiteral();
-                            stringBuilder.append(tokenReputation);
-                            stringBuilder.append(' ');
-                            stringBuilder.append(frequency);
-                            stringBuilder.append(' ');
-                            stringBuilder.append(status);
-                            stringBuilder.append(' ');
-                            stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
-                            stringBuilder.append('\n');
-                        }
-                    }
-                    result = stringBuilder.toString();
                 } else if ((firstToken.equals("SPF") && tokenizer.countTokens() == 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
