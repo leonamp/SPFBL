@@ -116,26 +116,14 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				
-				if [ $3 == "all" ]; then
-                                        response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
-
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
-
-					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
-				elif [ $# -lt "2" ]; then
-					printf "Faltando parametro(s).\nSintaxe: $0 block show\n"
+				if [ $# -lt "2" ]; then
+					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
 				else
-					response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					if [ $3 == "all" ]; then
+						response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					else
+						response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					fi
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
