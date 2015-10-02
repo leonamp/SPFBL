@@ -37,6 +37,7 @@ fi
 if [ ! -d /etc/spfbl ]; then
     mkdir -p /etc/spfbl
     mv SPFBL-master/client/*.sh /etc/spfbl/
+    ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
 fi
 
 # Create spfbl folder
