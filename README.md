@@ -218,7 +218,7 @@ Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois i
 
 A mensagem será atrasada 25min sempre que o responsável estiver com status GRAY.
 
-##### Listed
+##### Blacklisted
 
 A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLACK.
 
