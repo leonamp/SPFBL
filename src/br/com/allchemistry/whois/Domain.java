@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
+import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -900,10 +901,11 @@ public class Domain implements Serializable, Comparable<Domain> {
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
+        } catch (CommunicationException ex) {
+            Server.logCheckDNS(time, host, "TIMEOUT");
         } catch (Exception ex) {
-            // Houve falha para encontrar os registros.
-            Server.logCheckDNS(time, host, "ERROR " + ex.getMessage());
-            throw new ProcessException("ERROR: NSLOOKUP", ex);
+            // Houve uma falha indefinida para encontrar os registros.
+            Server.logError(ex);
         }
     }
     

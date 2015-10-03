@@ -305,10 +305,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo cental.
+     * Verifica se o whois é um mecanismo cental.
      *
-     * @param token o token do registro SPF.
-     * @return verdadeiro se o token é um mecanismo cental.
+     * @param token o whois do registro SPF.
+     * @return verdadeiro se o whois é um mecanismo cental.
      */
     private static boolean isMechanismMiddle(String token) {
         if (isMechanismIPv4(token)) {
@@ -490,10 +490,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo all válido.
+     * Verifica se o whois é um mecanismo all válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo all válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo all válido.
      */
     private static boolean isMechanismAll(String token) {
         return Pattern.matches(
@@ -501,10 +501,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo ip4 válido.
+     * Verifica se o whois é um mecanismo ip4 válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo ip4 válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo ip4 válido.
      */
     private static boolean isMechanismIPv4(String token) {
         return Pattern.matches(
@@ -518,7 +518,7 @@ public final class SPF implements Serializable {
     /**
      * Extrai um CIDR de IPv4 válido.
      *
-     * @param token o token a ser verificado.
+     * @param token o whois a ser verificado.
      * @return um CIDR de IPv4 válido.
      */
     private static String extractIPv4CIDR(String token) {
@@ -535,10 +535,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo ip6 válido.
+     * Verifica se o whois é um mecanismo ip6 válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo ip6 válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo ip6 válido.
      */
     private static boolean isMechanismIPv6(String token) {
         return Pattern.matches(
@@ -572,7 +572,7 @@ public final class SPF implements Serializable {
     /**
      * Extrai um CIDR de IPv6 válido.
      *
-     * @param token o token a ser verificado.
+     * @param token o whois a ser verificado.
      * @return um CIDR de IPv6 válido.
      */
     private static String extractIPv6CIDR(String token) {
@@ -624,10 +624,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo a válido.
+     * Verifica se o whois é um mecanismo a válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo a válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo a válido.
      */
     private static boolean isMechanismA(String token) {
         token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
@@ -640,10 +640,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo mx válido.
+     * Verifica se o whois é um mecanismo mx válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo mx válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo mx válido.
      */
     private static boolean isMechanismMX(String token) {
         token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
@@ -655,10 +655,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo ptr válido.
+     * Verifica se o whois é um mecanismo ptr válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo ptr válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo ptr válido.
      */
     private static boolean isMechanismPTR(String token) {
         token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
@@ -669,10 +669,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo existis válido.
+     * Verifica se o whois é um mecanismo existis válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo existis válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo existis válido.
      */
     private static boolean isMechanismExistis(String token) {
         token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
@@ -683,10 +683,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um mecanismo include válido.
+     * Verifica se o whois é um mecanismo include válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um mecanismo include válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um mecanismo include válido.
      */
     private static boolean isMechanismInclude(String token) {
         token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
@@ -697,10 +697,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um modificador redirect válido.
+     * Verifica se o whois é um modificador redirect válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um modificador redirect válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um modificador redirect válido.
      */
     private static boolean isModifierRedirect(String token) {
         return Pattern.matches(
@@ -710,10 +710,10 @@ public final class SPF implements Serializable {
     }
 
     /**
-     * Verifica se o token é um modificador explanation válido.
+     * Verifica se o whois é um modificador explanation válido.
      *
-     * @param token o token a ser verificado.
-     * @return verdadeiro se o token é um modificador explanation válido.
+     * @param token o whois a ser verificado.
+     * @return verdadeiro se o whois é um modificador explanation válido.
      */
     private static boolean isModifierExplanation(String token) {
         return Pattern.matches(
@@ -2028,10 +2028,10 @@ public final class SPF implements Serializable {
         }
 
         /**
-         * Retorna uma distribuição binomial do token informado.
+         * Retorna uma distribuição binomial do whois informado.
          *
-         * @param token o token cuja distribuição deve ser retornada.
-         * @return uma distribuição binomial do token informado.
+         * @param token o whois cuja distribuição deve ser retornada.
+         * @return uma distribuição binomial do whois informado.
          */
         private static Distribution get(String token, boolean create) {
             Distribution distribution = MAP.get(token);
@@ -2709,7 +2709,9 @@ public final class SPF implements Serializable {
             } else {
                 qualif = "";
             }
-            if (isWhois(token)) {
+            if (isWHOIS(token)) {
+                return token;
+            } else if (isREGEX(token)) {
                 return token;
             } else if (Owner.isOwnerID(token)) {
                 return Owner.normalizeID(token) + qualif;
@@ -2732,8 +2734,16 @@ public final class SPF implements Serializable {
             }
         }
         
-        private static boolean isWhois(String token) {
-            return Pattern.matches("^WHOIS(/[a-z-]+)+=[a-zA-Z0-9@.]+$", token);
+        private static boolean matches(String regex, String token) {
+            return Pattern.matches(regex, token);
+        }
+        
+        private static boolean isWHOIS(String token) {
+            return matches("^WHOIS(/[a-z-]+)+=[a-zA-Z0-9@.]+$", token);
+        }
+        
+        private static boolean isREGEX(String token) {
+            return matches("^REGEX=[^ ]+$", token);
         }
 
         private static synchronized boolean drop(String token) throws ProcessException {
@@ -2823,6 +2833,9 @@ public final class SPF implements Serializable {
         private static boolean contains(String client,
                 String ip, String sender, String helo,
                 String ownerid, String qualifier) {
+            TreeSet<String> whoisSet = new TreeSet<String>();
+            TreeSet<String> regexSet = new TreeSet<String>();
+            // Verifica o remetente.
             if (sender != null && sender.contains("@")) {
                 sender = sender.toLowerCase();
                 int index1 = sender.indexOf('@');
@@ -2883,34 +2896,22 @@ public final class SPF implements Serializable {
                         }
                     }
                 }
-                if (sender.endsWith(".br")) {
-                    for (String token : SET.subSet("WHOIS/", false, "WHOIS<", false)) {
-                        int indexKey = token.indexOf('/');
-                        int indexValue = token.indexOf('=');
-                        String key = token.substring(indexKey + 1, indexValue);
-                        String criterion = token.substring(indexValue + 1);
-                        String value = Domain.getValue(sender, key);
-                        if (criterion.equals(value)) {
-                            return true;
-                        }
-                    }
-                    for (String token : SET.subSet(client + ":WHOIS/", false, client + ":WHOIS<", false)) {
-                        int indexKey = token.indexOf('/');
-                        int indexValue = token.indexOf('=');
-                        String key = token.substring(indexKey + 1, indexValue);
-                        String criterion = token.substring(indexValue + 1);
-                        String value = Domain.getValue(sender, key);
-                        if (criterion.equals(value)) {
-                            return true;
-                        }
-                    }
+                if (domain.endsWith(".br")) {
+                    whoisSet.add(domain);
                 }
+                regexSet.add(sender);
             }
+            // Verifica o HELO.
             if ((helo = Domain.extractHost(helo, true)) != null) {
                 if (containsHost(client, helo, qualifier)) {
                     return true;
                 }
+                if (helo.endsWith(".br")) {
+                    whoisSet.add(helo);
+                }
+                regexSet.add(helo);
             }
+            // Verifica o ownerid.
             if (ownerid != null) {
                 if (SET.contains(ownerid)) {
                     return true;
@@ -2922,6 +2923,7 @@ public final class SPF implements Serializable {
                     return true;
                 }
             }
+            // Verifica o IP.
             if (ip != null) {
                 ip = Subnet.normalizeIP(ip);
                 if (SET.contains(ip)) {
@@ -2933,6 +2935,31 @@ public final class SPF implements Serializable {
                 } else if (SET.contains(client + ':' + ip + ';' + qualifier)) {
                     return true;
                 }
+                regexSet.add(ip);
+            }
+            // Verifica um critério do REGEX.
+            if (!regexSet.isEmpty()) {
+                for (String whois : SET.subSet("REGEX=", false, "REGEX>", false)) {
+                    int index = whois.indexOf('=');
+                    String regex = whois.substring(index + 1);
+                    for (String token : regexSet) {
+                        if (matches(regex, token)) {
+                            return true;
+                        }
+                    }
+                }
+                for (String whois : SET.subSet(client + ":REGEX=", false, client + ":REGEX>", false)) {
+                    int index = whois.indexOf('=');
+                    String regex = whois.substring(index + 1);
+                    for (String token : regexSet) {
+                        if (matches(regex, token)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            // Verifica o bloco IP.
+            if (ip != null) {
                 String inet = Subnet.getInetnum(ip);
                 if (inet != null) {
                     if (SET.contains(inet)) {
@@ -2943,6 +2970,33 @@ public final class SPF implements Serializable {
                         return true;
                     } else if (SET.contains(client + ':' + inet + ';' + qualifier)) {
                         return true;
+                    }
+                }
+            }
+            // Verifica critérios do WHOIS.
+            if (!whoisSet.isEmpty()) {
+                for (String whois : SET.subSet("WHOIS/", false, "WHOIS<", false)) {
+                    int indexKey = whois.indexOf('/');
+                    int indexValue = whois.indexOf('=');
+                    String key = whois.substring(indexKey + 1, indexValue);
+                    String criterion = whois.substring(indexValue + 1);
+                    for (String token : whoisSet) {
+                        String value = Domain.getValue(token, key);
+                        if (criterion.equals(value)) {
+                            return true;
+                        }
+                    }
+                }
+                for (String whois : SET.subSet(client + ":WHOIS/", false, client + ":WHOIS<", false)) {
+                    int indexKey = whois.indexOf('/');
+                    int indexValue = whois.indexOf('=');
+                    String key = whois.substring(indexKey + 1, indexValue);
+                    String criterion = whois.substring(indexValue + 1);
+                    for (String token : whoisSet) {
+                        String value = Domain.getValue(token, key);
+                        if (criterion.equals(value)) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -3151,13 +3205,13 @@ public final class SPF implements Serializable {
             }
         }
 
-//        private static boolean contains(String token) {
-//            if (token == null) {
+//        private static boolean contains(String whois) {
+//            if (whois == null) {
 //                return false;
-//            } else if ((token = normalize(token)) == null) {
+//            } else if ((whois = normalize(whois)) == null) {
 //                return false;
 //            } else {
-//                return SET.contains(token);
+//                return SET.contains(whois);
 //            }
 //        }
         
@@ -4198,7 +4252,7 @@ public final class SPF implements Serializable {
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
-                    // Pelo menos um token está listado e com atrazo programado de um dia.
+                    // Pelo menos um whois está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
 //                } else if (isTooNew(created) && CacheDefer.defer(origem, 55)) {
@@ -4206,7 +4260,7 @@ public final class SPF implements Serializable {
 //                    return "action=DEFER [RBL] "
 //                            + "you are greylisted on this server.\n\n";
                 } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
-                    // Pelo menos um token está em greylisting com atrazo programado de 10min.
+                    // Pelo menos um whois está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
 //                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
@@ -4491,16 +4545,16 @@ public final class SPF implements Serializable {
                             } else if (SPF.isBlocked(tokenSet)) {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);
-                                // Pelo menos um token do conjunto está bloqueado.
+                                // Pelo menos um whois do conjunto está bloqueado.
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
-                                // Pelo menos um token do conjunto está em lista negra com atrazo de 1 dia.
+                                // Pelo menos um whois do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
 //                            } else if (isTooNew(created) && CacheDefer.defer(origem, 55)) {
 //                                // Domínio muito novo com atrazo programado de 1 hora.
 //                                return "GREYLIST\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
-                                // Pelo menos um token do conjunto está em greylisting com atrazo de 10min.
+                                // Pelo menos um whois do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
 //                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
 //                                // SOFTFAIL com atrazo de 1min.
