@@ -46,6 +46,7 @@ if [ ! -d /opt/spfbl ]; then
     mv SPFBL-master/run/spfbl-init.sh /opt/spfbl/bin/
     # Store SPFBL core to /opt
     mv SPFBL-master/dist/* /opt/spfbl/
+    mv SPFBL-master/lib /opt/spfbl/
     mv SPFBL-master/data /opt/spfbl/
     mv SPFBL-master/doc /opt/spfbl/
     mv SPFBL-master/README.md /opt/spfbl/doc/
