@@ -67,7 +67,22 @@ while ( my $line = <STDIN> ) {
     # parse the result
     if ( $result =~ /^LISTED/ ) {
         STDOUT->print(
-            "action=REJECT [RBL] You are blocked in this server for seven days.\n\n"
+            "action=DEFER [RBL] you are temporarily blocked on this server.\n\n"
+        );
+    }
+    elsif ( $result =~ /^BLOCKED/ ) {
+        STDOUT->print(
+            "action=REJECT [RBL] you are permanently blocked in this server.\n\n"
+        );
+    }
+    elsif ( $result =~ /^GREYLIST/ ) {
+        STDOUT->print(
+            "action=DEFER [RBL] you are greylisted on this server.\n\n"
+        );
+    }
+    elsif ( $result =~ /^SPAMTRAP/ ) {
+        STDOUT->print(
+            "action=DISCARD [RBL] discarded by spamtrap.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: HOST NOT FOUND/ ) {
