@@ -121,19 +121,19 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld[&gt;;&ltrecipient&gt;]
-* .domain.ltd[&gt;;&ltrecipient&gt;]
-* .sub.domain.tld[&gt;;&ltrecipient&gt;]
-* @domain.tld[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* sender@[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* sender@domain.tld[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* IPv4[&gt;;&ltrecipient&gt;]
-* IPv6[&gt;;&ltrecipient&gt;]
-* CIDRv4[&gt;;&ltrecipient&gt;]
-* CIDRv6[&gt;;&ltrecipient&gt;]
-* CNPJ[&gt;;&ltrecipient&gt;]
-* CPF[&gt;;&ltrecipient&gt;]
+* .tld[&gt;&lt;recipient&gt;]
+* .domain.ltd[&gt;&lt;recipient&gt;]
+* .sub.domain.tld[&gt;&lt;recipient&gt;]
+* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* IPv4[&gt;&lt;recipient&gt;]
+* IPv6[&gt;&lt;recipient&gt;]
+* CIDRv4[&gt;&lt;recipient&gt;]
+* CIDRv6[&gt;&lt;recipient&gt;]
+* CNPJ[&gt;&lt;recipient&gt;]
+* CPF[&gt;&lt;recipient&gt;]
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
 
@@ -198,19 +198,19 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld[&gt;;&ltrecipient&gt;]
-* .domain.ltd[&gt;;&ltrecipient&gt;]
-* .sub.domain.tld[&gt;;&ltrecipient&gt;]
-* @domain.tld[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* sender@[;&lt;qualifier&gt;][&gt;;&lt;recipient&gt;]
-* sender@domain.tld\[;&lt;qualifier&gt;][&gt;;&ltrecipient&gt;]
-* IPv4[&gt;;&ltrecipient&gt;]
-* IPv6[&gt;;&ltrecipient&gt;]
-* CIDRv4[&gt;;&ltrecipient&gt;]
-* CIDRv6[&gt;;&ltrecipient&gt;]
-* CNPJ[&gt;;&ltrecipient&gt;]
-* CPF[&gt;;&ltrecipient&gt;]
+* .tld[&gt;&lt;recipient&gt;]
+* .domain.ltd[&gt;&lt;recipient&gt;]
+* .sub.domain.tld[&gt;&lt;recipient&gt;]
+* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@domain.tld\[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* IPv4[&gt;&lt;recipient&gt;]
+* IPv6[&gt;&lt;recipient&gt;]
+* CIDRv4[&gt;&lt;recipient&gt;]
+* CIDRv6[&gt;&lt;recipient&gt;]
+* CNPJ[&gt;&lt;recipient&gt;]
+* CPF[&gt;&lt;recipient&gt;]
 
 Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
 
