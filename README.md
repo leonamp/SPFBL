@@ -121,24 +121,27 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld
-* .domain.ltd
-* .sub.domain.tld
-* @domain.tld[;&lt;qualifier&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;]
-* sender@[;&lt;qualifier&gt;]
-* sender@domain.tld[;&lt;qualifier&gt;]
-* IPv4
-* IPv6
-* CIDRv4
-* CIDRv6
-* CNPJ
-* CPF
+* .tld[&gt;&lt;recipient&gt;]
+* .domain.ltd[&gt;&lt;recipient&gt;]
+* .sub.domain.tld[&gt;&lt;recipient&gt;]
+* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* IPv4[&gt;&lt;recipient&gt;]
+* IPv6[&gt;&lt;recipient&gt;]
+* CIDRv4[&gt;&lt;recipient&gt;]
+* CIDRv6[&gt;&lt;recipient&gt;]
+* CNPJ[&gt;&lt;recipient&gt;]
+* CPF[&gt;&lt;recipient&gt;]
+* REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
 No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU".
+
+Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
 
 ##### Spamtrap
 
@@ -195,19 +198,19 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld
-* .domain.ltd
-* .sub.domain.tld
-* @domain.tld[;&lt;qualifier&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;]
-* sender@[;&lt;qualifier&gt;]
-* sender@domain.tld\[;&lt;qualifier&gt;]
-* IPv4
-* IPv6
-* CIDRv4
-* CIDRv6
-* CNPJ
-* CPF
+* .tld[&gt;&lt;recipient&gt;]
+* .domain.ltd[&gt;&lt;recipient&gt;]
+* .sub.domain.tld[&gt;&lt;recipient&gt;]
+* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@domain.tld\[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* IPv4[&gt;&lt;recipient&gt;]
+* IPv6[&gt;&lt;recipient&gt;]
+* CIDRv4[&gt;&lt;recipient&gt;]
+* CIDRv6[&gt;&lt;recipient&gt;]
+* CNPJ[&gt;&lt;recipient&gt;]
+* CPF[&gt;&lt;recipient&gt;]
 
 Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
 
@@ -215,7 +218,7 @@ Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois i
 
 A mensagem será atrasada 25min sempre que o responsável estiver com status GRAY.
 
-##### Listed
+##### Blacklisted
 
 A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLACK.
 
