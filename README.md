@@ -441,12 +441,12 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./dist/lib" e "./data/" em "/opt/spfbl/dist/".
+Para instalar o serviço basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./lib" e "./data/" em "/opt/spfbl/".
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
-java -jar /opt/spfbl/dist/SPFBL.jar 9875 512 >> log.001.txt &
+java -jar /opt/spfbl/SPFBL.jar 9875 512 >> log.001.txt &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
