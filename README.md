@@ -285,9 +285,18 @@ Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, tem
 
 ##### Integração nativa Postfix
 
-O SPFBL tem integração nativa com o Postfix. Para utilizar o serviço SPFBL pelo Postfix, basta adicionar a seguinte linha no arquivo main.cf:
+O SPFBL tem integração nativa com o Postfix.
+
+Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
 ```
-check_policy_service inet:<IP do servidor SPFBL>:9877
+check_policy_service {inet:<IP do servidor SPFBL>:9877, timeout=10s, default_action=PREPEND Received-SPFBL: TIMEOUT}
+
+```
+
+Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo main.cf:
+```
+policy-spfbl  unix  -       n       n       -       -       spawn
+   user=nobody argv=/usr/bin/spfblquery.pl
 ```
 
 ##### Integração nativa Zimbra
