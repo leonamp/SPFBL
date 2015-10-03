@@ -119,7 +119,7 @@ case $1 in
 				if [ $# -lt "2" ]; then
 					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
 				else
-					if [ $3 == "all" ]; then
+					if [ "$3" == "all" ]; then
 						response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 					else
 						response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
