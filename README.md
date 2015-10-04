@@ -130,10 +130,9 @@ Os elementos que podem ser adicionados nesta lista são:
 * sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
 * IPv4[&gt;&lt;recipient&gt;]
 * IPv6[&gt;&lt;recipient&gt;]
-* CIDRv4[&gt;&lt;recipient&gt;]
-* CIDRv6[&gt;&lt;recipient&gt;]
 * CNPJ[&gt;&lt;recipient&gt;]
 * CPF[&gt;&lt;recipient&gt;]
+* CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
 
