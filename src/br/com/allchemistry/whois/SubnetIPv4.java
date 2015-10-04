@@ -100,19 +100,15 @@ public final class SubnetIPv4 extends Subnet
     protected static String normalizeCIDRv4(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
-        String mask = inetnum.substring(index+1);
-        ArrayList<String> ipSequence = new ArrayList<String>(4);
-        StringTokenizer tokenizer = new StringTokenizer(ip, ".");
-        while (tokenizer.hasMoreTokens()) {
-            ipSequence.add(tokenizer.nextToken());
-        }
-        while (ipSequence.size() < 4) {
-            ipSequence.add("0");
-        }
-        return ipSequence.get(0) + "." +
-                ipSequence.get(1) + "." +
-                ipSequence.get(2) + "." + 
-                ipSequence.get(3) + "/" + mask;
+        String size = inetnum.substring(index+1);
+        int sizeInt = Integer.parseInt(size);
+        byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+        byte[] address = SubnetIPv4.split(ip, mask);
+        int octet1 = address[0] & 0xFF;
+        int octet2 = address[1] & 0xFF;
+        int octet3 = address[2] & 0xFF;
+        int octet4 = address[3] & 0xFF;
+        return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
     }
     
     /**
@@ -135,6 +131,32 @@ public final class SubnetIPv4 extends Subnet
             }
         }
         return address;
+    }
+    
+    public static byte[] split(String ip, byte[] mask) {
+        byte[] address = new byte[4];
+        StringTokenizer tokenizer = new StringTokenizer(ip, ".");
+        for (int i = 0; i < 4; i++) {
+            if (tokenizer.hasMoreTokens()) {
+                address[i] |= Short.parseShort(tokenizer.nextToken());
+                address[i] &= mask[i];
+            }
+        }
+        return address;
+    }
+    
+    public static byte[] getMaskIPv4(int size) {
+        byte[] mask = new byte[4];
+        int n = size / 8;
+        int r = size % 8;
+        int i;
+        for (i = 0; i < n; i++) {
+            mask[i] = (byte) 0xFF;
+        }
+        if (i < n) {
+            mask[i] = (byte) (0xFF << 8 - r);
+        }
+        return mask;
     }
     
     public static String reverse(String ip) {
@@ -493,6 +515,17 @@ public final class SubnetIPv4 extends Subnet
      */
     public boolean contains(int ip) {
         return this.address == (ip & mask);
+    }
+    
+    public static boolean containsIPv4(String cidr, String ip) {
+        if (isValidCIDRv4(cidr) && isValidIPv4(ip)) {
+            int mask = SubnetIPv4.getMaskNet(cidr);
+            int address1 = SubnetIPv4.getAddressNet(cidr);
+            int address2 = SubnetIPv4.getAddressIP(ip);
+            return (address1 & mask) == (address2 & mask);
+        } else {
+            return false;
+        }
     }
     
 //    @Override

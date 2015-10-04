@@ -937,25 +937,35 @@ public abstract class Server extends Thread {
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
                         // Comando para adicionar TLDs.
                         while (tokenizer.hasMoreTokens()) {
-                            String tld = tokenizer.nextToken();
-                            Domain.addTLD(tld);
-                        }
-                        result = "OK\n";
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreTokens()) {
-                            token = tokenizer.nextToken();
-                            Domain.removeTLD(token);
-                        }
-                        result = "OK\n";
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (String tld : Domain.getTLDSet()) {
-                            if (result == null) {
-                                result = tld + "\n";
-                            } else {
-                                result += tld + "\n";
+                            try {
+                                String tld = tokenizer.nextToken();
+                                if (Domain.addTLD(tld)) {
+                                    result += "ADDED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreTokens()) {
+                            try {
+                                token = tokenizer.nextToken();
+                                if (Domain.removeTLD(token)) {
+                                    result += "DROPED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (String tld : Domain.getTLDSet()) {
+                            result += tld + "\n";
+                        }
+                        if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -968,17 +978,16 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String provider = tokenizer.nextToken();
-                                boolean added = SPF.addProvider(provider);
-                                if (result == null) {
-                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                if (SPF.addProvider(provider)) {
+                                    result += "ADDED\n";
                                 } else {
-                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                    result += "ALREADY EXISTS\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
@@ -987,30 +996,25 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String provider = tokenizer.nextToken();
-                                boolean droped = SPF.dropProvider(provider);
-                                if (result == null) {
-                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                if (SPF.dropProvider(provider)) {
+                                    result += "DROPED\n";
                                 } else {
-                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                    result += "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeProvider();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
                         for (String provider : SPF.getProviderSet()) {
-                            if (result == null) {
-                                result = provider + "\n";
-                            } else {
-                                result += provider + "\n";
-                            }
+                            result += provider + "\n";
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1023,17 +1027,16 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String ignore = tokenizer.nextToken();
-                                boolean added = SPF.addIgnore(ignore);
-                                if (result == null) {
-                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                if (SPF.addIgnore(ignore)) {
+                                    result += "ADDED\n";
                                 } else {
-                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                    result += "ALREADY EXISTS\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeIgnore();
@@ -1042,17 +1045,16 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String ignore = tokenizer.nextToken();
-                                boolean droped = SPF.dropIgnore(ignore);
-                                if (result == null) {
-                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                if (SPF.dropIgnore(ignore)) {
+                                    result += "DROPED\n";
                                 } else {
-                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                    result += "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeIgnore();
@@ -1060,13 +1062,9 @@ public abstract class Server extends Thread {
                         // Mecanismo de visualização de provedores.
                         TreeSet<String> ignoreSet = SPF.getIgnoreSet();
                         for (String ignore : ignoreSet) {
-                            if (result == null) {
-                                result = ignore + "\n";
-                            } else {
-                                result += ignore + "\n";
-                            }
+                            result += ignore + "\n";
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1078,17 +1076,16 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreElements()) {
                             try {
                                 String blockedToken = tokenizer.nextToken();
-                                boolean added = SPF.addBlock(blockedToken);
-                                if (result == null) {
-                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                if (SPF.addBlock(blockedToken)) {
+                                    result += "ADDED\n";
                                 } else {
-                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                    result += "ALREADY EXISTS\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
@@ -1096,17 +1093,16 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreElements()) {
                             try {
                                 String blockedToken = tokenizer.nextToken();
-                                boolean droped = SPF.dropBlock(blockedToken);
-                                if (result == null) {
-                                    result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                if (SPF.dropBlock(blockedToken)) {
+                                    result += "DROPED\n";
                                 } else {
-                                    result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                    result += "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
+                                result += ex.getMessage() + "\n";
                             }
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
                         SPF.storeBlock();
@@ -1115,13 +1111,9 @@ public abstract class Server extends Thread {
                             // Mecanismo de visualização 
                             // de bloqueios de remetentes.
                             for (String sender : SPF.getBlockSet()) {
-                                if (result == null) {
-                                    result = sender + "\n";
-                                } else {
-                                    result += sender + "\n";
-                                }
+                                result += sender + "\n";
                             }
-                            if (result == null || result.length() == 0) {
+                            if (result.length() == 0) {
                                 result = "EMPTY\n";
                             }
                         } else if (tokenizer.countTokens() == 1) {
@@ -1130,13 +1122,9 @@ public abstract class Server extends Thread {
                                 // Mecanismo de visualização de 
                                 // todos os bloqueios de remetentes.
                                 for (String sender : SPF.getAllBlockSet()) {
-                                    if (result == null) {
-                                        result = sender + "\n";
-                                    } else {
-                                        result += sender + "\n";
-                                    }
+                                    result += sender + "\n";
                                 }
-                                if (result == null || result.length() == 0) {
+                                if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             }
@@ -1173,13 +1161,9 @@ public abstract class Server extends Thread {
                         }
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String sender : SPF.getPeerSet()) {
-                            if (result == null) {
-                                result = sender + "\n";
-                            } else {
-                                result += sender + "\n";
-                            }
+                            result += sender + "\n";
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1209,13 +1193,9 @@ public abstract class Server extends Thread {
                         SPF.storeSPF();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String guess : SPF.getGuessSet()) {
-                            if (result == null) {
-                                result = guess + "\n";
-                            } else {
-                                result += guess + "\n";
-                            }
+                            result += guess + "\n";
                         }
-                        if (result == null || result.length() == 0) {
+                        if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
                     } else {
@@ -1246,18 +1226,13 @@ public abstract class Server extends Thread {
                     while (tokenizer.hasMoreElements()) {
                         try {
                             token = tokenizer.nextToken();
-                            boolean cleared = SPF.clear(token);
-                            if (result == null) {
-                                result = (cleared ? "CLEARED" : "NOT FOUND") + "\n";
+                            if (SPF.clear(token)) {
+                                result += "CLEARED\n";
                             } else {
-                                result += (cleared ? "CLEARED" : "NOT FOUND") + "\n";
+                                result += "NOT FOUND\n";
                             }
                         } catch (Exception ex) {
-                            if (result == null || result.length() == 0) {
-                                result = ex.getMessage() + "\n";
-                            } else {
-                                result += ex.getMessage() + "\n";
-                            }
+                            result += ex.getMessage() + "\n";
                         }
                     }
                     SPF.storeDistribution();

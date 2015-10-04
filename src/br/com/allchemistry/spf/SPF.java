@@ -2784,6 +2784,8 @@ public final class SPF implements Serializable {
                 return token;
             } else if (isREGEX(token)) {
                 return token;
+            } else if (isCIDR(token)) {
+                return normalizeCIDR(token);
             } else {
                 String recipient = "";
                 if (token.contains(">")) {
@@ -2847,6 +2849,42 @@ public final class SPF implements Serializable {
         
         private static boolean isREGEX(String token) {
             return matches("^REGEX=[^ ]+$", token);
+        }
+        
+        private static boolean isCIDR(String token) {
+            return matches("^CIDR=("
+                    + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
+                    + "|"
+                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|"
+                    + "::(ffff(:0{1,4}){0,1}:){0,1}"
+                    + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
+                    + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}:"
+                    + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
+                    + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])/[0-9]{1,3})"
+                    + ")$", token);
+        }
+        
+        private static String normalizeCIDR(String token) {
+            if (token == null) {
+                return null;
+            } else if (token.startsWith("CIDR=")) {
+                int index = token.indexOf('=');
+                String cidr = token.substring(index + 1);
+                return "CIDR=" + Subnet.normalizeCIDR(cidr);
+            } else {
+                return null;
+            }
         }
 
         private static synchronized boolean drop(String token) throws ProcessException {
@@ -3164,6 +3202,23 @@ public final class SPF implements Serializable {
                 }
                 regexSet.add(ip);
             }
+            // Verifica o CIDR.
+            if (ip != null) {
+                for (String cidr : SET.subSet("CIDR=", false, "CIDR>", false)) {
+                    int index = cidr.indexOf('=');
+                    cidr = cidr.substring(index + 1);
+                    if (Subnet.containsIP(cidr, ip)) {
+                        return true;
+                    }
+                }
+                for (String cidr : SET.subSet(client + ":CIDR=", false, client + ":CIDR>", false)) {
+                    int index = cidr.indexOf('=');
+                    cidr = cidr.substring(index + 1);
+                    if (Subnet.containsIP(cidr, ip)) {
+                        return true;
+                    }
+                }
+            }
             // Verifica um critério do REGEX.
             if (!regexSet.isEmpty()) {
                 for (String whois : SET.subSet("REGEX=", false, "REGEX>", false)) {
@@ -3182,37 +3237,6 @@ public final class SPF implements Serializable {
                         if (matches(regex, token)) {
                             return true;
                         }
-                    }
-                }
-            }
-            // Verifica o bloco IP.
-            if (ip != null) {
-                String inet = Subnet.getInetnum(ip);
-                if (inet != null) {
-                    if (SET.contains(inet)) {
-                        return true;
-                    } else if (SET.contains(inet + '>' + recipient)) {
-                        return true;
-                    } else if (SET.contains(inet + '>' + recipientDomain)) {
-                        return true;
-                    } else if (SET.contains(inet + ';' + qualifier)) {
-                        return true;
-                    } else if (SET.contains(inet + ';' + qualifier + '>' + recipient)) {
-                        return true;
-                    } else if (SET.contains(inet + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet + '>' + recipient)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet + '>' + recipientDomain)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet + ';' + qualifier)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet + ';' + qualifier + '>' + recipient)) {
-                        return true;
-                    } else if (SET.contains(client + ':' + inet + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
                     }
                 }
             }
@@ -3515,12 +3539,12 @@ public final class SPF implements Serializable {
                 if (SET.contains(token)) {
                     return true;
                 }
-                String inet = Subnet.getInetnum(token);
-                if (inet != null) {
-                    if (SET.contains(inet)) {
-                        return true;
-                    }
-                }
+//                String inet = Subnet.getInetnum(token);
+//                if (inet != null) {
+//                    if (SET.contains(inet)) {
+//                        return true;
+//                    }
+//                }
                 return false;
             } else if (containsHost(token)) {
                 return true;
@@ -4461,10 +4485,6 @@ public final class SPF implements Serializable {
                     if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                         tokenSet.add(ownerid);
                     }
-                    String inetnum = Subnet.getInetnum(ip);
-                    if (inetnum != null) {
-                        tokenSet.add(inetnum);
-                    }
                     origem = sender + ">" + ip;
                     fluxo = origem + ">" + recipient;
                 }
@@ -4738,10 +4758,6 @@ public final class SPF implements Serializable {
                                 }
                                 if ((ownerid = Subnet.getOwnerID(ip)) != null) {
                                     tokenSet.add(ownerid);
-                                }
-                                String inetnum = Subnet.getInetnum(ip);
-                                if (inetnum != null) {
-                                    tokenSet.add(inetnum);
                                 }
                                 origem = sender + ">" + ip;
                                 fluxo = origem + ">" + recipient;

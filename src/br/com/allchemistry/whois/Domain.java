@@ -339,7 +339,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         return tldSet;
     }
     
-    public static synchronized void addTLD(String tld) throws ProcessException {
+    public static synchronized boolean addTLD(String tld) throws ProcessException {
         if (tld.charAt(0) != '.') {
             // Corrigir TLD sem ponto.
             tld = "." + tld;
@@ -349,13 +349,16 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (TLD_SET.add(tld)) {
                 // Atualiza flag de atualização.
                 TLD_CHANGED = true;
+                return true;
+            } else {
+                return false;
             }
         } else {
             throw new ProcessException("ERROR: TLD INVALID");
         }
     }
     
-    public static synchronized void removeTLD(String tld) throws ProcessException {
+    public static synchronized boolean removeTLD(String tld) throws ProcessException {
         if (tld.charAt(0) != '.') {
             // Corrigir TLD sem ponto.
             tld = "." + tld;
@@ -365,6 +368,9 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (TLD_SET.remove(tld)) {
                 // Atualiza flag de atualização.
                 TLD_CHANGED = true;
+                return true;
+            } else {
+                return false;
             }
         } else {
             throw new ProcessException("ERROR: TLD INVALID");
