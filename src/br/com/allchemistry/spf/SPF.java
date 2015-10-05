@@ -3037,7 +3037,30 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    SET.addAll(set);
+                    // Processo temporário de transição.
+                    for (String token : set) {
+                        String client;
+                        String identifier;
+                        if (token.contains(":")) {
+                            int index = token.indexOf(':');
+                            client = token.substring(0, index);
+                            identifier = token.substring(index + 1);
+                        } else {
+                            client = null;
+                            identifier = token;
+                        }
+                        if (Subnet.isValidCIDR(identifier)) {
+                            identifier = "CIDR=" + identifier;
+                        } else if (Owner.isOwnerID(identifier)) {
+                            identifier = "WHOIS/ownerid=" + identifier;
+                        }
+                        if (client == null) {
+                            SET.add(identifier);
+                        } else {
+                            SET.add(client + ':' + identifier);
+                        }
+                    }
+//                    SET.addAll(set);
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -3342,7 +3365,7 @@ public final class SPF implements Serializable {
                 }
             }
             if (Owner.isOwnerID(token)) {
-                return Owner.normalizeID(token) + qualif + recipient;
+                return "WHOIS/ownerid=" + Owner.normalizeID(token) + qualif + recipient;
             } else if (Domain.isEmail(token)) {
                 return token.toLowerCase() + qualif + recipient;
             } else if (token.endsWith("@")) {
@@ -3356,7 +3379,7 @@ public final class SPF implements Serializable {
             } else if (Subnet.isValidIP(token)) {
                 return Subnet.normalizeIP(token) + qualif + recipient;
             } else if (Subnet.isValidCIDR(token)) {
-                return Subnet.normalizeCIDR(token) + qualif + recipient;
+                return "CIDR=" + Subnet.normalizeCIDR(token) + qualif + recipient;
             } else {
                 return null;
             }
@@ -3853,7 +3876,30 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    SET.addAll(set);
+                    // Processo temporário de transição.
+                    for (String token : set) {
+                        String client;
+                        String identifier;
+                        if (token.contains(":")) {
+                            int index = token.indexOf(':');
+                            client = token.substring(0, index);
+                            identifier = token.substring(index + 1);
+                        } else {
+                            client = null;
+                            identifier = token;
+                        }
+                        if (Subnet.isValidCIDR(identifier)) {
+                            identifier = "CIDR=" + identifier;
+                        } else if (Owner.isOwnerID(identifier)) {
+                            identifier = "WHOIS/ownerid=" + identifier;
+                        }
+                        if (client == null) {
+                            SET.add(identifier);
+                        } else {
+                            SET.add(client + ':' + identifier);
+                        }
+                    }
+//                    SET.addAll(set);
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -4950,10 +4996,10 @@ public final class SPF implements Serializable {
                         }
                         tokenSet.add(mx);
                         tokenSet.add(dominio);
-                        if ((ownerid = Domain.getOwnerID(sender)) != null) {
-                            tokenSet.add(ownerid);
+//                        if ((ownerid = Domain.getOwnerID(sender)) != null) {
+//                            tokenSet.add(ownerid);
 //                            created = Domain.getCreated(sender);
-                        }
+//                        }
                         origem = mx;
                     }
                     fluxo = origem + ">" + recipient;
@@ -4971,10 +5017,10 @@ public final class SPF implements Serializable {
                         subdominio = subdominio.substring(index);
                     }
                     tokenSet.add(dominio);
-                    if ((ownerid = Domain.getOwnerID(helo)) != null) {
-                        tokenSet.add(ownerid);
+//                    if ((ownerid = Domain.getOwnerID(helo)) != null) {
+//                        tokenSet.add(ownerid);
 //                        created = Domain.getCreated(helo);
-                    }
+//                    }
                     origem = sender + ">" + dominio.substring(1);
                     fluxo = origem + ">" + recipient;
                 } else {
@@ -4988,9 +5034,9 @@ public final class SPF implements Serializable {
                         ip = SubnetIPv6.normalizeIPv6(ip);
                         tokenSet.add(ip);
                     }
-                    if ((ownerid = Subnet.getOwnerID(ip)) != null) {
-                        tokenSet.add(ownerid);
-                    }
+//                    if ((ownerid = Subnet.getOwnerID(ip)) != null) {
+//                        tokenSet.add(ownerid);
+//                    }
                     origem = sender + ">" + ip;
                     fluxo = origem + ">" + recipient;
                 }
@@ -5223,10 +5269,10 @@ public final class SPF implements Serializable {
                                     }
                                     tokenSet.add(mx);
                                     tokenSet.add(dominio);
-                                    if ((ownerid = Domain.getOwnerID(sender)) != null) {
-                                        tokenSet.add(ownerid);
+//                                    if ((ownerid = Domain.getOwnerID(sender)) != null) {
+//                                        tokenSet.add(ownerid);
 //                                        created = Domain.getCreated(sender);
-                                    }
+//                                    }
                                     origem = mx;
                                 }
                                 fluxo = origem + ">" + recipient;
@@ -5244,10 +5290,10 @@ public final class SPF implements Serializable {
                                     subdominio = subdominio.substring(index);
                                 }
                                 tokenSet.add(dominio);
-                                if ((ownerid = Domain.getOwnerID(helo)) != null) {
-                                    tokenSet.add(ownerid);
+//                                if ((ownerid = Domain.getOwnerID(helo)) != null) {
+//                                    tokenSet.add(ownerid);
 //                                    created = Domain.getCreated(helo);
-                                }
+//                                }
                                 origem = sender + ">" + dominio.substring(1);
                                 fluxo = origem + ">" + recipient;
                             } else {
@@ -5262,9 +5308,9 @@ public final class SPF implements Serializable {
                                     ip = SubnetIPv6.normalizeIPv6(ip);
                                     tokenSet.add(ip);
                                 }
-                                if ((ownerid = Subnet.getOwnerID(ip)) != null) {
-                                    tokenSet.add(ownerid);
-                                }
+//                                if ((ownerid = Subnet.getOwnerID(ip)) != null) {
+//                                    tokenSet.add(ownerid);
+//                                }
                                 origem = sender + ">" + ip;
                                 fluxo = origem + ">" + recipient;
                             }

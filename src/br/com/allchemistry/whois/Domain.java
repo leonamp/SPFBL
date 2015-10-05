@@ -21,6 +21,7 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
+import javax.naming.ServiceUnavailableException;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -907,6 +908,8 @@ public class Domain implements Serializable, Comparable<Domain> {
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
+        } catch (ServiceUnavailableException ex) {
+            Server.logCheckDNS(time, host, "UNAVAILABLE");
         } catch (CommunicationException ex) {
             Server.logCheckDNS(time, host, "TIMEOUT");
         } catch (Exception ex) {
