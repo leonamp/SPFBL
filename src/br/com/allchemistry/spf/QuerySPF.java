@@ -370,7 +370,8 @@ public final class QuerySPF extends Server {
                                 }
                             } else if (line.equals("REPUTATION")) {
                                 // Comando para verificar a reputação dos tokens.
-                                type = "REPUT";
+                                query = line.trim();
+                                type = "REPTQ";
                                 StringBuilder stringBuilder = new StringBuilder();
                                 TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
                                 if (distributionMap.isEmpty()) {

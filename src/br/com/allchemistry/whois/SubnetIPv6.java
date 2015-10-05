@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -428,23 +429,26 @@ public final class SubnetIPv6 extends Subnet
     protected static String normalizeCIDRv6(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
-        String mask = inetnum.substring(index+1);
-        ArrayList<String> ipSequence = new ArrayList<String>(8);
-        StringTokenizer tokenizer = new StringTokenizer(ip, ":");
-        while (tokenizer.hasMoreTokens()) {
-            ipSequence.add(tokenizer.nextToken());
-        }
-        while (ipSequence.size() < 8) {
-            ipSequence.add("0");
-        }
-        return ipSequence.get(0) + ":" +
-                ipSequence.get(1) + ":" +
-                ipSequence.get(2) + ":" + 
-                ipSequence.get(3) + ":" + 
-                ipSequence.get(4) + ":" + 
-                ipSequence.get(5) + ":" + 
-                ipSequence.get(6) + ":" + 
-                ipSequence.get(7) + "/" + mask;
+        String size = inetnum.substring(index+1);
+        int sizeInt = Integer.parseInt(size);
+        short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
+        short[] address = SubnetIPv6.split(ip, mask);
+        int p1 = address[0] & 0xFFFF;
+        int p2 = address[1] & 0xFFFF;
+        int p3 = address[2] & 0xFFFF;
+        int p4 = address[3] & 0xFFFF;
+        int p5 = address[4] & 0xFFFF;
+        int p6 = address[5] & 0xFFFF;
+        int p7 = address[6] & 0xFFFF;
+        int p8 = address[7] & 0xFFFF;
+        return Integer.toHexString(p1) + ":" +
+                Integer.toHexString(p2) + ":" +
+                Integer.toHexString(p3) + ":" +
+                Integer.toHexString(p4) + ":" +
+                Integer.toHexString(p5) + ":" +
+                Integer.toHexString(p6) + ":" +
+                Integer.toHexString(p7) + ":" +
+                Integer.toHexString(p8) + "/" + sizeInt;
     }
     
     public static String getInetnum(String ip) {
@@ -605,6 +609,20 @@ public final class SubnetIPv6 extends Subnet
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+        }
+    }
+    
+    public static boolean containsIPv6(String cidr, String ip) {
+        if (isValidCIDRv6(cidr) && isValidIPv6(ip)) {
+            int index = cidr.lastIndexOf('/');
+            String size = cidr.substring(index + 1);
+            String address = cidr.substring(0, index);
+            short[] mask = SubnetIPv6.getMaskIPv6(size);
+            short[] address1 = SubnetIPv6.split(address, mask);
+            short[] address2 = SubnetIPv6.split(ip, mask);
+            return Arrays.equals(address1, address2);
+        } else {
+            return false;
         }
     }
     
