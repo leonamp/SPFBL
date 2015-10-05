@@ -1,7 +1,7 @@
 /var/log/spfbl/*.log {
-daily
-rotate 1
-compress
-delaycompress
-create 644 root root
+    missingok
+    notifempty
+    daily
+    compress
+    create 0644 root root
 }
