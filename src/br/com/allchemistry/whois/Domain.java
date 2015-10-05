@@ -748,7 +748,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static String getValue(String address, String key) {
         if (address == null || key == null) {
             return null;
-        } else {
+        } else if (Domain.containsDomain(address)) {
             try {
                 Domain domain = Domain.getDomain(address);
                 if (domain == null) {
@@ -770,6 +770,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return null;
                 }
             }
+        } else {
+            return null;
         }
     }
     

@@ -367,6 +367,38 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public static String getValue(String address, String key) {
+        if (address == null || key == null) {
+            return null;
+        } else if (Subnet.isValidIP(address)) {
+            try {
+                Subnet subnet = Subnet.getSubnet(address);
+                if (subnet == null) {
+                    return null;
+                } else {
+                    return subnet.get(key, false);
+                }
+            } catch (ProcessException ex) {
+                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: SERVER NOT FOUND")) {
+                    return null;
+                } else {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
     public static String getBlock(String ip) {
         if (SubnetIPv4.isValidIPv4(ip)) {
             return SubnetIPv4.getInetnum(ip);
