@@ -5731,7 +5731,8 @@ public final class SPF implements Serializable {
 
     public static void addQuery(TreeSet<String> tokenSet) {
         for (String token : tokenSet) {
-            Distribution distribution = CacheDistribution.get(token, false);
+            boolean create = Subnet.isValidIP(token);
+            Distribution distribution = CacheDistribution.get(token, create);
             if (distribution != null) {
                 distribution.addQuery();
             }
