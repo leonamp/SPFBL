@@ -10,9 +10,12 @@ start()
     echo -n "[SPFBL] Starting... "
     if [ "$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)" -eq "0" ]; then
         cd /opt/spfbl/
-        # Descomente se você não deseja utilizar logrotate.d/spfbl
-        #/usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/spfbl-$(date "+%Y-%m-%d").log &
-        /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/spfbl.log &
+        # Log personalizado caso nao deseja utilizar logrotate.d/spfbl
+        if [ ! -f /etc/logrotate.d/spfbl ]; then
+            /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/spfbl-$(date "+%Y-%m-%d").log &
+        else
+            /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/spfbl.log &
+        fi
         ret=$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)
         if [ "$ret" -eq "0" ]; then
             echo -n "Error"
