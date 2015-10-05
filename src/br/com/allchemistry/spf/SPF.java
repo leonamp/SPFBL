@@ -4248,8 +4248,8 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static synchronized TreeSet<InetAddress> keySet() {
-            TreeSet<InetAddress> keySet = new TreeSet<InetAddress>();
+        private static synchronized ArrayList<InetAddress> keySet() {
+            ArrayList<InetAddress> keySet = new ArrayList<InetAddress>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
