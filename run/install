@@ -3,84 +3,124 @@
 # Important Notice
 
 ##########################################
-# DON'T USE THAT, IT'S UNDER DEVELOPMENT #
+#             Install SPFBL              #
 ##########################################
 
 #
 # filename: install-spfbl
 #
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
+. /etc/init.d/functions
 
 # SPFBL Server Setup
-
-echo "----------------------------"
-echo "Setting up SPFBL Server..."
-echo "----------------------------"
-
-# Checking if your system is CentOS/RedHat or Debian Based.
-if [ -f /usr/bin/yum ]; then
-    yum -y upgrade >/dev/null && yum -y install nc unzip wget java-1.8.0-openjdk
+if [ "$1" == "--uninstall" ]; then
+    echo "----------------------------"
+    echo "Setting down SPFBL Server..."
+    echo "----------------------------"
+    rm -rf /opt/spfbl
+    rm -rf /etc/spfbl
+    rm -rf /usr/src/SPFBL
+    rm -rf /etc/logrotate.d/spfbl
+    rm -rf /var/log/spfbl
+    rm -rf /etc/init.d/spfbl
 else
-    apt-get update >/dev/null && apt-get install -y unzip wget default-jre
-fi
-
-# Download main distribution
-wget https://github.com/leonamp/SPFBL/archive/master.zip
-
-if [ -f master.zip ]; then
-    unzip master.zip
-    chmod +x SPFBL-master/client/*.sh
-    chmod +x SPFBL-master/run/*
-fi
-
-# Move bash files to /etc
-if [ ! -d /etc/spfbl ]; then
-    mkdir -p /etc/spfbl
-    mv SPFBL-master/client/*.sh /etc/spfbl/
-    ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
-fi
-
-# Create spfbl folder
-if [ ! -d /opt/spfbl ]; then
-    mkdir -p /opt/spfbl/bin
-    mv SPFBL-master/run/spfbl-init.sh /opt/spfbl/bin/
-    # Store SPFBL core to /opt
-    mv SPFBL-master/dist/* /opt/spfbl/
-    mv SPFBL-master/lib /opt/spfbl/
-    mv SPFBL-master/data /opt/spfbl/
-    mv SPFBL-master/doc /opt/spfbl/
-    mv SPFBL-master/README.md /opt/spfbl/doc/
-fi
-
-# Create log folder
-if [ ! -d /var/log/spfbl ]; then
-    mkdir -p /var/log/spfbl
-fi
-
-# Enable SPFBL autostart
-if [ -f /etc/redhat-release ]; then
-    mv SPFBL-master/run/spfbl-init-centos /etc/init.d/spfbl
-    chkconfig --add spfbl
-    chkconfig spfbl on
-else
-    update-rc.d spfbl.sh defaults 100
-fi
-
-# Make log rotation
-mv SPFBL-master/run/spfbl-rotate /etc/logrotate.d/spfbl
-
-if [ -f /etc/redhat-release ]; then
-    service spfbl start
-else
-    /opt/spfbl/bin/spfbl-init.sh start
-fi
-
-if [ "$(ps auxwf | grep SPFBL | grep -v grep | wc -l)" -eq "1" ]; then
-    echo "-------------------------------------------"
-    echo "Done. Your SPFBL Server should almost UP!"
-    echo "-------------------------------------------"
-else
-    echo "Oops, something occurs!"
+    echo "----------------------------"
+    echo "Setting up SPFBL Server..."
+    echo "----------------------------"
+    cd /usr/src
+    echo "Entering $PWD folder... "
+    echo
+    echo -n "Installing git, nc, wget, unzip and java packages... "
+    # Checking if your system is CentOS/RedHat or Debian Based.
+    if [ -f /usr/bin/yum ]; then
+        yum -y upgrade >/dev/null && yum -y install git nc unzip wget java-1.8.0-openjdk >/dev/null
+        [ "$(rpm -q git java-1.8.0-openjdk wget unzip nc | wc -l)" -eq "5" ] && success || failure
+        echo
+    else
+        apt-get update >/dev/null && apt-get install -y unzip wget git default-jre >/dev/null
+    fi
+    
+    # Download main distribution
+    if [ -d /usr/src/SPFBL ]; then
+        echo -n "You have another spfbl into $PWD. Moving to $PWD/SPFBL.old.. "
+        mv /usr/src/SPFBL /usr/src/SPFBL.old
+        [ -d /usr/src/SPFBL.old ] && success || failure
+        echo
+    fi
+    cd /usr/src && git clone https://github.com/leonamp/SPFBL.git
+    echo -n "Cloning SPFBL into Github... "
+    [ -d /usr/src/SPFBL ] && success || failure
+    echo
+    
+    if [ -d /usr/src/SPFBL ]; then
+        chmod +x SPFBL/client/*.sh
+        chmod +x SPFBL/run/*
+    fi
+    
+    # Move bash files to /etc
+    if [ ! -d /etc/spfbl ]; then
+        echo -n "Creating /etc/spfbl .. "
+        mkdir -p /etc/spfbl
+        mv SPFBL/client/*.sh /etc/spfbl/
+        ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
+        [ -d /etc/spfbl ] && success || failure
+        echo
+    fi
+    
+    # Create spfbl folder
+    if [ ! -d /opt/spfbl ]; then
+        echo -n "Creating /opt/spfbl .. "
+        mkdir -p /opt/spfbl/bin
+        mv SPFBL/run/spfbl-init.sh /opt/spfbl/bin/
+        # Store SPFBL core to /opt
+        mv SPFBL/dist/* /opt/spfbl/
+        mv SPFBL/lib /opt/spfbl/
+        mv SPFBL/data /opt/spfbl/
+        mv SPFBL/doc /opt/spfbl/
+        mv SPFBL/README.md /opt/spfbl/doc/
+        [ -d /opt/spfbl ] && success || failure
+        echo
+    fi
+    
+    # Create log folder
+    if [ ! -d /var/log/spfbl ]; then
+        echo -n "Creating /var/log/spfbl .. "
+        mkdir -p /var/log/spfbl
+        [ -d /var/log/spfbl ] && success || failure
+        echo
+    fi
+    
+    # Enable SPFBL autostart
+    if [ -f /etc/redhat-release ]; then
+        echo -n "Installing spfbl into /etc/init.d .. "
+        mv SPFBL/run/spfbl-init-centos /etc/init.d/spfbl
+        chkconfig --add spfbl
+        chkconfig spfbl on
+        [ -f /etc/init.d/spfbl ] && success || failure
+        echo
+    else
+        update-rc.d spfbl.sh defaults 100
+    fi
+    
+    # Make log rotation
+    echo -n "Installing spfbl into /etc/logrotate.d .. "
+    mv SPFBL/run/spfbl-rotate /etc/logrotate.d/spfbl
+    [ -f /etc/logrotate.d/spfbl ] && success || failure
+    echo
+    
+    if [ -f /etc/redhat-release ] && [ -f /etc/init.d/spfbl ]; then
+        service spfbl start
+    else
+        /opt/spfbl/bin/spfbl-init.sh start
+    fi
+    
+    if [ "$(ps auxwf | grep SPFBL | grep -v grep | wc -l)" -eq "1" ]; then
+        echo "-------------------------------------------"
+        echo "Done. Your SPFBL Server should almost UP!"
+        echo "-------------------------------------------"
+    else
+        echo "Oops, something occurs!"
+    fi
 fi
 
 #end
