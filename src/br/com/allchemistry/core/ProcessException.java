@@ -6,7 +6,7 @@ package br.com.allchemistry.core;
 
 /**
  * Exceção de processamento.
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 @SuppressWarnings("serial")
 public class ProcessException extends Exception {

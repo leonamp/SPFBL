@@ -42,7 +42,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * O mecanismo é totalmente automático, portanto não existe 
  * necessidade de manter e administrar uma lista de TLDs manualmente.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class Domain implements Serializable, Comparable<Domain> {
     

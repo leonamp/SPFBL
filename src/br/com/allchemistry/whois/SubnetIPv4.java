@@ -33,7 +33,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * Se entiver dentro, o bloco encontrado é considerado.
  * A busca consome o tempo de O(log2(n)).
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class SubnetIPv4 extends Subnet
 //implements Comparable<SubnetIPv4>

@@ -1,7 +1,6 @@
 /*
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
- * 
  */
 package br.com.allchemistry.spf;
 
@@ -81,20 +80,20 @@ import org.apache.commons.lang3.SerializationUtils;
  * recebida a reclamação com o ticket, o serviço descriptografa o ticket e
  * extrai os responsaveis pelo envio.
  *
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class SPF implements Serializable {
 
     private static final long serialVersionUID = 1L;
-    private final String hostname;
-    private String redirect = null;
-    private String explanation = null;
-    private ArrayList<Mechanism> mechanismList = null;
-    private Qualifier all = null; // Qualificador do mecanismo all.
-    private boolean error = false; // Se houve erro de sintaxe.
-    private int queries = 0; // Contador de consultas.
-    private int nxdomain = 0; // Contador de inexistência de domínio.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    public final String hostname;
+    public String redirect = null;
+    public String explanation = null;
+    public ArrayList<Mechanism> mechanismList = null;
+    public Qualifier all = null; // Qualificador do mecanismo all.
+    public boolean error = false; // Se houve erro de sintaxe.
+    public int queries = 0; // Contador de consultas.
+    public int nxdomain = 0; // Contador de inexistência de domínio.
+    public long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
     private static final int REFRESH_TIME = 7; // Prazo máximo que o registro deve permanecer em cache em dias.
 
     private SPF(String hostname) throws ProcessException {
@@ -849,7 +848,7 @@ public final class SPF implements Serializable {
     /**
      * A enumeração que representa todos os qualificadores possíveis.
      */
-    private enum Qualifier {
+    public enum Qualifier {
 
         PASS("Pass"),
         FAIL("Fail"),
@@ -870,11 +869,11 @@ public final class SPF implements Serializable {
     /**
      * Classe abstrata que representa qualquer mecanismo de processamento SPF.
      */
-    private abstract class Mechanism implements Serializable {
+    public abstract class Mechanism implements Serializable {
 
         private static final long serialVersionUID = 1L;
-        private final String expression;
-        private final Qualifier qualifier;
+        public final String expression;
+        public final Qualifier qualifier;
 
         private Mechanism(String expression) {
             this.expression = expression;
@@ -926,15 +925,15 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento CIDR de IPv4.
      */
-    private final class MechanismIPv4 extends Mechanism {
+    public final class MechanismIPv4 extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-        private final int address;
-        private final int mask;
+        public final int address;
+        public final int mask;
         /**
          * Marcado sempre que o mecanismo aponta para blocos reservados.
          */
-        private final boolean reserved;
+        public final boolean reserved;
 
         public MechanismIPv4(String expression) {
             super(expression);
@@ -1015,11 +1014,11 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento CIDR de IPv6.
      */
-    private final class MechanismIPv6 extends Mechanism {
+    public final class MechanismIPv6 extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-        private final short[] address;
-        private final short[] mask;
+        public final short[] address;
+        public final short[] mask;
 
         public MechanismIPv6(String expression) {
             super(expression);
@@ -1061,11 +1060,11 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento do registro A.
      */
-    private final class MechanismA extends Mechanism {
+    public final class MechanismA extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-        private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
-        private boolean loaded = false;
+        public final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
+        public boolean loaded = false;
 
         public MechanismA(String expression, boolean load) {
             super(expression);
@@ -1187,11 +1186,11 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento do registro MX.
      */
-    private final class MechanismMX extends Mechanism {
+    public final class MechanismMX extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-        private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
-        private boolean loaded = false;
+        public final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
+        public boolean loaded = false;
 
         public MechanismMX(String expression, boolean load) {
             super(expression);
@@ -1349,7 +1348,7 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento do reverso do IP de origem.
      */
-    private final class MechanismPTR extends Mechanism {
+    public final class MechanismPTR extends Mechanism {
 
         private static final long serialVersionUID = 1L;
 
@@ -1479,7 +1478,7 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de processamento exists.
      */
-    private final class MechanismExists extends Mechanism {
+    public final class MechanismExists extends Mechanism {
 
         private static final long serialVersionUID = 1L;
 
@@ -1523,7 +1522,7 @@ public final class SPF implements Serializable {
     /**
      * Mecanismo de inclusão de um nó na árvore SPF.
      */
-    private final class MechanismInclude extends Mechanism {
+    public final class MechanismInclude extends Mechanism {
 
         private static final long serialVersionUID = 1L;
 
@@ -1779,7 +1778,7 @@ public final class SPF implements Serializable {
     /**
      * Classe que representa o cache de registros de denúncia.
      */
-    private static class CacheComplain {
+    public static class CacheComplain {
 
         /**
          * Mapa de reclamações com seus respectivos tickets.
@@ -4669,7 +4668,7 @@ public final class SPF implements Serializable {
     /**
      * Classe que representa o cache de resolução de HELO.
      */
-    private static class CacheHELO {
+    public static class CacheHELO {
 
         /**
          * Mapa de atributos da verificação de HELO.
@@ -4733,12 +4732,12 @@ public final class SPF implements Serializable {
         /*
          * Classe para guardar os atributos da consulta.
          */
-        private static final class HELO implements Serializable {
+        public static final class HELO implements Serializable {
 
             private static final long serialVersionUID = 1L;
-            private Attributes attributes = null;
-            private int queryCount = 0;
-            private long lastQuery;
+            public Attributes attributes = null;
+            public int queryCount = 0;
+            public long lastQuery;
 
             private HELO(String hostname) throws NamingException {
                 this.lastQuery = System.currentTimeMillis();
@@ -5678,11 +5677,11 @@ public final class SPF implements Serializable {
      * Classe que representa uma reclamação. Possui mecanismo de vencimento da
      * reclamação.
      */
-    private static final class Complain implements Serializable {
+    public static final class Complain implements Serializable {
 
         private static final long serialVersionUID = 1L;
-        private final Date date;
-        private final TreeSet<String> tokenSet = new TreeSet<String>();
+        public final Date date;
+        public final TreeSet<String> tokenSet = new TreeSet<String>();
 
         public Complain(String ticket) throws ProcessException {
             String complain = Server.decrypt(ticket);
@@ -5849,11 +5848,11 @@ public final class SPF implements Serializable {
     public static final class Distribution implements Serializable {
 
         private static final long serialVersionUID = 1L;
-        private int complain; // Quantidade total de reclamações.
-        private long lastQuery; // Última consulta à distribuição.
-        private long lastComplain; // Última denúncia à distribuição.
-        private Status status; // Status atual da distribuição.
-        private NormalDistribution frequency = null; // Frequência média em segundos.
+        public int complain; // Quantidade total de reclamações.
+        public long lastQuery; // Última consulta à distribuição.
+        public long lastComplain; // Última denúncia à distribuição.
+        public Status status; // Status atual da distribuição.
+        public NormalDistribution frequency = null; // Frequência média em segundos.
 
         public Distribution() {
             reset();

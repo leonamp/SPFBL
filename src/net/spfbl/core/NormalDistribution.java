@@ -2,7 +2,7 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package br.com.allchemistry.core;
+package net.spfbl.core;
 
 import java.io.Serializable;
 
@@ -15,10 +15,15 @@ public class NormalDistribution implements Serializable {
     
     private static final long serialVersionUID = 1L;
     
-    public float xiSum;
-    public float xi2Sum;
+    private float xiSum;
+    private float xi2Sum;
     
     private static final int POPULATION = 32;
+    
+    public NormalDistribution(br.com.allchemistry.core.NormalDistribution other) {
+        this.xiSum = other.xiSum;
+        this.xi2Sum = other.xi2Sum;
+    }
     
     /**
      * Inicia uma distribuição normal com população cheia com média zero.

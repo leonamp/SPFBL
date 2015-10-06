@@ -21,7 +21,7 @@ import java.util.TreeSet;
  * A chave primária é o atributo inetnum, 
  * que deve estar em notação CIDR sem abreviação.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public abstract class Subnet implements Serializable, Comparable<Subnet> {
     

@@ -53,7 +53,7 @@ import org.apache.commons.net.whois.WhoisClient;
 /**
  * Representa um modelo de servidor com métodos comuns.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public abstract class Server extends Thread {
     

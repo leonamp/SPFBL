@@ -13,7 +13,7 @@ import java.net.InetAddress;
 /**
  * Programa cliente para teste de consulta em UDP.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class Client {
 
