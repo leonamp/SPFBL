@@ -1,6 +1,7 @@
 /*
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
+ * 
  */
 package br.com.allchemistry.spf;
 
@@ -3246,7 +3247,7 @@ public final class SPF implements Serializable {
     }
 
     private static boolean isWHOIS(String token) {
-        return matches("^WHOIS(/[a-z-]+)+=[a-zA-Z0-9@.]+$", token);
+        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@.]+)|((<|>)[0-9]+))$", token);
     }
 
     private static boolean isREGEX(String token) {
@@ -3741,14 +3742,10 @@ public final class SPF implements Serializable {
             }
             // Verifica o CIDR.
             if (ip != null) {
-                for (String cidr : subSet("CIDR=", "CIDR>")) {
-                    int index = cidr.indexOf('=');
-                    cidr = cidr.substring(index + 1);
-                    if (Subnet.containsIP(cidr, ip)) {
-                        return cidr;
-                    }
-                }
-                for (String cidr : subSet(client + ":CIDR=", client + ":CIDR>")) {
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("CIDR=", "CIDR>"));
+                subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                for (String cidr : subSet) {
                     int index = cidr.indexOf('=');
                     cidr = cidr.substring(index + 1);
                     if (Subnet.containsIP(cidr, ip)) {
@@ -3758,16 +3755,10 @@ public final class SPF implements Serializable {
             }
             // Verifica um critério do REGEX.
             if (!regexSet.isEmpty()) {
-                for (String whois : subSet("REGEX=", "REGEX>")) {
-                    int index = whois.indexOf('=');
-                    String regex = whois.substring(index + 1);
-                    for (String token : regexSet) {
-                        if (matches(regex, token)) {
-                            return regex;
-                        }
-                    }
-                }
-                for (String whois : subSet(client + ":REGEX=", client + ":REGEX>")) {
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("REGEX=", "REGEX>"));
+                subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                for (String whois : subSet) {
                     int index = whois.indexOf('=');
                     String regex = whois.substring(index + 1);
                     for (String token : regexSet) {
@@ -3779,46 +3770,66 @@ public final class SPF implements Serializable {
             }
             // Verifica critérios do WHOIS.
             if (!whoisSet.isEmpty()) {
-                for (String whois : subSet("WHOIS/", "WHOIS<")) {
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("WHOIS/", "WHOIS<"));
+                subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                for (String whois : subSet) {
                     int indexKey = whois.indexOf('/');
-                    int indexValue = whois.indexOf('=');
-                    String key = whois.substring(indexKey + 1, indexValue);
-                    String criterion = whois.substring(indexValue + 1);
-                    for (String token : whoisSet) {
-                        String value;
-                        if (Subnet.isValidIP(token)) {
-                            value = Subnet.getValue(token, key);
-                        } else if (Domain.containsDomain(token)) {
-                            value = Domain.getValue(token, key);
-                        } else {
-                            value = "";
-                        }
-                        if (criterion.equals(value)) {
-                            return whois;
+                    char signal = '=';
+                    int indexValue = whois.indexOf(signal);
+                    if (indexValue == -1) {
+                        signal = '<';
+                        indexValue = whois.indexOf(signal);
+                        if (indexValue == -1) {
+                            signal = '>';
+                            indexValue = whois.indexOf(signal);
                         }
                     }
-                }
-                for (String whois : subSet(client + ":WHOIS/", client + ":WHOIS<")) {
-                    int indexKey = whois.indexOf('/');
-                    int indexValue = whois.indexOf('=');
-                    String key = whois.substring(indexKey + 1, indexValue);
-                    String criterion = whois.substring(indexValue + 1);
-                    for (String token : whoisSet) {
-                        String value;
-                        if (Subnet.isValidIP(token)) {
-                            value = Subnet.getValue(token, key);
-                        } else if (Domain.containsDomain(token)) {
-                            value = Domain.getValue(token, key);
-                        } else {
-                            value = "";
-                        }
-                        if (criterion.equals(value)) {
-                            return whois;
+                    if (indexValue != -1) {
+                        String key = whois.substring(indexKey + 1, indexValue);
+                        String criterion = whois.substring(indexValue + 1);
+                        for (String token : whoisSet) {
+                            String value = null;
+                            if (Subnet.isValidIP(token)) {
+                                value = Subnet.getValue(token, key);
+                            } else if (Domain.containsDomain(token)) {
+                                value = Domain.getValue(token, key);
+                            }
+                            if (value != null) {
+                                if (signal == '=') {
+                                    if (criterion.equals(value)) {
+                                        return whois;
+                                    }
+                                } else {
+                                    int criterionInt = Integer.parseInt(criterion);
+                                    int valueInt = parseIntWHOIS(value);
+                                    if (signal == '<' && valueInt < criterionInt) {
+                                        return whois;
+                                    } else if (signal == '>' && valueInt > criterionInt) {
+                                        return whois;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
             return null;
+        }
+        
+        private static int parseIntWHOIS(String value) {
+            try {
+                Date date = Domain.DATE_FORMATTER.parse(value);
+                long time = date.getTime() / (1000 * 60 * 60 * 24);
+                long today = System.currentTimeMillis() / (1000 * 60 * 60 * 24);
+                return (int) (today - time);
+            } catch (ParseException pex) {
+                try {
+                    return Integer.parseInt(value);
+                } catch (NumberFormatException nfex) {
+                    return 0;
+                }
+            }
         }
 
         private static String findHost(String client,
@@ -5999,7 +6010,8 @@ public final class SPF implements Serializable {
                 float[] probability = getSpamProbability();
                 float min = probability[0];
                 float max = probability[2];
-                if (min > LIMIAR2 && max > LIMIAR3 && complain > 7) {
+                if (min > LIMIAR2 && max > LIMIAR3 &&
+                        complain > 7 && !Subnet.isValidIP(token)) {
                     // Condição especial que bloqueia
                     // definitivamente o responsável.
                     status = Status.BLOCK;
