@@ -18,7 +18,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * 
  * A chave primária do registro é o atributo nserver.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class NameServer implements Serializable, Comparable<NameServer> {
     

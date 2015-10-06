@@ -2,14 +2,14 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package br.com.allchemistry.dnsbl;
+package net.spfbl.dnsbl;
 
-import br.com.allchemistry.core.ProcessException;
-import br.com.allchemistry.core.Server;
-import br.com.allchemistry.spf.SPF;
-import br.com.allchemistry.whois.Domain;
-import br.com.allchemistry.whois.Subnet;
-import br.com.allchemistry.whois.SubnetIPv4;
+import net.spfbl.core.ProcessException;
+import net.spfbl.core.Server;
+import net.spfbl.spf.SPF;
+import net.spfbl.whois.Domain;
+import net.spfbl.whois.Subnet;
+import net.spfbl.whois.SubnetIPv4;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;

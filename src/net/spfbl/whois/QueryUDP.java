@@ -2,11 +2,9 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package br.com.allchemistry.spf;
+package net.spfbl.whois;
 
-import br.com.allchemistry.core.ProcessException;
-import br.com.allchemistry.core.Server;
-import java.io.IOException;
+import net.spfbl.core.Server;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -15,13 +13,17 @@ import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 
 /**
- * Servidor de recebimento de bloqueio por P2P.
+ * Servidor de consulta em UDP.
  * 
- * Este serviço ouve todas as informações de bloqueio da rede P2P.
+ * Este serviço reponde apenas por um pacote UDP.
+ * O cliente deve estar preparado para receber um pacote e finalizar.
+ * 
+ * Um tamanh máximo de pacote UDP deve ser definido de 
+ * acordo com as limitações de roteamento de rede.
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class PeerUDP extends Server {
+public final class QueryUDP extends Server {
 
     private final int PORT;
     private final int SIZE; // Tamanho máximo da mensagem do pacote UDP de reposta.
@@ -33,12 +35,12 @@ public final class PeerUDP extends Server {
      * @param size o tamanho máximo do pacote UDP.
      * @throws java.net.SocketException se houver falha durante o bind.
      */
-    public PeerUDP(int port, int size) throws SocketException {
-        super("ServerPEERUDP");
+    public QueryUDP(int port, int size) throws SocketException {
+        super("ServerWHOISUDP");
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         // Criando conexões.
-        Server.logDebug("Binding peer UDP socket on port " + port + "...");
+        Server.logDebug("Binding querie UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
@@ -59,7 +61,7 @@ public final class PeerUDP extends Server {
         private final Semaphore PACKET_SEMAPHORE = new Semaphore(0);
         
         public Connection() {
-            super("PEERUDP" + (CONNECTION_COUNT+1));
+            super("WHOISUDP" + (CONNECTION_COUNT+1));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -108,34 +110,26 @@ public final class PeerUDP extends Server {
                 try {
                     long time = System.currentTimeMillis();
                     DatagramPacket packet = PACKET_LIST.poll();
-                    InetAddress ipAddress = packet.getAddress();
                     byte[] data = packet.getData();
-                    String token = new String(data, "ISO-8859-1").trim();
-                    String result;
-                    try {
-                        if (SPF.isIgnore(token)) {
-                            result = "IGNORED";
-                        } else if (SPF.addBlock(token)) {
-                            result = "ADDED";
-                        } else {
-                            result = "ALREADY EXISTS";
-                        }
-                    } catch (ProcessException ex) {
-                        result = ex.getMessage();
-                    }
-                    // Log do bloqueio com o respectivo resultado.
+                    String query = new String(data, "ISO-8859-1").trim();
+                    String result = QueryUDP.this.processWHOIS(query);
+                    // Enviando resposta.
+                    InetAddress ipAddress = packet.getAddress();
+                    int portDestiny = packet.getPort();
+                    send(result, ipAddress, portDestiny);
+                    // Log da consulta com o respectivo resultado.
                     Server.logQuery(
                             time,
-                            "PEERB",
+                            "WHOQR",
                             ipAddress,
-                            token.replace("\n", "\\n"),
-                            result
-                            );
+                            query, result);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Armazena registros de bloqueio.
-                    SPF.storeBlock();
+//                    // Atualiza registros quase expirando durante a consulta.
+//                    Server.tryBackugroundRefresh();
+//                    // Armazena todos os registros atualizados durante a consulta.
+//                    Server.storeCache();
                     // Oferece a conexão ociosa na última posição da lista.
                     CONNECTION_POLL.offer(this);
                     CONNECION_SEMAPHORE.release();
@@ -153,19 +147,15 @@ public final class PeerUDP extends Server {
      * @param port a porta de resposta do destino.
      * @throws Exception se houver falha no envio.
      */
-    public void send(String token, InetAddress address, int port) throws ProcessException {
-        try {
-            byte[] sendData = token.getBytes("ISO-8859-1");
-            if (sendData.length > SIZE) {
-                throw new ProcessException("ERROR: TOKEN TOO BIG");
-            } else {
-                DatagramPacket sendPacket = new DatagramPacket(
-                        sendData, sendData.length, address, port);
-                SERVER_SOCKET.send(sendPacket);
-            }
-        } catch (IOException ex) {
-            throw new ProcessException("ERROR: PEER UNREACHABLE", ex);
+    private void send(String result, InetAddress ip, int port) throws Exception {
+        byte[] sendData = result.getBytes("ISO-8859-1");
+        if (sendData.length > SIZE) {
+            result = "ERROR: RESULT TOO BIG\n";
+            sendData = result.getBytes();
         }
+        DatagramPacket sendPacket = new DatagramPacket(
+                sendData, sendData.length, ip, port);
+        SERVER_SOCKET.send(sendPacket);
     }
     
     /**
@@ -193,7 +183,7 @@ public final class PeerUDP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating PEERUDP" + (CONNECTION_COUNT+1) + "...");
+            Server.logDebug("Creating WHOISUDP" + (CONNECTION_COUNT+1) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;
@@ -206,7 +196,7 @@ public final class PeerUDP extends Server {
     @Override
     public synchronized void run() {
         try {
-            Server.logDebug("Listening peers on UDP port " + PORT + "...");
+            Server.logDebug("Listening queries on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -215,7 +205,11 @@ public final class PeerUDP extends Server {
                     SERVER_SOCKET.receive(packet);
                     Connection connection = pollConnection();
                     if (connection == null) {
-                        Server.logDebug("Too many peer conections.");
+                        InetAddress ipAddress = packet.getAddress();
+                        int portDestiny = packet.getPort();
+                        String result = "ERROR: TOO MANY CONNECTIONS\n";
+                        send(result, ipAddress, portDestiny);
+                        System.out.print(result);
                     } else {
                         connection.process(packet);
                     }
@@ -226,7 +220,7 @@ public final class PeerUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie peer UDP server closed.");
+            Server.logDebug("Querie UDP server closed.");
         }
     }
     
@@ -242,7 +236,7 @@ public final class PeerUDP extends Server {
             connection.close();
             CONNECTION_COUNT--;
         }
-        Server.logDebug("Unbinding peer UDP socket on port " + PORT + "...");
+        Server.logDebug("Unbinding querie UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

@@ -20,7 +20,7 @@ import org.apache.commons.lang3.SerializationUtils;
 
 /**
  *
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class AutonomousSystem implements Serializable, Comparable<AutonomousSystem>  {
     

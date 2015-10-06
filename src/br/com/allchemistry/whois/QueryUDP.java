@@ -21,7 +21,7 @@ import java.util.concurrent.Semaphore;
  * Um tamanh máximo de pacote UDP deve ser definido de 
  * acordo com as limitações de roteamento de rede.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class QueryUDP extends Server {
 

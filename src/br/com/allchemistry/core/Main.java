@@ -13,7 +13,7 @@ import java.net.InetAddress;
 /**
  * Classe principal de inicilização do serviço.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class Main {
     

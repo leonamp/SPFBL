@@ -18,7 +18,7 @@ import java.net.SocketException;
  * 
  * Este serviço responde o commando e finaliza a conexão logo em seguida.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class CommandTCP extends Server {
 

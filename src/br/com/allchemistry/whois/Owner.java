@@ -25,7 +25,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * 
  * A chave primária dos registros é o atributo ownerid.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class Owner implements Serializable, Comparable<Owner> {
     

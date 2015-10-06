@@ -26,7 +26,7 @@ import java.util.concurrent.Semaphore;
  * 
  * Este serviço responde a consulta e finaliza a conexão logo em seguida.
  * 
- * @author Leandro Carlos Rodrigues <leandro@allchemistry.com.br>
+ * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class QuerySPF extends Server {
 
