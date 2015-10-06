@@ -133,7 +133,7 @@ Os elementos que podem ser adicionados nesta lista são:
 * CPF[&gt;&lt;recipient&gt;]
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
-* WHOIS/&lt;field&gt;[/&lt;field&gt;...](=|<|>)&lt;value&gt;
+* WHOIS/&lt;field&gt;[/&lt;field&gt;...]\(=\|&lt;\|&gt;\)&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
