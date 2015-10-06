@@ -83,7 +83,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
-    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
+    public static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
     /**
      * Atualiza o tempo de expiração do registro de domínio.
