@@ -133,11 +133,11 @@ Os elementos que podem ser adicionados nesta lista são:
 * CPF[&gt;&lt;recipient&gt;]
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
-* WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
+* WHOIS/&lt;field&gt;[/&lt;field&gt;...](=|<|>)&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
-No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU".
+No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representan a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
 
 Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
 
