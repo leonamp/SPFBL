@@ -26,7 +26,7 @@ Reclamação SPFBL enviada com sucesso.
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até cinco dias após o recebimento.
 
-Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@allchemistry.com.br com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
+Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
@@ -284,9 +284,9 @@ PASS
 
 Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
 
-##### Integração nativa Postfix
+##### Integração Postfix
 
-O SPFBL tem integração nativa com o Postfix.
+O SPFBL tem integração nativa com o Postfix a partir da versão 3.
 
 Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
 ```
@@ -300,26 +300,29 @@ policy-spfbl  unix  -       n       n       -       -       spawn
    user=nobody argv=/usr/bin/spfblquery.pl
 ```
 
-##### Integração nativa Zimbra
+O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP do servidor SPFBL dentro dele.
 
-O SPFBL tem integração nativa com o Zimbra.
+##### Integração Zimbra
 
-Para utilizar o serviço SPFBL pelo Zimbra 8.5.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/postfix_recipient_restrictions.cf":
+Para utilizar o serviço SPFBL pelo Zimbra, basta adicionar as seguintes linhas no arquivo "/opt/zimbra/postfix/conf/master.cf.in":
 ```
-check_policy_service inet:<IP do servidor SPFBL>:9877
-```
-
-Para utilizar o serviço SPFBL pelo Zimbra 8.6.x, basta adicionar a seguinte linha no arquivo "/opt/zimbra/conf/zmconfigd/smtpd_recipient_restrictions.cf":
-```
-check_policy_service inet:<IP do servidor SPFBL>:9877
+policy-spfbl  unix  -       n       n       -       -       spawn
+   user=nobody argv=/caminho/do/script/spfblpostfix.pl
 ```
 
-Após adicionar a linha, renicie o serviço:
+Em seguida, edite o arquivo "/opt/zimbra/conf/zmconfigd/smtpd_recipient_restrictions.cf" e adicione a seguinte linha:
+```
+check_policy_service unix:private/policy-spfbl
+```
+
+Após adicionar as linhas, renicie o serviço:
 ```
 zmconfigdctl restart
 zmmtactl stop
 zmmtactl start
 ```
+
+O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP do servidor SPFBL dentro dele.
 
 ##### Integração com Exim
 
@@ -482,10 +485,10 @@ O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve
 Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
 
 Abertos:
-* MatrixDefense: leandro@allchemistry.com.br
+* MatrixDefense: leandro@spfbl.net
 
 Fechados:
-* MX-Protection: gtec77@gmail.com
+* MX-Protection: gian@spfbl.net
 
 ### Forum de discussão SPFBL
 

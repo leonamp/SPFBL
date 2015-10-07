@@ -41,8 +41,8 @@ public final class SubnetIPv4 extends Subnet
     
     private static final long serialVersionUID = 1L;
     
-    private final int address; // Primeiro endereço do bloco.
-    private final int mask; // Máscara da subrede.
+    public final int address; // Primeiro endereço do bloco.
+    public final int mask; // Máscara da subrede.
     
     /**
      * Construtor do blocos de países.

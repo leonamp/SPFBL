@@ -28,6 +28,12 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     private String nsstat;
     private String nslastaa;
     
+    private NameServer(br.com.allchemistry.whois.NameServer other) {
+        this.nserver = other.nserver;
+        this.nsstat = other.nsstat;
+        this.nslastaa = other.nslastaa;
+    }
+    
     /**
      * Inicia um registro vazio.
      * @param nserver o host do registro.
@@ -149,7 +155,18 @@ public class NameServer implements Serializable, Comparable<NameServer> {
                 } finally {
                     fileInputStream.close();
                 }
-                NS_MAP.putAll(map);
+                for (String key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.NameServer) {
+                        br.com.allchemistry.whois.NameServer ns =
+                                (br.com.allchemistry.whois.NameServer) value;
+                        NameServer nsNew = new NameServer(ns);
+                        NS_MAP.put(key, nsNew);
+                    } else if (value instanceof NameServer) {
+                        NameServer ns = (NameServer) value;
+                        NS_MAP.put(key, ns);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@allchemistry.com.br
+# Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
-# no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br 
-# ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
+# no servidor matrix.spfbl.net através do endereço leandro@spfbl.net 
+# ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 
 ### CONFIGURACOES ###
-IP_SERVIDOR="54.94.137.168"
+IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin

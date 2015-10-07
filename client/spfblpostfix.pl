@@ -3,8 +3,8 @@
 # Este é um script que processa o SPFBL dentro do Postfix.
 #
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas
-# no servidor 54.94.137.168 através do endereço leandro@allchemistry.com.br
-# ou altere o IP 54.94.137.168 deste script para seu servidor SPFBL próprio.
+# no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
+# ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
 # Se a mensagem não estiver listada, o cabeçalho Received-SPFBL
 # será adicionado com o resultado do SPFBL.
@@ -27,7 +27,7 @@ $| = 1;
 # configs
 my $CONFIG = {
     socket => {
-        PeerHost => '54.94.137.168',
+        PeerHost => 'matrix.spfbl.net',
         PeerPort => 9877,
         Proto    => 'tcp',
         Timeout  => 3,

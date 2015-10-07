@@ -24,9 +24,9 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     
     private static final long serialVersionUID = 1L;
     
-    private final String nserver; // Hostname do servidor de nome.
-    private String nsstat;
-    private String nslastaa;
+    public final String nserver; // Hostname do servidor de nome.
+    public String nsstat;
+    public String nslastaa;
     
     /**
      * Inicia um registro vazio.

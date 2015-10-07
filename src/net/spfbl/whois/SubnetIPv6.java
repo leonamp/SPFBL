@@ -45,6 +45,12 @@ public final class SubnetIPv6 extends Subnet
     private final long address; // Primeiro endereço do bloco, primeiros 64 bits.
     private final long mask; // Máscara da subrede, primeiros 64 bits.
     
+    private SubnetIPv6(br.com.allchemistry.whois.SubnetIPv6 other) {
+        super(other);
+        this.address = other.address;
+        this.mask = other.mask;
+    }
+    
     /**
      * Construtor do blocos de países.
      * @param inetnum o endereçamento CIDR do bloco.
@@ -611,14 +617,25 @@ public final class SubnetIPv6 extends Subnet
         File file = new File("./data/subnet6.map");
         if (file.exists()) {
             try {
-                TreeMap<Long,SubnetIPv6> map;
+                TreeMap<Long,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                SUBNET_MAP.putAll(map);
+                for (Long key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.SubnetIPv6) {
+                        br.com.allchemistry.whois.SubnetIPv6 sub4 =
+                                (br.com.allchemistry.whois.SubnetIPv6) value;
+                        SubnetIPv6 sub6New = new SubnetIPv6(sub4);
+                        SUBNET_MAP.put(key, sub6New);
+                    } else if (value instanceof SubnetIPv6) {
+                        SubnetIPv6 sub6 = (SubnetIPv6) value;
+                        SUBNET_MAP.put(key, sub6);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

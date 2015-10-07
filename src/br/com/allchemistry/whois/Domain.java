@@ -48,35 +48,35 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     private static final long serialVersionUID = 1L;
     
-    private final String domain; // Domínio real indicado pelo WHOIS.
-    private String owner; // Nome do dono do domínio.
-    private String ownerid; // Identificação do dono do domínio.
-    private String responsible; // Responsável pelo domínio.
-    private String country; // País onde o domínio foi registrado.
-    private String owner_c; // Código do dono do domínio.
-    private String admin_c; // Código do administrador do domínio.
-    private String tech_c; // Código do responsável técnico do domínio.
-    private String billing_c; // Código do responsável pelos pagamentos do domínio.
-    private Date created; // Data de criação do domínio pelo dono atual.
-    private Date expires; // Data de expiração do registro do domínio.
-    private Date changed; // Data da alteração do registro do domínio.
-    private String provider; // Provedor de acesso do domínio.
-    private String status; // Status atual do domínio.
-    private String dsrecord;
-    private String dsstatus;
-    private String dslastok;
-    private String saci;
-    private String web_whois;
+    public final String domain; // Domínio real indicado pelo WHOIS.
+    public String owner; // Nome do dono do domínio.
+    public String ownerid; // Identificação do dono do domínio.
+    public String responsible; // Responsável pelo domínio.
+    public String country; // País onde o domínio foi registrado.
+    public String owner_c; // Código do dono do domínio.
+    public String admin_c; // Código do administrador do domínio.
+    public String tech_c; // Código do responsável técnico do domínio.
+    public String billing_c; // Código do responsável pelos pagamentos do domínio.
+    public Date created; // Data de criação do domínio pelo dono atual.
+    public Date expires; // Data de expiração do registro do domínio.
+    public Date changed; // Data da alteração do registro do domínio.
+    public String provider; // Provedor de acesso do domínio.
+    public String status; // Status atual do domínio.
+    public String dsrecord;
+    public String dsstatus;
+    public String dslastok;
+    public String saci;
+    public String web_whois;
     
     /**
      * Lista dos servidores de nome do domínio.
      */
-    private final ArrayList<String> nameServerList = new ArrayList<String>();
+    public final ArrayList<String> nameServerList = new ArrayList<String>();
     
-    private String server = null; // Servidor onde a informação do domínio pode ser encontrada.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
-    private boolean reduced = false; // Diz se a última consulta foi reduzida.
-    private int queries = 1; // Contador de consultas.
+    public String server = null; // Servidor onde a informação do domínio pode ser encontrada.
+    public long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    public boolean reduced = false; // Diz se a última consulta foi reduzida.
+    public int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
