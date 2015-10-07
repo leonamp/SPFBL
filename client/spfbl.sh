@@ -30,6 +30,16 @@ export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 # white show
 # refresh
 # reputation
+# clear
+# ignore add
+# ignore drop
+# ignore show
+version="0.1"
+
+head()
+{
+	echo "SPFBL v$version - by Leandro Rodrigues - leandro@spfbl.net"
+}
 
 case $1 in
 	'block')
@@ -49,6 +59,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block add sender\n"
 				else
 					sender=$3
@@ -85,6 +96,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block drop sender\n"
 				else
 					sender=$3
@@ -117,6 +129,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "2" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
@@ -139,6 +152,10 @@ case $1 in
 						exit 1
 					fi
 				fi
+			;;
+			*)
+				head
+				printf "Syntax:\n    $0 block add recipient\n    $0 block drop recipient\n    $0 block show\n"
 			;;
 		esac
 	;;
@@ -172,6 +189,7 @@ case $1 in
 		#    10: parâmetros inválidos.
 		
 		if [ $# -lt "4" ]; then
+			head
 			printf "Faltando parametro(s).\nSintaxe: $0 check ip email helo\n"
 		else
 			ip=$2
@@ -229,6 +247,7 @@ case $1 in
 		#  6. Ticket inválido.
 		
 		if [ $# -lt "2" ]; then
+			head
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
 			if [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
@@ -296,6 +315,7 @@ case $1 in
 		#  6. Ticket inválido.
 
 		if [ $# -lt "2" ]; then
+			head
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
@@ -394,6 +414,7 @@ case $1 in
 		#    12: greylisting.
 		
 		if [ $# -lt "5" ]; then
+			head
 			printf "Faltando parametro(s).\nSintaxe: $0 query ip email helo recipient\n"
 		else
 			ip=$2
@@ -458,6 +479,7 @@ case $1 in
 				#    2: timeout de conexão.
 
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
 				else
 					recipient=$3
@@ -492,6 +514,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
 				else
 					recipient=$3
@@ -523,6 +546,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "2" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
 				else
 					response=$(echo "TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -542,6 +566,10 @@ case $1 in
 					fi
 				fi
 			;;
+			*)
+				head
+				printf "Syntax:\n    $0 trap add recipient\n    $0 trap drop recipient\n    $0 trap show\n"
+			;;
 		esac
 	;;
 	'white')
@@ -559,6 +587,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
 				else
 					recipient=$3
@@ -593,6 +622,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "3" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white drop recipient\n"
 				else
 					recipient=$3
@@ -624,6 +654,7 @@ case $1 in
 				#    2: timeout de conexão.
 				
 				if [ $# -lt "2" ]; then
+					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white show\n"
 				else
 					response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -643,6 +674,10 @@ case $1 in
 					fi
 				fi
 			;;
+			*)
+				head
+				printf "Syntax:\n    $0 white add recipient\n    $0 white drop recipient\n    $0 white show\n"
+			;;
 		esac
 	;;
 	'refresh')
@@ -659,6 +694,7 @@ case $1 in
 		#    3: timeout de conexão.
 		
 		if [ $# -lt "2" ]; then
+			head
 			printf "Faltando parametro(s).\nSintaxe: $0 refresh hostname\n"
 		else
 			hostname=$2
@@ -706,5 +742,159 @@ case $1 in
 		else
 			exit 0
 		fi
+	;;
+	'clear')
+		# Parâmetros de entrada:
+		#
+		#    1. hostname: o nome do host cujo registro SPF que deve ser limpado.
+		#
+		#
+		# Códigos de saída:
+		#
+		#    0: limpado com sucesso.
+		#    1: registro não encontrado em cache.
+		#    2: erro ao processar atualização.
+		#    3: timeout de conexão.
+		
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 clear hostname\n"
+		else
+			hostname=$2
+
+			response=$(echo "CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		fi
+	;;
+	'ignore')
+		case $2 in
+			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser ignorado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 ignore add recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "IGNORE ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que deve ser desbloqueado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 ignore drop recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "IGNORE DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'show')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar bloqueio.
+				#    2: timeout de conexão.
+				
+				if [ $# -lt "2" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 ignore show\n"
+				else
+					response=$(echo "IGNORE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			*)
+			head
+			printf "Syntax:\n    $0 ignore add recipient\n    $0 ignore drop recipient\n    $0 ignore show\n"
+			;;
+		esac
+	;;
+	*)
+		head
+		printf "Help:\n    $0 block add recipient\n    $0 block drop recipient\n    $0 block show\n    $0 block show all\n"
+		printf "    $0 white add recipient\n    $0 white drop recipient\n    $0 white show\n    $0 trap add recipient\n"
+		printf "    $0 trap drop recipient\n    $0 trap show\n    $0 ignore add recipient\n    $0 ignore drop recipient\n"
+		printf "    $0 ignore show\n    $0 query ip email helo recipient\n    $0 check ip email helo\n    $0 ham ticketid/file\n"
+		printf "    $0 spam ticketid/file\n    $0 refresh recipient\n    $0 clear recipient\n    $0 reputation\n"
 	;;
 esac
