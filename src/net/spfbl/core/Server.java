@@ -1201,7 +1201,7 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
-                } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
+                } else if (token.equals("REPUTATION")) {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
                     TreeMap<String,Distribution> distributionMap;
