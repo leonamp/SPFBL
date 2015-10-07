@@ -49,6 +49,24 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
 
+    private AutonomousSystem(br.com.allchemistry.whois.AutonomousSystem other) {
+        this.aut_num = other.aut_num;
+        this.owner = other.owner;
+        this.ownerid = other.ownerid;
+        this.responsible = other.responsible;
+        this.country = other.country;
+        this.owner_c = other.owner_c;
+        this.routing_c = other.routing_c;
+        this.abuse_c = other.abuse_c;
+        this.created = other.created;
+        this.changed = other.changed;
+        this.inetnumSet.addAll(other.inetnumSet);
+        this.server = other.server;
+        this.lastRefresh = other.lastRefresh;
+        this.reduced = other.reduced;
+        this.queries = other.queries;
+    }
+    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -61,7 +79,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     protected static void setRefreshTime(int time) {
         REFRESH_TIME = time;
     }
-    
+
     /**
      * Verifica se o registro atual expirou.
      * @return verdadeiro se o registro atual expirou.
@@ -311,14 +329,25 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         File file = new File("./data/as.map");
         if (file.exists()) {
             try {
-                HashMap<String,AutonomousSystem> map;
+                HashMap<String,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                AS_MAP.putAll(map);
+                for (String key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.AutonomousSystem) {
+                        br.com.allchemistry.whois.AutonomousSystem as =
+                                (br.com.allchemistry.whois.AutonomousSystem) value;
+                        AutonomousSystem asNew = new AutonomousSystem(as);
+                        AS_MAP.put(key, asNew);
+                    } else if (value instanceof AutonomousSystem) {
+                        AutonomousSystem as = (AutonomousSystem) value;
+                        AS_MAP.put(key, as);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

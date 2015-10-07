@@ -80,6 +80,33 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     private static int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
+    private Domain(br.com.allchemistry.whois.Domain other) {
+        this.domain = other.domain;
+        this.owner = other.owner;
+        this.ownerid = other.ownerid;
+        this.responsible = other.responsible;
+        this.country = other.country;
+        this.owner_c = other.owner_c;
+        this.admin_c = other.admin_c;
+        this.tech_c = other.tech_c;
+        this.billing_c = other.billing_c;
+        this.created = other.created;
+        this.expires = other.expires;
+        this.changed = other.changed;
+        this.provider = other.provider;
+        this.status = other.status;
+        this.dsrecord = other.dsrecord;
+        this.dsstatus = other.dsstatus;
+        this.dslastok = other.dslastok;
+        this.saci = other.saci;
+        this.web_whois = other.web_whois;
+        this.nameServerList.addAll(other.nameServerList);
+        this.server = other.server;
+        this.lastRefresh = other.lastRefresh;
+        this.reduced = other.reduced;
+        this.queries = other.queries;
+    }
+    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -863,14 +890,25 @@ public class Domain implements Serializable, Comparable<Domain> {
         File file = new File("./data/domain.map");
         if (file.exists()) {
             try {
-                HashMap<String, Domain> map;
+                HashMap<String,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                DOMAIN_MAP.putAll(map);
+                for (String key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.Domain) {
+                        br.com.allchemistry.whois.Domain domain =
+                                (br.com.allchemistry.whois.Domain) value;
+                        Domain domainNew = new Domain(domain);
+                        DOMAIN_MAP.put(key, domainNew);
+                    } else if (value instanceof Domain) {
+                        Domain domain = (Domain) value;
+                        DOMAIN_MAP.put(key, domain);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

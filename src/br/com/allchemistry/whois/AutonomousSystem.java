@@ -26,26 +26,26 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     
     private static final long serialVersionUID = 1L;
     
-    private final String aut_num;
-    private String owner;
-    private String ownerid;
-    private String responsible;
-    private String country;
-    private String owner_c;
-    private String routing_c;
-    private String abuse_c;
-    private Date created;
-    private Date changed;
+    public final String aut_num;
+    public String owner;
+    public String ownerid;
+    public String responsible;
+    public String country;
+    public String owner_c;
+    public String routing_c;
+    public String abuse_c;
+    public Date created;
+    public Date changed;
 
     /**
      * Lista dos blocos alocados ao AS.
      */
-    private final TreeSet<String> inetnumSet = new TreeSet<String>();
+    public final TreeSet<String> inetnumSet = new TreeSet<String>();
     
-    private final String server; // Servidor onde a informação do AS pode ser encontrada.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
-    private boolean reduced = false; // Diz se a última consulta foi reduzida.
-    private int queries = 1; // Contador de consultas.
+    public final String server; // Servidor onde a informação do AS pode ser encontrada.
+    public long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    public boolean reduced = false; // Diz se a última consulta foi reduzida.
+    public int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
 

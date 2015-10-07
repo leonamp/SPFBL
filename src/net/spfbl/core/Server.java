@@ -1204,25 +1204,39 @@ public abstract class Server extends Thread {
                 } else if (token.equals("REPUTATION") && !tokenizer.hasMoreElements()) {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
-                    TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
-                    if (distributionMap.isEmpty()) {
+                    TreeMap<String,Distribution> distributionMap;
+                    if (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            distributionMap = SPF.getDistributionMap();
+                        } else if (token.equals("IPV4")) {
+                            distributionMap = SPF.getDistributionMapIPv4();
+                        } else if (token.equals("IPV6")) {
+                            distributionMap = SPF.getDistributionMapIPv6();
+                        } else {
+                            distributionMap = null;
+                        }
+                    } else {
+                        distributionMap = SPF.getDistributionMap();
+                    }
+                    if (distributionMap == null) {
+                        result = "ERROR: COMMAND\n";
+                    } else if (distributionMap.isEmpty()) {
                         result = "EMPTY\n";
                     } else {
                         for (String tokenReputation : distributionMap.keySet()) {
                             Distribution distribution = distributionMap.get(tokenReputation);
                             float probability = distribution.getMinSpamProbability();
-                            if (probability > 0.0f && distribution.hasFrequency()) {
-                                Status status = distribution.getStatus(tokenReputation);
-                                String frequency = distribution.getFrequencyLiteral();
-                                stringBuilder.append(tokenReputation);
-                                stringBuilder.append(' ');
-                                stringBuilder.append(frequency);
-                                stringBuilder.append(' ');
-                                stringBuilder.append(status);
-                                stringBuilder.append(' ');
-                                stringBuilder.append(DECIMAL_FORMAT.format(probability));
-                                stringBuilder.append('\n');
-                            }
+                            Status status = distribution.getStatus(tokenReputation);
+                            String frequency = distribution.getFrequencyLiteral();
+                            stringBuilder.append(tokenReputation);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(frequency);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(status);
+                            stringBuilder.append(' ');
+                            stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                            stringBuilder.append('\n');
                         }
                         result = stringBuilder.toString();
                     }

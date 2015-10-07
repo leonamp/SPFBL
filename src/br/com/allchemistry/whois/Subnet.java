@@ -27,30 +27,30 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     
     private static final long serialVersionUID = 1L;
     
-    private final String inetnum; // Chave primária com notação CIDR.
-    private String inetnum_up;
-    private String aut_num;
-    private String abuse_c; // Código do responsável por abusos na rede.
-    private String owner; // Nome do dono do bloco.
-    private String ownerid; // Identificação do dono do bloco.
-    private String responsible; // Responsável pelo bloco.
-    private String country; // País onde o domínio foi registrado.
-    private String owner_c; // Código do dono do bloco.
-    private String tech_c; // Código do responsável técnico do bloco.
-    private String inetrev;
-    private Date created; // Data de criação do domínio pelo dono atual.
-    private Date changed; // Data da alteração do registro do domínio.
+    public final String inetnum; // Chave primária com notação CIDR.
+    public String inetnum_up;
+    public String aut_num;
+    public String abuse_c; // Código do responsável por abusos na rede.
+    public String owner; // Nome do dono do bloco.
+    public String ownerid; // Identificação do dono do bloco.
+    public String responsible; // Responsável pelo bloco.
+    public String country; // País onde o domínio foi registrado.
+    public String owner_c; // Código do dono do bloco.
+    public String tech_c; // Código do responsável técnico do bloco.
+    public String inetrev;
+    public Date created; // Data de criação do domínio pelo dono atual.
+    public Date changed; // Data da alteração do registro do domínio.
     
     /**
      * Lista dos servidores de nome do bloco.
      */
-    private final ArrayList<String> nameServerList = new ArrayList<String>();
+    public final ArrayList<String> nameServerList = new ArrayList<String>();
     
     // Protected temporário até final da transição.
-    protected String server = null; // Servidor onde a informação do bloco pode ser encontrada.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
-    private boolean reduced = false; // Diz se a última consulta foi reduzida.
-    private int queries = 1; // Contador de consultas.
+    public String server = null; // Servidor onde a informação do bloco pode ser encontrada.
+    public long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    public boolean reduced = false; // Diz se a última consulta foi reduzida.
+    public int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 84; // Prazo máximo que o registro deve permanecer em cache em dias.
     

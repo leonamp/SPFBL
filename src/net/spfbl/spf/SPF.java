@@ -2343,6 +2343,32 @@ public final class SPF implements Serializable {
             distributionMap.putAll(getMap());
             return distributionMap;
         }
+        
+        private static TreeMap<String,Distribution> getTreeMapIPv4() {
+            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+            for (String key : keySet()) {
+                if (SubnetIPv4.isValidIPv4(key)) {
+                    Distribution distribution = getExact(key);
+                    if (distribution != null) {
+                        distributionMap.put(key, distribution);
+                    }
+                }
+            }
+            return distributionMap;
+        }
+        
+        private static TreeMap<String,Distribution> getTreeMapIPv6() {
+            TreeMap<String,Distribution> distributionMap = new TreeMap<String,Distribution>();
+            for (String key : keySet()) {
+                if (SubnetIPv6.isValidIPv6(key)) {
+                    Distribution distribution = getExact(key);
+                    if (distribution != null) {
+                        distributionMap.put(key, distribution);
+                    }
+                }
+            }
+            return distributionMap;
+        }
 
         private static TreeMap<String,Distribution> getMap(TreeSet<String> tokenSet) {
             TreeMap<String, Distribution> distributionMap = new TreeMap<String,Distribution>();
@@ -2358,6 +2384,14 @@ public final class SPF implements Serializable {
 
     public static TreeMap<String,Distribution> getDistributionMap() {
         return CacheDistribution.getTreeMap();
+    }
+    
+    public static TreeMap<String,Distribution> getDistributionMapIPv4() {
+        return CacheDistribution.getTreeMapIPv4();
+    }
+    
+    public static TreeMap<String,Distribution> getDistributionMapIPv6() {
+        return CacheDistribution.getTreeMapIPv6();
     }
 
     public static void dropDistribution(String token) {

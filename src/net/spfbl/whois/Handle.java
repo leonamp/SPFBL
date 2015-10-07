@@ -33,6 +33,14 @@ public class Handle implements Serializable, Comparable<Handle> {
     private Date created; // Data de criação do registro.
     private Date changed = null; // Data de alteração do registro.
     
+    private Handle(br.com.allchemistry.whois.Handle other) {
+        this.nic_hdl_br = other.nic_hdl_br;
+        this.person = other.person;
+        this.e_mail = other.e_mail;
+        this.created = other.created;
+        this.changed = other.changed;
+    }
+    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -216,14 +224,25 @@ public class Handle implements Serializable, Comparable<Handle> {
         File file = new File("./data/handle.map");
         if (file.exists()) {
             try {
-                HashMap<String, Handle> map;
+                HashMap<String,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                HANDLE_MAP.putAll(map);
+                for (String key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.Handle) {
+                        br.com.allchemistry.whois.Handle handle =
+                                (br.com.allchemistry.whois.Handle) value;
+                        Handle handleNew = new Handle(handle);
+                        HANDLE_MAP.put(key, handleNew);
+                    } else if (value instanceof Handle) {
+                        Handle handle = (Handle) value;
+                        HANDLE_MAP.put(key, handle);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

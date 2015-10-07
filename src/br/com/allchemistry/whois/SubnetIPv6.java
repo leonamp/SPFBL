@@ -42,8 +42,8 @@ public final class SubnetIPv6 extends Subnet
     
     private static final long serialVersionUID = 1L;
     
-    private final long address; // Primeiro endereço do bloco, primeiros 64 bits.
-    private final long mask; // Máscara da subrede, primeiros 64 bits.
+    public final long address; // Primeiro endereço do bloco, primeiros 64 bits.
+    public final long mask; // Máscara da subrede, primeiros 64 bits.
     
     /**
      * Construtor do blocos de países.

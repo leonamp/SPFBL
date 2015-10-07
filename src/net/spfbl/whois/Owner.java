@@ -52,6 +52,22 @@ public class Owner implements Serializable, Comparable<Owner> {
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
+    private Owner(br.com.allchemistry.whois.Owner other) {
+        this.owner = other.owner;
+        this.ownerid = other.ownerid;
+        this.responsible = other.responsible;
+        this.country = other.country;
+        this.owner_c = other.owner_c;
+        this.created = other.created;
+        this.changed = other.changed;
+        this.provider = other.provider;
+        this.domainList.addAll(other.domainList);
+        this.server = other.server;
+        this.lastRefresh = other.lastRefresh;
+        this.reduced = other.reduced;
+        this.queries = other.queries;
+    }
+    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -316,14 +332,25 @@ public class Owner implements Serializable, Comparable<Owner> {
         File file = new File("./data/owner.map");
         if (file.exists()) {
             try {
-                HashMap<String, Owner> map;
+                HashMap<String,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                OWNER_MAP.putAll(map);
+                for (String key : map.keySet()) {
+                    Object value = map.get(key);
+                    if (value instanceof br.com.allchemistry.whois.Owner) {
+                        br.com.allchemistry.whois.Owner owner =
+                                (br.com.allchemistry.whois.Owner) value;
+                        Owner ownerNew = new Owner(owner);
+                        OWNER_MAP.put(key, ownerNew);
+                    } else if (value instanceof Owner) {
+                        Owner owner = (Owner) value;
+                        OWNER_MAP.put(key, owner);
+                    }
+                }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);

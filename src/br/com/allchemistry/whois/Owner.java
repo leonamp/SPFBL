@@ -31,24 +31,24 @@ public class Owner implements Serializable, Comparable<Owner> {
     
     private static final long serialVersionUID = 1L;
     
-    private String owner; // Nome do dono.
-    private final String ownerid; // Identificação do dono.
-    private String responsible; // Responsável pelo registro.
-    private String country; // País onde o dono foi registrado.
-    private String owner_c; // Código do dono.
-    private Date created; // Data de criação do registro.
-    private Date changed; // Data da alteração do registro.
-    private String provider; // Provedor de responsável.
+    public String owner; // Nome do dono.
+    public final String ownerid; // Identificação do dono.
+    public String responsible; // Responsável pelo registro.
+    public String country; // País onde o dono foi registrado.
+    public String owner_c; // Código do dono.
+    public Date created; // Data de criação do registro.
+    public Date changed; // Data da alteração do registro.
+    public String provider; // Provedor de responsável.
     
     /**
      * Lista dos dominios registrados.
      */
-    private final ArrayList<String> domainList = new ArrayList<String>();
+    public final ArrayList<String> domainList = new ArrayList<String>();
     
-    private String server = null; // Servidor onde a informação do registro pode ser encontrada.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
-    private boolean reduced = false; // Diz se a última consulta foi reduzida.
-    private int queries = 1; // Contador de consultas.
+    public String server = null; // Servidor onde a informação do registro pode ser encontrada.
+    public long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    public boolean reduced = false; // Diz se a última consulta foi reduzida.
+    public int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
     

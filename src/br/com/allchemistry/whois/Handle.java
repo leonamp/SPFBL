@@ -27,11 +27,11 @@ public class Handle implements Serializable, Comparable<Handle> {
     
     private static final long serialVersionUID = 1L;
     
-    private final String nic_hdl_br; // Código do registro.
-    private String person; // Nome da pessoa.
-    private String e_mail; // E-mail da pessoa.
-    private Date created; // Data de criação do registro.
-    private Date changed = null; // Data de alteração do registro.
+    public final String nic_hdl_br; // Código do registro.
+    public String person; // Nome da pessoa.
+    public String e_mail; // E-mail da pessoa.
+    public Date created; // Data de criação do registro.
+    public Date changed = null; // Data de alteração do registro.
     
     /**
      * Formatação padrão dos campos de data do WHOIS.
