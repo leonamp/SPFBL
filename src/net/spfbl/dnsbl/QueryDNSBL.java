@@ -4,11 +4,8 @@
  */
 package net.spfbl.dnsbl;
 
-import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
-import net.spfbl.whois.Domain;
-import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -127,9 +124,9 @@ public final class QueryDNSBL extends Server {
                     String token = null;
                     long ttl = 0; // Tempo de cache no DNS.
                     if (index > 0) {
-                        try {
+//                        try {
                             token = query.substring(0, index);
-                            String ownerid;
+//                            String ownerid;
                             if (SubnetIPv4.isValidIPv4(token)) {
                                 // A consulta é um IPv4.
                                 // Reverter ordem dos octetos.
@@ -145,36 +142,40 @@ public final class QueryDNSBL extends Server {
                                     listed = true;
                                     ttl = SPF.getComplainTTL(ip);
                                     token = "IP " + ip;
-                                } else if ((ownerid = Subnet.getOwnerID(ip)) != null) {
-                                    listed = SPF.isBlacklisted(ownerid);
-                                    ttl = SPF.getComplainTTL(ownerid);
-                                    token = "Ownerid " + ownerid;
+//                                } else if ((ownerid = Subnet.getOwnerID(ip)) != null) {
+//                                    listed = SPF.isBlacklisted(ownerid);
+//                                    ttl = SPF.getComplainTTL(ownerid);
+//                                    token = "Ownerid " + ownerid;
                                 }
-                            } else if (Domain.containsDomain(token)) {
-                                String host = Domain.extractHost(token, true);
-                                String domain = Domain.extractDomain(token, true);
-                                if (SPF.isBlacklisted(host)) {
-                                    listed = true;
-                                    ttl = SPF.getComplainTTL(host);
-                                    token = "Host " + host;
-                                } else if (SPF.isBlacklisted(domain)) {
-                                    listed = true;
-                                    ttl = SPF.getComplainTTL(domain);
-                                    token = "Domain " + domain;
-                                } else if ((ownerid = Domain.getOwnerID(domain)) != null) {
-                                    listed = SPF.isBlacklisted(ownerid);
-                                    ttl = SPF.getComplainTTL(ownerid);
-                                    token = "Ownerid " + ownerid;
-                                }
+//                            } else if (Domain.containsDomain(token)) {
+//                                String host = Domain.extractHost(token, true);
+//                                String domain = Domain.extractDomain(token, true);
+//                                if (SPF.isBlacklisted(host)) {
+//                                    listed = true;
+//                                    ttl = SPF.getComplainTTL(host);
+//                                    token = "Host " + host;
+//                                } else if (SPF.isBlacklisted(domain)) {
+//                                    listed = true;
+//                                    ttl = SPF.getComplainTTL(domain);
+//                                    token = "Domain " + domain;
+//                                } else if ((ownerid = Domain.getOwnerID(domain)) != null) {
+//                                    listed = SPF.isBlacklisted(ownerid);
+//                                    ttl = SPF.getComplainTTL(ownerid);
+//                                    token = "Ownerid " + ownerid;
+//                                }
+//                            } else {
+//                                listed = SPF.isBlacklisted(token);
+//                                ttl = SPF.getComplainTTL(token);
                             } else {
-                                listed = SPF.isBlacklisted(token);
-                                ttl = SPF.getComplainTTL(token);
+                                listed = false;
+                                token = null;
+                                ttl = 1440; // Um dia.
                             }
-                        } catch (ProcessException ex) {
-                            listed = false;
-                            token = null;
-                            ttl = 0;
-                        }
+//                        } catch (ProcessException ex) {
+//                            listed = false;
+//                            token = null;
+//                            ttl = 0;
+//                        }
                     }
                     // Alterando mensagem DNS para resposta.
                     header.setFlag(Flags.QR);

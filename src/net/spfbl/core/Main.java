@@ -9,6 +9,7 @@ import net.spfbl.whois.QueryTCP;
 import net.spfbl.whois.QueryUDP;
 import net.spfbl.spf.QuerySPF;
 import java.net.InetAddress;
+import net.spfbl.dnsbl.QueryDNSBL;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -35,6 +36,12 @@ public class Main {
             Server.logDebug("Starting server...");
             int port = Integer.parseInt(args[0]);
             int size = Integer.parseInt(args[1]);
+            boolean dnsbl;
+            if (args.length == 3) {
+                dnsbl = args[2].equals("DNSBL");
+            } else {
+                dnsbl = false;
+            }
             Server.loadCache();
             new CommandTCP(port).start();
             new QueryTCP(port+1).start();
@@ -42,7 +49,9 @@ public class Main {
             new QuerySPF(port+2).start();
             peerUDP = new PeerUDP(port+2, size);
             peerUDP.start();
-//            new QueryDNSBL().start();
+            if (dnsbl) {
+                new QueryDNSBL().start();
+            }
         } catch (Exception ex) {
             Server.logError(ex);
             printHelp();

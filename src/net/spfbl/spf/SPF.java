@@ -37,6 +37,7 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -3473,7 +3474,11 @@ public final class SPF implements Serializable {
     }
 
     private static boolean matches(String regex, String token) {
-        return Pattern.matches(regex, token);
+        try {
+            return Pattern.matches(regex, token);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static boolean isWHOIS(String token) {
@@ -3530,20 +3535,27 @@ public final class SPF implements Serializable {
 
     private static String normalizeToken(
             String token,
-            boolean whois,
-            boolean regex,
-            boolean cidr) throws ProcessException {
+            boolean canWhois,
+            boolean canRegex,
+            boolean canCidr) throws ProcessException {
         if (token == null || token.length() == 0) {
             return null;
-        } else if (whois && isWHOIS(token)) {
+        } else if (canWhois && isWHOIS(token)) {
             return token;
-        } else if (regex && isREGEX(token)) {
-            return token;
-        } else if (cidr && isCIDR(token)) {
+        } else if (canRegex && isREGEX(token)) {
+            try {
+                int index = token.indexOf('=');
+                String regex = token.substring(index + 1);
+                Pattern.compile(regex);
+                return token;
+            } catch (Exception ex) {
+                return null;
+            }
+        } else if (canCidr && isCIDR(token)) {
             return normalizeCIDR(token);
-        } else if (whois && Owner.isOwnerID(token)) {
+        } else if (canWhois && Owner.isOwnerID(token)) {
             return "WHOIS/ownerid=" + Owner.normalizeID(token);
-        } else if (cidr && Subnet.isValidCIDR(token)) {
+        } else if (canCidr && Subnet.isValidCIDR(token)) {
             return "CIDR=" + Subnet.normalizeCIDR(token);
         } else {
             String recipient = "";
