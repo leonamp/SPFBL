@@ -1,5 +1,21 @@
 #!/bin/bash
 #
+# This file is part of SPFBL.
+# and open the template in the editor.
+#
+# SPFBL is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# SPFBL is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+#
 # Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
@@ -12,28 +28,6 @@ IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-
-# Opcoes:
-# block add
-# block drop
-# block show
-# block show all
-# check
-# spam
-# ham
-# query
-# trap add
-# trap drop
-# trap show
-# white add
-# white drop
-# white show
-# refresh
-# reputation
-# clear
-# ignore add
-# ignore drop
-# ignore show
 version="0.1"
 
 head()
