@@ -220,6 +220,14 @@ A mensagem será atrasada 25min sempre que o responsável estiver com status GRA
 
 A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLACK.
 
+##### Serviço DNSBL
+
+O SPFBL abre a porta DNS para receber consultas padrão DNSBL.
+
+Para utilizar este serviço, é necessário registrar um host "dnsbl" como NS apontando para o hostname dnsbl.<dominio>, onde este hostname aponta para o IP do servidor SPFBL.
+
+Exemplo: dnsbl.spfbl.net
+
 ### Funcionamento
 
 O SPFBL contém uma tabela chamada REPUTATION onde são guardados todos os identificadores de fontes denunciadas com suas respectivas informações de listagem.
@@ -445,12 +453,18 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./lib" e "./data/" em "/opt/spfbl/".
+Para instalar o serviço normal basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./lib" e "./data/" em "/opt/spfbl/".
 
 Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
 java -jar /opt/spfbl/SPFBL.jar 9875 512 >> log.001.txt &
+```
+
+Caso seja necessário iniciar o serviço com DNSBL, é importante lembrar que o sistema operacional pode requerer permissão especial:
+
+```
+sudo java -jar /opt/spfbl/SPFBL.jar 9875 512 DNSBL >> log.001.txt &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.

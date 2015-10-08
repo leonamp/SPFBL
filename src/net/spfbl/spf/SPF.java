@@ -1,6 +1,18 @@
 /*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
+ * This file is part of SPFBL.
+ * 
+ * SPFBL is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * SPFBL is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.spf;
 
@@ -37,6 +49,7 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -3473,7 +3486,11 @@ public final class SPF implements Serializable {
     }
 
     private static boolean matches(String regex, String token) {
-        return Pattern.matches(regex, token);
+        try {
+            return Pattern.matches(regex, token);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static boolean isWHOIS(String token) {
@@ -3530,20 +3547,27 @@ public final class SPF implements Serializable {
 
     private static String normalizeToken(
             String token,
-            boolean whois,
-            boolean regex,
-            boolean cidr) throws ProcessException {
+            boolean canWhois,
+            boolean canRegex,
+            boolean canCidr) throws ProcessException {
         if (token == null || token.length() == 0) {
             return null;
-        } else if (whois && isWHOIS(token)) {
+        } else if (canWhois && isWHOIS(token)) {
             return token;
-        } else if (regex && isREGEX(token)) {
-            return token;
-        } else if (cidr && isCIDR(token)) {
+        } else if (canRegex && isREGEX(token)) {
+            try {
+                int index = token.indexOf('=');
+                String regex = token.substring(index + 1);
+                Pattern.compile(regex);
+                return token;
+            } catch (Exception ex) {
+                return null;
+            }
+        } else if (canCidr && isCIDR(token)) {
             return normalizeCIDR(token);
-        } else if (whois && Owner.isOwnerID(token)) {
+        } else if (canWhois && Owner.isOwnerID(token)) {
             return "WHOIS/ownerid=" + Owner.normalizeID(token);
-        } else if (cidr && Subnet.isValidCIDR(token)) {
+        } else if (canCidr && Subnet.isValidCIDR(token)) {
             return "CIDR=" + Subnet.normalizeCIDR(token);
         } else {
             String recipient = "";
