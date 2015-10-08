@@ -249,7 +249,9 @@ public final class SPF implements Serializable {
 //                }
             }
             return registryList;
-        } catch (ServiceUnavailableException ex) {
+        } catch (NameNotFoundException ex) {
+            return null;
+        } catch (NamingException ex) {
             if (bgWhenUnavailable) {
                 // Na indisponibilidade do DNS, considerar o best-guess.
                 registryList.add(CacheGuess.BEST_GUESS);
@@ -257,8 +259,6 @@ public final class SPF implements Serializable {
             } else {
                 throw new ProcessException("ERROR: DNS UNAVAILABLE", ex);
             }
-        } catch (NamingException ex) {
-            return null;
         } catch (Exception ex) {
             throw new ProcessException("ERROR: FATAL", ex);
         }
@@ -1850,18 +1850,16 @@ public final class SPF implements Serializable {
                 if (spf == null) {
                     spf = new SPF(host);
                     add(spf);
-                } else {
-                    if (spf.isRegistryExpired()) {
-                        try {
-                            // Atualiza o registro se ele for antigo demais.
-                            spf.refresh(false, false);
-                        } catch (ProcessException ex) {
-                            if (ex.getMessage().equals("ERROR: DNS UNAVAILABLE")) {
-                                // Manter registro anterior quando houver erro de DNS.
-                                Server.logDebug(address + ": SPF temporarily unavailable.");
-                            } else {
-                                throw ex;
-                            }
+                } else if (spf.isRegistryExpired()) {
+                    try {
+                        // Atualiza o registro se ele for antigo demais.
+                        spf.refresh(false, false);
+                    } catch (ProcessException ex) {
+                        if (ex.getMessage().equals("ERROR: DNS UNAVAILABLE")) {
+                            // Manter registro anterior quando houver erro de DNS.
+                            Server.logDebug(address + ": SPF temporarily unavailable.");
+                        } else {
+                            throw ex;
                         }
                     }
                 }
@@ -2613,7 +2611,7 @@ public final class SPF implements Serializable {
         
         private static boolean add(
                 String sender) throws ProcessException {
-            if ((sender = normalizeToken(sender)) == null) {
+            if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (addExact(sender)) {
                 return true;
@@ -2626,7 +2624,7 @@ public final class SPF implements Serializable {
                 String client, String sender) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeToken(sender)) == null) {
+            } else if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (addExact(client + ':' + sender)) {
                 return true;
@@ -2637,7 +2635,7 @@ public final class SPF implements Serializable {
 
         private static boolean drop(
                 String sender) throws ProcessException {
-            if ((sender = normalizeToken(sender)) == null) {
+            if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (dropExact(sender)) {
                 return true;
@@ -2650,7 +2648,7 @@ public final class SPF implements Serializable {
                 String sender) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeToken(sender)) == null) {
+            } else if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (dropExact(client + ':' + sender)) {
                 return true;
@@ -3538,18 +3536,24 @@ public final class SPF implements Serializable {
     }
 
     private static String normalizeToken(String token) throws ProcessException {
-        return normalizeToken(token, true, true, true);
+        return normalizeToken(token, true, true, true, false);
+    }
+    
+    private static String normalizeTokenWhite(String token) throws ProcessException {
+        return normalizeToken(token, true, true, true, true);
     }
 
     private static String normalizeTokenCIDR(String token) throws ProcessException {
-        return normalizeToken(token, false, false, true);
+        return normalizeToken(token, false, false, true, false);
     }
 
     private static String normalizeToken(
             String token,
             boolean canWhois,
             boolean canRegex,
-            boolean canCidr) throws ProcessException {
+            boolean canCidr,
+            boolean canFail
+            ) throws ProcessException {
         if (token == null || token.length() == 0) {
             return null;
         } else if (canWhois && isWHOIS(token)) {
@@ -3594,6 +3598,8 @@ public final class SPF implements Serializable {
                 } else if (qualif.equals(";NEUTRAL")) {
                     token = token.substring(0, index);
                 } else if (qualif.equals(";NONE")) {
+                    token = token.substring(0, index);
+                } else if (canFail && qualif.equals(";FAIL")) {
                     token = token.substring(0, index);
                 } else {
                     // Sintaxe com erro.
@@ -5425,9 +5431,9 @@ public final class SPF implements Serializable {
                 } else if (spf.isInexistent()) {
                     // O domínio foi dado como inexistente inúmeras vezes.
                     // Rejeitar a mensagem pois há abuso de tentativas.
-                    String dominio = Domain.extractDomain(sender, false);
+//                    String dominio = Domain.extractDomain(sender, false);
                     return "action=REJECT [RBL] "
-                            + dominio + " is non-existent internet domain.\n\n";
+                            + "sender has non-existent internet domain.\n\n";
                 } else {
                     result = spf.getResult(ip, sender, helo);
                 }
@@ -5726,7 +5732,7 @@ public final class SPF implements Serializable {
                             if (spf == null) {
                                 result = "NONE";
                             } else if (spf.isInexistent()) {
-                                return "ERROR: NXDOMAIN\n";
+                                return "NXDOMAIN\n";
                             } else {
                                 result = spf.getResult(ip, sender, helo);
                             }
@@ -5906,8 +5912,7 @@ public final class SPF implements Serializable {
                         }
                     } catch (ProcessException ex) {
                         if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
-                            // Considerar FAIL sempre que o hostname não existir.
-                            return "FAIL\n";
+                            return "NXDOMAIN\n";
                         } else {
                             throw ex;
                         }
