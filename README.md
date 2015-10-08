@@ -360,6 +360,10 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
     log_message = [SPFBL] unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
+  deny
+    message = [SPF] sender has non-existent internet domain.
+    log_message = [SPFBL] nxdomain.
+    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
   defer
     message = [RBL] you are temporarily blocked on this server.
     log_message = [SPFBL] listed.
@@ -421,6 +425,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
     log_message = [SPFBL] unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
+  deny
+    message = [SPF] sender has non-existent internet domain.
+    log_message = [SPFBL] nxdomain.
+    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
   defer
     message = [RBL] you are temporarily blocked on this server.
     log_message = [SPFBL] listed.
