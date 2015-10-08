@@ -400,7 +400,7 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
 
 ##### Integração com Exim do cPanel
 
-Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_spam_scan" com o seguinte código:
+Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_rbl" com o seguinte código:
 ```
   drop
     message = Invalid MAIL FROM address. Use a valid e-mail address.
