@@ -2613,7 +2613,7 @@ public final class SPF implements Serializable {
         
         private static boolean add(
                 String sender) throws ProcessException {
-            if ((sender = normalizeToken(sender)) == null) {
+            if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (addExact(sender)) {
                 return true;
@@ -2626,7 +2626,7 @@ public final class SPF implements Serializable {
                 String client, String sender) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeToken(sender)) == null) {
+            } else if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (addExact(client + ':' + sender)) {
                 return true;
@@ -2637,7 +2637,7 @@ public final class SPF implements Serializable {
 
         private static boolean drop(
                 String sender) throws ProcessException {
-            if ((sender = normalizeToken(sender)) == null) {
+            if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (dropExact(sender)) {
                 return true;
@@ -2650,7 +2650,7 @@ public final class SPF implements Serializable {
                 String sender) throws ProcessException {
             if (client == null) {
                 throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeToken(sender)) == null) {
+            } else if ((sender = normalizeTokenWhite(sender)) == null) {
                 throw new ProcessException("ERROR: SENDER INVALID");
             } else if (dropExact(client + ':' + sender)) {
                 return true;
@@ -3538,18 +3538,24 @@ public final class SPF implements Serializable {
     }
 
     private static String normalizeToken(String token) throws ProcessException {
-        return normalizeToken(token, true, true, true);
+        return normalizeToken(token, true, true, true, false);
+    }
+    
+    private static String normalizeTokenWhite(String token) throws ProcessException {
+        return normalizeToken(token, true, true, true, true);
     }
 
     private static String normalizeTokenCIDR(String token) throws ProcessException {
-        return normalizeToken(token, false, false, true);
+        return normalizeToken(token, false, false, true, false);
     }
 
     private static String normalizeToken(
             String token,
             boolean canWhois,
             boolean canRegex,
-            boolean canCidr) throws ProcessException {
+            boolean canCidr,
+            boolean canFail
+            ) throws ProcessException {
         if (token == null || token.length() == 0) {
             return null;
         } else if (canWhois && isWHOIS(token)) {
@@ -3594,6 +3600,8 @@ public final class SPF implements Serializable {
                 } else if (qualif.equals(";NEUTRAL")) {
                     token = token.substring(0, index);
                 } else if (qualif.equals(";NONE")) {
+                    token = token.substring(0, index);
+                } else if (canFail && qualif.equals(";FAIL")) {
                     token = token.substring(0, index);
                 } else {
                     // Sintaxe com erro.
