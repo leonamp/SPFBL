@@ -180,7 +180,8 @@ case $1 in
 		#    7: erro permanente.
 		#    8: listado em lista negra.
 		#    9: timeout de conexão.
-		#    10: parâmetros inválidos.
+		#    10: domínio inexistente.
+		#    11: parâmetros inválidos.
 		
 		if [ $# -lt "4" ]; then
 			head
@@ -199,13 +200,15 @@ case $1 in
 			echo "$qualifier"
 
 			if [[ $qualifier == "TIMEOUT" ]]; then
-					exit 9
+				exit 9
+			elif [[ $qualifier == "NXDOMAIN" ]]; then
+				exit 10
 			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
 			elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
 				exit 6
 			elif [[ $qualifier == "ERROR: QUERY" ]]; then
-				exit 10
+				exit 11
 			elif [[ $qualifier == "ERROR: "* ]]; then
 				exit 7
 			elif [[ $qualifier == "NONE"* ]]; then
@@ -406,6 +409,7 @@ case $1 in
 		#    10: bloqueado permanentemente.
 		#    11: spamtrap.
 		#    12: greylisting.
+		#    13: domínio inexistente.
 		
 		if [ $# -lt "5" ]; then
 			head
@@ -426,6 +430,8 @@ case $1 in
 
 			if [[ $qualifier == "TIMEOUT" ]]; then
 				exit 9
+			elif [[ $qualifier == "NXDOMAIN" ]]; then
+				exit 13
 			elif [[ $qualifier == "GREYLIST" ]]; then
 				exit 12
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
