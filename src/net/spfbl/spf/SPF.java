@@ -257,6 +257,14 @@ public final class SPF implements Serializable {
             } else {
                 throw new ProcessException("ERROR: DNS UNAVAILABLE", ex);
             }
+        } catch (CommunicationException ex) {
+            if (bgWhenUnavailable) {
+                // Na indisponibilidade do DNS, considerar o best-guess.
+                registryList.add(CacheGuess.BEST_GUESS);
+                return registryList;
+            } else {
+                throw new ProcessException("ERROR: DNS UNAVAILABLE", ex);
+            }
         } catch (NamingException ex) {
             return null;
         } catch (Exception ex) {
