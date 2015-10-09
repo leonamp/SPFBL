@@ -146,27 +146,32 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @param arroba se o arroba deve ser mantido na resposta.
      * @return o host do endereço de e-mail.
      */
-    public static String extractHost(String address, boolean pontuacao) {
+    public static String normalizeHostname(String address, boolean pontuacao) {
         if (address == null) {
             return null;
-        } else if (address.length() == 0) {
-            return null;
-        } else if (address.contains("@")) {
-            // O endereço é um e-mail.
-            // Extrair a parte do host.
-            int index = address.indexOf('@');
-            if (!pontuacao) {
-                index++;
+        } else {
+            if (address.endsWith(".")) {
+                address = address.substring(0, address.length()-1);
             }
-            return address.substring(index).toLowerCase();
-        } else if (pontuacao && !address.startsWith(".")) {
-            return "." + address.toLowerCase();
-        } else if (pontuacao && address.startsWith(".")) {
-            return address.toLowerCase();
-        } else if (!pontuacao && !address.startsWith(".")) {
-            return address.toLowerCase();
-        } else{
-            return address.substring(1).toLowerCase();
+            if (address.length() == 0) {
+                return null;
+            } else if (address.contains("@")) {
+                // O endereço é um e-mail.
+                // Extrair a parte do host.
+                int index = address.indexOf('@');
+                if (!pontuacao) {
+                    index++;
+                }
+                return address.substring(index).toLowerCase();
+            } else if (pontuacao && !address.startsWith(".")) {
+                return "." + address.toLowerCase();
+            } else if (pontuacao && address.startsWith(".")) {
+                return address.toLowerCase();
+            } else if (!pontuacao && !address.startsWith(".")) {
+                return address.toLowerCase();
+            } else{
+                return address.substring(1).toLowerCase();
+            }
         }
     }
     
@@ -179,7 +184,7 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
-        address = "." + extractHost(address, false);
+        address = "." + normalizeHostname(address, false);
         if (TLD_SET.contains(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
@@ -1060,7 +1065,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         } else {
             // Extrair o host se for e-mail.
-            String host = extractHost(address, false);
+            String host = normalizeHostname(address, false);
             // Não encontrou o dominio em cache.
             // Selecionando servidor da pesquisa WHOIS.
             String server = getWhoisServer(host);
@@ -1173,7 +1178,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         }
         // Extrair o host se for e-mail.
-        String host = extractHost(address, false);
+        String host = normalizeHostname(address, false);
         // Não encontrou o dominio em cache.
         // Selecionando servidor da pesquisa WHOIS.
         String server = getWhoisServer(host);

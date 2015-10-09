@@ -1647,7 +1647,7 @@ public final class SPF implements Serializable {
 
         private static boolean refresh(String address,
                 boolean load) throws ProcessException {
-            String host = Domain.extractHost(address, false);
+            String host = Domain.normalizeHostname(address, false);
             if (host == null) {
                 return false;
             } else {
@@ -1669,7 +1669,7 @@ public final class SPF implements Serializable {
          * @throws ProcessException se houver falha no processamento.
          */
         private static SPF get(String address) throws ProcessException {
-            String host = Domain.extractHost(address, false);
+            String host = Domain.normalizeHostname(address, false);
             if (host == null) {
                 return null;
             } else {
@@ -2289,7 +2289,7 @@ public final class SPF implements Serializable {
 
         private static boolean containsHELO(String ip, String helo) {
             if (CacheHELO.match(ip, helo, false)) {
-                helo = Domain.extractHost(helo, true);
+                helo = Domain.normalizeHostname(helo, true);
                 do {
                     int index = helo.indexOf('.') + 1;
                     helo = helo.substring(index);
@@ -2795,7 +2795,7 @@ public final class SPF implements Serializable {
                 regexSet.add(sender);
             }
             // Verifica o HELO.
-            if ((helo = Domain.extractHost(helo, true)) != null) {
+            if ((helo = Domain.normalizeHostname(helo, true)) != null) {
                 if (containsHost(client, helo, qualifier, recipient, recipientDomain)) {
                     return true;
                 }
@@ -3398,9 +3398,9 @@ public final class SPF implements Serializable {
             } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
                 return token.toLowerCase() + qualif + recipient;
             } else if (!token.contains("@") && Domain.containsDomain(token)) {
-                return Domain.extractHost(token, true) + qualif + recipient;
+                return Domain.normalizeHostname(token, true) + qualif + recipient;
             } else if (token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
-                return Domain.extractHost(token, true) + qualif + recipient;
+                return Domain.normalizeHostname(token, true) + qualif + recipient;
             } else if (Subnet.isValidIP(token)) {
                 return Subnet.normalizeIP(token) + qualif + recipient;
             } else {
@@ -3716,7 +3716,7 @@ public final class SPF implements Serializable {
                 regexSet.add(sender);
             }
             // Verifica o HELO.
-            if ((helo = Domain.extractHost(helo, true)) != null) {
+            if ((helo = Domain.normalizeHostname(helo, true)) != null) {
                 String host = findHost(client, helo, qualifier, recipient, recipientDomain);
                 if (host != null) {
                     return host;
@@ -4160,7 +4160,7 @@ public final class SPF implements Serializable {
                     }
                 }
                 // Verifica o HELO.
-                if ((token = Domain.extractHost(token, true)) != null) {
+                if ((token = Domain.normalizeHostname(token, true)) != null) {
                     if (containsHost(token)) {
                         return true;
                     }
@@ -4542,7 +4542,7 @@ public final class SPF implements Serializable {
 
         private static boolean add(String hostname,
                 String spf) throws ProcessException {
-            hostname = Domain.extractHost(hostname, false);
+            hostname = Domain.normalizeHostname(hostname, false);
             if (!Domain.containsDomain(hostname)) {
                 throw new ProcessException("ERROR: HOSTNAME INVALID");
             } else if (!spf.equals(putExact("." + hostname, spf))) {
@@ -4554,7 +4554,7 @@ public final class SPF implements Serializable {
         }
 
         private static boolean drop(String hostname) throws ProcessException {
-            hostname = Domain.extractHost(hostname, false);
+            hostname = Domain.normalizeHostname(hostname, false);
             if (!Domain.containsDomain(hostname)) {
                 throw new ProcessException("ERROR: HOSTNAME INVALID");
             } else if (dropExact("." + hostname) == null) {
@@ -4856,7 +4856,7 @@ public final class SPF implements Serializable {
         }
 
         public static boolean match(String ip, String helo, boolean log) {
-            if ((helo = Domain.extractHost(helo, false)) == null) {
+            if ((helo = Domain.normalizeHostname(helo, false)) == null) {
                 // o HELO é nulo.
                 return false;
             } else if (!Domain.containsDomain(helo)) {
@@ -5226,7 +5226,7 @@ public final class SPF implements Serializable {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
-                    String mx = Domain.extractHost(sender, true);
+                    String mx = Domain.normalizeHostname(sender, true);
                     if (CacheProvider.containsExact(mx)) {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
@@ -5258,7 +5258,7 @@ public final class SPF implements Serializable {
                         helo = "." + helo;
                     }
                     String dominio = Domain.extractDomain(helo, true);
-                    String subdominio = Domain.extractHost(helo, true);
+                    String subdominio = Domain.normalizeHostname(helo, true);
                     while (!subdominio.equals(dominio)) {
                         tokenSet.add(subdominio);
                         int index = subdominio.indexOf('.', 1);
@@ -5518,7 +5518,7 @@ public final class SPF implements Serializable {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
-                                String mx = Domain.extractHost(sender, true);
+                                String mx = Domain.normalizeHostname(sender, true);
                                 if (CacheProvider.containsExact(mx)) {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
@@ -5550,7 +5550,7 @@ public final class SPF implements Serializable {
                                     helo = "." + helo;
                                 }
                                 String dominio = Domain.extractDomain(helo, true);
-                                String subdominio = Domain.extractHost(helo, true);
+                                String subdominio = Domain.normalizeHostname(helo, true);
                                 while (!subdominio.equals(dominio)) {
                                     tokenSet.add(subdominio);
                                     int index = subdominio.indexOf('.', 1);

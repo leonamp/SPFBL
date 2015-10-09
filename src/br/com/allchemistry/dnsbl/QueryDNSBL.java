@@ -163,7 +163,7 @@ public final class QueryDNSBL extends Server {
                                     token = "Ownerid " + ownerid;
                                 }
                             } else if (Domain.containsDomain(token)) {
-                                String host = Domain.extractHost(token, true);
+                                String host = Domain.normalizeHostname(token, true);
                                 String domain = Domain.extractDomain(token, true);
                                 if (SPF.isBlacklisted(host)) {
                                     listed = true;
