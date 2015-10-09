@@ -37,6 +37,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
@@ -44,6 +45,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.Set;
@@ -59,6 +61,7 @@ import javax.crypto.SecretKey;
 import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
+import net.spfbl.dnsbl.QueryDNSBL;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -107,6 +110,7 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         SPF.load();
+        QueryDNSBL.load();
     }
     
     /**
@@ -121,6 +125,7 @@ public abstract class Server extends Thread {
         Handle.store();
         NameServer.store();
         SPF.store();
+        QueryDNSBL.store();
     }
     
     private static SecretKey privateKey = null;
@@ -967,7 +972,7 @@ public abstract class Server extends Thread {
                                 if (Domain.removeTLD(token)) {
                                     result += "DROPED\n";
                                 } else {
-                                    result += "ALREADY EXISTS\n";
+                                    result += "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
                                 result += ex.getMessage() + "\n";
@@ -979,6 +984,45 @@ public abstract class Server extends Thread {
                         }
                         if (result.length() == 0) {
                             result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("DNS") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.countTokens() == 2) {
+                        try {
+                            String hostname = tokenizer.nextToken();
+                            String address = tokenizer.nextToken();
+                            InetAddress inetAddress = InetAddress.getByName(address);
+                            if (QueryDNSBL.add(hostname, inetAddress)) {
+                                result = "ADDED\n";
+                            } else {
+                                result = "ALREADY EXISTS\n";
+                            }
+                            QueryDNSBL.store();
+                        } catch (UnknownHostException ex) {
+                            result = "INVALID ADDRESS\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreTokens()) {
+                            token = tokenizer.nextToken();
+                            if (QueryDNSBL.drop(token)) {
+                                result += "DROPED\n";
+                            } else {
+                                result += "NOT FOUND\n";
+                            }
+                        }
+                        QueryDNSBL.store();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        HashMap<String,InetAddress> map = QueryDNSBL.getMap();
+                        if (map.isEmpty()) {
+                            result = "EMPTY\n";
+                        } else {
+                            for (String key : map.keySet()) {
+                                InetAddress address = map.get(key);
+                                result += key + " " + address.getHostAddress() + "\n";
+                            }
                         }
                     } else {
                         result = "ERROR: COMMAND\n";

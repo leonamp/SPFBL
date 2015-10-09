@@ -224,7 +224,7 @@ A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLA
 
 O SPFBL abre a porta DNS para receber consultas padrão DNSBL.
 
-Para utilizar este serviço, é necessário registrar um host "dnsbl" como NS apontando para o hostname dnsbl.<dominio>, onde este hostname aponta para o IP do servidor SPFBL.
+Para utilizar este serviço, é necessário registrar um host "dnsbl" como NS apontando para o hostname dnsbl.&lt;dominio&gt;, onde este hostname aponta para o IP do servidor SPFBL.
 
 Exemplo: dnsbl.spfbl.net
 

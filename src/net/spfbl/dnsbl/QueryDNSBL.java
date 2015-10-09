@@ -16,6 +16,10 @@
  */
 package net.spfbl.dnsbl;
 
+import br.com.allchemistry.whois.Domain;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.SubnetIPv4;
@@ -23,8 +27,12 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import org.apache.commons.lang3.SerializationUtils;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.DClass;
 import org.xbill.DNS.Flags;
@@ -45,6 +53,145 @@ public final class QueryDNSBL extends Server {
 
     private final int PORT = 53;
     private final DatagramSocket SERVER_SOCKET;
+    
+    /**
+     * Mapa para cache dos registros DNS consultados.
+     */
+    private static final HashMap<String,InetAddress> MAP = new HashMap<String,InetAddress>();
+    /**
+     * Flag que indica se o cache foi modificado.
+     */
+    private static boolean CHANGED = false;
+    
+    private static synchronized boolean dropExact(String token) {
+        InetAddress ret = MAP.remove(token);
+        if (ret == null) {
+            return false;
+        } else {
+            CHANGED = true;
+            return true;
+        }
+    }
+
+    private static synchronized boolean putExact(String key, InetAddress value) {
+        InetAddress ret = MAP.put(key, value);
+        if (value.equals(ret)) {
+            return false;
+        } else {
+            CHANGED = true;
+            return true;
+        }
+    }
+
+    private static synchronized TreeSet<String> keySet() {
+        TreeSet<String> keySet = new TreeSet<String>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+
+    public static synchronized HashMap<String,InetAddress> getMap() {
+        HashMap<String,InetAddress> map = new HashMap<String,InetAddress>();
+        map.putAll(MAP);
+        return map;
+    }
+
+    private static synchronized boolean containsExact(String address) {
+        return MAP.containsKey(address);
+    }
+
+    private static synchronized InetAddress getExact(String host) {
+        return MAP.get(host);
+    }
+
+    private static synchronized Collection<InetAddress> getValues() {
+        return MAP.values();
+    }
+
+    private static synchronized boolean isChanged() {
+        return CHANGED;
+    }
+
+    private static synchronized void setStored() {
+        CHANGED = true;
+    }
+    
+    /**
+     * Adiciona um registro DNS no mapa de cache.
+     */
+    public static boolean add(String hostname, InetAddress address) {
+        if (hostname == null || address == null) {
+            return false;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            return putExact(hostname, address) ;
+        } else {
+            return false;
+        }
+    }
+    
+    private static InetAddress get(String hostname) {
+        if (hostname == null) {
+            return null;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            return getExact(hostname);
+        } else {
+            return null;
+        }
+    }
+    
+    public static boolean drop(String hostname) {
+        if (hostname == null) {
+            return false;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            return dropExact(hostname);
+        } else {
+            return false;
+        }
+    }
+    
+    public static void store() {
+        if (isChanged()) {
+            try {
+                long time = System.currentTimeMillis();
+                File file = new File("./data/dns.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
+                try {
+                    SerializationUtils.serialize(getMap(), outputStream);
+                    setStored();
+                } finally {
+                    outputStream.close();
+                }
+                Server.logStore(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+
+    public static void load() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/dns.map");
+        if (file.exists()) {
+            try {
+                HashMap<String,InetAddress> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                for (String key : map.keySet()) {
+                    InetAddress value = map.get(key);
+                    putExact(key, value);
+                }
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
     
     /**
      * Configuração e intanciamento do servidor.
@@ -131,81 +278,61 @@ public final class QueryDNSBL extends Server {
                     Record question = message.getQuestion();
                     Name name = question.getName();
                     String query = name.toString();
+                    long ttl = 1440; // Tempo de cache no DNS de um dia.
                     int index = query.lastIndexOf(".dnsbl.");
                     boolean listed = false;
-                    String token = null;
-                    long ttl = 0; // Tempo de cache no DNS.
                     if (index > 0) {
-//                        try {
-                            token = query.substring(0, index);
-//                            String ownerid;
-                            if (SubnetIPv4.isValidIPv4(token)) {
-                                // A consulta é um IPv4.
-                                // Reverter ordem dos octetos.
-                                byte[] address = SubnetIPv4.split(token);
-                                byte octeto = address[0];
-                                String ip = Integer.toString((int) octeto & 0xFF);
-                                for (int i = 1; i < address.length; i++) {
-                                    octeto = address[i];
-                                    ip = ((int) octeto & 0xFF) + "." + ip;
-                                }
-                                ip = SubnetIPv4.normalizeIPv4(ip);
-                                if (SPF.isBlacklisted(ip)) {
-                                    listed = true;
-                                    ttl = SPF.getComplainTTL(ip);
-                                    token = "IP " + ip;
-//                                } else if ((ownerid = Subnet.getOwnerID(ip)) != null) {
-//                                    listed = SPF.isBlacklisted(ownerid);
-//                                    ttl = SPF.getComplainTTL(ownerid);
-//                                    token = "Ownerid " + ownerid;
-                                }
-//                            } else if (Domain.containsDomain(token)) {
-//                                String host = Domain.extractHost(token, true);
-//                                String domain = Domain.extractDomain(token, true);
-//                                if (SPF.isBlacklisted(host)) {
-//                                    listed = true;
-//                                    ttl = SPF.getComplainTTL(host);
-//                                    token = "Host " + host;
-//                                } else if (SPF.isBlacklisted(domain)) {
-//                                    listed = true;
-//                                    ttl = SPF.getComplainTTL(domain);
-//                                    token = "Domain " + domain;
-//                                } else if ((ownerid = Domain.getOwnerID(domain)) != null) {
-//                                    listed = SPF.isBlacklisted(ownerid);
-//                                    ttl = SPF.getComplainTTL(ownerid);
-//                                    token = "Ownerid " + ownerid;
-//                                }
-//                            } else {
-//                                listed = SPF.isBlacklisted(token);
-//                                ttl = SPF.getComplainTTL(token);
-                            } else {
-                                listed = false;
-                                token = null;
-                                ttl = 1440; // Um dia.
+                        String token = query.substring(0, index);
+                        if (SubnetIPv4.isValidIPv4(token)) {
+                            // A consulta é um IPv4.
+                            // Reverter ordem dos octetos.
+                            byte[] address = SubnetIPv4.split(token);
+                            byte octeto = address[0];
+                            String ip = Integer.toString((int) octeto & 0xFF);
+                            for (int i = 1; i < address.length; i++) {
+                                octeto = address[i];
+                                ip = ((int) octeto & 0xFF) + "." + ip;
                             }
-//                        } catch (ProcessException ex) {
-//                            listed = false;
-//                            token = null;
-//                            ttl = 0;
-//                        }
-                    }
-                    // Alterando mensagem DNS para resposta.
-                    header.setFlag(Flags.QR);
-                    header.setFlag(Flags.AA);
-                    if (listed) {
-                        // Está listado.
-                        result = "127.0.0.2";
-                        String txtMessage = token + " is listed in this server.";
-                        InetAddress resultAddress = InetAddress.getByName(result);
-                        ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
-                        TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, txtMessage);
-                        message.addRecord(anwser, Section.ANSWER);
-                        message.addRecord(txt, Section.ANSWER);
-                        result += " " + txtMessage;
+                            ip = SubnetIPv4.normalizeIPv4(ip);
+                            if (SPF.isBlacklisted(ip)) {
+                                listed = true;
+                                ttl = SPF.getComplainTTL(ip);
+                                token = "IP " + ip;
+                            }
+                        } else {
+                            listed = false;
+                            token = null;
+
+                        }
+                        // Alterando mensagem DNS para resposta.
+                        header.setFlag(Flags.QR);
+                        header.setFlag(Flags.AA);
+                        if (listed) {
+                            // Está listado.
+                            result = "127.0.0.2";
+                            String txtMessage = token + " is listed in this server.";
+                            InetAddress resultAddress = InetAddress.getByName(result);
+                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
+                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, txtMessage);
+                            message.addRecord(anwser, Section.ANSWER);
+                            message.addRecord(txt, Section.ANSWER);
+                            result += " " + txtMessage;
+                        } else {
+                            // Não está listado.
+                            result = "NXDOMAIN";
+                            header.setRcode(Rcode.NXDOMAIN);
+                        }
                     } else {
-                        // Não está listado.
-                        result = "NXDOMAIN";
-                        header.setRcode(Rcode.NXDOMAIN);
+                        InetAddress resultAddress = get(query);
+                        if (resultAddress == null) {
+                            // Não está mapeado.
+                            result = "NXDOMAIN";
+                            header.setRcode(Rcode.NXDOMAIN);
+                        } else {
+                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
+                            message.addRecord(anwser, Section.ANSWER);
+                            result = resultAddress.getHostAddress();
+                        }
                     }
                     // Enviando resposta.
                     InetAddress ipAddress = packet.getAddress();
