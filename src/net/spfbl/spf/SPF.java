@@ -5019,6 +5019,40 @@ public final class SPF implements Serializable {
                 return attributes.get(attribute);
             }
         }
+        
+        public static String getUniqueIPv4(String helo) throws ProcessException {
+            try {
+                helo = Domain.extractHost(helo, false);
+                Attribute attribute = getAttribute(helo, "A");
+                if (attribute == null) {
+                    return null;
+                } else if (attribute.size() == 1) {
+                    String ip = (String) attribute.get(0);
+                    return SubnetIPv4.normalizeIPv4(ip);
+                } else {
+                    return null;
+                }
+            } catch (NamingException ex) {
+                return null;
+            }
+        }
+        
+        public static String getUniqueIPv6(String helo) {
+            try {
+                helo = Domain.extractHost(helo, false);
+                Attribute attribute = getAttribute(helo, "AAAA");
+                if (attribute == null) {
+                    return null;
+                } else if (attribute.size() == 1) {
+                    String ip = (String) attribute.get(0);
+                    return SubnetIPv6.normalizeIPv6(ip);
+                } else {
+                    return null;
+                }
+            } catch (NamingException ex) {
+                return null;
+            }
+        }
 
         public static boolean match(String ip, String helo, boolean log) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
@@ -5419,8 +5453,17 @@ public final class SPF implements Serializable {
                     }
                     fluxo = origem + ">" + recipient;
                 } else if (CacheHELO.match(ip, helo, true)) {
-                    // Se o HELO apontar para o IP,
-                    // então o dono do HELO é o responsável.
+                    String dominio = Domain.extractDomain(helo, true);
+                    origem = sender + ">" + dominio.substring(1);
+                    fluxo = origem + ">" + recipient;
+                } else {
+                    origem = sender + ">" + ip;
+                    fluxo = origem + ">" + recipient;
+                }
+                // Passar a acompanhar todos os 
+                // HELO quando apontados para o IP para 
+                // uma nova forma de interpretar dados.
+                if (CacheHELO.match(ip, helo, false)) {
                     if (!helo.startsWith(".")) {
                         helo = "." + helo;
                     }
@@ -5432,14 +5475,19 @@ public final class SPF implements Serializable {
                         subdominio = subdominio.substring(index);
                     }
                     tokenSet.add(dominio);
-                    origem = sender + ">" + dominio.substring(1);
-                    fluxo = origem + ">" + recipient;
-                } else {
-                    origem = sender + ">" + ip;
-                    fluxo = origem + ">" + recipient;
+                    String ipv4 = CacheHELO.getUniqueIPv4(helo);
+                    if (ipv4 != null) {
+                        // Equivalência de pilha dupla se 
+                        // IPv4 for único para o HELO.
+                        tokenSet.add(ipv4);
+                    }
+                    String ipv6 = CacheHELO.getUniqueIPv6(helo);
+                    if (ipv6 != null) {
+                        // Equivalência de pilha dupla se 
+                        // IPv6 for único para o HELO.
+                        tokenSet.add(ipv6);
+                    }
                 }
-                // Passar a acompanhar todos os IPs para 
-                // uma nova forma de interpretar dados.
                 if (SubnetIPv4.isValidIPv4(ip)) {
                     // Formalizar notação IPv4.
                     ip = SubnetIPv4.normalizeIPv4(ip);
@@ -5666,8 +5714,17 @@ public final class SPF implements Serializable {
                                 }
                                 fluxo = origem + ">" + recipient;
                             } else if (CacheHELO.match(ip, helo, true)) {
-                                // Se o HELO apontar para o IP,
-                                // então o dono do HELO é o responsável.
+                                String dominio = Domain.extractDomain(helo, true);
+                                origem = sender + ">" + dominio.substring(1);
+                                fluxo = origem + ">" + recipient;
+                            } else {
+                                origem = sender + ">" + ip;
+                                fluxo = origem + ">" + recipient;
+                            }
+                            // Passar a acompanhar todos os 
+                            // HELO quando apontados para o IP para 
+                            // uma nova forma de interpretar dados.
+                            if (CacheHELO.match(ip, helo, false)) {
                                 if (!helo.startsWith(".")) {
                                     helo = "." + helo;
                                 }
@@ -5679,14 +5736,17 @@ public final class SPF implements Serializable {
                                     subdominio = subdominio.substring(index);
                                 }
                                 tokenSet.add(dominio);
-                                origem = sender + ">" + dominio.substring(1);
-                                fluxo = origem + ">" + recipient;
-                            } else {
-                                origem = sender + ">" + ip;
-                                fluxo = origem + ">" + recipient;
+                                String ipv4 = CacheHELO.getUniqueIPv4(helo);
+                                if (ipv4 != null) {
+                                    // Equivalência de pilha dupla.
+                                    tokenSet.add(ipv4);
+                                }
+                                String ipv6 = CacheHELO.getUniqueIPv6(helo);
+                                if (ipv6 != null) {
+                                    // Equivalência de pilha dupla.
+                                    tokenSet.add(ipv6);
+                                }
                             }
-                            // Passar a acompanhar os IPs para 
-                            // uma nova forma de interpretar dados.
                             if (SubnetIPv4.isValidIPv4(ip)) {
                                 // Formalizar notação IPv4.
                                 ip = SubnetIPv4.normalizeIPv4(ip);

@@ -380,13 +380,15 @@ public final class QueryDNSBL extends Server {
     private Connection pollConnection() {
         if (CONNECION_SEMAPHORE.tryAcquire()) {
             return CONNECTION_POLL.poll();
-        } else {
+        } else if (CONNECTION_COUNT < 100) {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
             Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT+1) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;
+        } else {
+            return null;
         }
     }
     
@@ -405,15 +407,15 @@ public final class QueryDNSBL extends Server {
                     SERVER_SOCKET.receive(packet);
                     Connection connection = pollConnection();
                     if (connection == null) {
-                        InetAddress ipAddress = packet.getAddress();
-                        int portDestiny = packet.getPort();
+//                        InetAddress ipAddress = packet.getAddress();
+//                        int portDestiny = packet.getPort();
                         String result = "ERROR: TOO MANY CONNECTIONS\n";
-                        byte[] sendData = result.getBytes("ISO-8859-1");
-                        DatagramPacket sendPacket = new DatagramPacket(
-                                sendData, sendData.length,
-                                ipAddress, portDestiny
-                                );
-                        SERVER_SOCKET.send(sendPacket);
+//                        byte[] sendData = result.getBytes("ISO-8859-1");
+//                        DatagramPacket sendPacket = new DatagramPacket(
+//                                sendData, sendData.length,
+//                                ipAddress, portDestiny
+//                                );
+//                        SERVER_SOCKET.send(sendPacket);
                         System.out.print(result);
                     } else {
                         connection.process(packet);
