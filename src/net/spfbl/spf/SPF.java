@@ -2464,7 +2464,7 @@ public final class SPF implements Serializable {
         }
         
         private static boolean add(String address) throws ProcessException {
-            if ((address = normalizeCIDR(address)) == null) {
+            if ((address = normalizeProvider(address)) == null) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
             } else if (addExact(address)) {
                 return true;
@@ -2474,7 +2474,7 @@ public final class SPF implements Serializable {
         }
 
         private static boolean drop(String address) throws ProcessException {
-            if ((address = normalizeCIDR(address)) == null) {
+            if ((address = normalizeProvider(address)) == null) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
             } else if (dropExact(address)) {
                 return true;
@@ -3508,6 +3508,10 @@ public final class SPF implements Serializable {
 
     private static String normalizeToken(String token) throws ProcessException {
         return normalizeToken(token, true, true, true, false);
+    }
+    
+    private static String normalizeProvider(String token) throws ProcessException {
+        return normalizeToken(token, false, false, true, false);
     }
     
     private static String normalizeTokenWhite(String token) throws ProcessException {
