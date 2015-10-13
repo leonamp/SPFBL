@@ -407,16 +407,10 @@ public final class QueryDNSBL extends Server {
                     SERVER_SOCKET.receive(packet);
                     Connection connection = pollConnection();
                     if (connection == null) {
-//                        InetAddress ipAddress = packet.getAddress();
-//                        int portDestiny = packet.getPort();
-                        String result = "ERROR: TOO MANY CONNECTIONS\n";
-//                        byte[] sendData = result.getBytes("ISO-8859-1");
-//                        DatagramPacket sendPacket = new DatagramPacket(
-//                                sendData, sendData.length,
-//                                ipAddress, portDestiny
-//                                );
-//                        SERVER_SOCKET.send(sendPacket);
-                        System.out.print(result);
+                        long time = System.currentTimeMillis();
+                        InetAddress ipAddress = packet.getAddress();
+                        String result = "TOO MANY CONNECTIONS\n";
+                        Server.logQueryDNSBL(time, ipAddress, "", result);
                     } else {
                         connection.process(packet);
                     }
