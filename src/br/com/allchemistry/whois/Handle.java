@@ -187,8 +187,9 @@ public class Handle implements Serializable, Comparable<Handle> {
      * @return a pessoa de código informado.
      */
     public static synchronized Handle getHandle(String nichdlbr) {
-        nichdlbr = nichdlbr.trim(); // Implementar validação.
-        if (HANDLE_MAP.containsKey(nichdlbr)) {
+        if (nichdlbr == null) {
+            return null;
+        } else if (HANDLE_MAP.containsKey(nichdlbr)) {
             return HANDLE_MAP.get(nichdlbr);
         } else {
             Handle ns = new Handle(nichdlbr);
