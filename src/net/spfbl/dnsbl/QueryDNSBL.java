@@ -382,10 +382,10 @@ public final class QueryDNSBL extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire()) {
+            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
                 return CONNECTION_POLL.poll();
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
-            // Cria uma nova conexão se não houver conecxões ociosas.
+                // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();

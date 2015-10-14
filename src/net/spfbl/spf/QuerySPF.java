@@ -32,6 +32,7 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor de consulta em SPF.
@@ -460,20 +461,30 @@ public final class QuerySPF extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
+    private int CONNECTION_LIMIT = 10;
+    
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
-        } else {
-            // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT+1) + "...");
-            Connection connection = new Connection();
-            CONNECTION_COUNT++;
-            return connection;
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
+                return CONNECTION_POLL.poll();
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
+                // Cria uma nova conexão se não houver conecxões ociosas.
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
+                Connection connection = new Connection();
+                CONNECTION_COUNT++;
+                return connection;
+            } else if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                return CONNECTION_POLL.poll();
+            } else {
+                return null;
+            }
+        } catch (InterruptedException ex) {
+            return null;
         }
     }
     

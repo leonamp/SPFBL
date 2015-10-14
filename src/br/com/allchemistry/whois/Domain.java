@@ -948,7 +948,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         try {
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.getAttributesDNS(host, null);
-            Server.logCheckDNS(time, host, "EXIST");
+//            Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
