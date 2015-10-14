@@ -30,9 +30,9 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+![Patreon SPFBL project](https://www.patreon.com/user?u=2430613&ty=h "Patreon SPFBL project")
 
-![Patreon](https://www.patreon.com/user?u=2430613&ty=h "Patreon SPFBL project")
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 ### Funcionalidades
 
