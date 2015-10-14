@@ -30,7 +30,7 @@ my $CONFIG = {
         PeerHost => 'matrix.spfbl.net',
         PeerPort => 9877,
         Proto    => 'tcp',
-        Timeout  => 3,
+        Timeout  => 5,
     }
 };
 
@@ -52,7 +52,7 @@ while ( my $line = <STDIN> ) {
       or die "Can't connect to SPFBL server!\n";
 
     # build and send query
-    my $query = "$params->{client_address} $params->{sender} $params->{helo_name}\n";
+    my $query = "SPF '$params->{client_address}' '$params->{sender}' '$params->{helo_name}' '$params->{recipient}'\n";
     $socket->send($query);
 
     shutdown $socket, 1;
@@ -68,6 +68,11 @@ while ( my $line = <STDIN> ) {
     if ( $result =~ /^LISTED/ ) {
         STDOUT->print(
             "action=DEFER [RBL] you are temporarily blocked on this server.\n\n"
+        );
+    }
+    elsif ( $result =~ /^NXDOMAIN/ ) {
+        STDOUT->print(
+            "action=REJECT [RBL] sender has non-existent internet domain.\n\n"
         );
     }
     elsif ( $result =~ /^BLOCKED/ ) {
