@@ -23,6 +23,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 
@@ -165,16 +166,19 @@ public final class PeerUDP extends Server {
      * @param port a porta de resposta do destino.
      * @throws Exception se houver falha no envio.
      */
-    public void send(String token, InetAddress address, int port) throws ProcessException {
+    public void send(String token, String address, int port) throws ProcessException {
         try {
             byte[] sendData = token.getBytes("ISO-8859-1");
             if (sendData.length > SIZE) {
                 throw new ProcessException("ERROR: TOKEN TOO BIG");
             } else {
+                InetAddress inetAddress = InetAddress.getByName(address);
                 DatagramPacket sendPacket = new DatagramPacket(
-                        sendData, sendData.length, address, port);
+                        sendData, sendData.length, inetAddress, port);
                 SERVER_SOCKET.send(sendPacket);
             }
+        } catch (UnknownHostException ex) {
+            throw new ProcessException("ERROR: UNKNOWN HOST", ex);
         } catch (IOException ex) {
             throw new ProcessException("ERROR: PEER UNREACHABLE", ex);
         }
