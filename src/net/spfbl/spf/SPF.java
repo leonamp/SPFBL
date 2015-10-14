@@ -2464,7 +2464,7 @@ public final class SPF implements Serializable {
         }
         
         private static boolean add(String address) throws ProcessException {
-            if ((address = normalizeCIDR(address)) == null) {
+            if ((address = normalizeProvider(address)) == null) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
             } else if (addExact(address)) {
                 return true;
@@ -2474,7 +2474,7 @@ public final class SPF implements Serializable {
         }
 
         private static boolean drop(String address) throws ProcessException {
-            if ((address = normalizeCIDR(address)) == null) {
+            if ((address = normalizeProvider(address)) == null) {
                 throw new ProcessException("ERROR: PROVIDER INVALID");
             } else if (dropExact(address)) {
                 return true;
@@ -3510,6 +3510,10 @@ public final class SPF implements Serializable {
         return normalizeToken(token, true, true, true, false);
     }
     
+    private static String normalizeProvider(String token) throws ProcessException {
+        return normalizeToken(token, false, false, true, false);
+    }
+    
     private static String normalizeTokenWhite(String token) throws ProcessException {
         return normalizeToken(token, true, true, true, true);
     }
@@ -4440,22 +4444,22 @@ public final class SPF implements Serializable {
         /**
          * Mapa de registros de peers <endereço,porta>.
          */
-        private static final HashMap<InetAddress,Integer> MAP = new HashMap<InetAddress,Integer>();
+        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
         
         /**
          * Flag que indica se o cache foi modificado.
          */
         private static boolean CHANGED = false;
         
-        private static synchronized Integer dropExact(InetAddress token) {
-            Integer ret = MAP.remove(token);
+        private static synchronized Integer dropExact(String address) {
+            Integer ret = MAP.remove(address);
             if (ret != null) {
                 CHANGED = true;
             }
             return ret;
         }
 
-        private static synchronized Integer putExact(InetAddress key, Integer value) {
+        private static synchronized Integer putExact(String key, Integer value) {
             Integer ret = MAP.put(key, value);
             if (!value.equals(ret)) {
                 CHANGED = true;
@@ -4463,23 +4467,23 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static synchronized ArrayList<InetAddress> keySet() {
-            ArrayList<InetAddress> keySet = new ArrayList<InetAddress>();
+        private static synchronized ArrayList<String> keySet() {
+            ArrayList<String> keySet = new ArrayList<String>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
         
-        private static synchronized HashMap<InetAddress,Integer> getMap() {
-            HashMap<InetAddress,Integer> map = new HashMap<InetAddress,Integer>();
+        private static synchronized HashMap<String,Integer> getMap() {
+            HashMap<String,Integer> map = new HashMap<String,Integer>();
             map.putAll(MAP);
             return map;
         }
 
-        private static synchronized boolean containsExact(InetAddress address) {
+        private static synchronized boolean containsExact(String address) {
             return MAP.containsKey(address);
         }
         
-        private static synchronized Integer getExact(InetAddress host) {
+        private static synchronized Integer getExact(String host) {
             return MAP.get(host);
         }
         
@@ -4492,7 +4496,7 @@ public final class SPF implements Serializable {
         }
 
         private static void send(String token) {
-            for (InetAddress address : keySet()) {
+            for (String address : keySet()) {
                 long time = System.currentTimeMillis();
                 int port = getExact(address);
                 String result;
@@ -4519,10 +4523,10 @@ public final class SPF implements Serializable {
         private static boolean add(String address,
                 Integer port) throws ProcessException {
             try {
-                InetAddress inetAddress = InetAddress.getByName(address);
+                InetAddress.getByName(address);
                 if (port == null || port < 1 || port > 65535) {
                     throw new ProcessException("ERROR: PEER PORT INVALID");
-                } else if (!port.equals(putExact(inetAddress, port))) {
+                } else if (!port.equals(putExact(address, port))) {
                     // Enviar imediatamente todos os
                     // tokens bloqueados na base atual.
                     TreeMap<String,Distribution> distributionSet =
@@ -4533,12 +4537,12 @@ public final class SPF implements Serializable {
                             long time = System.currentTimeMillis();
                             String result;
                             try {
-                                Main.sendTokenToPeer(token, inetAddress, port);
+                                Main.sendTokenToPeer(token, address, port);
                                 result = "SENT";
                             } catch (ProcessException ex) {
                                 result = ex.toString();
                             }
-                            Server.logPeerSend(time, inetAddress, token, result);
+                            Server.logPeerSend(time, address, token, result);
                         }
                     }
                     return true;
@@ -4552,8 +4556,8 @@ public final class SPF implements Serializable {
         private static synchronized boolean drop(
                 String address) throws ProcessException {
             try {
-                InetAddress inetAddress = InetAddress.getByName(address);
-                if (dropExact(inetAddress) == null) {
+                InetAddress.getByName(address);
+                if (dropExact(address) == null) {
                     return false;
                 } else {
                     return true;
@@ -4565,9 +4569,9 @@ public final class SPF implements Serializable {
 
         private static TreeSet<String> get() throws ProcessException {
             TreeSet<String> blockSet = new TreeSet<String>();
-            for (InetAddress inetAddress : keySet()) {
-                int port = getExact(inetAddress);
-                String result = inetAddress + ":" + port;
+            for (String address : keySet()) {
+                int port = getExact(address);
+                String result = address + ":" + port;
                 blockSet.add(result);
             }
             return blockSet;
@@ -4597,16 +4601,23 @@ public final class SPF implements Serializable {
             File file = new File("./data/peer.map");
             if (file.exists()) {
                 try {
-                    HashMap<InetAddress,Integer> map;
+                    HashMap<Object,Integer> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
-                    for (InetAddress key : map.keySet()) {
-                        Integer value = map.get(key);
-                        putExact(key, value);
+                    for (Object key : map.keySet()) {
+                        if (key instanceof InetAddress) {
+                            InetAddress address = (InetAddress) key;
+                            Integer value = map.get(address);
+                            putExact(address.getHostAddress(), value);
+                        } else if (key instanceof String) {
+                            String address = (String) key;
+                            Integer value = map.get(address);
+                            putExact(address, value);
+                        }
                     }
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
@@ -5019,6 +5030,40 @@ public final class SPF implements Serializable {
                 return attributes.get(attribute);
             }
         }
+        
+        public static String getUniqueIPv4(String helo) throws ProcessException {
+            try {
+                helo = Domain.extractHost(helo, false);
+                Attribute attribute = getAttribute(helo, "A");
+                if (attribute == null) {
+                    return null;
+                } else if (attribute.size() == 1) {
+                    String ip = (String) attribute.get(0);
+                    return SubnetIPv4.normalizeIPv4(ip);
+                } else {
+                    return null;
+                }
+            } catch (NamingException ex) {
+                return null;
+            }
+        }
+        
+        public static String getUniqueIPv6(String helo) {
+            try {
+                helo = Domain.extractHost(helo, false);
+                Attribute attribute = getAttribute(helo, "AAAA");
+                if (attribute == null) {
+                    return null;
+                } else if (attribute.size() == 1) {
+                    String ip = (String) attribute.get(0);
+                    return SubnetIPv6.normalizeIPv6(ip);
+                } else {
+                    return null;
+                }
+            } catch (NamingException ex) {
+                return null;
+            }
+        }
 
         public static boolean match(String ip, String helo, boolean log) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
@@ -5419,8 +5464,17 @@ public final class SPF implements Serializable {
                     }
                     fluxo = origem + ">" + recipient;
                 } else if (CacheHELO.match(ip, helo, true)) {
-                    // Se o HELO apontar para o IP,
-                    // então o dono do HELO é o responsável.
+                    String dominio = Domain.extractDomain(helo, true);
+                    origem = sender + ">" + dominio.substring(1);
+                    fluxo = origem + ">" + recipient;
+                } else {
+                    origem = sender + ">" + ip;
+                    fluxo = origem + ">" + recipient;
+                }
+                // Passar a acompanhar todos os 
+                // HELO quando apontados para o IP para 
+                // uma nova forma de interpretar dados.
+                if (CacheHELO.match(ip, helo, false)) {
                     if (!helo.startsWith(".")) {
                         helo = "." + helo;
                     }
@@ -5432,14 +5486,19 @@ public final class SPF implements Serializable {
                         subdominio = subdominio.substring(index);
                     }
                     tokenSet.add(dominio);
-                    origem = sender + ">" + dominio.substring(1);
-                    fluxo = origem + ">" + recipient;
-                } else {
-                    origem = sender + ">" + ip;
-                    fluxo = origem + ">" + recipient;
+//                    String ipv4 = CacheHELO.getUniqueIPv4(helo);
+//                    if (ipv4 != null) {
+//                        // Equivalência de pilha dupla se 
+//                        // IPv4 for único para o HELO.
+//                        tokenSet.add(ipv4);
+//                    }
+//                    String ipv6 = CacheHELO.getUniqueIPv6(helo);
+//                    if (ipv6 != null) {
+//                        // Equivalência de pilha dupla se 
+//                        // IPv6 for único para o HELO.
+//                        tokenSet.add(ipv6);
+//                    }
                 }
-                // Passar a acompanhar todos os IPs para 
-                // uma nova forma de interpretar dados.
                 if (SubnetIPv4.isValidIPv4(ip)) {
                     // Formalizar notação IPv4.
                     ip = SubnetIPv4.normalizeIPv4(ip);
@@ -5492,10 +5551,10 @@ public final class SPF implements Serializable {
                     // Pelo menos um whois está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-//                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
-//                    // SOFTFAIL com atrazo programado de 1min.
-//                    return "action=DEFER [RBL] "
-//                            + "you are greylisted on this server.\n\n";
+                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
+                    // SOFTFAIL com atrazo programado de 1min.
+                    return "action=DEFER [RBL] "
+                            + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
@@ -5666,8 +5725,17 @@ public final class SPF implements Serializable {
                                 }
                                 fluxo = origem + ">" + recipient;
                             } else if (CacheHELO.match(ip, helo, true)) {
-                                // Se o HELO apontar para o IP,
-                                // então o dono do HELO é o responsável.
+                                String dominio = Domain.extractDomain(helo, true);
+                                origem = sender + ">" + dominio.substring(1);
+                                fluxo = origem + ">" + recipient;
+                            } else {
+                                origem = sender + ">" + ip;
+                                fluxo = origem + ">" + recipient;
+                            }
+                            // Passar a acompanhar todos os 
+                            // HELO quando apontados para o IP para 
+                            // uma nova forma de interpretar dados.
+                            if (CacheHELO.match(ip, helo, false)) {
                                 if (!helo.startsWith(".")) {
                                     helo = "." + helo;
                                 }
@@ -5679,14 +5747,17 @@ public final class SPF implements Serializable {
                                     subdominio = subdominio.substring(index);
                                 }
                                 tokenSet.add(dominio);
-                                origem = sender + ">" + dominio.substring(1);
-                                fluxo = origem + ">" + recipient;
-                            } else {
-                                origem = sender + ">" + ip;
-                                fluxo = origem + ">" + recipient;
+//                                String ipv4 = CacheHELO.getUniqueIPv4(helo);
+//                                if (ipv4 != null) {
+//                                    // Equivalência de pilha dupla.
+//                                    tokenSet.add(ipv4);
+//                                }
+//                                String ipv6 = CacheHELO.getUniqueIPv6(helo);
+//                                if (ipv6 != null) {
+//                                    // Equivalência de pilha dupla.
+//                                    tokenSet.add(ipv6);
+//                                }
                             }
-                            // Passar a acompanhar os IPs para 
-                            // uma nova forma de interpretar dados.
                             if (SubnetIPv4.isValidIPv4(ip)) {
                                 // Formalizar notação IPv4.
                                 ip = SubnetIPv4.normalizeIPv4(ip);
@@ -5761,9 +5832,9 @@ public final class SPF implements Serializable {
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um whois do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
-//                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
-//                                // SOFTFAIL com atrazo de 1min.
-//                                return "GREYLIST\n";
+                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
+                                // SOFTFAIL com atrazo de 1min.
+                                return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
                                 SPF.addQuery(tokenSet);

@@ -724,23 +724,48 @@ public class Domain implements Serializable, Comparable<Domain> {
         } else if (key.startsWith("owner/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwner().get(key, updated);
+            Owner owner = getOwner();
+            if (owner == null) {
+                return null; 
+            } else {
+                return owner.get(key, updated);
+            }
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwnerHandle().get(key);
+            Handle handle = getOwnerHandle();
+            if (handle == null) {
+                return null;
+            } else{
+                return handle.get(key);
+            }
         } else if (key.startsWith("admin-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getAdminHandle().get(key);
+            Handle handle = getAdminHandle();
+            if (handle == null) {
+                return null;
+            } else{
+                return handle.get(key);
+            }
         } else if (key.startsWith("tech-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getTechHandle().get(key);
+            Handle handle = getTechHandle();
+            if (handle == null) {
+                return null;
+            } else{
+                return handle.get(key);
+            }
         } else if (key.startsWith("billing-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getBillingHandle().get(key);
+            Handle handle = getBillingHandle();
+            if (handle == null) {
+                return null;
+            } else{
+                return handle.get(key);
+            }
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);

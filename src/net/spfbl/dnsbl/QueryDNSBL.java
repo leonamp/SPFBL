@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.SerializationUtils;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.DClass;
@@ -373,20 +374,30 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
+    private static final int CONNECTION_LIMIT = 10;
+    
     /**
      * Coleta uma conexão ociosa ou inicia uma nova.
      * @return uma conexão ociosa ou nova se não houver ociosa.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
-        } else {
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire()) {
+                return CONNECTION_POLL.poll();
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT+1) + "...");
-            Connection connection = new Connection();
-            CONNECTION_COUNT++;
-            return connection;
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
+                Connection connection = new Connection();
+                CONNECTION_COUNT++;
+                return connection;
+            } else if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                return CONNECTION_POLL.poll();
+            } else {
+                return null;
+            }
+        } catch (InterruptedException ex) {
+            return null;
         }
     }
     
@@ -405,16 +416,10 @@ public final class QueryDNSBL extends Server {
                     SERVER_SOCKET.receive(packet);
                     Connection connection = pollConnection();
                     if (connection == null) {
+                        long time = System.currentTimeMillis();
                         InetAddress ipAddress = packet.getAddress();
-                        int portDestiny = packet.getPort();
-                        String result = "ERROR: TOO MANY CONNECTIONS\n";
-                        byte[] sendData = result.getBytes("ISO-8859-1");
-                        DatagramPacket sendPacket = new DatagramPacket(
-                                sendData, sendData.length,
-                                ipAddress, portDestiny
-                                );
-                        SERVER_SOCKET.send(sendPacket);
-                        System.out.print(result);
+                        String result = "TOO MANY CONNECTIONS\n";
+                        Server.logQueryDNSBL(time, ipAddress, null, result);
                     } else {
                         connection.process(packet);
                     }

@@ -366,8 +366,8 @@ public abstract class Server extends Thread {
     }
     
     public static void logPeerSend(long time,
-            InetAddress ipAddress, String token, String result) {
-        logQuery(time, "PEERS", ipAddress, token, result);
+            String address, String token, String result) {
+        logQuery(time, "PEERS", address, token, result);
     }
     
     /**
@@ -571,7 +571,11 @@ public abstract class Server extends Thread {
             String type,
             InetAddress ipAddress,
             String query, String result) {
-        log(time, type, getLogClient(ipAddress) + ": " + query, result);
+        if (query == null) {
+            log(time, type, getLogClient(ipAddress) + ":", result);
+        } else {
+            log(time, type, getLogClient(ipAddress) + ": " + query, result);
+        }
     }
     
     public static void logQuery(

@@ -34,7 +34,7 @@ public class Main {
     
     public static void sendTokenToPeer(
             String token,
-            InetAddress address,
+            String address,
             int port
             ) throws ProcessException {
         peerUDP.send(token, address, port);
