@@ -32,6 +32,8 @@ Se este projeto for útil para sua empresa, faça uma doação de qualquer valor
 
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
+![Patreon](https://www.patreon.com/user?u=2430613&ty=h "Patreon SPFBL project")
+
 ### Funcionalidades
 
 Algumas alterações foram implementadas no SPFBL com a intenção de minimizar as respostas negativas ou incoerentes do SPF convencional.
