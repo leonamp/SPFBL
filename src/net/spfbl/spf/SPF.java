@@ -108,62 +108,6 @@ public final class SPF implements Serializable {
     private int nxdomain = 0; // Contador de inexistência de domínio.
     private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
     private static final int REFRESH_TIME = 7; // Prazo máximo que o registro deve permanecer em cache em dias.
-
-    private SPF(br.com.allchemistry.spf.SPF other) {
-        this.hostname = other.hostname;
-        this.redirect = other.redirect;
-        this.explanation = other.explanation;
-        if (other.mechanismList != null) {
-            this.mechanismList = new ArrayList<Mechanism>();
-            for (br.com.allchemistry.spf.SPF.Mechanism mechanism : other.mechanismList) {
-                if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv4) {
-                    br.com.allchemistry.spf.SPF.MechanismIPv4 ip4 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv4) mechanism;
-                    MechanismIPv4 ip4New = new MechanismIPv4(ip4);
-                    this.mechanismList.add(ip4New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv6) {
-                     br.com.allchemistry.spf.SPF.MechanismIPv6 ip6 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv6) mechanism;
-                    MechanismIPv6 ip6New = new MechanismIPv6(ip6);
-                    this.mechanismList.add(ip6New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismA) {
-                    br.com.allchemistry.spf.SPF.MechanismA a =
-                            (br.com.allchemistry.spf.SPF.MechanismA) mechanism;
-                    MechanismA aNew = new MechanismA(a);
-                    this.mechanismList.add(aNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismMX) {
-                    br.com.allchemistry.spf.SPF.MechanismMX mx =
-                            (br.com.allchemistry.spf.SPF.MechanismMX) mechanism;
-                    MechanismMX mxNew = new MechanismMX(mx);
-                    this.mechanismList.add(mxNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismPTR) {
-                    br.com.allchemistry.spf.SPF.MechanismPTR ptr =
-                            (br.com.allchemistry.spf.SPF.MechanismPTR) mechanism;
-                    MechanismPTR ptrNew = new MechanismPTR(ptr);
-                    this.mechanismList.add(ptrNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismExists) {
-                    br.com.allchemistry.spf.SPF.MechanismExists exists =
-                            (br.com.allchemistry.spf.SPF.MechanismExists) mechanism;
-                    MechanismExists existsNew = new MechanismExists(exists);
-                    this.mechanismList.add(existsNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismInclude) {
-                    br.com.allchemistry.spf.SPF.MechanismInclude include =
-                            (br.com.allchemistry.spf.SPF.MechanismInclude) mechanism;
-                    MechanismInclude includeNew = new MechanismInclude(include);
-                    this.mechanismList.add(includeNew);
-                }
-            }
-        }
-        if (other.all == null) {
-            this.all = null;
-        } else {
-            this. all = Qualifier.valueOf(other.all.name());
-        }
-        this.error = other.error;
-        this.queries = other.queries;
-        this.nxdomain = other.nxdomain;
-        this.lastRefresh = other.lastRefresh;
-    }
     
     private SPF(String hostname) throws ProcessException {
         this.hostname = hostname;
@@ -957,11 +901,6 @@ public final class SPF implements Serializable {
         private static final long serialVersionUID = 1L;
         private final String expression;
         private final Qualifier qualifier;
-        
-        private Mechanism(br.com.allchemistry.spf.SPF.Mechanism other) {
-            this.expression = other.expression;
-            this.qualifier = Qualifier.valueOf(other.qualifier.name());
-        }
 
         private Mechanism(String expression) {
             this.expression = expression;
@@ -1022,13 +961,6 @@ public final class SPF implements Serializable {
          * Marcado sempre que o mecanismo aponta para blocos reservados.
          */
         private final boolean reserved;
-        
-        private MechanismIPv4(br.com.allchemistry.spf.SPF.MechanismIPv4 other) {
-            super(other);
-            this.address = other.address;
-            this.mask = other.mask;
-            this.reserved = other.reserved;
-        }
 
         public MechanismIPv4(String expression) {
             super(expression);
@@ -1114,12 +1046,6 @@ public final class SPF implements Serializable {
         private static final long serialVersionUID = 1L;
         private final short[] address;
         private final short[] mask;
-        
-        private MechanismIPv6(br.com.allchemistry.spf.SPF.MechanismIPv6 other) {
-            super(other);
-            this.address = Arrays.copyOf(other.address, other.address.length);
-            this.mask = Arrays.copyOf(other.mask, other.mask.length);
-        }
 
         public MechanismIPv6(String expression) {
             super(expression);
@@ -1166,49 +1092,6 @@ public final class SPF implements Serializable {
         private static final long serialVersionUID = 1L;
         private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
         private boolean loaded = false;
-
-        private MechanismA(br.com.allchemistry.spf.SPF.MechanismA other) {
-            super(other);
-            for (br.com.allchemistry.spf.SPF.Mechanism mechanism : other.mechanismList) {
-                if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv4) {
-                    br.com.allchemistry.spf.SPF.MechanismIPv4 ip4 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv4) mechanism;
-                    MechanismIPv4 ip4New = new MechanismIPv4(ip4);
-                    mechanismList.add(ip4New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv6) {
-                     br.com.allchemistry.spf.SPF.MechanismIPv6 ip6 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv6) mechanism;
-                    MechanismIPv6 ip6New = new MechanismIPv6(ip6);
-                    mechanismList.add(ip6New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismA) {
-                    br.com.allchemistry.spf.SPF.MechanismA a =
-                            (br.com.allchemistry.spf.SPF.MechanismA) mechanism;
-                    MechanismA aNew = new MechanismA(a);
-                    mechanismList.add(aNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismMX) {
-                    br.com.allchemistry.spf.SPF.MechanismMX mx =
-                            (br.com.allchemistry.spf.SPF.MechanismMX) mechanism;
-                    MechanismMX mxNew = new MechanismMX(mx);
-                    mechanismList.add(mxNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismPTR) {
-                    br.com.allchemistry.spf.SPF.MechanismPTR ptr =
-                            (br.com.allchemistry.spf.SPF.MechanismPTR) mechanism;
-                    MechanismPTR ptrNew = new MechanismPTR(ptr);
-                    mechanismList.add(ptrNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismExists) {
-                    br.com.allchemistry.spf.SPF.MechanismExists exists =
-                            (br.com.allchemistry.spf.SPF.MechanismExists) mechanism;
-                    MechanismExists existsNew = new MechanismExists(exists);
-                    mechanismList.add(existsNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismInclude) {
-                    br.com.allchemistry.spf.SPF.MechanismInclude include =
-                            (br.com.allchemistry.spf.SPF.MechanismInclude) mechanism;
-                    MechanismInclude includeNew = new MechanismInclude(include);
-                    mechanismList.add(includeNew);
-                }
-            }
-            this.loaded = other.loaded;
-        }
         
         public MechanismA(String expression, boolean load) {
             super(expression);
@@ -1335,49 +1218,6 @@ public final class SPF implements Serializable {
         private static final long serialVersionUID = 1L;
         private final ArrayList<Mechanism> mechanismList = new ArrayList<Mechanism>();
         private boolean loaded = false;
-
-        private MechanismMX(br.com.allchemistry.spf.SPF.MechanismMX other) {
-            super(other);
-            for (br.com.allchemistry.spf.SPF.Mechanism mechanism : other.mechanismList) {
-                if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv4) {
-                    br.com.allchemistry.spf.SPF.MechanismIPv4 ip4 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv4) mechanism;
-                    MechanismIPv4 ip4New = new MechanismIPv4(ip4);
-                    mechanismList.add(ip4New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismIPv6) {
-                     br.com.allchemistry.spf.SPF.MechanismIPv6 ip6 =
-                            (br.com.allchemistry.spf.SPF.MechanismIPv6) mechanism;
-                    MechanismIPv6 ip6New = new MechanismIPv6(ip6);
-                    mechanismList.add(ip6New);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismA) {
-                    br.com.allchemistry.spf.SPF.MechanismA a =
-                            (br.com.allchemistry.spf.SPF.MechanismA) mechanism;
-                    MechanismA aNew = new MechanismA(a);
-                    mechanismList.add(aNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismMX) {
-                    br.com.allchemistry.spf.SPF.MechanismMX mx =
-                            (br.com.allchemistry.spf.SPF.MechanismMX) mechanism;
-                    MechanismMX mxNew = new MechanismMX(mx);
-                    mechanismList.add(mxNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismPTR) {
-                    br.com.allchemistry.spf.SPF.MechanismPTR ptr =
-                            (br.com.allchemistry.spf.SPF.MechanismPTR) mechanism;
-                    MechanismPTR ptrNew = new MechanismPTR(ptr);
-                    mechanismList.add(ptrNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismExists) {
-                    br.com.allchemistry.spf.SPF.MechanismExists exists =
-                            (br.com.allchemistry.spf.SPF.MechanismExists) mechanism;
-                    MechanismExists existsNew = new MechanismExists(exists);
-                    mechanismList.add(existsNew);
-                } else if (mechanism instanceof br.com.allchemistry.spf.SPF.MechanismInclude) {
-                    br.com.allchemistry.spf.SPF.MechanismInclude include =
-                            (br.com.allchemistry.spf.SPF.MechanismInclude) mechanism;
-                    MechanismInclude includeNew = new MechanismInclude(include);
-                    mechanismList.add(includeNew);
-                }
-            }
-            this.loaded = other.loaded;
-        }
         
         public MechanismMX(String expression, boolean load) {
             super(expression);
@@ -1538,10 +1378,6 @@ public final class SPF implements Serializable {
     private final class MechanismPTR extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-
-        private MechanismPTR(br.com.allchemistry.spf.SPF.MechanismPTR other) {
-            super(other);
-        }
         
         public MechanismPTR(String expression) {
             super(expression);
@@ -1672,10 +1508,6 @@ public final class SPF implements Serializable {
     private final class MechanismExists extends Mechanism {
 
         private static final long serialVersionUID = 1L;
-
-        private MechanismExists(br.com.allchemistry.spf.SPF.MechanismExists other) {
-            super(other);
-        }
         
         public MechanismExists(String expression) {
             super(expression);
@@ -1723,10 +1555,6 @@ public final class SPF implements Serializable {
 
         public MechanismInclude(String expression) {
             super(expression);
-        }
-
-        private MechanismInclude(br.com.allchemistry.spf.SPF.MechanismInclude other) {
-            super(other);
         }
 
         private String getHostname(String ip, String sender, String helo) {
@@ -1924,12 +1752,7 @@ public final class SPF implements Serializable {
                     }
                     for (String key : map.keySet()) {
                         Object value = map.get(key);
-                        if (value instanceof br.com.allchemistry.spf.SPF) {
-                            br.com.allchemistry.spf.SPF spf =
-                                    (br.com.allchemistry.spf.SPF) value;
-                            SPF spfNew = new SPF(spf);
-                            putExact(key, spfNew);
-                        } else if (value instanceof SPF) {
+                        if (value instanceof SPF) {
                             SPF spf = (SPF) value;
                             putExact(key, spf);
                         }
@@ -2532,12 +2355,7 @@ public final class SPF implements Serializable {
                     }
                     for (String key : map.keySet()) {
                         Object value = map.get(key);
-                        if (value instanceof br.com.allchemistry.spf.SPF.Distribution) {
-                            br.com.allchemistry.spf.SPF.Distribution distribution =
-                                    (br.com.allchemistry.spf.SPF.Distribution) value;
-                            Distribution distributionNew = new Distribution(distribution);
-                            putExact(key, distributionNew);
-                        } else if (value instanceof Distribution) {
+                        if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
                             putExact(key, distribution);
                         }
@@ -5200,12 +5018,6 @@ public final class SPF implements Serializable {
             private Attributes attributes = null;
             private int queryCount = 0;
             private long lastQuery;
-
-            private HELO(br.com.allchemistry.spf.SPF.CacheHELO.HELO other) throws NamingException {
-                attributes = other.attributes;
-                queryCount = other.queryCount;
-                lastQuery = other.lastQuery;
-            }
             
             private HELO(String hostname) throws NamingException {
                 this.lastQuery = System.currentTimeMillis();
@@ -5472,12 +5284,7 @@ public final class SPF implements Serializable {
                     }
                     for (String key : map.keySet()) {
                         Object value = map.get(key);
-                        if (value instanceof br.com.allchemistry.spf.SPF.CacheHELO.HELO) {
-                            br.com.allchemistry.spf.SPF.CacheHELO.HELO helo =
-                                    (br.com.allchemistry.spf.SPF.CacheHELO.HELO) value;
-                            HELO heloNew = new HELO(helo);
-                            putExact(key, heloNew);
-                        } else if (value instanceof HELO) {
+                        if (value instanceof HELO) {
                             HELO helo = (HELO) value;
                             putExact(key, helo);
                         }
@@ -5551,8 +5358,8 @@ public final class SPF implements Serializable {
         public static void dropExpired() {
             long expire = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000); // Expira em cinco dias
             for (String id : keySet()) {
-                long start = getExact(id);
-                if (start > expire) {
+                Long start = getExact(id);
+                if (start != null && start > expire) {
                     drop(id);
                 }
             }
@@ -5799,7 +5606,7 @@ public final class SPF implements Serializable {
                     // Pelo menos um whois está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-                } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
+                } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
                     // SOFTFAIL com atrazo programado de 1min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
@@ -6085,7 +5892,7 @@ public final class SPF implements Serializable {
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
                                 // Pelo menos um whois do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
-                            } else if (result.equals("SOFTFAIL") && CacheDefer.defer(fluxo, 1)) {
+                            } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
                                 // SOFTFAIL com atrazo de 1min.
                                 return "GREYLIST\n";
                             } else {
@@ -6320,18 +6127,6 @@ public final class SPF implements Serializable {
         private long lastComplain; // Última denúncia à distribuição.
         private Status status; // Status atual da distribuição.
         private NormalDistribution frequency = null; // Frequência média em segundos.
-
-        private Distribution(br.com.allchemistry.spf.SPF.Distribution other) {
-            this.complain = other.complain;
-            this.lastQuery = other.lastQuery;
-            this.lastComplain = other.lastComplain;
-            this.status = Status.valueOf(other.status.name());
-            if (other.frequency == null) {
-                this.frequency = null;
-            } else {
-                this.frequency = new NormalDistribution(other.frequency);
-            }
-        }
         
         public Distribution() {
             reset();

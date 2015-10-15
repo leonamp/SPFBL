@@ -16,7 +16,6 @@
  */
 package net.spfbl.dnsbl;
 
-import br.com.allchemistry.whois.Domain;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -33,6 +32,7 @@ import java.util.LinkedList;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.DClass;

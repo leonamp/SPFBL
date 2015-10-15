@@ -79,27 +79,6 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
      */
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
-    protected Subnet(br.com.allchemistry.whois.Subnet other) {
-        this.inetnum = other.inetnum;
-        this.inetnum_up = other.inetnum_up;
-        this.aut_num = other.aut_num;
-        this.abuse_c = other.abuse_c;
-        this.owner = other.owner;
-        this.ownerid = other.ownerid;
-        this.responsible = other.responsible;
-        this.country = other.country;
-        this.owner_c = other.owner_c;
-        this.tech_c = other.tech_c;
-        this.inetrev = other.inetrev;
-        this.created = other.created;
-        this.changed = other.changed;
-        this.nameServerList.addAll(other.nameServerList);
-        this.server = other.server;
-        this.lastRefresh = other.lastRefresh;
-        this.reduced = other.reduced;
-        this.queries = other.queries;
-    }
-    
     protected Subnet(String result) throws ProcessException {
         // Associação da chave primária final.
         this.inetnum = refresh(result);
@@ -617,15 +596,30 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else if (key.startsWith("abuse-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getAbuseHandle().get(key);
+            Handle abuse = getAbuseHandle();
+            if (abuse == null) {
+                return null;
+            } else {
+                return abuse.get(key);
+            }
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwnerHandle().get(key);
+            Handle owner = getOwnerHandle();
+            if (owner == null) {
+                return null;
+            } else {
+                return owner.get(key);
+            }
         } else if (key.startsWith("tech-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getTechHandle().get(key);
+            Handle tech = getTechHandle();
+            if (tech == null) {
+                return null;
+            } else {
+                return tech.get(key);
+            }
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
