@@ -57,12 +57,6 @@ public final class SubnetIPv6 extends Subnet
     private final long address; // Primeiro endereço do bloco, primeiros 64 bits.
     private final long mask; // Máscara da subrede, primeiros 64 bits.
     
-    private SubnetIPv6(br.com.allchemistry.whois.SubnetIPv6 other) {
-        super(other);
-        this.address = other.address;
-        this.mask = other.mask;
-    }
-    
     /**
      * Construtor do blocos de países.
      * @param inetnum o endereçamento CIDR do bloco.
@@ -638,12 +632,7 @@ public final class SubnetIPv6 extends Subnet
                 }
                 for (Long key : map.keySet()) {
                     Object value = map.get(key);
-                    if (value instanceof br.com.allchemistry.whois.SubnetIPv6) {
-                        br.com.allchemistry.whois.SubnetIPv6 sub4 =
-                                (br.com.allchemistry.whois.SubnetIPv6) value;
-                        SubnetIPv6 sub6New = new SubnetIPv6(sub4);
-                        SUBNET_MAP.put(key, sub6New);
-                    } else if (value instanceof SubnetIPv6) {
+                    if (value instanceof SubnetIPv6) {
                         SubnetIPv6 sub6 = (SubnetIPv6) value;
                         SUBNET_MAP.put(key, sub6);
                     }

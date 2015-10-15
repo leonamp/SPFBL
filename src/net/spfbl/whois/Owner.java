@@ -64,6 +64,11 @@ public class Owner implements Serializable, Comparable<Owner> {
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
+    /**
+     * Formatação padrão dos campos de data do WHOIS.
+     */
+    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
+    
     private Owner(br.com.allchemistry.whois.Owner other) {
         this.owner = other.owner;
         this.ownerid = other.ownerid;
@@ -79,11 +84,6 @@ public class Owner implements Serializable, Comparable<Owner> {
         this.reduced = other.reduced;
         this.queries = other.queries;
     }
-    
-    /**
-     * Formatação padrão dos campos de data do WHOIS.
-     */
-    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
     /**
      * Atualiza o tempo de expiração do registro de domínio.
@@ -297,7 +297,12 @@ public class Owner implements Serializable, Comparable<Owner> {
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwner().get(key);
+            Handle owner = getOwner();
+            if (owner == null) {
+                return null;
+            } else {
+                return owner.get(key);
+            }
         } else if (key.startsWith("domain/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);

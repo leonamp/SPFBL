@@ -56,12 +56,6 @@ public final class SubnetIPv4 extends Subnet
     private final int address; // Primeiro endereço do bloco.
     private final int mask; // Máscara da subrede.
     
-    private SubnetIPv4(br.com.allchemistry.whois.SubnetIPv4 other) {
-        super(other);
-        this.address = other.address;
-        this.mask = other.mask;
-    }
-    
     /**
      * Construtor do blocos de países.
      * @param inetnum o endereçamento CIDR do bloco.
@@ -511,12 +505,7 @@ public final class SubnetIPv4 extends Subnet
                 }
                 for (Integer key : map.keySet()) {
                     Object value = map.get(key);
-                    if (value instanceof br.com.allchemistry.whois.SubnetIPv4) {
-                        br.com.allchemistry.whois.SubnetIPv4 sub4 =
-                                (br.com.allchemistry.whois.SubnetIPv4) value;
-                        SubnetIPv4 sub4New = new SubnetIPv4(sub4);
-                        SUBNET_MAP.put(key, sub4New);
-                    } else if (value instanceof SubnetIPv4) {
+                    if (value instanceof SubnetIPv4) {
                         SubnetIPv4 sub4 = (SubnetIPv4) value;
                         SUBNET_MAP.put(key, sub4);
                     }

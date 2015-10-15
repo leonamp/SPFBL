@@ -30,6 +30,8 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
+<a href="https://www.patreon.com/user?u=2430613&ty=h">Patreon SPFBL project</a>
+
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 ### Funcionalidades
@@ -226,7 +228,7 @@ O SPFBL abre a porta DNS para receber consultas padrão DNSBL.
 
 Para utilizar este serviço, é necessário registrar um host "dnsbl" como NS apontando para o hostname dnsbl.&lt;dominio&gt;, onde este hostname aponta para o IP do servidor SPFBL.
 
-Exemplo: dnsbl.spfbl.net
+Exemplo: dnsbl.spfbl.net (serviço disponível)
 
 ### Funcionamento
 
@@ -298,15 +300,21 @@ O SPFBL tem integração nativa com o Postfix a partir da versão 3.
 
 Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
 ```
-check_policy_service {inet:<IP do servidor SPFBL>:9877, timeout=10s, default_action=PREPEND Received-SPFBL: TIMEOUT}
+check_policy_service {inet:<IP_do_servidor_SPFBL>:9877, timeout=10s, default_action=PREPEND Received-SPFBL: TIMEOUT}
 
 ```
 
-Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo main.cf:
+Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo master.cf:
 ```
 policy-spfbl  unix  -       n       n       -       -       spawn
-   user=nobody argv=/usr/bin/spfblquery.pl
+   user=nobody argv=/caminho/do/script/spfblpostfix.pl
 ```
+Depois disto, adicione a seguinte linha na seção "smtpd_recipient_restrictions" do arquivo main.cf:
+```
+check_policy_service unix:private/policy-spfbl
+```
+
+Após todas configurações, dê o comando reload ou restart no Postfix.
 
 O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP do servidor SPFBL dentro dele.
 

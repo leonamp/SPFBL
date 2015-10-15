@@ -16,7 +16,6 @@
  */
 package net.spfbl.dnsbl;
 
-import br.com.allchemistry.whois.Domain;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -33,6 +32,7 @@ import java.util.LinkedList;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.DClass;
@@ -382,10 +382,10 @@ public final class QueryDNSBL extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire()) {
+            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
                 return CONNECTION_POLL.poll();
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
-            // Cria uma nova conexão se não houver conecxões ociosas.
+                // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();

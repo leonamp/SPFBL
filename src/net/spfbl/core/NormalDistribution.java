@@ -32,11 +32,6 @@ public class NormalDistribution implements Serializable {
     
     private static final int POPULATION = 32;
     
-    public NormalDistribution(br.com.allchemistry.core.NormalDistribution other) {
-        this.xiSum = other.xiSum;
-        this.xi2Sum = other.xi2Sum;
-    }
-    
     /**
      * Inicia uma distribuição normal com população cheia com média zero.
      */

@@ -32,6 +32,7 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor de consulta em SPF.
@@ -460,20 +461,29 @@ public final class QuerySPF extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
+    private static final int CONNECTION_LIMIT = 10;
+    
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
-        } else {
-            // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT+1) + "...");
-            Connection connection = new Connection();
-            CONNECTION_COUNT++;
-            return connection;
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS)) {
+                return CONNECTION_POLL.poll();
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
+                // Cria uma nova conexão se não houver conecxões ociosas.
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
+                Connection connection = new Connection();
+                CONNECTION_COUNT++;
+                return connection;
+            } else {
+                CONNECION_SEMAPHORE.acquire();
+                return CONNECTION_POLL.poll();
+            }
+        } catch (InterruptedException ex) {
+            return null;
         }
     }
     
@@ -486,16 +496,22 @@ public final class QuerySPF extends Server {
             Server.logDebug("Listening queries on SPF port " + PORT + "...");
             while (continueListenning()) {
                 try {
+                    
                     Socket socket = SERVER_SOCKET.accept();
                     Connection connection = pollConnection();
                     if (connection == null) {
+                        long time = System.currentTimeMillis();
                         String result = "ERROR: TOO MANY CONNECTIONS\n";
                         try {
                             OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
                         } finally {
                             socket.close();
-                            System.out.print(result);
+                            Server.logQuery(
+                                time, "SPFQR",
+                                socket.getInetAddress(),
+                                null, result
+                                );
                         }
                     } else {
                         connection.process(socket);

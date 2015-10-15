@@ -480,15 +480,6 @@ public abstract class Server extends Thread {
     }
     
     /**
-     * Registra um vencimento de reclamação de spam SPF consultado.
-     * Uma iniciativa para formalização das mensagens de log.
-     * @param token o token SPF da mensagem original.
-     */
-    public static void logHamSPF(Set<String> tokenSet) {
-        log(System.currentTimeMillis(), "SPFWL", tokenSet.toString(), (String) null);
-    }
-    
-    /**
      * Registra os resultados do WHOIS.
      * Uma iniciativa para formalização das mensagens de log.
      * @param server o servidor WHOIS.
@@ -583,7 +574,7 @@ public abstract class Server extends Thread {
             String type,
             String client,
             String query, String result) {
-        log(time, type, client + ": " + query, result);
+        log(time, type, (client == null ? "" : client + ": ") + query, result);
     }
     
 //    public static void logQuery(

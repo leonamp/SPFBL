@@ -60,7 +60,12 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     private int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
-
+    
+    /**
+     * Formatação padrão dos campos de data do WHOIS.
+     */
+    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
+    
     private AutonomousSystem(br.com.allchemistry.whois.AutonomousSystem other) {
         this.aut_num = other.aut_num;
         this.owner = other.owner;
@@ -78,11 +83,6 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         this.reduced = other.reduced;
         this.queries = other.queries;
     }
-    
-    /**
-     * Formatação padrão dos campos de data do WHOIS.
-     */
-    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
     /**
      * Atualiza o tempo de expiração do registro de AS.
@@ -296,15 +296,30 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwner().get(key);
+            Handle owner = getOwner();
+            if (owner == null) {
+                return null;
+            } else {
+                return owner.get(key);
+            }
         } else if (key.startsWith("routing-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getRouting().get(key);
+            Handle routing = getRouting();
+            if (routing == null) {
+                return null;
+            } else {
+                return routing.get(key);
+            }
         } else if (key.startsWith("abuse-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getAbuse().get(key);
+            Handle abuse = getAbuse();
+            if (abuse == null) {
+                return null;
+            } else {
+                return abuse.get(key);
+            }
         } else {
             return null;
         }

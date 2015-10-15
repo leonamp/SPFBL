@@ -92,33 +92,6 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     private static int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
-    private Domain(br.com.allchemistry.whois.Domain other) {
-        this.domain = other.domain;
-        this.owner = other.owner;
-        this.ownerid = other.ownerid;
-        this.responsible = other.responsible;
-        this.country = other.country;
-        this.owner_c = other.owner_c;
-        this.admin_c = other.admin_c;
-        this.tech_c = other.tech_c;
-        this.billing_c = other.billing_c;
-        this.created = other.created;
-        this.expires = other.expires;
-        this.changed = other.changed;
-        this.provider = other.provider;
-        this.status = other.status;
-        this.dsrecord = other.dsrecord;
-        this.dsstatus = other.dsstatus;
-        this.dslastok = other.dslastok;
-        this.saci = other.saci;
-        this.web_whois = other.web_whois;
-        this.nameServerList.addAll(other.nameServerList);
-        this.server = other.server;
-        this.lastRefresh = other.lastRefresh;
-        this.reduced = other.reduced;
-        this.queries = other.queries;
-    }
-    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -312,6 +285,41 @@ public class Domain implements Serializable, Comparable<Domain> {
                         "^(_?(?=.{1,255}$)[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|-){0,61}[0-9A-Za-z])?)*\\.?)$", address
                         );
 
+            }
+        }
+    }
+    
+    /**
+     * Extrai o host de um endereço de e-mail.
+     * @param address o endereço que contém o host.
+     * @param arroba se o arroba deve ser mantido na resposta.
+     * @return o host do endereço de e-mail.
+     */
+    public static String normalizeHostname(String address, boolean pontuacao) {
+        if (address == null) {
+            return null;
+        } else {
+            if (address.endsWith(".")) {
+                address = address.substring(0, address.length()-1);
+            }
+            if (address.length() == 0) {
+                return null;
+            } else if (address.contains("@")) {
+                // O endereço é um e-mail.
+                // Extrair a parte do host.
+                int index = address.indexOf('@');
+                if (!pontuacao) {
+                    index++;
+                }
+                return address.substring(index).toLowerCase();
+            } else if (pontuacao && !address.startsWith(".")) {
+                return "." + address.toLowerCase();
+            } else if (pontuacao && address.startsWith(".")) {
+                return address.toLowerCase();
+            } else if (!pontuacao && !address.startsWith(".")) {
+                return address.toLowerCase();
+            } else{
+                return address.substring(1).toLowerCase();
             }
         }
     }
@@ -750,19 +758,39 @@ public class Domain implements Serializable, Comparable<Domain> {
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwnerHandle().get(key);
+            Handle owner = getOwnerHandle();
+            if (owner == null) {
+                return null;
+            } else {
+                return owner.get(key);
+            }
         } else if (key.startsWith("admin-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getAdminHandle().get(key);
+            Handle admin = getAdminHandle();
+            if (admin == null) {
+                return null;
+            } else {
+                return admin.get(key);
+            }
         } else if (key.startsWith("tech-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getTechHandle().get(key);
+            Handle tech = getTechHandle();
+            if (tech == null) {
+                return null;
+            } else {
+                return tech.get(key);
+            }
         } else if (key.startsWith("billing-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getBillingHandle().get(key);
+            Handle billing = getBillingHandle();
+            if (billing == null) {
+                return null;
+            } else {
+                return billing.get(key);
+            }
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
@@ -909,12 +937,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
-                    if (value instanceof br.com.allchemistry.whois.Domain) {
-                        br.com.allchemistry.whois.Domain domain =
-                                (br.com.allchemistry.whois.Domain) value;
-                        Domain domainNew = new Domain(domain);
-                        DOMAIN_MAP.put(key, domainNew);
-                    } else if (value instanceof Domain) {
+                    if (value instanceof Domain) {
                         Domain domain = (Domain) value;
                         DOMAIN_MAP.put(key, domain);
                     }
@@ -954,7 +977,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         try {
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.getAttributesDNS(host, null);
-            Server.logCheckDNS(time, host, "EXIST");
+//            Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
