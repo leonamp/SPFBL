@@ -5359,7 +5359,7 @@ public final class SPF implements Serializable {
             long expire = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000); // Expira em cinco dias
             for (String id : keySet()) {
                 Long start = getExact(id);
-                if (start != null && start > expire) {
+                if (start != null && start < expire) {
                     drop(id);
                 }
             }
