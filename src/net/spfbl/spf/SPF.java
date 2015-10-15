@@ -5167,7 +5167,7 @@ public final class SPF implements Serializable {
                     return false;
                 } catch (NamingException ex) {
                     if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                        Server.logMatchHELO(time, helo + " " + ip, ex.getMessage());
                     }
                     return false;
                 }
@@ -5208,7 +5208,7 @@ public final class SPF implements Serializable {
                     return false;
                 } catch (NamingException ex) {
                     if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, "ERROR " + ex.getMessage());
+                        Server.logMatchHELO(time, helo + " " + ip, ex.getMessage());
                     }
                     return false;
                 }
@@ -6292,9 +6292,9 @@ public final class SPF implements Serializable {
                     CachePeer.send(token);
                 } else if (max == 0.0f) {
                     status = Status.WHITE;
-                } else if (min > LIMIAR1 && complain > 5) {
+                } else if (min > LIMIAR1) {
                     status = Status.BLACK;
-                } else if (status == Status.GRAY && min > LIMIAR1 && complain > 5) {
+                } else if (status == Status.GRAY && min > LIMIAR1) {
                     status = Status.BLACK;
                 } else if (status == Status.BLACK && max < LIMIAR1) {
                     status = Status.GRAY;
