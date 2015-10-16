@@ -382,7 +382,8 @@ public final class QueryDNSBL extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
+            // Espera aceitável para conexão de 10ms.
+            if (CONNECION_SEMAPHORE.tryAcquire(10, TimeUnit.MILLISECONDS)) {
                 return CONNECTION_POLL.poll();
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
@@ -391,9 +392,14 @@ public final class QueryDNSBL extends Server {
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;
-            } else if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+            } else if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
+                // Se a quantidade de conexões atingir o limite,
+                // aguardar por mais 100ms a próxima liberação de conexão.
                 return CONNECTION_POLL.poll();
             } else {
+                // Se não houver liberação, ignorar consulta DNS.
+                // O MX que fizer a consulta terá um TIMEOUT 
+                // considerando assim o IP como não listado.
                 return null;
             }
         } catch (InterruptedException ex) {

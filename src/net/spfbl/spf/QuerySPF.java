@@ -469,16 +469,20 @@ public final class QuerySPF extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS)) {
+            // Espera aceitável para conexão de 100ms.
+            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
                 return CONNECTION_POLL.poll();
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
-                // Cria uma nova conexão se não houver conecxões ociosas.
+                // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;
             } else {
+                // Se a quantidade de conexões atingir o limite,
+                // Aguardar a próxima liberação de conexão 
+                // independente de quanto tempo levar.
                 CONNECION_SEMAPHORE.acquire();
                 return CONNECTION_POLL.poll();
             }
