@@ -469,8 +469,8 @@ public final class QuerySPF extends Server {
      */
     private Connection pollConnection() {
         try {
-            // Espera aceitável para conexão de 100ms.
-            if (CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS)) {
+            // Espera aceitável para conexão de 200ms.
+            if (CONNECION_SEMAPHORE.tryAcquire(200, TimeUnit.MILLISECONDS)) {
                 return CONNECTION_POLL.poll();
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.

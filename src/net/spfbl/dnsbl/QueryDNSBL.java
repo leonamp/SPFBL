@@ -339,13 +339,15 @@ public final class QueryDNSBL extends Server {
                                 break;
                             }
                         }
-                        if (server == null || reverse.length() == 0) {
-                            // Não existe servidor DNSBL cadastrado
-                            // ou o reverso é inválido.
+                        if (server == null) {
+                            // Não existe servidor DNSBL cadastrado.
                             result = "NXDOMAIN";
                         } else if (query.equals(hostname)) {
                             // Consulta do próprio hostname do servidor.
                             result = server.getHostAddress();
+                        } else if (reverse.length() == 0) {
+                            // O reverso é inválido.
+                            result = "NXDOMAIN";
                         } else if (SubnetIPv4.isValidIPv4(reverse.substring(1))) {
                             // A consulta é um IPv4.
                             // Reverter ordem dos octetos.
