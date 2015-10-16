@@ -75,6 +75,11 @@ while ( my $line = <STDIN> ) {
             "action=REJECT [RBL] sender has non-existent internet domain.\n\n"
         );
     }
+    elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
+        STDOUT->print(
+            "action=REJECT [RBL] $params->{sender} is not a valid e-mail address.\n\n"
+        );
+    }
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
             "action=REJECT [RBL] you are permanently blocked in this server.\n\n"
