@@ -370,6 +370,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                                 (br.com.allchemistry.whois.AutonomousSystem) value;
                         AutonomousSystem asNew = new AutonomousSystem(as);
                         AS_MAP.put(key, asNew);
+                        AS_CHANGED = true;
                     } else if (value instanceof AutonomousSystem) {
                         AutonomousSystem as = (AutonomousSystem) value;
                         AS_MAP.put(key, as);

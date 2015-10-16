@@ -363,6 +363,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                                 (br.com.allchemistry.whois.Owner) value;
                         Owner ownerNew = new Owner(owner);
                         OWNER_MAP.put(key, ownerNew);
+                        OWNER_CHANGED = true;
                     } else if (value instanceof Owner) {
                         Owner owner = (Owner) value;
                         OWNER_MAP.put(key, owner);

@@ -29,6 +29,7 @@ import java.net.SocketException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -58,14 +59,15 @@ public final class QueryDNSBL extends Server {
     /**
      * Mapa para cache dos registros DNS consultados.
      */
-    private static final HashMap<String,InetAddress> MAP = new HashMap<String,InetAddress>();
+    private static final HashMap<String,ServerDNSBL> MAP = new HashMap<String,ServerDNSBL>();
+    
     /**
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
     
     private static synchronized boolean dropExact(String token) {
-        InetAddress ret = MAP.remove(token);
+        ServerDNSBL ret = MAP.remove(token);
         if (ret == null) {
             return false;
         } else {
@@ -74,8 +76,8 @@ public final class QueryDNSBL extends Server {
         }
     }
 
-    private static synchronized boolean putExact(String key, InetAddress value) {
-        InetAddress ret = MAP.put(key, value);
+    private static synchronized boolean putExact(String key, ServerDNSBL value) {
+        ServerDNSBL ret = MAP.put(key, value);
         if (value.equals(ret)) {
             return false;
         } else {
@@ -90,21 +92,21 @@ public final class QueryDNSBL extends Server {
         return keySet;
     }
 
-    public static synchronized HashMap<String,InetAddress> getMap() {
-        HashMap<String,InetAddress> map = new HashMap<String,InetAddress>();
+    public static synchronized HashMap<String,ServerDNSBL> getMap() {
+        HashMap<String,ServerDNSBL> map = new HashMap<String,ServerDNSBL>();
         map.putAll(MAP);
         return map;
     }
 
-    private static synchronized boolean containsExact(String address) {
-        return MAP.containsKey(address);
+    private static synchronized boolean containsExact(String host) {
+        return MAP.containsKey(host);
     }
 
-    private static synchronized InetAddress getExact(String host) {
+    private static synchronized ServerDNSBL getExact(String host) {
         return MAP.get(host);
     }
 
-    private static synchronized Collection<InetAddress> getValues() {
+    private static synchronized Collection<ServerDNSBL> getValues() {
         return MAP.values();
     }
 
@@ -119,18 +121,37 @@ public final class QueryDNSBL extends Server {
     /**
      * Adiciona um registro DNS no mapa de cache.
      */
-    public static boolean add(String hostname, InetAddress address) {
+    public static boolean add(String hostname, InetAddress address, String message) {
         if (hostname == null || address == null) {
             return false;
         } else if (Domain.isHostname(hostname)) {
             hostname = Domain.normalizeHostname(hostname, true);
-            return putExact(hostname, address) ;
+            ServerDNSBL server = new ServerDNSBL(hostname, address, message);
+            return putExact(hostname, server) ;
         } else {
             return false;
         }
     }
     
-    private static InetAddress get(String hostname) {
+    public static boolean set(String hostname, InetAddress address, String message) {
+        if (hostname == null || address == null) {
+            return false;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            ServerDNSBL server = getExact(hostname);
+            if (server == null) {
+                return false;
+            } else {
+                server.setInetAddress(address);
+                server.setMessage(message);
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    private static ServerDNSBL get(String hostname) {
         if (hostname == null) {
             return null;
         } else if (Domain.isHostname(hostname)) {
@@ -156,7 +177,7 @@ public final class QueryDNSBL extends Server {
         if (isChanged()) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("./data/dns.map");
+                File file = new File("./data/dnsbl.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(getMap(), outputStream);
@@ -173,8 +194,25 @@ public final class QueryDNSBL extends Server {
 
     public static void load() {
         long time = System.currentTimeMillis();
-        File file = new File("./data/dns.map");
+        File file = new File("./data/dnsbl.map");
         if (file.exists()) {
+            try {
+                Map<String,ServerDNSBL> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                for (String key : map.keySet()) {
+                    ServerDNSBL value = map.get(key);
+                    putExact(key, value);
+                }
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        } else if ((file = new File("./data/dns.map")).exists()) {
             try {
                 HashMap<String,InetAddress> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
@@ -185,7 +223,10 @@ public final class QueryDNSBL extends Server {
                 }
                 for (String key : map.keySet()) {
                     InetAddress value = map.get(key);
-                    putExact(key, value);
+                    String message = "<IP> is listed in this server.";
+                    ServerDNSBL server = new ServerDNSBL(key, value, message);
+                    putExact(key, server);
+                    CHANGED = true;
                 }
                 Server.logLoad(time, file);
             } catch (Exception ex) {
@@ -272,69 +313,138 @@ public final class QueryDNSBL extends Server {
                     DatagramPacket packet = PACKET_LIST.poll();
                     long time = System.currentTimeMillis();
                     byte[] data = packet.getData();
-                    String result;
                     // Processando consulta DNS.
                     Message message = new Message(data);
                     Header header = message.getHeader();
                     Record question = message.getQuestion();
                     Name name = question.getName();
                     String query = name.toString();
-                    long ttl = 1440; // Tempo de cache no DNS de um dia.
-                    int index = query.lastIndexOf(".dnsbl.");
-                    boolean listed = false;
-                    if (index > 0) {
-                        String token = query.substring(0, index);
-                        if (SubnetIPv4.isValidIPv4(token)) {
+                    String result = "NXDOMAIN";
+                    long ttl = 1440; // Tempo padrão de cache de um dia.
+                    String information = null;
+                    String ip = "";
+                    if (Domain.isHostname(query)) {
+                        query = Domain.extractHost(query, true);
+                        int index = query.length() - 1;
+                        query = query.substring(0, index);
+                        ServerDNSBL server = null;
+                        String hostname = null;
+                        String reverse = "";
+                        while ((index = query.lastIndexOf('.', index)) != -1) {
+                            reverse = query.substring(0, index);
+                            hostname = query.substring(index);
+                            if ((server = getExact(hostname)) == null) {
+                                index--;
+                            } else {
+                                break;
+                            }
+                        }
+                        if (server == null || reverse.length() == 0) {
+                            // Não existe servidor DNSBL cadastrado
+                            // ou o reverso é inválido.
+                            result = "NXDOMAIN";
+                        } else if (query.equals(hostname)) {
+                            // Consulta do próprio hostname do servidor.
+                            result = server.getHostAddress();
+                        } else if (SubnetIPv4.isValidIPv4(reverse.substring(1))) {
                             // A consulta é um IPv4.
                             // Reverter ordem dos octetos.
-                            byte[] address = SubnetIPv4.split(token);
+                            byte[] address = SubnetIPv4.split(reverse.substring(1));
                             byte octeto = address[0];
-                            String ip = Integer.toString((int) octeto & 0xFF);
+                            ip = Integer.toString((int) octeto & 0xFF);
                             for (int i = 1; i < address.length; i++) {
                                 octeto = address[i];
                                 ip = ((int) octeto & 0xFF) + "." + ip;
                             }
                             ip = SubnetIPv4.normalizeIPv4(ip);
                             if (SPF.isBlacklisted(ip)) {
-                                listed = true;
+                                result = "127.0.0.2";
+                                information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
-                                token = "IP " + ip;
                             }
-                        } else {
-                            listed = false;
-                            token = null;
-
-                        }
-                        // Alterando mensagem DNS para resposta.
-                        header.setFlag(Flags.QR);
-                        header.setFlag(Flags.AA);
-                        if (listed) {
-                            // Está listado.
-                            result = "127.0.0.2";
-                            String txtMessage = token + " is listed in this server.";
-                            InetAddress resultAddress = InetAddress.getByName(result);
-                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
-                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, txtMessage);
-                            message.addRecord(anwser, Section.ANSWER);
-                            message.addRecord(txt, Section.ANSWER);
-                            result += " " + txtMessage;
-                        } else {
-                            // Não está listado.
-                            result = "NXDOMAIN";
-                            header.setRcode(Rcode.NXDOMAIN);
-                        }
-                    } else {
-                        InetAddress resultAddress = get(query);
-                        if (resultAddress == null) {
-                            // Não está mapeado.
-                            result = "NXDOMAIN";
-                            header.setRcode(Rcode.NXDOMAIN);
-                        } else {
-                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
-                            message.addRecord(anwser, Section.ANSWER);
-                            result = resultAddress.getHostAddress();
                         }
                     }
+                    // Alterando mensagem DNS para resposta.
+                    header.setFlag(Flags.QR);
+                    header.setFlag(Flags.AA);
+                    if (result.equals("NXDOMAIN")) {
+                        header.setRcode(Rcode.NXDOMAIN);
+                    } else if (result.equals("127.0.0.2") && information != null) {
+                        // Está listado.
+                        InetAddress address = InetAddress.getByName(result);
+                        information = information.replace("<IP>", ip);
+                        ARecord anwser = new ARecord(name, DClass.IN, ttl, address);
+                        TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, information);
+                        message.addRecord(anwser, Section.ANSWER);
+                        message.addRecord(txt, Section.ANSWER);
+                        result += " " + information;
+                    } else {
+                        InetAddress address = InetAddress.getByName(result);
+                        ARecord anwser = new ARecord(name, DClass.IN, ttl, address);
+                        message.addRecord(anwser, Section.ANSWER);
+                    }
+                    
+                    
+                    
+//                    long ttl = 1440; // Tempo de cache no DNS de um dia.
+//                    int index = query.lastIndexOf(".dnsbl.");
+//                    boolean listed = false;
+//                    if (index > 0) {
+//                        String token = query.substring(0, index);
+//                        if (SubnetIPv4.isValidIPv4(token)) {
+//                            // A consulta é um IPv4.
+//                            // Reverter ordem dos octetos.
+//                            byte[] address = SubnetIPv4.split(token);
+//                            byte octeto = address[0];
+//                            String ip = Integer.toString((int) octeto & 0xFF);
+//                            for (int i = 1; i < address.length; i++) {
+//                                octeto = address[i];
+//                                ip = ((int) octeto & 0xFF) + "." + ip;
+//                            }
+//                            ip = SubnetIPv4.normalizeIPv4(ip);
+//                            if (SPF.isBlacklisted(ip)) {
+//                                listed = true;
+//                                ttl = SPF.getComplainTTL(ip);
+//                                token = "IP " + ip;
+//                            }
+//                        } else {
+//                            listed = false;
+//                            token = null;
+//
+//                        }
+//                        // Alterando mensagem DNS para resposta.
+//                        header.setFlag(Flags.QR);
+//                        header.setFlag(Flags.AA);
+//                        if (listed) {
+//                            // Está listado.
+//                            result = "127.0.0.2";
+//                            String txtMessage = token + " is listed in this server.";
+//                            InetAddress resultAddress = InetAddress.getByName(result);
+//                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
+//                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, txtMessage);
+//                            message.addRecord(anwser, Section.ANSWER);
+//                            message.addRecord(txt, Section.ANSWER);
+//                            result += " " + txtMessage;
+//                        } else {
+//                            // Não está listado.
+//                            result = "NXDOMAIN";
+//                            header.setRcode(Rcode.NXDOMAIN);
+//                        }
+//                    } else {
+//                        ServerDNSBL server = get(query);
+//                        if (server == null) {
+//                            // Não está mapeado.
+//                            result = "NXDOMAIN";
+//                            header.setRcode(Rcode.NXDOMAIN);
+//                        } else {
+//                            InetAddress resultAddress = server.getInetAddress();
+//                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
+//                            message.addRecord(anwser, Section.ANSWER);
+//                            result = resultAddress.getHostAddress();
+//                        }
+//                    }
+                    
+                    
                     // Enviando resposta.
                     InetAddress ipAddress = packet.getAddress();
                     int portDestiny = packet.getPort();
