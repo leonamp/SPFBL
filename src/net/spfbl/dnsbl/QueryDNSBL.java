@@ -386,67 +386,6 @@ public final class QueryDNSBL extends Server {
                         message.addRecord(anwser, Section.ANSWER);
                     }
                     
-                    
-                    
-//                    long ttl = 1440; // Tempo de cache no DNS de um dia.
-//                    int index = query.lastIndexOf(".dnsbl.");
-//                    boolean listed = false;
-//                    if (index > 0) {
-//                        String token = query.substring(0, index);
-//                        if (SubnetIPv4.isValidIPv4(token)) {
-//                            // A consulta é um IPv4.
-//                            // Reverter ordem dos octetos.
-//                            byte[] address = SubnetIPv4.split(token);
-//                            byte octeto = address[0];
-//                            String ip = Integer.toString((int) octeto & 0xFF);
-//                            for (int i = 1; i < address.length; i++) {
-//                                octeto = address[i];
-//                                ip = ((int) octeto & 0xFF) + "." + ip;
-//                            }
-//                            ip = SubnetIPv4.normalizeIPv4(ip);
-//                            if (SPF.isBlacklisted(ip)) {
-//                                listed = true;
-//                                ttl = SPF.getComplainTTL(ip);
-//                                token = "IP " + ip;
-//                            }
-//                        } else {
-//                            listed = false;
-//                            token = null;
-//
-//                        }
-//                        // Alterando mensagem DNS para resposta.
-//                        header.setFlag(Flags.QR);
-//                        header.setFlag(Flags.AA);
-//                        if (listed) {
-//                            // Está listado.
-//                            result = "127.0.0.2";
-//                            String txtMessage = token + " is listed in this server.";
-//                            InetAddress resultAddress = InetAddress.getByName(result);
-//                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
-//                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, txtMessage);
-//                            message.addRecord(anwser, Section.ANSWER);
-//                            message.addRecord(txt, Section.ANSWER);
-//                            result += " " + txtMessage;
-//                        } else {
-//                            // Não está listado.
-//                            result = "NXDOMAIN";
-//                            header.setRcode(Rcode.NXDOMAIN);
-//                        }
-//                    } else {
-//                        ServerDNSBL server = get(query);
-//                        if (server == null) {
-//                            // Não está mapeado.
-//                            result = "NXDOMAIN";
-//                            header.setRcode(Rcode.NXDOMAIN);
-//                        } else {
-//                            InetAddress resultAddress = server.getInetAddress();
-//                            ARecord anwser = new ARecord(name, DClass.IN, ttl, resultAddress);
-//                            message.addRecord(anwser, Section.ANSWER);
-//                            result = resultAddress.getHostAddress();
-//                        }
-//                    }
-                    
-                    
                     // Enviando resposta.
                     InetAddress ipAddress = packet.getAddress();
                     int portDestiny = packet.getPort();
