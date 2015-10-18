@@ -115,7 +115,7 @@ public final class QueryDNSBL extends Server {
     }
 
     private static synchronized void setStored() {
-        CHANGED = true;
+        CHANGED = false;
     }
     
     /**

@@ -338,11 +338,16 @@ public final class SPF implements Serializable {
             return false;
         }
     }
-
+    
     private boolean isInexistent() {
-        // Se procurou 32 vezes seguidas e retornou domínio inexistente,
+        return nxdomain > 0;
+    }
+
+    private boolean isDefinitelyInexistent() {
+        // Se consultou mais de 32 vezes 
+        // seguidas com 3 retornos de inexistência,
         // considerar como definitivamente inexistente.
-        return nxdomain > 32;
+        return nxdomain > 3 && queries > 32;
     }
 
     /**
@@ -377,7 +382,6 @@ public final class SPF implements Serializable {
             this.explanation = null;
             this.error = false;
             CacheSPF.CHANGED = true;
-            this.queries = 0;
             this.addInexistent();
             updateLastRefresh();
             Server.logLookupSPF(time, hostname, "NXDOMAIN");
@@ -1648,7 +1652,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
         
         private static void dropExpired() {
@@ -1873,7 +1877,7 @@ public final class SPF implements Serializable {
 //        }
 //        
 //        private static synchronized void setStored() {
-//            CHANGED = true;
+//            CHANGED = false;
 //        }
 //
 //        private static void store() {
@@ -2085,7 +2089,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         private static void store() {
@@ -2319,7 +2323,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         private static void store() {
@@ -2524,7 +2528,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
         
         private static boolean add(String address) throws ProcessException {
@@ -2670,7 +2674,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
         
         private static boolean add(
@@ -3342,7 +3346,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
         
         
@@ -3714,7 +3718,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
         
         private static boolean add(String token) throws ProcessException {
@@ -4327,7 +4331,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         private static boolean add(String token) throws ProcessException {
@@ -4556,7 +4560,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         private static void send(String token) {
@@ -4771,7 +4775,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         private static boolean add(String hostname,
@@ -5006,7 +5010,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         /*
@@ -5352,7 +5356,7 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
-            CHANGED = true;
+            CHANGED = false;
         }
 
         public static void dropExpired() {
@@ -5461,25 +5465,62 @@ public final class SPF implements Serializable {
         if (sender != null && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
-        } else if (!SubnetIPv4.isValidIPv4(ip) && !SubnetIPv6.isValidIPv6(ip)) {
+        } else if (!Subnet.isValidIP(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
         } else {
             try {
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                ip = Subnet.normalizeIP(ip);
+                tokenSet.add(Subnet.normalizeIP(ip));
+                // Passar a acompanhar todos os 
+                // HELO quando apontados para o IP para 
+                // uma nova forma de interpretar dados.
+                if (CacheHELO.match(ip, helo, false)) {
+                    if (!helo.startsWith(".")) {
+                        helo = "." + helo;
+                    }
+                    String dominio = Domain.extractDomain(helo, true);
+                    String subdominio = Domain.extractHost(helo, true);
+                    while (!subdominio.equals(dominio)) {
+                        tokenSet.add(subdominio);
+                        int index = subdominio.indexOf('.', 1);
+                        subdominio = subdominio.substring(index);
+                    }
+                    tokenSet.add(dominio);
+                    String ipv4 = CacheHELO.getUniqueIPv4(helo);
+                    if (ipv4 != null) {
+                        // Equivalência de pilha dupla se 
+                        // IPv4 for único para o HELO.
+                        tokenSet.add(ipv4);
+                    }
+                    String ipv6 = CacheHELO.getUniqueIPv6(helo);
+                    if (ipv6 != null) {
+                        // Equivalência de pilha dupla se 
+                        // IPv6 for único para o HELO.
+                        tokenSet.add(ipv6);
+                    }
+                }
                 String result;
                 SPF spf = CacheSPF.get(sender);
                 if (spf == null) {
                     result = "NONE";
-                } else if (spf.isInexistent()) {
+                } else if (spf.isDefinitelyInexistent()) {
                     // O domínio foi dado como inexistente inúmeras vezes.
-                    // Rejeitar a mensagem pois há abuso de tentativas.
-//                    String dominio = Domain.extractDomain(sender, false);
+                    // Rejeitar e denunciar o host pois há abuso de tentativas.
+                    SPF.addQuery(tokenSet);
+                    long time2 = System.currentTimeMillis();
+                    String ticket = SPF.createTicket(tokenSet);
+                    Server.logTicket(time2, ip, sender, helo, ticket);
+                    CacheComplain.addComplain(time2, client, ticket);
+                    return "action=REJECT [RBL] "
+                            + "sender has non-existent internet domain.\n\n";
+                } else if (spf.isInexistent()) {
                     return "action=REJECT [RBL] "
                             + "sender has non-existent internet domain.\n\n";
                 } else {
                     result = spf.getResult(ip, sender, helo);
                 }
-                TreeSet<String> tokenSet = new TreeSet<String>();
                 String origem;
                 String fluxo;
                 if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
@@ -5524,50 +5565,13 @@ public final class SPF implements Serializable {
                     origem = sender + ">" + ip;
                     fluxo = origem + ">" + recipient;
                 }
-                // Passar a acompanhar todos os 
-                // HELO quando apontados para o IP para 
-                // uma nova forma de interpretar dados.
-                if (CacheHELO.match(ip, helo, false)) {
-                    if (!helo.startsWith(".")) {
-                        helo = "." + helo;
-                    }
-                    String dominio = Domain.extractDomain(helo, true);
-                    String subdominio = Domain.extractHost(helo, true);
-                    while (!subdominio.equals(dominio)) {
-                        tokenSet.add(subdominio);
-                        int index = subdominio.indexOf('.', 1);
-                        subdominio = subdominio.substring(index);
-                    }
-                    tokenSet.add(dominio);
-                    String ipv4 = CacheHELO.getUniqueIPv4(helo);
-                    if (ipv4 != null) {
-                        // Equivalência de pilha dupla se 
-                        // IPv4 for único para o HELO.
-                        tokenSet.add(ipv4);
-                    }
-                    String ipv6 = CacheHELO.getUniqueIPv6(helo);
-                    if (ipv6 != null) {
-                        // Equivalência de pilha dupla se 
-                        // IPv6 for único para o HELO.
-                        tokenSet.add(ipv6);
-                    }
-                }
-                if (SubnetIPv4.isValidIPv4(ip)) {
-                    // Formalizar notação IPv4.
-                    ip = SubnetIPv4.normalizeIPv4(ip);
-                    tokenSet.add(ip);
-                } else if (SubnetIPv6.isValidIPv6(ip)) {
-                    // Formalizar notação IPv6.
-                    ip = SubnetIPv6.normalizeIPv6(ip);
-                    tokenSet.add(ip);
-                }
                 if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
                     SPF.addQuery(tokenSet);
                     // Adcionar ticket ao cabeçalho da mensagem.
                     long time = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, tokenSet);
+                    Server.logTicket(time, ip, sender, helo, ticket);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " " + ticket + "\n\n";
                 } else if (CacheTrap.contains(client, recipient)) {
@@ -5576,10 +5580,8 @@ public final class SPF implements Serializable {
                     // Spamtrap. Denúnica automática.
                     long time = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, tokenSet);
-//                    TreeSet<String> complainSet = 
-                            CacheComplain.addComplain(time, client, ticket);
-//                    Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                    Server.logTicket(time, ip, sender, helo, ticket);
+                    CacheComplain.addComplain(time, client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
@@ -5587,10 +5589,8 @@ public final class SPF implements Serializable {
                     // Bloqueio. Denúnica automática.
                     long time2 = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time2, ip, sender, helo, tokenSet);
-//                    TreeSet<String> complainSet =
-                            CacheComplain.addComplain(time2, client, ticket);
-//                    Server.logQuery(time2, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                    Server.logTicket(time2, ip, sender, helo, ticket);
+                    CacheComplain.addComplain(time2, client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
@@ -5616,7 +5616,7 @@ public final class SPF implements Serializable {
                     // Adcionar ticket ao cabeçalho da mensagem.
                     long time = System.currentTimeMillis();
                     String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, tokenSet);
+                    Server.logTicket(time, ip, sender, helo, ticket);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " " + ticket + "\n\n";
                 }
@@ -5742,15 +5742,54 @@ public final class SPF implements Serializable {
                         } else if (sender != null && !Domain.isEmail(sender)) {
                             return "ERROR: INVALID SENDER\n";
                         } else {
+                            TreeSet<String> tokenSet = new TreeSet<String>();
+                            ip = Subnet.normalizeIP(ip);
+                            tokenSet.add(ip);
+                            // Passar a acompanhar todos os 
+                            // HELO quando apontados para o IP para 
+                            // uma nova forma de interpretar dados.
+                            if (CacheHELO.match(ip, helo, false)) {
+                                if (!helo.startsWith(".")) {
+                                    helo = "." + helo;
+                                }
+                                String dominio = Domain.extractDomain(helo, true);
+                                String subdominio = Domain.extractHost(helo, true);
+                                while (!subdominio.equals(dominio)) {
+                                    tokenSet.add(subdominio);
+                                    int index = subdominio.indexOf('.', 1);
+                                    subdominio = subdominio.substring(index);
+                                }
+                                tokenSet.add(dominio);
+                                String ipv4 = CacheHELO.getUniqueIPv4(helo);
+                                if (ipv4 != null) {
+                                    // Equivalência de pilha dupla se 
+                                    // IPv4 for único para o HELO.
+                                    tokenSet.add(ipv4);
+                                }
+                                String ipv6 = CacheHELO.getUniqueIPv6(helo);
+                                if (ipv6 != null) {
+                                    // Equivalência de pilha dupla se 
+                                    // IPv6 for único para o HELO.
+                                    tokenSet.add(ipv6);
+                                }
+                            }
                             SPF spf = CacheSPF.get(sender);
                             if (spf == null) {
                                 result = "NONE";
+                            } else if (spf.isDefinitelyInexistent()) {
+                                // O domínio foi dado como inexistente inúmeras vezes.
+                                // Rejeitar e denunciar o host pois há abuso de tentativas.
+                                SPF.addQuery(tokenSet);
+                                long time2 = System.currentTimeMillis();
+                                String ticket = SPF.createTicket(tokenSet);
+                                Server.logTicket(time2, ip, sender, helo, ticket);
+                                CacheComplain.addComplain(time2, client, ticket);
+                                return "NXDOMAIN\n";
                             } else if (spf.isInexistent()) {
                                 return "NXDOMAIN\n";
                             } else {
                                 result = spf.getResult(ip, sender, helo);
                             }
-                            TreeSet<String> tokenSet = new TreeSet<String>();
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
@@ -5788,43 +5827,6 @@ public final class SPF implements Serializable {
                                 origem = sender + ">" + ip;
                                 fluxo = origem + ">" + recipient;
                             }
-                            // Passar a acompanhar todos os 
-                            // HELO quando apontados para o IP para 
-                            // uma nova forma de interpretar dados.
-                            if (CacheHELO.match(ip, helo, false)) {
-                                if (!helo.startsWith(".")) {
-                                    helo = "." + helo;
-                                }
-                                String dominio = Domain.extractDomain(helo, true);
-                                String subdominio = Domain.extractHost(helo, true);
-                                while (!subdominio.equals(dominio)) {
-                                    tokenSet.add(subdominio);
-                                    int index = subdominio.indexOf('.', 1);
-                                    subdominio = subdominio.substring(index);
-                                }
-                                tokenSet.add(dominio);
-                                String ipv4 = CacheHELO.getUniqueIPv4(helo);
-                                if (ipv4 != null) {
-                                    // Equivalência de pilha dupla se 
-                                    // IPv4 for único para o HELO.
-                                    tokenSet.add(ipv4);
-                                }
-                                String ipv6 = CacheHELO.getUniqueIPv6(helo);
-                                if (ipv6 != null) {
-                                    // Equivalência de pilha dupla se 
-                                    // IPv6 for único para o HELO.
-                                    tokenSet.add(ipv6);
-                                }
-                            }
-                            if (SubnetIPv4.isValidIPv4(ip)) {
-                                // Formalizar notação IPv4.
-                                ip = SubnetIPv4.normalizeIPv4(ip);
-                                tokenSet.add(ip);
-                            } else if (SubnetIPv6.isValidIPv6(ip)) {
-                                // Formalizar notação IPv6.
-                                ip = SubnetIPv6.normalizeIPv6(ip);
-                                tokenSet.add(ip);
-                            }
                             if (firstToken.equals("CHECK")) {
                                 result += "\n";
                                 String block = CacheBlock.find(client, ip, sender, helo, query, recipient);
@@ -5857,7 +5859,7 @@ public final class SPF implements Serializable {
                                 // Anexando ticket ao resultado.
                                 long times = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(times, ip, sender, helo, tokenSet);
+                                Server.logTicket(times, ip, sender, helo, ticket);
                                 return result + " " + ticket + "\n";
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Calcula frequencia de consultas.
@@ -5865,7 +5867,7 @@ public final class SPF implements Serializable {
                                 // Spamtrap. Denunciar automaticamente.
                                 long time2 = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time, ip, sender, helo, tokenSet);
+                                Server.logTicket(time, ip, sender, helo, ticket);
 //                                TreeSet<String> complainSet =
                                         CacheComplain.addComplain(time2, client, ticket);
 //                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
@@ -5876,7 +5878,7 @@ public final class SPF implements Serializable {
                                 // Bloqueio. Denunciar automaticamente.
                                 long time2 = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time, ip, sender, helo, tokenSet);
+                                Server.logTicket(time, ip, sender, helo, ticket);
 //                                TreeSet<String> complainSet =
                                         CacheComplain.addComplain(time2, client, ticket);
 //                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
@@ -5901,7 +5903,7 @@ public final class SPF implements Serializable {
                                 // Anexando ticket ao resultado.
                                 long time2 = System.currentTimeMillis();
                                 String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip, sender, helo, tokenSet);
+                                Server.logTicket(time2, ip, sender, helo, ticket);
                                 return result + " " + ticket + "\n";
                             }
                         }
