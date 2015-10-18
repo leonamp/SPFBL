@@ -358,11 +358,11 @@ public abstract class Server extends Thread {
      */
     public static void logTicket(long time, 
             String ip, String sender, String helo,
-            String ticket) {
+            TreeSet<String> tokenSet, String ticket) {
         if (sender == null) {
-            log(time, "TIKET", ip + " " + helo, ticket);
+            log(time, "TIKET", ip + " " + helo + " " + tokenSet, ticket);
         } else {
-            log(time, "TIKET", ip + " " + sender + " " + helo, ticket);
+            log(time, "TIKET", ip + " " + sender + " " + helo + " " + tokenSet, ticket);
         }
     }
     

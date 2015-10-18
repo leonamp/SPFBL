@@ -2205,11 +2205,12 @@ public final class SPF implements Serializable {
          * @param ticket o ticket da mensagem original.
          * @throws ProcessException se houver falha no processamento do ticket.
          */
-        public static TreeSet<String> addComplain(long time,
-                String client, String ticket) throws ProcessException {
+        public static TreeSet<String> addComplain(String client,
+                String ticket) throws ProcessException {
             if (containsExact(ticket)) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String registry = Server.decrypt(ticket);
                 int index = registry.indexOf(' ');
@@ -5508,11 +5509,8 @@ public final class SPF implements Serializable {
                 } else if (spf.isDefinitelyInexistent()) {
                     // O domínio foi dado como inexistente inúmeras vezes.
                     // Rejeitar e denunciar o host pois há abuso de tentativas.
-                    SPF.addQuery(tokenSet);
-                    long time2 = System.currentTimeMillis();
-                    String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time2, ip, sender, helo, ticket);
-                    CacheComplain.addComplain(time2, client, ticket);
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "sender has non-existent internet domain.\n\n";
                 } else if (spf.isInexistent()) {
@@ -5567,35 +5565,23 @@ public final class SPF implements Serializable {
                 }
                 if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
-                    // Adcionar ticket ao cabeçalho da mensagem.
-                    long time = System.currentTimeMillis();
-                    String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, ticket);
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " " + ticket + "\n\n";
                 } else if (CacheTrap.contains(client, recipient)) {
                     // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
-                    // Spamtrap. Denúnica automática.
-                    long time = System.currentTimeMillis();
-                    String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, ticket);
-                    CacheComplain.addComplain(time, client, ticket);
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
-                    // Bloqueio. Denúnica automática.
-                    long time2 = System.currentTimeMillis();
-                    String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time2, ip, sender, helo, ticket);
-                    CacheComplain.addComplain(time2, client, ticket);
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
                     // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
+                    SPF.addQuery(ip, sender, helo, tokenSet);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
@@ -5612,11 +5598,7 @@ public final class SPF implements Serializable {
                             + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
-                    SPF.addQuery(tokenSet);
-                    // Adcionar ticket ao cabeçalho da mensagem.
-                    long time = System.currentTimeMillis();
-                    String ticket = SPF.createTicket(tokenSet);
-                    Server.logTicket(time, ip, sender, helo, ticket);
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " " + ticket + "\n\n";
                 }
@@ -5659,7 +5641,7 @@ public final class SPF implements Serializable {
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.addComplain(time, client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.addComplain(client, ticket);
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
                     } else {
@@ -5779,11 +5761,8 @@ public final class SPF implements Serializable {
                             } else if (spf.isDefinitelyInexistent()) {
                                 // O domínio foi dado como inexistente inúmeras vezes.
                                 // Rejeitar e denunciar o host pois há abuso de tentativas.
-                                SPF.addQuery(tokenSet);
-                                long time2 = System.currentTimeMillis();
-                                String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip, sender, helo, ticket);
-                                CacheComplain.addComplain(time2, client, ticket);
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                CacheComplain.addComplain(client, ticket);
                                 return "NXDOMAIN\n";
                             } else if (spf.isInexistent()) {
                                 return "NXDOMAIN\n";
@@ -5855,37 +5834,21 @@ public final class SPF implements Serializable {
                                 return result;
                             } else if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
-                                // Anexando ticket ao resultado.
-                                long times = System.currentTimeMillis();
-                                String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(times, ip, sender, helo, ticket);
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 return result + " " + ticket + "\n";
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
-                                // Spamtrap. Denunciar automaticamente.
-                                long time2 = System.currentTimeMillis();
-                                String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time, ip, sender, helo, ticket);
-//                                TreeSet<String> complainSet =
-                                        CacheComplain.addComplain(time2, client, ticket);
-//                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
-                                // Bloqueio. Denunciar automaticamente.
-                                long time2 = System.currentTimeMillis();
-                                String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time, ip, sender, helo, ticket);
-//                                TreeSet<String> complainSet =
-                                        CacheComplain.addComplain(time2, client, ticket);
-//                                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + complainSet);
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlocked(tokenSet)) {
                                 // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
+                                SPF.addQuery(ip, sender, helo, tokenSet);
                                 // Pelo menos um whois do conjunto está bloqueado.
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
@@ -5899,11 +5862,7 @@ public final class SPF implements Serializable {
                                 return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
-                                SPF.addQuery(tokenSet);
-                                // Anexando ticket ao resultado.
-                                long time2 = System.currentTimeMillis();
-                                String ticket = SPF.createTicket(tokenSet);
-                                Server.logTicket(time2, ip, sender, helo, ticket);
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 return result + " " + ticket + "\n";
                             }
                         }
@@ -6015,7 +5974,10 @@ public final class SPF implements Serializable {
 //        }
 //    }
 
-    public static void addQuery(TreeSet<String> tokenSet) {
+    public static String addQuery(
+            String ip, String sender, String helo,
+            TreeSet<String> tokenSet) throws ProcessException {
+        long time = System.currentTimeMillis();
         for (String token : tokenSet) {
             boolean create = Subnet.isValidIP(token);
             Distribution distribution = CacheDistribution.get(token, create);
@@ -6023,6 +5985,9 @@ public final class SPF implements Serializable {
                 distribution.addQuery();
             }
         }
+        String ticket = SPF.createTicket(tokenSet);
+        Server.logTicket(time, ip, sender, helo, tokenSet, ticket);
+        return ticket;
     }
 
     public static long getComplainTTL(String token) {
