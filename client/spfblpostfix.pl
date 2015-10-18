@@ -120,6 +120,12 @@ while ( my $line = <STDIN> ) {
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
     }
+    elsif ( $result =~ /^FAIL / ) {
+        # retornou FAIL com ticket.
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
+    }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
              "action=REJECT [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}. Please see http://www.openspf.org/why.html?sender=$params->{sender}&ip=$params->{client_address} for details.\n\n"
