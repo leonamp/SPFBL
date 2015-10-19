@@ -90,41 +90,60 @@ while ( my $line = <STDIN> ) {
             "action=DISCARD [RBL] discarded by spamtrap.\n\n"
         );
     }
+    elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
+        STDOUT->print(
+            "action=REJECT [RBL] $params->{sender} is not a valid e-mail address.\n\n"
+        );
+    }
     elsif ( $result =~ /^ERROR: HOST NOT FOUND/ ) {
         STDOUT->print(
-    "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: QUERY/ ) {
         STDOUT->print(
-    "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: / ) {
         STDOUT->print(
-    "action=REJECT [SPF] One or more SPF records from $params->{sender} could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.\n\n"
+             "action=REJECT [SPF] One or more SPF records from $params->{sender} could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.\n\n"
         );
     }
     elsif ( $result =~ /^NONE / ) {
-        STDOUT->print("action=PREPEND Received-SPFBL: $result\n\n");
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
     }
     elsif ( $result =~ /^PASS / ) {
-        STDOUT->print("action=PREPEND Received-SPFBL: $result\n\n");
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
+    }
+    elsif ( $result =~ /^FAIL / ) {
+        # retornou FAIL com ticket.
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-    "action=REJECT [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}. Please see http://www.openspf.org/why.html?sender=$params->{sender}&ip=$params->{client_address} for details.\n\n"
+             "action=REJECT [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}. Please see http://www.openspf.org/why.html?sender=$params->{sender}&ip=$params->{client_address} for details.\n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {
-        STDOUT->print("action=PREPEND Received-SPFBL: $result\n\n");
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
     }
     elsif ( $result =~ /^NEUTRAL / ) {
-        STDOUT->print("action=PREPEND Received-SPFBL: $result\n\n");
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
     }
     else {
         STDOUT->print(
-    "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
         );
     }
 }

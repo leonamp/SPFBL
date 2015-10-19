@@ -48,7 +48,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.LinkedList;
-import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -62,6 +61,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
 import net.spfbl.dnsbl.QueryDNSBL;
+import net.spfbl.dnsbl.ServerDNSBL;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -357,11 +357,11 @@ public abstract class Server extends Thread {
      */
     public static void logTicket(long time, 
             String ip, String sender, String helo,
-            Set<String> tokenSet) {
+            TreeSet<String> tokenSet, String ticket) {
         if (sender == null) {
-            log(time, "TIKET", ip + " " + helo, tokenSet.toString());
+            log(time, "TIKET", ip + " " + helo + " " + tokenSet, ticket);
         } else {
-            log(time, "TIKET", ip + " " + sender + " " + helo, tokenSet.toString());
+            log(time, "TIKET", ip + " " + sender + " " + helo + " " + tokenSet, ticket);
         }
     }
     
@@ -983,17 +983,39 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
-                } else if (token.equals("DNS") && tokenizer.hasMoreTokens()) {
+                } else if (token.equals("DNSBL") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.countTokens() == 2) {
+                    if (token.equals("ADD") && tokenizer.countTokens() >= 3) {
                         try {
                             String hostname = tokenizer.nextToken();
                             String address = tokenizer.nextToken();
                             InetAddress inetAddress = InetAddress.getByName(address);
-                            if (QueryDNSBL.add(hostname, inetAddress)) {
+                            String message = tokenizer.nextToken();
+                            while (tokenizer.hasMoreTokens()) {
+                                message += ' ' + tokenizer.nextToken();
+                            }
+                            if (QueryDNSBL.add(hostname, inetAddress, message)) {
                                 result = "ADDED\n";
                             } else {
                                 result = "ALREADY EXISTS\n";
+                            }
+                            QueryDNSBL.store();
+                        } catch (UnknownHostException ex) {
+                            result = "INVALID ADDRESS\n";
+                        }
+                    } else if (token.equals("SET") && tokenizer.countTokens() >= 3) {
+                        try {
+                            String hostname = tokenizer.nextToken();
+                            String address = tokenizer.nextToken();
+                            InetAddress inetAddress = InetAddress.getByName(address);
+                            String message = tokenizer.nextToken();
+                            while (tokenizer.hasMoreTokens()) {
+                                message += ' ' + tokenizer.nextToken();
+                            }
+                            if (QueryDNSBL.set(hostname, inetAddress, message)) {
+                                result = "UPDATED\n";
+                            } else {
+                                result = "NOT FOUND\n";
                             }
                             QueryDNSBL.store();
                         } catch (UnknownHostException ex) {
@@ -1010,13 +1032,13 @@ public abstract class Server extends Thread {
                         }
                         QueryDNSBL.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        HashMap<String,InetAddress> map = QueryDNSBL.getMap();
+                        HashMap<String,ServerDNSBL> map = QueryDNSBL.getMap();
                         if (map.isEmpty()) {
                             result = "EMPTY\n";
                         } else {
                             for (String key : map.keySet()) {
-                                InetAddress address = map.get(key);
-                                result += key + " " + address.getHostAddress() + "\n";
+                                ServerDNSBL server = map.get(key);
+                                result += server + " " + server.getHostAddress() + " " + server.getMessage() + "\n";
                             }
                         }
                     } else {
