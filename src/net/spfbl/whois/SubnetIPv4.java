@@ -237,6 +237,17 @@ public final class SubnetIPv4 extends Subnet
         }
     }
     
+    public static String reverseToIPv4(String reverse) {
+        byte[] address = SubnetIPv4.split(reverse);
+        byte octeto = address[0];
+        String ip = Integer.toString((int) octeto & 0xFF);
+        for (int i = 1; i < address.length; i++) {
+            octeto = address[i];
+            ip = ((int) octeto & 0xFF) + "." + ip;
+        }
+        return SubnetIPv4.normalizeIPv4(ip);
+    }
+    
     /**
      * Verifica se um CIDR é válido na notação de IPv4.
      * @param cidr o CIDR a ser verificado.

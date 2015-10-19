@@ -21,9 +21,7 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -343,6 +341,29 @@ public final class SubnetIPv6 extends Subnet
                 + "(([\\da-f]{1,4}(\\3|:\\b|$)|\\2){2}|(((2[0-4]|1\\d|[1-9])?\\d|25[0-5])\\.?\\b){4})"
                 + "/[0-9]{1,3}"
                 + "$", cidr);
+    }
+    
+    public static boolean isReverseIPv6(String reverse) {
+        reverse = reverse.trim();
+        reverse = reverse.toLowerCase();
+        return Pattern.matches("^"
+                + "(\\.[a-f0-9]{1,4}){32}"
+                + "$", reverse);
+    }
+    
+    public static String reverseToIPv6(String reverse) {
+        reverse = reverse.replace(".", "");
+        char[] charArray = reverse.toCharArray();
+        StringBuilder builder = new StringBuilder();
+        for (int index = charArray.length-1; index>=0; index--) {
+            char digit = charArray[index];
+            builder.append(digit);
+            if (index % 4 == 0) {
+                builder.append(':');
+            }
+        }
+        String ip = builder.toString();
+        return SubnetIPv6.normalizeIPv6(ip);
     }
     
     /**

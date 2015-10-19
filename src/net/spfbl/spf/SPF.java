@@ -31,7 +31,9 @@ import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -58,6 +60,7 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
+import net.spfbl.core.Huffman;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -2743,6 +2746,16 @@ public final class SPF implements Serializable {
             return whiteSet;
         }
         
+        private static TreeSet<String> get() throws ProcessException {
+            TreeSet<String> whiteSet = new TreeSet<String>();
+            for (String sender : getAll()) {
+                if (!sender.contains(":")) {
+                    whiteSet.add(sender);
+                }
+            }
+            return whiteSet;
+        }
+        
         private static boolean containsSender(String client,
                 String sender, String qualifier,
                 String recipient) throws ProcessException {
@@ -3302,6 +3315,14 @@ public final class SPF implements Serializable {
 
     public static TreeSet<String> getWhiteSet(String client) throws ProcessException {
         return CacheWhite.get(client);
+    }
+    
+    public static TreeSet<String> getWhiteSet() throws ProcessException {
+        return CacheWhite.get();
+    }
+    
+    public static TreeSet<String> getAllWhiteSet() throws ProcessException {
+        return CacheWhite.getAll();
     }
 
     /**
@@ -4214,21 +4235,44 @@ public final class SPF implements Serializable {
 
     public static void main(String[] args) {
         try {
-//            String ip = "200.160.2.5";
-            String ip = "2001:12ff:0:2::5";
-            String sender = "remetente@registro.br";
-            String helo = "mailx.registro.br";
-            SPF spf = CacheSPF.get("registro.br");
-            for (Mechanism mechamism : spf.mechanismList) {
-                if (mechamism instanceof MechanismA) {
-                    MechanismA mechanismA = (MechanismA) mechamism;
-                    System.out.println(mechanismA.match(ip, sender, helo));
-                } else if (mechamism instanceof MechanismMX) {
-                    MechanismMX mechanismMX = (MechanismMX) mechamism;
-                    System.out.println(mechanismMX.match(ip, sender, helo));
-                }
+            SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+            Huffman huffman = Huffman.load();
+            SPF.CacheComplain.load();
+            TreeSet<String> ticketSet = SPF.CacheComplain.keySet();
+            int size1 = 0;
+            int size2 = 0;
+            for (String ticket : ticketSet) {
+                String complain = Server.decrypt(ticket);
+                String date = complain.substring(0, 29);
+                String responsible = complain.substring(30);
+                long time = FORMAT.parse(date).getTime();
+                
+                
+                byte[] code = huffman.encodeByteArray(responsible);
+                ByteBuffer buffer = ByteBuffer.allocate(code.length + 8);
+                buffer.putLong(time);
+                buffer.put(code);
+                
+                
+                String ticket2 = Server.encrypt(buffer);
+                size1 += ticket.length();
+                size2 += ticket2.length();
+                
+                byte[] complainByteArray = Server.decryptToByteArray(ticket2);
+                ByteBuffer buffer2 = ByteBuffer.wrap(complainByteArray);
+                long time2 = buffer2.getLong();
+                byte[] code2 = new byte[buffer2.capacity() - 8];
+                buffer2.get(code2);
+                String responsible2 = huffman.decode(code2);
+                String date2 = FORMAT.format(new Date(time2));
+                String complain2 = date2 + " " + responsible2;
+//                
+                System.out.println(complain);
+                System.out.println(complain2);
+                System.out.println();
             }
-            System.out.println(spf);
+            float p = (float) size2 / (float) size1;
+            System.out.println(p);
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {

@@ -38,6 +38,7 @@ import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
@@ -165,9 +166,29 @@ public abstract class Server extends Thread {
             return null;
         } else {
             try {
+                return encrypt(message.getBytes("UTF8"));
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
+    public static String encrypt(ByteBuffer buffer) throws ProcessException {
+        if (buffer == null) {
+            return null;
+        } else {
+            return encrypt(buffer.array());
+        }
+    }
+    
+    public static String encrypt(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
-                byte[] code = cipher.doFinal(message.getBytes("UTF8"));
+                byte[] code = cipher.doFinal(byteArray);
                 return new String(Base64Coder.encode(code));
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: ENCRYPTION", ex);
@@ -184,6 +205,20 @@ public abstract class Server extends Thread {
                 cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
                 byte[] message = cipher.doFinal(Base64Coder.decode(code));
                 return new String(message, "UTF8");
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: DECRYPTION", ex);
+            }
+        }
+    }
+    
+    public static byte[] decryptToByteArray(String code) throws ProcessException {
+        if (code == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
+                return cipher.doFinal(Base64Coder.decode(code));
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: DECRYPTION", ex);
             }
@@ -1195,6 +1230,68 @@ public abstract class Server extends Thread {
                                 // Mecanismo de visualização de 
                                 // todos os bloqueios de remetentes.
                                 for (String sender : SPF.getAllBlockSet()) {
+                                    result += sender + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            }
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("WHITE") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String whiteToken = tokenizer.nextToken();
+                                if (SPF.addWhite(whiteToken)) {
+                                    result += "ADDED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeWhite();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String whiteedToken = tokenizer.nextToken();
+                                if (SPF.dropWhite(whiteedToken)) {
+                                    result += "DROPED\n";
+                                } else {
+                                    result += "NOT FOUND\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeWhite();
+                    } else if (token.equals("SHOW")) {
+                        if (!tokenizer.hasMoreTokens()) {
+                            // Mecanismo de visualização 
+                            // de liberação de remetentes.
+                            for (String sender : SPF.getWhiteSet()) {
+                                result += sender + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
+                        } else if (tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                // Mecanismo de visualização de 
+                                // todos os liberação de remetentes.
+                                for (String sender : SPF.getAllWhiteSet()) {
                                     result += sender + "\n";
                                 }
                                 if (result.length() == 0) {
