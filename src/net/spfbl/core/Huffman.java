@@ -143,20 +143,6 @@ public class Huffman implements Comparable<Huffman>, Serializable {
         }
         return queue.poll();
     }
-    
-    public void writeTree() {
-        writeTree(this, null);
-    }
-
-    private static void writeTree(Huffman node, Boolean right) {
-        if (node.isLeaf()) {
-            System.out.println(right + " '" + node.character + "'");
-        } else {
-            System.out.println(right);
-            writeTree(node.left, false);
-            writeTree(node.right, true);
-        }
-    }
 
     private static void buildCode(String[] st, Huffman node, String text) {
         if (!node.isLeaf()) {

@@ -28,13 +28,18 @@ import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -225,6 +230,8 @@ public abstract class Server extends Thread {
         }
     }
     
+    private static final SimpleDateFormat FORMAT_DATE = new SimpleDateFormat("yyyy-MM-dd");
+    
     /**
      * Constante de formatação da data no log.
      * Padrão ISO 8601
@@ -322,12 +329,59 @@ public abstract class Server extends Thread {
             result = result.replace("\r", "\\r");
             result = result.replace("\n", "\\n");
         }
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date(time))
+        Date date = new Date(time);
+        String text = FORMAT_DATE_LOG.format(date)
                 + " " + LATENCIA_FORMAT.format(latencia)
                 + " " + type + " " + message
-                + (result == null ? "" : " => " + result)
-                );
+                + (result == null ? "" : " => " + result);
+        PrintWriter writer = getLogWriter(date);
+        if (writer == null) {
+            System.out.println(text);
+        } else {
+            writer.println(text);
+        }
+    }
+    
+    private static File logFolder = null;
+    private static File logFile = null;
+    private static PrintWriter logWriter = null;
+    
+    public static synchronized void setLogFolder(String path) throws ProcessException {
+        if (path == null) {
+            logFolder = null;
+        } else {
+            File folder = new File(path);
+            if (folder.exists()) {
+                if (folder.isDirectory()) {
+                    logFolder = folder;
+                } else {
+                    throw new ProcessException("ERROR: IS NOT A FOLDER");
+                }
+            } else {
+                throw new ProcessException("ERROR: FOLDER NOT EXISTS");
+            }
+        }
+    }
+    
+    private static synchronized PrintWriter getLogWriter(Date date) {
+        try {
+            if (logFolder == null || !logFolder.exists()) {
+                return null;
+            } else if (logWriter == null) {
+                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
+                FileWriter fileWriter = new FileWriter(logFile, true);
+                return logWriter = new PrintWriter(fileWriter, true);
+            } else if (logFile.getName().equals("spfbl." + FORMAT_DATE.format(date) + ".log")) {
+                return logWriter;
+            } else {
+                logWriter.close();
+                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
+                FileWriter fileWriter = new FileWriter(logFile, true);
+                return logWriter = new PrintWriter(fileWriter, true);
+            }
+        } catch (Exception ex) {
+            return null;
+        }
     }
     
     /**
@@ -530,57 +584,59 @@ public abstract class Server extends Thread {
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
     public static synchronized String getLogClient(InetAddress ipAddress) {
-        File clientsFile = new File("./data/clients.txt");
-        if (!clientsFile.exists()) {
-            subnetClientsMap.clear();
-        } else if (clientsFile.lastModified() > lastClientsFileModified) {
-            try {
+        if (ipAddress == null) {
+            return "unknown";
+        } else {
+            File clientsFile = new File("./data/clients.txt");
+            if (!clientsFile.exists()) {
                 subnetClientsMap.clear();
-                BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
+            } else if (clientsFile.lastModified() > lastClientsFileModified) {
                 try {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-                        if (tokenizer.countTokens() == 3) {
-                            String cidr = tokenizer.nextToken();
-                            String email = tokenizer.nextToken();
-                            subnetClientsMap.put(cidr, email);
+                    subnetClientsMap.clear();
+                    BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
+                    try {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            StringTokenizer tokenizer = new StringTokenizer(line, "\t");
+                            if (tokenizer.countTokens() == 3) {
+                                String cidr = tokenizer.nextToken();
+                                String email = tokenizer.nextToken();
+                                subnetClientsMap.put(cidr, email);
+                            }
+                        }
+                        lastClientsFileModified = clientsFile.lastModified();
+                    } finally {
+                        reader.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+            String ip = ipAddress.getHostAddress();
+            try {
+                for (String cidr : subnetClientsMap.keySet()) {
+                    if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                        int mask = SubnetIPv4.getMaskNet(cidr);
+                        int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
+                        int address2 = SubnetIPv4.getAddressIP(ip) & mask;
+                        if (address1 == address2) {
+                            return subnetClientsMap.get(cidr);
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(cidr)) {
+                        int index = cidr.indexOf('/');
+                        short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
+                        short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
+                        short[] address2 = SubnetIPv6.split(ip, mask);
+                        if (Arrays.equals(address1, address2)) {
+                            return subnetClientsMap.get(cidr);
                         }
                     }
-                    lastClientsFileModified = clientsFile.lastModified();
-                } finally {
-                    reader.close();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+            return ip;
         }
-        String cliente = ipAddress.getHostAddress();
-        try {
-            for (String cidr : subnetClientsMap.keySet()) {
-                if (SubnetIPv4.isValidCIDRv4(cidr)) {
-                    int mask = SubnetIPv4.getMaskNet(cidr);
-                    int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
-                    int address2 = SubnetIPv4.getAddressIP(cliente) & mask;
-                    if (address1 == address2) {
-                        cliente = subnetClientsMap.get(cidr);
-                        break;
-                    }
-                } else if (SubnetIPv6.isValidIPv6(cidr)) {
-                    int index = cidr.indexOf('/');
-                    short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
-                    short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
-                    short[] address2 = SubnetIPv6.split(cliente, mask);
-                    if (Arrays.equals(address1, address2)) {
-                        cliente = subnetClientsMap.get(cidr);
-                        break;
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        }
-        return cliente;
     }
     
     /**
@@ -648,6 +704,9 @@ public abstract class Server extends Thread {
         SPF.cancel();
         // Armazena os registros em disco.
         storeCache();
+        if (logWriter != null) {
+            logWriter.close();
+        }
     }
     
     /**

@@ -310,16 +310,19 @@ public final class QueryDNSBL extends Server {
         @Override
         public void run() {
             while (!PACKET_LIST.isEmpty()) {
+                long time = System.currentTimeMillis();
+                InetAddress ipAddress = null;
+                String query = null;
                 try {
                     DatagramPacket packet = PACKET_LIST.poll();
-                    long time = System.currentTimeMillis();
+                    time = System.currentTimeMillis();
                     byte[] data = packet.getData();
                     // Processando consulta DNS.
                     Message message = new Message(data);
                     Header header = message.getHeader();
                     Record question = message.getQuestion();
                     Name name = question.getName();
-                    String query = name.toString();
+                    query = name.toString();
                     String result = "NXDOMAIN";
                     long ttl = 1440; // Tempo padrão de cache de um dia.
                     String information = null;
@@ -386,9 +389,8 @@ public final class QueryDNSBL extends Server {
                         ARecord anwser = new ARecord(name, DClass.IN, ttl, address);
                         message.addRecord(anwser, Section.ANSWER);
                     }
-                    
                     // Enviando resposta.
-                    InetAddress ipAddress = packet.getAddress();
+                    ipAddress = packet.getAddress();
                     int portDestiny = packet.getPort();
                     byte[] sendData = message.toWire();
                     DatagramPacket sendPacket = new DatagramPacket(
@@ -398,6 +400,9 @@ public final class QueryDNSBL extends Server {
                     SERVER_SOCKET.send(sendPacket);
                     // Log da consulta com o respectivo resultado.
                     Server.logQueryDNSBL(time, ipAddress, query, result);
+                } catch (SocketException ex) {
+                    // Houve fechamento do socket.
+                    Server.logQueryDNSBL(time, ipAddress, query, "SOCKET CLOSED");
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
