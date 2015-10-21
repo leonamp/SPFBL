@@ -15,6 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
+# Última alteração: 21/10/2015 10:00
 
 use strict;
 use warnings;

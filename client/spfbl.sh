@@ -22,6 +22,8 @@
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net 
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
+#
+# Última alteração: 21/10/2015 10:00
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
