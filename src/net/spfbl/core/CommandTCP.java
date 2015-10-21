@@ -83,6 +83,7 @@ public final class CommandTCP extends Server {
                         // Verificar se houve falha no fechamento dos processos.
                         if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
                             // Fechar forçadamente o programa.
+                            Server.logDebug("System killed.");
                             System.exit(1);
                         }
                     }

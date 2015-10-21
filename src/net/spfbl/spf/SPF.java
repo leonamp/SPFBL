@@ -5753,9 +5753,9 @@ public final class SPF implements Serializable {
                             }
                         }
                         if (!Subnet.isValidIP(ip)) {
-                            return "ERROR: INVALID IP\n";
+                            return "INVALID\n";
                         } else if (sender != null && !Domain.isEmail(sender)) {
-                            return "ERROR: INVALID SENDER\n";
+                            return "INVALID\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
