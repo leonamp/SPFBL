@@ -80,6 +80,11 @@ while ( my $line = <STDIN> ) {
             "action=REJECT [RBL] you are permanently blocked in this server.\n\n"
         );
     }
+    elsif ( $result =~ /^INVALID/ ) {
+        STDOUT->print(
+            "action=REJECT [SPF] IP or sender is invalid.\n\n"
+        );
+    }
     elsif ( $result =~ /^GREYLIST/ ) {
         STDOUT->print(
             "action=DEFER [RBL] you are greylisted on this server.\n\n"
