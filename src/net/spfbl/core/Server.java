@@ -1475,18 +1475,19 @@ public abstract class Server extends Thread {
                         }
                         result = stringBuilder.toString();
                     }
-                } else if (token.equals("CLEAR") && tokenizer.hasMoreElements()) {
-                    while (tokenizer.hasMoreElements()) {
-                        try {
-                            token = tokenizer.nextToken();
-                            if (SPF.clear(token)) {
-                                result += "CLEARED\n";
-                            } else {
-                                result += "NOT FOUND\n";
+                } else if (token.equals("CLEAR") && tokenizer.countTokens() == 1) {
+                    try {
+                        token = tokenizer.nextToken();
+                        TreeSet<String> clearSet = SPF.clear(token);
+                        if (clearSet.isEmpty()) {
+                            result += "NOT FOUND\n";
+                        } else {
+                            for (String value : clearSet) {
+                                result += value + '\n';
                             }
-                        } catch (Exception ex) {
-                            result += ex.getMessage() + "\n";
                         }
+                    } catch (Exception ex) {
+                        result += ex.getMessage() + "\n";
                     }
                     SPF.storeDistribution();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {

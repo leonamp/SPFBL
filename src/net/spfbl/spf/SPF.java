@@ -42,6 +42,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
@@ -2284,7 +2286,7 @@ public final class SPF implements Serializable {
         /**
          * Mapa de distribuição binomial dos tokens encontrados.
          */
-        private static final HashMap<String,Distribution> MAP = new HashMap<String,Distribution>();
+        private static final TreeMap<String,Distribution> MAP = new TreeMap<String,Distribution>();
         /**
          * Flag que indica se o cache foi modificado.
          */
@@ -2316,6 +2318,11 @@ public final class SPF implements Serializable {
             HashMap<String,Distribution> map = new HashMap<String,Distribution>();
             map.putAll(MAP);
             return map;
+        }
+        
+        private static synchronized NavigableMap<String,Distribution> getSubMap(
+                String fromKey, String toKey) {
+            return MAP.subMap(fromKey, false, toKey, false);
         }
 
         private static synchronized boolean containsExact(String address) {
@@ -2358,7 +2365,7 @@ public final class SPF implements Serializable {
             File file = new File("./data/distribution.map");
             if (file.exists()) {
                 try {
-                    HashMap<String,Object> map;
+                    Map<String,Object> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
                         map = SerializationUtils.deserialize(fileInputStream);
@@ -2397,11 +2404,53 @@ public final class SPF implements Serializable {
                 CacheBlock.dropExact(token);
             }
         }
-
-        private static void put(String token,
-                Distribution distribution) {
-            if (putExact(token, distribution) == null) {
+        
+        private synchronized static TreeMap<String,Distribution> getAll(String value) {
+            TreeMap<String,Distribution> map = new TreeMap<String,Distribution>();
+            NavigableMap<String,Distribution> subMap;
+            Distribution distribution;
+            if (Subnet.isValidIP(value)) {
+                String ip = Subnet.normalizeIP(value);
+                distribution = getExact(ip);
+                map.put(ip, distribution);
+            } else if (Subnet.isValidCIDR(value)) {
+                String cidr = Subnet.normalizeCIDR(value);
+                subMap = getSubMap("0", ":");
+                for (String ip : subMap.keySet()) {
+                    if (Subnet.containsIP(cidr, ip)) {
+                        distribution = getExact(ip);
+                        map.put(ip, distribution);
+                    }
+                }
+                subMap = getSubMap("a", "g");
+                for (String ip : subMap.keySet()) {
+                    if (SubnetIPv6.containsIP(cidr, ip)) {
+                        distribution = getExact(ip);
+                        map.put(ip, distribution);
+                    }
+                }
+            } else if (value.startsWith(".")) {
+                String hostname = value;
+                subMap = getSubMap(".", "/");
+                for (String key : subMap.keySet()) {
+                    if (key.endsWith(hostname)) {
+                        distribution = getExact(key);
+                        map.put(key, distribution);
+                    }
+                }
+                subMap = getSubMap("@", "A");
+                for (String mx : subMap.keySet()) {
+                    String hostKey = '.' + mx.substring(1);
+                    if (hostKey.endsWith(hostname)) {
+                        distribution = getExact(mx);
+                        map.put(mx, distribution);
+                    }
+                }
+            } else {
+                distribution = getExact(value);
+                map.put(value, distribution);
             }
+            return map;
         }
 
         /**
@@ -2418,7 +2467,7 @@ public final class SPF implements Serializable {
                 }
             } else if (create) {
                 distribution = new Distribution();
-                put(token, distribution);
+                putExact(token, distribution);
             } else {
                 distribution = null;
             }
@@ -3816,6 +3865,47 @@ public final class SPF implements Serializable {
             }
             return blockSet;
         }
+        
+        private static TreeSet<String> getAllTokens(String value) {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            if (Subnet.isValidIP(value)) {
+                String ip = Subnet.normalizeIP(value);
+                if (containsExact(ip)) {
+                    blockSet.add(ip);
+                }
+            } else if (Subnet.isValidCIDR(value)) {
+                String cidr = Subnet.normalizeCIDR(value);
+                if (containsExact("CIDR=" + cidr)) {
+                    blockSet.add(cidr);
+                }
+                for (String ip : subSet("0", ":")) {
+                    if (Subnet.containsIP(cidr, ip)) {
+                        blockSet.add(ip);
+                    }
+                }
+                for (String ip : subSet("a", "g")) {
+                    if (SubnetIPv6.containsIP(cidr, ip)) {
+                        blockSet.add(ip);
+                    }
+                }
+            } else if (value.startsWith(".")) {
+                String hostname = value;
+                for (String key : subSet(".", "/")) {
+                    if (key.endsWith(hostname)) {
+                        blockSet.add(key);
+                    }
+                }
+                for (String mx : subSet("@", "A")) {
+                    String hostKey = '.' + mx.substring(1);
+                    if (hostKey.endsWith(hostname)) {
+                        blockSet.add(hostKey);
+                    }
+                }
+            } else if (containsExact(value)) {
+                blockSet.add(value);
+            }
+            return blockSet;
+        }
 
         private static TreeSet<String> get() throws ProcessException {
             TreeSet<String> blockSet = new TreeSet<String>();
@@ -4316,16 +4406,24 @@ public final class SPF implements Serializable {
         return CacheBlock.getAll();
     }
 
-    public static boolean clear(String token) {
-        Distribution distribution = CacheDistribution.get(token, false);
-        if (distribution == null) {
-            return false;
-        } else if (distribution.clear()) {
-            CacheBlock.dropExact(token);
-            return true;
-        } else {
-            return false;
+    public static TreeSet<String> clear(String token) {
+        TreeSet<String> clearSet = new TreeSet<String>();
+        TreeMap<String,Distribution> distribuitonMap = CacheDistribution.getAll(token);
+        for (String key : distribuitonMap.keySet()) {
+            Distribution distribution = distribuitonMap.get(key);
+            if (distribution != null && distribution.clear()) {
+                clearSet.add(key);
+            }
+            if (CacheBlock.dropExact(key)) {
+                clearSet.add(key);
+            }
         }
+        for (String key : CacheBlock.getAllTokens(token)) {
+            if (CacheBlock.dropExact(key)) {
+                clearSet.add(key);
+            }
+        }
+        return clearSet;
     }
 
     /**

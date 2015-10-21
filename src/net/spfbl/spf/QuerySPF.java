@@ -430,7 +430,8 @@ public final class QuerySPF extends Server {
                         Server.logQuery(
                                 time, type,
                                 socket.getInetAddress(),
-                                query, result
+                                query == null ? "DISCONNECTED" : query,
+                                result
                                 );
                     }
                 } catch (Exception ex) {
