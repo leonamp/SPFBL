@@ -28,15 +28,12 @@ import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -691,12 +688,18 @@ public abstract class Server extends Thread {
      * Desliga todos os servidores instanciados.
      * @throws Exception se houver falha no fechamento de algum servidor.
      */
-    public static void shutdown() throws Exception {
+    public static boolean shutdown() {
         // Inicia finalização dos servidores.
         Server.logDebug("Shutting down server...");
+        boolean closed = true;
         for (Server server : SERVER_LIST) {
-            server.run = false;
-            server.close();
+            try {
+                server.run = false;
+                server.close();
+            } catch (Exception ex) {
+                closed = false;
+                Server.logError(ex);
+            }
         }
         // Finaliza timer local.
         WHOIS_SEMAPHORE_TIMER.cancel();
@@ -704,9 +707,7 @@ public abstract class Server extends Thread {
         SPF.cancel();
         // Armazena os registros em disco.
         storeCache();
-        if (logWriter != null) {
-            logWriter.close();
-        }
+        return closed;
     }
     
     /**
@@ -1032,8 +1033,13 @@ public abstract class Server extends Thread {
                 String token = tokenizer.nextToken();
                 if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
-                    result = "OK\n";
-                    shutdown();
+                    if (shutdown()) {
+                        // Fechamento de processos realizado com sucesso.
+                        result = "OK\n";
+                    } else {
+                        // Houve falha no fechamento dos processos.
+                        result = "ERROR: SHUTDOWN\n";
+                    }
                 } else if (token.equals("STORE") && !tokenizer.hasMoreTokens()) {
                     // Comando para gravar o cache em disco.
                     result = "OK\n";

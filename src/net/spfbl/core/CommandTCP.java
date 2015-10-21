@@ -80,6 +80,11 @@ public final class CommandTCP extends Server {
                         socket.close();
                         // Log da consulta com o respectivo resultado.
                         Server.logCommand(time, socket.getInetAddress(), command, result);
+                        // Verificar se houve falha no fechamento dos processos.
+                        if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
+                            // Fechar forçadamente o programa.
+                            System.exit(1);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
