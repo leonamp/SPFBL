@@ -410,6 +410,7 @@ case $1 in
 		#    11: spamtrap.
 		#    12: greylisting.
 		#    13: domínio inexistente.
+		#    14: IP ou remetente inválido.
 		
 		if [ $# -lt "5" ]; then
 			head
@@ -434,6 +435,8 @@ case $1 in
 				exit 13
 			elif [[ $qualifier == "GREYLIST" ]]; then
 				exit 12
+			elif [[ $qualifier == "INVALID" ]]; then
+				exit 14
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED" ]]; then
