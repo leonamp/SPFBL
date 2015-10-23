@@ -85,7 +85,7 @@ public class Main {
             Server.loadCache();
             new CommandTCP(port).start();
             new QueryTCP(port+1).start();
-            new QueryUDP(port+1, size).start();
+//            new QueryUDP(port+1, size).start();
             new QuerySPF(port+2).start();
             peerUDP = new PeerUDP(port+2, size);
             peerUDP.start();

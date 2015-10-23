@@ -1612,7 +1612,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized SPF dropExact(String token) {
+        private static SPF dropExact(String token) {
             SPF ret = MAP.remove(token);
             if (ret != null) {
                 CHANGED = true;
@@ -1620,7 +1620,7 @@ public final class SPF implements Serializable {
             return ret;
         }
 
-        private static synchronized SPF putExact(String key, SPF value) {
+        private static SPF putExact(String key, SPF value) {
             SPF ret = MAP.put(key, value);
             if (!value.equals(ret)) {
                 CHANGED = true;
@@ -1640,24 +1640,16 @@ public final class SPF implements Serializable {
             return map;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return MAP.containsKey(address);
         }
         
-        private static synchronized SPF getExact(String host) {
+        private static SPF getExact(String host) {
             return MAP.get(host);
         }
         
         private static synchronized Collection<SPF> getValues() {
             return MAP.values();
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
         }
         
         private static void dropExpired() {
@@ -1729,14 +1721,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/spf.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getMap(), outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -1766,6 +1758,7 @@ public final class SPF implements Serializable {
                             putExact(key, spf);
                         }
                     }
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -1821,230 +1814,6 @@ public final class SPF implements Serializable {
             }
         }
     }
-
-//    /**
-//     * Classe que representa o cache de registros de denúncia.
-//     */
-//    private static class CacheComplain {
-//
-//        /**
-//         * Mapa de reclamações com seus respectivos tickets.
-//         */
-//        private static final HashMap<String,Complain> MAP = new HashMap<String,Complain>();
-//        
-//        /**
-//         * Flag que indica se o cache de reclamações foi modificado.
-//         */
-//        private static boolean CHANGED = false;
-//        
-//        private static synchronized Complain dropExact(String token) {
-//            Complain ret = MAP.remove(token);
-//            if (ret != null) {
-//                CHANGED = true;
-//            }
-//            return ret;
-//        }
-//
-//        private static synchronized Complain putExact(String key, Complain value) {
-//            Complain ret = MAP.put(key, value);
-//            if (!value.equals(ret)) {
-//                CHANGED = true;
-//            }
-//            return ret;
-//        }
-//        
-//        private static synchronized TreeSet<String> keySet() {
-//            TreeSet<String> keySet = new TreeSet<String>();
-//            keySet.addAll(MAP.keySet());
-//            return keySet;
-//        }
-//        
-//        private static synchronized HashMap<String,Complain> getMap() {
-//            HashMap<String,Complain> map = new HashMap<String,Complain>();
-//            map.putAll(MAP);
-//            return map;
-//        }
-//
-//        private static synchronized boolean containsExact(String address) {
-//            return MAP.containsKey(address);
-//        }
-//        
-//        private static synchronized Complain getExact(String host) {
-//            return MAP.get(host);
-//        }
-//        
-//        private static synchronized Collection<Complain> getValues() {
-//            return MAP.values();
-//        }
-//        
-//        private static synchronized boolean isChanged() {
-//            return CHANGED;
-//        }
-//        
-//        private static synchronized void setStored() {
-//            CHANGED = false;
-//        }
-//
-//        private static void store() {
-//            if (isChanged()) {
-//                try {
-//                    long time = System.currentTimeMillis();
-//                    File file = new File("./data/complain.map");
-//                    FileOutputStream outputStream = new FileOutputStream(file);
-//                    try {
-//                        SerializationUtils.serialize(getMap(), outputStream);
-//                        setStored();
-//                    } finally {
-//                        outputStream.close();
-//                    }
-//                    Server.logStore(time, file);
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                }
-//                try {
-//                    long time = System.currentTimeMillis();
-//                    File file = new File("./data/complain.set");
-//                    FileOutputStream outputStream = new FileOutputStream(file);
-//                    try {
-//                        SerializationUtils.serialize(keySet(), outputStream);
-//                        setStored();
-//                    } finally {
-//                        outputStream.close();
-//                    }
-//                    Server.logStore(time, file);
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                }
-//            }
-//        }
-//
-//        private static void load() {
-//            long time = System.currentTimeMillis();
-//            File file = new File("./data/complain.map");
-//            if (file.exists()) {
-//                try {
-//                    HashMap<String,Object> map;
-//                    FileInputStream fileInputStream = new FileInputStream(file);
-//                    try {
-//                        map = SerializationUtils.deserialize(fileInputStream);
-//                    } finally {
-//                        fileInputStream.close();
-//                    }
-//                    for (String key : map.keySet()) {
-//                        Object value = map.get(key);
-//                        if (value instanceof br.com.allchemistry.spf.SPF.Complain) {
-//                            br.com.allchemistry.spf.SPF.Complain complain =
-//                                    (br.com.allchemistry.spf.SPF.Complain) value;
-//                            Complain complainNew = new Complain(complain);
-//                            putExact(key, complainNew);
-//                        } else if (value instanceof Complain) {
-//                            Complain complain = (Complain) value;
-//                            putExact(key, complain);
-//                        }
-//                        
-//                    }
-//                    Server.logLoad(time, file);
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                }
-//            }
-//        }
-//        
-//        /**
-//         * Timer que controla as reclamações.
-//         */
-//        private static final Timer TIMER = new Timer("TimerComplain");
-//
-//        public static void cancel() {
-//            TIMER.cancel();
-//        }
-//
-//        static {
-//            // Agenda processamento de reclamações vencidas.
-//            TIMER.schedule(
-//                    new TimerTask() {
-//                @Override
-//                public void run() {
-//                    LinkedList<String> expiredTicket = new LinkedList<String>();
-//                    // Verificar reclamações vencidas.
-//                    HashMap<String,Complain> complainMap = getMap();
-//                    for (String ticket : complainMap.keySet()) {
-//                        Complain complain = complainMap.get(ticket);
-//                        if (complain.isExpired7()) {
-//                            complain.removeComplains();
-//                            expiredTicket.add(ticket);
-//                        }
-//                    }
-//                    // Remover todos os tickets processados.
-//                    for (String ticket : expiredTicket) {
-//                        dropExact(ticket);
-//                    }
-//                    // Atualiza registro SPF mais consultado.
-//                    SPF.tryRefresh();
-//                }
-//            }, 60000, 60000 // Frequência de 1 minuto.
-//                    );
-//            TIMER.schedule(
-//                    new TimerTask() {
-//                @Override
-//                public void run() {
-//                    // Atualiza registros WHOIS expirando.
-//                    Server.tryBackugroundRefresh();
-//                }
-//            }, 600000, 600000 // Frequência de 10 minutos.
-//                    );
-//            TIMER.schedule(
-//                    new TimerTask() {
-//                @Override
-//                public void run() {
-//                    // TODO: implementar a remoção de registros SPF expirados. 
-//
-//                    // Apagar todas as distribuições vencidas.
-//                    CacheDistribution.dropExpired();
-//                    // Apagar todas os registros de DNS de HELO vencidos.
-//                    CacheHELO.dropExpired();
-//                    // Apagar todas os registros de atrazo programado vencidos.
-//                    CacheDefer.dropExpired();
-//                    // Armazena todos os registros atualizados durante a consulta.
-//                    Server.storeCache();
-//                }
-//            }, 3600000, 3600000 // Frequência de 1 hora.
-//                    );
-//        }
-//
-//        /**
-//         * Adiciona uma nova reclamação de SPAM.
-//         *
-//         * @param ticket o ticket da mensagem original.
-//         * @throws ProcessException se houver falha no processamento do ticket.
-//         */
-//        public static TreeSet<String> add(String ticket) throws ProcessException {
-//            if (containsExact(ticket)) {
-//                return null;
-//            } else {
-//                Complain complain = new Complain(ticket);
-//                putExact(ticket, complain);
-//                return complain.getTokenSet();
-//            }
-//        }
-//
-//        /**
-//         * Remove uma nova reclamação de SPAM.
-//         *
-//         * @param ticket o ticket da mensagem original.
-//         * @throws ProcessException se houver falha no processamento do ticket.
-//         */
-//        public static TreeSet<String> delete(String ticket) {
-//            Complain complain = dropExact(ticket);
-//            if (complain == null) {
-//                return null;
-//            } else {
-//                complain.removeComplains();
-//                delete(ticket);
-//                return complain.getTokenSet();
-//            }
-//        }
-//    }
     
     /**
      * Classe que representa o cache de registros de denúncia.
@@ -2096,6 +1865,10 @@ public final class SPF implements Serializable {
         private static synchronized void setStored() {
             CHANGED = false;
         }
+        
+        private static synchronized void setLoaded() {
+            CHANGED = false;
+        }
 
         private static void store() {
             if (isChanged()) {
@@ -2131,6 +1904,7 @@ public final class SPF implements Serializable {
                     for (String ticket : set) {
                         addExact(ticket);
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -2340,6 +2114,10 @@ public final class SPF implements Serializable {
         private static synchronized void setStored() {
             CHANGED = false;
         }
+        
+        private static synchronized void setLoaded() {
+            CHANGED = false;
+        }
 
         private static void store() {
             if (isChanged()) {
@@ -2379,6 +2157,7 @@ public final class SPF implements Serializable {
                             putExact(key, distribution);
                         }
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -2460,14 +2239,14 @@ public final class SPF implements Serializable {
          * @return uma distribuição binomial do whois informado.
          */
         private static Distribution get(String token, boolean create) {
-            Distribution distribution = getExact(token);
+            Distribution distribution = MAP.get(token);
             if (distribution != null) {
                 if (distribution.isExpired7()) {
                     distribution.reset();
                 }
             } else if (create) {
                 distribution = new Distribution();
-                putExact(token, distribution);
+                MAP.put(token, distribution);
             } else {
                 distribution = null;
             }
@@ -2548,7 +2327,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
 
-        private static synchronized boolean dropExact(String token) {
+        private static boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -2557,7 +2336,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized boolean addExact(String token) {
+        private static boolean addExact(String token) {
             if (SET.add(token)) {
                 CHANGED = true;
                 return true;
@@ -2572,20 +2351,12 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return SET.contains(address);
         }
 
         private static synchronized Set<String> subSet(String begin, String end) {
             return SET.subSet(begin, false, end, false);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
         }
         
         private static boolean add(String address) throws ProcessException {
@@ -2614,7 +2385,7 @@ public final class SPF implements Serializable {
                 do {
                     int index = helo.indexOf('.') + 1;
                     helo = helo.substring(index);
-                    if (containsExact('.' + helo)) {
+                    if (SET.contains('.' + helo)) {
                         return true;
                     }
                 } while (helo.contains("."));
@@ -2631,14 +2402,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/provider.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getAll(), outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -2664,6 +2435,7 @@ public final class SPF implements Serializable {
                     for (String token : set) {
                         addExact(token);
                     }
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -2694,7 +2466,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean dropExact(String token) {
+        private static boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -2703,7 +2475,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized boolean addExact(String token) {
+        private static boolean addExact(String token) {
             if (SET.add(token)) {
                 CHANGED = true;
                 return true;
@@ -2718,20 +2490,12 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return SET.contains(address);
         }
 
         private static synchronized Set<String> subSet(String begin, String end) {
             return SET.subSet(begin, false, end, false);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
         }
         
         private static boolean add(
@@ -3284,14 +3048,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/white.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getAll(), outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -3337,7 +3101,7 @@ public final class SPF implements Serializable {
                             addExact(client + ':' + identifier);
                         }
                     }
-//                    SET.addAll(set);
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -3388,7 +3152,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean dropExact(String token) {
+        private static boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -3397,7 +3161,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized boolean addExact(String token) {
+        private static boolean addExact(String token) {
             if (SET.add(token)) {
                 CHANGED = true;
                 return true;
@@ -3412,19 +3176,9 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return SET.contains(address);
         }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        
 
         private static boolean isValid(String recipient) {
             if (recipient == null) {
@@ -3536,14 +3290,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/trap.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getAll(), outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -3569,6 +3323,7 @@ public final class SPF implements Serializable {
                     for (String token : set) {
                         addExact(token);
                     }
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -3756,7 +3511,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean dropExact(String token) {
+        private static boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -3765,7 +3520,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized boolean addExact(String token) {
+        private static boolean addExact(String token) {
             if (SET.add(token)) {
                 CHANGED = true;
                 return true;
@@ -3780,20 +3535,12 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return SET.contains(address);
         }
 
         private static synchronized Set<String> subSet(String begin, String end) {
             return SET.subSet(begin, false, end, false);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
         }
         
         private static boolean add(String token) throws ProcessException {
@@ -4261,14 +4008,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/block.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getAll(), outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -4314,7 +4061,7 @@ public final class SPF implements Serializable {
                             addExact(client + ':' + identifier);
                         }
                     }
-//                    SET.addAll(set);
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -4441,7 +4188,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean dropExact(String token) {
+        private static boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -4450,7 +4197,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized boolean addExact(String token) {
+        private static boolean addExact(String token) {
             if (SET.add(token)) {
                 CHANGED = true;
                 return true;
@@ -4465,20 +4212,12 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return SET.contains(address);
         }
 
         private static synchronized Set<String> subSet(String begin, String end) {
             return SET.subSet(begin, false, end, false);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
         }
 
         private static boolean add(String token) throws ProcessException {
@@ -4575,14 +4314,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/ignore.set");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(SET, outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -4626,7 +4365,7 @@ public final class SPF implements Serializable {
                             addExact(client + ':' + identifier);
                         }
                     }
-//                    SET.addAll(set);
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -4707,6 +4446,10 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
+            CHANGED = false;
+        }
+        
+        private static synchronized void setLoaded() {
             CHANGED = false;
         }
 
@@ -4834,6 +4577,7 @@ public final class SPF implements Serializable {
                             putExact(address, value);
                         }
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -4924,6 +4668,10 @@ public final class SPF implements Serializable {
         private static synchronized void setStored() {
             CHANGED = false;
         }
+        
+        private static synchronized void setLoaded() {
+            CHANGED = false;
+        }
 
         private static boolean add(String hostname,
                 String spf) throws ProcessException {
@@ -5008,6 +4756,7 @@ public final class SPF implements Serializable {
                         String value = map.get(key);
                         putExact(key, value);
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -5110,7 +4859,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized HELO dropExact(String token) {
+        private static HELO dropExact(String token) {
             HELO ret = MAP.remove(token);
             if (ret != null) {
                 CHANGED = true;
@@ -5118,7 +4867,7 @@ public final class SPF implements Serializable {
             return ret;
         }
 
-        private static synchronized HELO putExact(String key, HELO value) {
+        private static HELO putExact(String key, HELO value) {
             HELO ret = MAP.put(key, value);
             if (!value.equals(ret)) {
                 CHANGED = true;
@@ -5144,11 +4893,11 @@ public final class SPF implements Serializable {
             return map;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return MAP.containsKey(address);
         }
         
-        private static synchronized HELO getExact(String host) {
+        private static HELO getExact(String host) {
             return MAP.get(host);
         }
         
@@ -5157,6 +4906,10 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
+            CHANGED = false;
+        }
+        
+        private static synchronized void setLoaded() {
             CHANGED = false;
         }
 
@@ -5217,7 +4970,7 @@ public final class SPF implements Serializable {
          * @throws Exception
          */
         private static Attributes getAttributes(String hostname) throws NamingException {
-            HELO heloObj = getExact(hostname);
+            HELO heloObj = MAP.get(hostname);
             if (heloObj == null) {
                 heloObj = new HELO(hostname);
                 putExact(hostname, heloObj);
@@ -5371,7 +5124,7 @@ public final class SPF implements Serializable {
 
         private static void dropExpired() {
             for (String helo : keySet()) {
-                HELO heloObj = getExact(helo);
+                HELO heloObj = MAP.get(helo);
                 if (heloObj != null && heloObj.isExpired7()) {
                     dropExact(helo);
                 }
@@ -5440,6 +5193,7 @@ public final class SPF implements Serializable {
                             putExact(key, helo);
                         }
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -5490,11 +5244,11 @@ public final class SPF implements Serializable {
             return map;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return MAP.containsKey(address);
         }
         
-        private static synchronized Long getExact(String host) {
+        private static Long getExact(String host) {
             return MAP.get(host);
         }
         
@@ -5503,6 +5257,10 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized void setStored() {
+            CHANGED = false;
+        }
+        
+        private static synchronized void setLoaded() {
             CHANGED = false;
         }
 
@@ -5592,6 +5350,7 @@ public final class SPF implements Serializable {
                         Long value = map.get(key);
                         putExact(key, value);
                     }
+                    setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -5704,18 +5463,16 @@ public final class SPF implements Serializable {
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
+                } else if (SPF.isBlocked(tokenSet)) {
+                    return "action=REJECT [RBL] "
+                            + "you are permanently blocked in this server.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
-                } else if (SPF.isBlocked(tokenSet)) {
-                    // Calcula frequencia de consultas.
-                    SPF.addQuery(ip, sender, helo, tokenSet);
-                    return "action=REJECT [RBL] "
-                            + "you are permanently blocked in this server.\n\n";
-                } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
+                } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
                     // Pelo menos um whois está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
@@ -5957,17 +5714,15 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
+                            } else if (SPF.isBlocked(tokenSet)) {
+                                // Pelo menos um whois do conjunto está bloqueado.
+                                return "BLOCKED\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
-                            } else if (SPF.isBlocked(tokenSet)) {
-                                // Calcula frequencia de consultas.
-                                SPF.addQuery(ip, sender, helo, tokenSet);
-                                // Pelo menos um whois do conjunto está bloqueado.
-                                return "BLOCKED\n";
-                            } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
+                            } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
                                 // Pelo menos um whois do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
@@ -6080,14 +5835,14 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static boolean isBlacklisted(String token) {
+    public static boolean isBlacklisted(String token, boolean process) {
         Distribution distribution = CacheDistribution.get(token, false);
         if (distribution == null) {
             // Distribuição não encontrada.
             // Considerar que não está listado.
             return false;
         } else {
-            return distribution.isBlacklisted(token);
+            return distribution.isBlacklisted(token, process);
         }
     }
 
@@ -6123,10 +5878,11 @@ public final class SPF implements Serializable {
         return greylisted;
     }
 
-    private static boolean isBlacklisted(TreeSet<String> tokenSet) throws ProcessException {
+    private static boolean isBlacklisted(TreeSet<String> tokenSet,
+            boolean process) throws ProcessException {
         boolean blacklisted = false;
         for (String token : expandTokenSet(tokenSet)) {
-            if (isBlacklisted(token)) {
+            if (isBlacklisted(token, process)) {
                 blacklisted = true;
             }
         }
@@ -6245,7 +6001,7 @@ public final class SPF implements Serializable {
             return interval;
         }
 
-        public synchronized void addQuery() {
+        public void addQuery() {
             float interval = getInterval(true);
             if (interval == 0.0f) {
                 // Se não houver intervalo definido,
@@ -6258,15 +6014,15 @@ public final class SPF implements Serializable {
             }
         }
 
-        public synchronized float getMinSpamProbability() {
+        public float getMinSpamProbability() {
             return getSpamProbability()[0];
         }
 
-        public synchronized float getMaxSpamProbability() {
+        public float getMaxSpamProbability() {
             return getSpamProbability()[2];
         }
 
-        private synchronized float[] getSpamProbability() {
+        private float[] getSpamProbability() {
             float[] probability = new float[3];
             if (frequency == null) {
                 // Se não houver frequência definida,
@@ -6317,7 +6073,7 @@ public final class SPF implements Serializable {
          *
          * @return o status atual da distribuição.
          */
-        public synchronized Status getStatus(String token) {
+        public Status getStatus(String token) {
             if (status == Status.BLOCK) {
                 float max = getMaxSpamProbability();
                 if (max < LIMIAR1) {
@@ -6325,6 +6081,7 @@ public final class SPF implements Serializable {
                     CacheBlock.dropExact(token);
                 }
             } else {
+                Status statusOld = status;
                 float[] probability = getSpamProbability();
                 float min = probability[0];
                 float max = probability[2];
@@ -6339,9 +6096,9 @@ public final class SPF implements Serializable {
                     status = Status.WHITE;
                 } else if (min > LIMIAR1) {
                     status = Status.BLACK;
-                } else if (status == Status.GRAY && min > LIMIAR1) {
+                } else if (statusOld == Status.GRAY && min > LIMIAR1) {
                     status = Status.BLACK;
-                } else if (status == Status.BLACK && max < LIMIAR1) {
+                } else if (statusOld == Status.BLACK && max < LIMIAR1) {
                     status = Status.GRAY;
                 }
             }
@@ -6354,8 +6111,12 @@ public final class SPF implements Serializable {
          * @param query se contabiliza uma consulta com a verificação.
          * @return verdadeiro se o estado atual da distribuição é greylisted.
          */
-        public boolean isBlacklisted(String token) {
-            return getStatus(token) == Status.BLACK;
+        public boolean isBlacklisted(String token, boolean process) {
+            if (process) {
+                return getStatus(token) == Status.BLACK;
+            } else {
+                return status == Status.BLACK;
+            }
         }
 
         public boolean isGreylisted(String token) {

@@ -91,8 +91,6 @@ public abstract class Server extends Thread {
      */
     protected Server(String name) {
         super(name);
-        // Todo servidor recebe prioridade máxima.
-        setPriority(Thread.MAX_PRIORITY);
         // Adiciona novo servidor na lista.
         SERVER_LIST.add(this);
     }
@@ -317,6 +315,8 @@ public abstract class Server extends Thread {
             // Para manter a formatação correta no LOG,
             // Registrar apenas latências até 9999, que tem 4 digitos.
             latencia = 9999;
+        } else if (latencia < 0) {
+            latencia = 0;
         }
         if (message != null) {
             message = message.replace("\r", "\\r");
@@ -563,6 +563,11 @@ public abstract class Server extends Thread {
     public static void logQueryDNSBL(long time,
             InetAddress ipAddress, String query, String result) {
         logQuery(time, "DNSBL", ipAddress, query, result);
+    }
+    
+    public static void logQueryDNSBL(long time,
+            String address, String query, String result) {
+        logQuery(time, "DNSBL", address, query, result);
     }
     
     /**
@@ -1099,7 +1104,7 @@ public abstract class Server extends Thread {
                             } else {
                                 result = "ALREADY EXISTS\n";
                             }
-                            QueryDNSBL.store();
+//                            QueryDNSBL.store();
                         } catch (UnknownHostException ex) {
                             result = "INVALID ADDRESS\n";
                         }
@@ -1117,7 +1122,7 @@ public abstract class Server extends Thread {
                             } else {
                                 result = "NOT FOUND\n";
                             }
-                            QueryDNSBL.store();
+//                            QueryDNSBL.store();
                         } catch (UnknownHostException ex) {
                             result = "INVALID ADDRESS\n";
                         }
@@ -1130,7 +1135,7 @@ public abstract class Server extends Thread {
                                 result += "NOT FOUND\n";
                             }
                         }
-                        QueryDNSBL.store();
+//                        QueryDNSBL.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         HashMap<String,ServerDNSBL> map = QueryDNSBL.getMap();
                         if (map.isEmpty()) {
@@ -1163,7 +1168,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeProvider();
+//                        SPF.storeProvider();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         // Comando para adicionar provedor de e-mail.
                         while (tokenizer.hasMoreTokens()) {
@@ -1181,7 +1186,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeProvider();
+//                        SPF.storeProvider();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
                         for (String provider : SPF.getProviderSet()) {
@@ -1212,7 +1217,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeIgnore();
+//                        SPF.storeIgnore();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         // Comando para adicionar provedor de e-mail.
                         while (tokenizer.hasMoreTokens()) {
@@ -1230,7 +1235,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeIgnore();
+//                        SPF.storeIgnore();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
                         TreeSet<String> ignoreSet = SPF.getIgnoreSet();
@@ -1261,7 +1266,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeBlock();
+//                        SPF.storeBlock();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreElements()) {
                             try {
@@ -1278,7 +1283,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeBlock();
+//                        SPF.storeBlock();
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
@@ -1323,7 +1328,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeWhite();
+//                        SPF.storeWhite();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreElements()) {
                             try {
@@ -1340,7 +1345,7 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeWhite();
+//                        SPF.storeWhite();
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
@@ -1380,7 +1385,7 @@ public abstract class Server extends Thread {
                             try {
                                 boolean added = SPF.addPeer(address, port);
                                 result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                SPF.storePeer();
+//                                SPF.storePeer();
                             } catch (ProcessException ex) {
                                 result = ex.getMessage() + "\n";
                             }
@@ -1390,7 +1395,7 @@ public abstract class Server extends Thread {
                         try {
                             boolean droped = SPF.dropPeer(address);
                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                            SPF.storePeer();
+//                            SPF.storePeer();
                         } catch (ProcessException ex) {
                             result = ex.getMessage() + "\n";
                         }
@@ -1415,8 +1420,8 @@ public abstract class Server extends Thread {
                             String spf = command.substring(beginIndex, endIndex);
                             boolean added = SPF.addGuess(domain, spf);
                             result = (added ? "ADDED" : "REPLACED") + "\n";
-                            SPF.storeGuess();
-                            SPF.storeSPF();
+//                            SPF.storeGuess();
+//                            SPF.storeSPF();
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
@@ -1424,8 +1429,8 @@ public abstract class Server extends Thread {
                         String domain = tokenizer.nextToken();
                         boolean droped = SPF.dropGuess(domain);
                         result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                        SPF.storeGuess();
-                        SPF.storeSPF();
+//                        SPF.storeGuess();
+//                        SPF.storeSPF();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (String guess : SPF.getGuessSet()) {
                             result += guess + "\n";
@@ -1489,7 +1494,7 @@ public abstract class Server extends Thread {
                     } catch (Exception ex) {
                         result += ex.getMessage() + "\n";
                     }
-                    SPF.storeDistribution();
+//                    SPF.storeDistribution();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {

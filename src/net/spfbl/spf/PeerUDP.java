@@ -26,6 +26,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -50,6 +51,7 @@ public final class PeerUDP extends Server {
         super("ServerPEERUDP");
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
+        setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding peer UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
@@ -64,12 +66,8 @@ public final class PeerUDP extends Server {
         /**
          * O poll de pacotes de consulta a serem processados.
          */
-        private final LinkedList<DatagramPacket> PACKET_LIST = new LinkedList<DatagramPacket>();
-        
-        /**
-         * Semáforo que controla o pool de pacotes.
-         */
-        private final Semaphore PACKET_SEMAPHORE = new Semaphore(0);
+        private DatagramPacket PACKET = null;
+        private long time = 0;
         
         public Connection() {
             super("PEERUDP" + (CONNECTION_COUNT+1));
@@ -81,11 +79,12 @@ public final class PeerUDP extends Server {
          * Processa um pacote de consulta.
          * @param packet o pacote de consulta a ser processado.
          */
-        private synchronized void process(DatagramPacket packet) {
-            PACKET_LIST.offer(packet);
+        private synchronized void process(DatagramPacket packet, long time) {
+            this.PACKET = packet;
+            this.time = time;
             if (isAlive()) {
                 // Libera o próximo processamento.
-                PACKET_SEMAPHORE.release();
+                notify();
             } else {
                 // Inicia a thread pela primmeira vez.
                 start();
@@ -95,20 +94,10 @@ public final class PeerUDP extends Server {
         /**
          * Fecha esta conexão liberando a thread.
          */
-        private void close() {
+        private synchronized void close() {
             Server.logDebug("Closing " + getName() + "...");
-            PACKET_SEMAPHORE.release();
-        }
-        
-        /**
-         * Aguarda nova chamada.
-         */
-        private void waitCall() {
-            try {
-                PACKET_SEMAPHORE.acquire();
-            } catch (InterruptedException ex) {
-                Server.logError(ex);
-            }
+            PACKET = null;
+            notify();
         }
         
         /**
@@ -116,13 +105,11 @@ public final class PeerUDP extends Server {
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public void run() {
-            while (!PACKET_LIST.isEmpty()) {
+        public synchronized void run() {
+            while (continueListenning() && PACKET != null) {
                 try {
-                    long time = System.currentTimeMillis();
-                    DatagramPacket packet = PACKET_LIST.poll();
-                    InetAddress ipAddress = packet.getAddress();
-                    byte[] data = packet.getData();
+                    InetAddress ipAddress = PACKET.getAddress();
+                    byte[] data = PACKET.getData();
                     String token = new String(data, "ISO-8859-1").trim();
                     String result;
                     try {
@@ -147,15 +134,19 @@ public final class PeerUDP extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Armazena registros de bloqueio.
-                    SPF.storeBlock();
-                    // Oferece a conexão ociosa na última posição da lista.
-                    CONNECTION_POLL.offer(this);
-                    CONNECION_SEMAPHORE.release();
-                    // Aguarda nova chamada.
-                    waitCall();
+                    try {
+                        PACKET = null;
+                        // Oferece a conexão ociosa na última posição da lista.
+                        offer(this);
+                        CONNECION_SEMAPHORE.release();
+                        // Aguarda nova chamada.
+                        wait();
+                    } catch (InterruptedException ex) {
+                        Server.logError(ex);
+                    }
                 }
             }
+            CONNECTION_COUNT--;
         }
     }
     
@@ -199,20 +190,41 @@ public final class PeerUDP extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
+    private static final int CONNECTION_LIMIT = 10;
+    
+    private synchronized Connection poll() {
+        return CONNECTION_POLL.poll();
+    }
+    
+    private synchronized void offer(Connection connection) {
+        CONNECTION_POLL.offer(connection);
+    }
+    
     /**
      * Coleta uma conexão ociosa ou inicia uma nova.
      * @return uma conexão ociosa ou nova se não houver ociosa.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
-        } else {
-            // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating PEERUDP" + (CONNECTION_COUNT+1) + "...");
-            Connection connection = new Connection();
-            CONNECTION_COUNT++;
-            return connection;
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(10, TimeUnit.MILLISECONDS)) {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                }
+                return connection;
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
+                // Cria uma nova conexão se não houver conecxões ociosas.
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("Creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
+                Connection connection = new Connection();
+                CONNECTION_COUNT++;
+                return connection;
+            } else {
+                return null;
+            }
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
+            return null;
         }
     }
     
@@ -220,7 +232,7 @@ public final class PeerUDP extends Server {
      * Inicialização do serviço.
      */
     @Override
-    public synchronized void run() {
+    public void run() {
         try {
             Server.logDebug("Listening peers on UDP port " + PORT + "...");
             while (continueListenning()) {
@@ -229,11 +241,18 @@ public final class PeerUDP extends Server {
                     DatagramPacket packet = new DatagramPacket(
                             receiveData, receiveData.length);
                     SERVER_SOCKET.receive(packet);
+                    long time = System.currentTimeMillis();
                     Connection connection = pollConnection();
                     if (connection == null) {
-                        Server.logDebug("Too many peer conections.");
+                        Server.logQuery(
+                                time,
+                                "PEERB",
+                                packet.getAddress(),
+                                null,
+                                "TOO MANY CONNECTIONS"
+                                );
                     } else {
-                        connection.process(packet);
+                        connection.process(packet, time);
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -251,12 +270,18 @@ public final class PeerUDP extends Server {
      * @throws Exception se houver falha em algum fechamento.
      */
     @Override
-    protected void close() throws Exception {
+    protected void close() {
         while (CONNECTION_COUNT > 0) {
-            CONNECION_SEMAPHORE.acquire();
-            Connection connection = CONNECTION_POLL.poll();
-            connection.close();
-            CONNECTION_COUNT--;
+            try {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                } else if (connection.isAlive()) {
+                    connection.close();
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
         Server.logDebug("Unbinding peer UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();

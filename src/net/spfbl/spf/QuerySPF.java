@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -54,6 +55,7 @@ public final class QuerySPF extends Server {
     public QuerySPF(int port) throws IOException {
         super("ServerSPF");
         PORT = port;
+        setPriority(Thread.MAX_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
@@ -68,28 +70,30 @@ public final class QuerySPF extends Server {
         /**
          * O poll de sockets de consulta a serem processados.
          */
-        private final LinkedList<Socket> SOCKET_LIST = new LinkedList<Socket>();
+        private Socket SOCKET = null;
         
-        /**
-         * Semáforo que controla o pool de sockets.
-         */
-        private final Semaphore SOCKET_SEMAPHORE = new Semaphore(0);
+        private long time = 0;
+        
+//        /**
+//         * Semáforo que controla o pool de sockets.
+//         */
+//        private final Semaphore SOCKET_SEMAPHORE = new Semaphore(0);
         
         public Connection() {
-            super("SPFTCP" + (CONNECTION_COUNT+1));
-            // Toda connexão recebe prioridade mínima.
-            setPriority(Thread.MIN_PRIORITY);
+            super("SPFTCP" + (CONNECTION_COUNT + 1));
+            setPriority(Thread.MAX_PRIORITY);
         }
         
         /**
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
          */
-        private synchronized void process(Socket socket) {
-            SOCKET_LIST.offer(socket);
+        private synchronized void process(Socket socket, long time) {
+            this.SOCKET = socket;
+            this.time = time;
             if (isAlive()) {
                 // Libera o próximo processamento.
-                SOCKET_SEMAPHORE.release();
+                notify();
             } else {
                 // Inicia a thread pela primmeira vez.
                 start();
@@ -99,20 +103,10 @@ public final class QuerySPF extends Server {
         /**
          * Fecha esta conexão liberando a thread.
          */
-        private void close() {
+        private synchronized void close() {
             Server.logDebug("Closing " + getName() + "...");
-            SOCKET_SEMAPHORE.release();
-        }
-        
-        /**
-         * Aguarda nova chamada.
-         */
-        private void waitCall() {
-            try {
-                SOCKET_SEMAPHORE.acquire();
-            } catch (InterruptedException ex) {
-                Server.logError(ex);
-            }
+            SOCKET = null;
+            notify();
         }
         
         /**
@@ -120,17 +114,15 @@ public final class QuerySPF extends Server {
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public void run() {
-            while (!SOCKET_LIST.isEmpty()) {
+        public synchronized void run() {
+            while (continueListenning() && SOCKET != null) {
                 try {
-                    long time = System.currentTimeMillis();
                     String type = "SPFQR";
                     String query = null;
                     String result = null;
-                    Socket socket = SOCKET_LIST.poll();
                     try {
-                        String client = Server.getLogClient(socket.getInetAddress());
-                        InputStream inputStream = socket.getInputStream();
+                        String client = Server.getLogClient(SOCKET.getInetAddress());
+                        InputStream inputStream = SOCKET.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
@@ -189,7 +181,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeBlock();
                             } else if (line.startsWith("BLOCK DROP ")) {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
@@ -216,7 +207,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeBlock();
                             } else if (line.equals("BLOCK SHOW ALL")) {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
@@ -271,7 +261,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeTrap();
                             } else if (line.startsWith("TRAP DROP ")) {
                                 query = line.substring(5).trim();
                                 type = "STRAP";
@@ -298,7 +287,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeTrap();
                             } else if (line.equals("TRAP SHOW")) {
                                 query = line.substring(5).trim();
                                 type = "STRAP";
@@ -339,7 +327,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeWhite();
                             } else if (line.startsWith("WHITE DROP ")) {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
@@ -366,7 +353,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
-                                SPF.storeWhite();
                             } else if (line.equals("WHITE SHOW")) {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
@@ -420,16 +406,18 @@ public final class QuerySPF extends Server {
                                 }
                             }
                             // Enviando resposta.
-                            OutputStream outputStream = socket.getOutputStream();
+                            OutputStream outputStream = SOCKET.getOutputStream();
                             outputStream.write(result.getBytes("UTF-8"));
                         }
                     } finally {
                         // Fecha conexão logo após resposta.
-                        socket.close();
+                        SOCKET.close();
+                        InetAddress address = SOCKET.getInetAddress();
+                        SOCKET = null;
                         // Log da consulta com o respectivo resultado.
                         Server.logQuery(
                                 time, type,
-                                socket.getInetAddress(),
+                                address,
                                 query == null ? "DISCONNECTED" : query,
                                 result
                                 );
@@ -437,13 +425,18 @@ public final class QuerySPF extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    // Oferece a conexão ociosa na última posição da lista.
-                    CONNECTION_POLL.offer(this);
-                    CONNECION_SEMAPHORE.release();
-                    // Aguarda nova chamada.
-                    waitCall();
+                    try {
+                        // Oferece a conexão ociosa na última posição da lista.
+                        offer(this);
+                        CONNECION_SEMAPHORE.release();
+                        // Aguarda nova chamada.
+                        wait();
+                    } catch (InterruptedException ex) {
+                        Server.logError(ex);
+                    }
                 }
             }
+            CONNECTION_COUNT--;
         }
     }
     
@@ -464,15 +457,27 @@ public final class QuerySPF extends Server {
     
     private static final int CONNECTION_LIMIT = 10;
     
+    private synchronized Connection poll() {
+        return CONNECTION_POLL.poll();
+    }
+    
+    private synchronized void offer(Connection connection) {
+        CONNECTION_POLL.offer(connection);
+    }
+    
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
      */
     private Connection pollConnection() {
         try {
-            // Espera aceitável para conexão de 200ms.
-            if (CONNECION_SEMAPHORE.tryAcquire(200, TimeUnit.MILLISECONDS)) {
-                return CONNECTION_POLL.poll();
+            // Espera aceitável para conexão de 10ms.
+            if (CONNECION_SEMAPHORE.tryAcquire(10, TimeUnit.MILLISECONDS)) {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                }
+                return connection;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
@@ -487,7 +492,8 @@ public final class QuerySPF extends Server {
                 CONNECION_SEMAPHORE.acquire();
                 return CONNECTION_POLL.poll();
             }
-        } catch (InterruptedException ex) {
+        } catch (Exception ex) {
+            Server.logError(ex);
             return null;
         }
     }
@@ -496,16 +502,15 @@ public final class QuerySPF extends Server {
      * Inicialização do serviço.
      */
     @Override
-    public synchronized void run() {
+    public void run() {
         try {
             Server.logDebug("Listening queries on SPF port " + PORT + "...");
             while (continueListenning()) {
                 try {
-                    
                     Socket socket = SERVER_SOCKET.accept();
+                    long time = System.currentTimeMillis();
                     Connection connection = pollConnection();
                     if (connection == null) {
-                        long time = System.currentTimeMillis();
                         String result = "ERROR: TOO MANY CONNECTIONS\n";
                         try {
                             OutputStream outputStream = socket.getOutputStream();
@@ -519,7 +524,7 @@ public final class QuerySPF extends Server {
                                 );
                         }
                     } else {
-                        connection.process(socket);
+                        connection.process(socket, time);
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -528,19 +533,23 @@ public final class QuerySPF extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie SPF server closed.");
+            Server.logDebug("Querie SPFBL server closed.");
         }
     }
     
     @Override
     protected void close() throws Exception {
         while (CONNECTION_COUNT > 0) {
-            CONNECION_SEMAPHORE.acquire();
-            Connection connection = CONNECTION_POLL.poll();
-            if (connection != null) {
-                connection.close();
+            try {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                } else if (connection.isAlive()) {
+                    connection.close();
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
             }
-            CONNECTION_COUNT--;
         }
         Server.logDebug("Unbinding querie SPF socket on port " + PORT + "...");
         SERVER_SOCKET.close();
