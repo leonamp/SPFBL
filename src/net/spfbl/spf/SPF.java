@@ -3361,7 +3361,7 @@ public final class SPF implements Serializable {
     }
 
     private static boolean isWHOIS(String token) {
-        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@.]+)|((<|>)[0-9]+))$", token);
+        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))$", token);
     }
 
     private static boolean isREGEX(String token) {
