@@ -23,6 +23,7 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor de consulta em UDP.
@@ -51,6 +52,7 @@ public final class QueryUDP extends Server {
         super("ServerWHOISUDP");
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
+        setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding querie UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
@@ -65,12 +67,8 @@ public final class QueryUDP extends Server {
         /**
          * O poll de pacotes de consulta a serem processados.
          */
-        private final LinkedList<DatagramPacket> PACKET_LIST = new LinkedList<DatagramPacket>();
-        
-        /**
-         * Semáforo que controla o pool de pacotes.
-         */
-        private final Semaphore PACKET_SEMAPHORE = new Semaphore(0);
+        private DatagramPacket PACKET = null;
+        private long time = 0;
         
         public Connection() {
             super("WHOISUDP" + (CONNECTION_COUNT+1));
@@ -82,11 +80,12 @@ public final class QueryUDP extends Server {
          * Processa um pacote de consulta.
          * @param packet o pacote de consulta a ser processado.
          */
-        private synchronized void process(DatagramPacket packet) {
-            PACKET_LIST.offer(packet);
+        private synchronized void process(DatagramPacket packet, long time) {
+            this.PACKET = packet;
+            this.time = time;
             if (isAlive()) {
                 // Libera o próximo processamento.
-                PACKET_SEMAPHORE.release();
+                notify();
             } else {
                 // Inicia a thread pela primmeira vez.
                 start();
@@ -96,20 +95,10 @@ public final class QueryUDP extends Server {
         /**
          * Fecha esta conexão liberando a thread.
          */
-        private void close() {
+        private synchronized void close() {
             Server.logDebug("Closing " + getName() + "...");
-            PACKET_SEMAPHORE.release();
-        }
-        
-        /**
-         * Aguarda nova chamada.
-         */
-        private void waitCall() {
-            try {
-                PACKET_SEMAPHORE.acquire();
-            } catch (InterruptedException ex) {
-                Server.logError(ex);
-            }
+            PACKET = null;
+            notify();
         }
         
         /**
@@ -117,17 +106,15 @@ public final class QueryUDP extends Server {
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public void run() {
-            while (!PACKET_LIST.isEmpty()) {
+        public synchronized void run() {
+            while (continueListenning() && PACKET != null) {
                 try {
-                    long time = System.currentTimeMillis();
-                    DatagramPacket packet = PACKET_LIST.poll();
-                    byte[] data = packet.getData();
+                    byte[] data = PACKET.getData();
                     String query = new String(data, "ISO-8859-1").trim();
                     String result = QueryUDP.this.processWHOIS(query);
                     // Enviando resposta.
-                    InetAddress ipAddress = packet.getAddress();
-                    int portDestiny = packet.getPort();
+                    InetAddress ipAddress = PACKET.getAddress();
+                    int portDestiny = PACKET.getPort();
                     send(result, ipAddress, portDestiny);
                     // Log da consulta com o respectivo resultado.
                     Server.logQuery(
@@ -138,17 +125,19 @@ public final class QueryUDP extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-//                    // Atualiza registros quase expirando durante a consulta.
-//                    Server.tryBackugroundRefresh();
-//                    // Armazena todos os registros atualizados durante a consulta.
-//                    Server.storeCache();
-                    // Oferece a conexão ociosa na última posição da lista.
-                    CONNECTION_POLL.offer(this);
-                    CONNECION_SEMAPHORE.release();
-                    // Aguarda nova chamada.
-                    waitCall();
+                    try {
+                        PACKET = null;
+                        // Oferece a conexão ociosa na última posição da lista.
+                        offer(this);
+                        CONNECION_SEMAPHORE.release();
+                        // Aguarda nova chamada.
+                        wait();
+                    } catch (InterruptedException ex) {
+                        Server.logError(ex);
+                    }
                 }
             }
+            CONNECTION_COUNT--;
         }
     }
     
@@ -180,6 +169,14 @@ public final class QueryUDP extends Server {
      */
     private final Semaphore CONNECION_SEMAPHORE = new Semaphore(0);
     
+    private synchronized Connection poll() {
+        return CONNECTION_POLL.poll();
+    }
+    
+    private synchronized void offer(Connection connection) {
+        CONNECTION_POLL.offer(connection);
+    }
+    
     /**
      * Quantidade total de conexões intanciadas.
      */
@@ -191,7 +188,11 @@ public final class QueryUDP extends Server {
      */
     private Connection pollConnection() {
         if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
+            Connection connection = poll();
+            if (connection == null) {
+                CONNECION_SEMAPHORE.release();
+            }
+            return connection;
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
@@ -215,6 +216,7 @@ public final class QueryUDP extends Server {
                     DatagramPacket packet = new DatagramPacket(
                             receiveData, receiveData.length);
                     SERVER_SOCKET.receive(packet);
+                    long time = System.currentTimeMillis();
                     Connection connection = pollConnection();
                     if (connection == null) {
                         InetAddress ipAddress = packet.getAddress();
@@ -223,7 +225,7 @@ public final class QueryUDP extends Server {
                         send(result, ipAddress, portDestiny);
                         System.out.print(result);
                     } else {
-                        connection.process(packet);
+                        connection.process(packet, time);
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -241,12 +243,18 @@ public final class QueryUDP extends Server {
      * @throws Exception se houver falha em algum fechamento.
      */
     @Override
-    protected void close() throws Exception {
+    protected void close() {
         while (CONNECTION_COUNT > 0) {
-            CONNECION_SEMAPHORE.acquire();
-            Connection connection = CONNECTION_POLL.poll();
-            connection.close();
-            CONNECTION_COUNT--;
+            try {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                } else if (connection.isAlive()) {
+                    connection.close();
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
         Server.logDebug("Unbinding querie UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();

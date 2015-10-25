@@ -69,22 +69,6 @@ public class Owner implements Serializable, Comparable<Owner> {
      */
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
-    private Owner(br.com.allchemistry.whois.Owner other) {
-        this.owner = other.owner;
-        this.ownerid = other.ownerid;
-        this.responsible = other.responsible;
-        this.country = other.country;
-        this.owner_c = other.owner_c;
-        this.created = other.created;
-        this.changed = other.changed;
-        this.provider = other.provider;
-        this.domainList.addAll(other.domainList);
-        this.server = other.server;
-        this.lastRefresh = other.lastRefresh;
-        this.reduced = other.reduced;
-        this.queries = other.queries;
-    }
-    
     /**
      * Atualiza o tempo de expiração do registro de domínio.
      * @param time tempo em dias que os registros de domíno devem ser atualizados.
@@ -358,13 +342,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
-                    if (value instanceof br.com.allchemistry.whois.Owner) {
-                        br.com.allchemistry.whois.Owner owner =
-                                (br.com.allchemistry.whois.Owner) value;
-                        Owner ownerNew = new Owner(owner);
-                        OWNER_MAP.put(key, ownerNew);
-                        OWNER_CHANGED = true;
-                    } else if (value instanceof Owner) {
+                    if (value instanceof Owner) {
                         Owner owner = (Owner) value;
                         OWNER_MAP.put(key, owner);
                     }

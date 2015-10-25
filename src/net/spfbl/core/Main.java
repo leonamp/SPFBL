@@ -16,11 +16,16 @@
  */
 package net.spfbl.core;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import net.spfbl.spf.PeerUDP;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.whois.QueryUDP;
 import net.spfbl.spf.QuerySPF;
 import java.net.InetAddress;
+import java.util.Properties;
 import net.spfbl.dnsbl.QueryDNSBL;
 
 /**
@@ -39,12 +44,35 @@ public class Main {
             ) throws ProcessException {
         peerUDP.send(token, address, port);
     }
+    
+    private static void startConfiguration() {
+        File confFile = new File("spfbl.conf");
+        if (confFile.exists()) {
+            try {
+                Properties properties = new Properties();
+                FileInputStream confIS = new FileInputStream(confFile);
+                try {
+                    properties.load(confIS);
+                    try {
+                        Server.setLogFolder(properties.getProperty("log_folder"));
+                    } catch (ProcessException ex) {
+                        Server.logError(ex);
+                    }
+                } finally {
+                    confIS.close();
+                }
+            } catch (IOException ex) {
+                Server.logError(ex);
+            }
+        }
+    }
 
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
         try {
+            startConfiguration();
             Server.logDebug("Starting server...");
             int port = Integer.parseInt(args[0]);
             int size = Integer.parseInt(args[1]);
@@ -57,7 +85,7 @@ public class Main {
             Server.loadCache();
             new CommandTCP(port).start();
             new QueryTCP(port+1).start();
-            new QueryUDP(port+1, size).start();
+//            new QueryUDP(port+1, size).start();
             new QuerySPF(port+2).start();
             peerUDP = new PeerUDP(port+2, size);
             peerUDP.start();

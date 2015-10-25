@@ -66,24 +66,6 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
      */
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
-    private AutonomousSystem(br.com.allchemistry.whois.AutonomousSystem other) {
-        this.aut_num = other.aut_num;
-        this.owner = other.owner;
-        this.ownerid = other.ownerid;
-        this.responsible = other.responsible;
-        this.country = other.country;
-        this.owner_c = other.owner_c;
-        this.routing_c = other.routing_c;
-        this.abuse_c = other.abuse_c;
-        this.created = other.created;
-        this.changed = other.changed;
-        this.inetnumSet.addAll(other.inetnumSet);
-        this.server = other.server;
-        this.lastRefresh = other.lastRefresh;
-        this.reduced = other.reduced;
-        this.queries = other.queries;
-    }
-    
     /**
      * Atualiza o tempo de expiração do registro de AS.
      * @param time tempo em dias que os registros de domíno devem ser atualizados.
@@ -365,13 +347,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
-                    if (value instanceof br.com.allchemistry.whois.AutonomousSystem) {
-                        br.com.allchemistry.whois.AutonomousSystem as =
-                                (br.com.allchemistry.whois.AutonomousSystem) value;
-                        AutonomousSystem asNew = new AutonomousSystem(as);
-                        AS_MAP.put(key, asNew);
-                        AS_CHANGED = true;
-                    } else if (value instanceof AutonomousSystem) {
+                    if (value instanceof AutonomousSystem) {
                         AutonomousSystem as = (AutonomousSystem) value;
                         AS_MAP.put(key, as);
                     }

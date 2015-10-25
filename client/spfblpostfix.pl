@@ -15,6 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
+# Última alteração: 21/10/2015 10:00
 
 use strict;
 use warnings;
@@ -78,6 +79,11 @@ while ( my $line = <STDIN> ) {
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
             "action=REJECT [RBL] you are permanently blocked in this server.\n\n"
+        );
+    }
+    elsif ( $result =~ /^INVALID/ ) {
+        STDOUT->print(
+            "action=REJECT [SPF] IP or sender is invalid.\n\n"
         );
     }
     elsif ( $result =~ /^GREYLIST/ ) {

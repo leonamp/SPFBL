@@ -33,11 +33,14 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
@@ -88,8 +91,6 @@ public abstract class Server extends Thread {
      */
     protected Server(String name) {
         super(name);
-        // Todo servidor recebe prioridade máxima.
-        setPriority(Thread.MAX_PRIORITY);
         // Adiciona novo servidor na lista.
         SERVER_LIST.add(this);
     }
@@ -102,6 +103,7 @@ public abstract class Server extends Thread {
      * Carregamento de cache em disco.
      */
     public static void loadCache() {
+        User.load();
         Owner.load();
         Domain.load();
         AutonomousSystem.load();
@@ -117,6 +119,7 @@ public abstract class Server extends Thread {
      * Armazenamento de cache em disco.
      */
     public static void storeCache() {
+        User.store();
         Owner.store();
         Domain.store();
         AutonomousSystem.store();
@@ -165,9 +168,29 @@ public abstract class Server extends Thread {
             return null;
         } else {
             try {
+                return encrypt(message.getBytes("UTF8"));
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
+    public static String encrypt(ByteBuffer buffer) throws ProcessException {
+        if (buffer == null) {
+            return null;
+        } else {
+            return encrypt(buffer.array());
+        }
+    }
+    
+    public static String encrypt(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
-                byte[] code = cipher.doFinal(message.getBytes("UTF8"));
+                byte[] code = cipher.doFinal(byteArray);
                 return new String(Base64Coder.encode(code));
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: ENCRYPTION", ex);
@@ -189,6 +212,22 @@ public abstract class Server extends Thread {
             }
         }
     }
+    
+    public static byte[] decryptToByteArray(String code) throws ProcessException {
+        if (code == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
+                return cipher.doFinal(Base64Coder.decode(code));
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: DECRYPTION", ex);
+            }
+        }
+    }
+    
+    private static final SimpleDateFormat FORMAT_DATE = new SimpleDateFormat("yyyy-MM-dd");
     
     /**
      * Constante de formatação da data no log.
@@ -278,6 +317,8 @@ public abstract class Server extends Thread {
             // Para manter a formatação correta no LOG,
             // Registrar apenas latências até 9999, que tem 4 digitos.
             latencia = 9999;
+        } else if (latencia < 0) {
+            latencia = 0;
         }
         if (message != null) {
             message = message.replace("\r", "\\r");
@@ -287,12 +328,59 @@ public abstract class Server extends Thread {
             result = result.replace("\r", "\\r");
             result = result.replace("\n", "\\n");
         }
-        System.out.println(
-                FORMAT_DATE_LOG.format(new Date(time))
+        Date date = new Date(time);
+        String text = FORMAT_DATE_LOG.format(date)
                 + " " + LATENCIA_FORMAT.format(latencia)
                 + " " + type + " " + message
-                + (result == null ? "" : " => " + result)
-                );
+                + (result == null ? "" : " => " + result);
+        PrintWriter writer = getLogWriter(date);
+        if (writer == null) {
+            System.out.println(text);
+        } else {
+            writer.println(text);
+        }
+    }
+    
+    private static File logFolder = null;
+    private static File logFile = null;
+    private static PrintWriter logWriter = null;
+    
+    public static synchronized void setLogFolder(String path) throws ProcessException {
+        if (path == null) {
+            logFolder = null;
+        } else {
+            File folder = new File(path);
+            if (folder.exists()) {
+                if (folder.isDirectory()) {
+                    logFolder = folder;
+                } else {
+                    throw new ProcessException("ERROR: IS NOT A FOLDER");
+                }
+            } else {
+                throw new ProcessException("ERROR: FOLDER NOT EXISTS");
+            }
+        }
+    }
+    
+    private static synchronized PrintWriter getLogWriter(Date date) {
+        try {
+            if (logFolder == null || !logFolder.exists()) {
+                return null;
+            } else if (logWriter == null) {
+                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
+                FileWriter fileWriter = new FileWriter(logFile, true);
+                return logWriter = new PrintWriter(fileWriter, true);
+            } else if (logFile.getName().equals("spfbl." + FORMAT_DATE.format(date) + ".log")) {
+                return logWriter;
+            } else {
+                logWriter.close();
+                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
+                FileWriter fileWriter = new FileWriter(logFile, true);
+                return logWriter = new PrintWriter(fileWriter, true);
+            }
+        } catch (Exception ex) {
+            return null;
+        }
     }
     
     /**
@@ -479,6 +567,11 @@ public abstract class Server extends Thread {
         logQuery(time, "DNSBL", ipAddress, query, result);
     }
     
+    public static void logQueryDNSBL(long time,
+            String address, String query, String result) {
+        logQuery(time, "DNSBL", address, query, result);
+    }
+    
     /**
      * Registra os resultados do WHOIS.
      * Uma iniciativa para formalização das mensagens de log.
@@ -495,57 +588,59 @@ public abstract class Server extends Thread {
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
     public static synchronized String getLogClient(InetAddress ipAddress) {
-        File clientsFile = new File("./data/clients.txt");
-        if (!clientsFile.exists()) {
-            subnetClientsMap.clear();
-        } else if (clientsFile.lastModified() > lastClientsFileModified) {
-            try {
+        if (ipAddress == null) {
+            return "unknown";
+        } else {
+            File clientsFile = new File("./data/clients.txt");
+            if (!clientsFile.exists()) {
                 subnetClientsMap.clear();
-                BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
+            } else if (clientsFile.lastModified() > lastClientsFileModified) {
                 try {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-                        if (tokenizer.countTokens() == 3) {
-                            String cidr = tokenizer.nextToken();
-                            String email = tokenizer.nextToken();
-                            subnetClientsMap.put(cidr, email);
+                    subnetClientsMap.clear();
+                    BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
+                    try {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            StringTokenizer tokenizer = new StringTokenizer(line, "\t");
+                            if (tokenizer.countTokens() == 3) {
+                                String cidr = tokenizer.nextToken();
+                                String email = tokenizer.nextToken();
+                                subnetClientsMap.put(cidr, email);
+                            }
+                        }
+                        lastClientsFileModified = clientsFile.lastModified();
+                    } finally {
+                        reader.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+            String ip = ipAddress.getHostAddress();
+            try {
+                for (String cidr : subnetClientsMap.keySet()) {
+                    if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                        int mask = SubnetIPv4.getMaskNet(cidr);
+                        int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
+                        int address2 = SubnetIPv4.getAddressIP(ip) & mask;
+                        if (address1 == address2) {
+                            return subnetClientsMap.get(cidr);
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(cidr)) {
+                        int index = cidr.indexOf('/');
+                        short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
+                        short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
+                        short[] address2 = SubnetIPv6.split(ip, mask);
+                        if (Arrays.equals(address1, address2)) {
+                            return subnetClientsMap.get(cidr);
                         }
                     }
-                    lastClientsFileModified = clientsFile.lastModified();
-                } finally {
-                    reader.close();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+            return ip;
         }
-        String cliente = ipAddress.getHostAddress();
-        try {
-            for (String cidr : subnetClientsMap.keySet()) {
-                if (SubnetIPv4.isValidCIDRv4(cidr)) {
-                    int mask = SubnetIPv4.getMaskNet(cidr);
-                    int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
-                    int address2 = SubnetIPv4.getAddressIP(cliente) & mask;
-                    if (address1 == address2) {
-                        cliente = subnetClientsMap.get(cidr);
-                        break;
-                    }
-                } else if (SubnetIPv6.isValidIPv6(cidr)) {
-                    int index = cidr.indexOf('/');
-                    short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
-                    short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
-                    short[] address2 = SubnetIPv6.split(cliente, mask);
-                    if (Arrays.equals(address1, address2)) {
-                        cliente = subnetClientsMap.get(cidr);
-                        break;
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        }
-        return cliente;
     }
     
     /**
@@ -600,12 +695,18 @@ public abstract class Server extends Thread {
      * Desliga todos os servidores instanciados.
      * @throws Exception se houver falha no fechamento de algum servidor.
      */
-    public static void shutdown() throws Exception {
+    public static boolean shutdown() {
         // Inicia finalização dos servidores.
         Server.logDebug("Shutting down server...");
+        boolean closed = true;
         for (Server server : SERVER_LIST) {
-            server.run = false;
-            server.close();
+            try {
+                server.run = false;
+                server.close();
+            } catch (Exception ex) {
+                closed = false;
+                Server.logError(ex);
+            }
         }
         // Finaliza timer local.
         WHOIS_SEMAPHORE_TIMER.cancel();
@@ -613,6 +714,7 @@ public abstract class Server extends Thread {
         SPF.cancel();
         // Armazena os registros em disco.
         storeCache();
+        return closed;
     }
     
     /**
@@ -938,8 +1040,13 @@ public abstract class Server extends Thread {
                 String token = tokenizer.nextToken();
                 if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
-                    result = "OK\n";
-                    shutdown();
+                    if (shutdown()) {
+                        // Fechamento de processos realizado com sucesso.
+                        result = "OK\n";
+                    } else {
+                        // Houve falha no fechamento dos processos.
+                        result = "ERROR: SHUTDOWN\n";
+                    }
                 } else if (token.equals("STORE") && !tokenizer.hasMoreTokens()) {
                     // Comando para gravar o cache em disco.
                     result = "OK\n";
@@ -1205,6 +1312,108 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
+                } else if (token.equals("WHITE") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String whiteToken = tokenizer.nextToken();
+                                if (SPF.addWhite(whiteToken)) {
+                                    result += "ADDED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeWhite();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String whiteedToken = tokenizer.nextToken();
+                                if (SPF.dropWhite(whiteedToken)) {
+                                    result += "DROPED\n";
+                                } else {
+                                    result += "NOT FOUND\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeWhite();
+                    } else if (token.equals("SHOW")) {
+                        if (!tokenizer.hasMoreTokens()) {
+                            // Mecanismo de visualização 
+                            // de liberação de remetentes.
+                            for (String sender : SPF.getWhiteSet()) {
+                                result += sender + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
+                        } else if (tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                // Mecanismo de visualização de 
+                                // todos os liberação de remetentes.
+                                for (String sender : SPF.getAllWhiteSet()) {
+                                    result += sender + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            }
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("USER") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        String email = tokenizer.nextToken();
+                        if (tokenizer.hasMoreTokens()) {
+                            String name = tokenizer.nextToken();
+                            while (tokenizer.hasMoreElements()) {
+                                name += ' ' + tokenizer.nextToken();
+                            }
+                            try {
+                                User user = User.create(email, name);
+                                if (user == null) {
+                                    result = "ALREADY EXISTS\n";
+                                } else {
+                                    result = "ADDED " + user + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                            User.store();
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        String email = tokenizer.nextToken();
+                        User user = User.drop(email);
+                        if (user == null) {
+                            result += "NOT FOUND\n";
+                        } else {
+                            result += "DROPED " + user + "\n";
+                        }
+                        User.store();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (User user : User.getSet()) {
+                            result += user + "\n";
+                        }
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
@@ -1313,20 +1522,22 @@ public abstract class Server extends Thread {
                         }
                         result = stringBuilder.toString();
                     }
-                } else if (token.equals("CLEAR") && tokenizer.hasMoreElements()) {
-                    while (tokenizer.hasMoreElements()) {
-                        try {
-                            token = tokenizer.nextToken();
-                            if (SPF.clear(token)) {
-                                result += "CLEARED\n";
-                            } else {
-                                result += "NOT FOUND\n";
+                } else if (token.equals("CLEAR") && tokenizer.countTokens() == 1) {
+                    try {
+                        token = tokenizer.nextToken();
+                        TreeSet<String> clearSet = SPF.clear(token);
+                        if (clearSet.isEmpty()) {
+                            result += "NOT FOUND\n";
+                        } else {
+                            for (String value : clearSet) {
+                                result += value + '\n';
                             }
-                        } catch (Exception ex) {
-                            result += ex.getMessage() + "\n";
                         }
+                    } catch (Exception ex) {
+                        result += ex.getMessage() + "\n";
                     }
                     SPF.storeDistribution();
+                    SPF.storeBlock();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {

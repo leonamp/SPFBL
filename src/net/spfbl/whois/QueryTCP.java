@@ -22,12 +22,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor de consulta em TCP.
@@ -49,6 +51,7 @@ public final class QueryTCP extends Server {
     public QueryTCP(int port) throws IOException {
         super("ServerWHOISTCP");
         PORT = port;
+        setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
@@ -63,12 +66,10 @@ public final class QueryTCP extends Server {
         /**
          * O poll de sockets de consulta a serem processados.
          */
-        private final LinkedList<Socket> SOCKET_LIST = new LinkedList<Socket>();
+        private Socket SOCKET = null;
         
-        /**
-         * Semáforo que controla o pool de sockets.
-         */
-        private final Semaphore SOCKET_SEMAPHORE = new Semaphore(0);
+        private long time = 0;
+        
         
         public Connection() {
             super("WHOISTCP" + (CONNECTION_COUNT+1));
@@ -80,11 +81,12 @@ public final class QueryTCP extends Server {
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
          */
-        private synchronized void process(Socket socket) {
-            SOCKET_LIST.offer(socket);
+        private synchronized void process(Socket socket, long time) {
+            this.SOCKET = socket;
+            this.time = time;
             if (isAlive()) {
                 // Libera o próximo processamento.
-                SOCKET_SEMAPHORE.release();
+                notify();
             } else {
                 // Inicia a thread pela primmeira vez.
                 start();
@@ -94,20 +96,10 @@ public final class QueryTCP extends Server {
         /**
          * Fecha esta conexão liberando a thread.
          */
-        private void close() {
+        private synchronized void close() {
             Server.logDebug("Closing " + getName() + "...");
-            SOCKET_SEMAPHORE.release();
-        }
-        
-        /**
-         * Aguarda nova chamada.
-         */
-        private void waitCall() {
-            try {
-                SOCKET_SEMAPHORE.acquire();
-            } catch (InterruptedException ex) {
-                Server.logError(ex);
-            }
+            SOCKET = null;
+            notify();
         }
         
         /**
@@ -115,15 +107,13 @@ public final class QueryTCP extends Server {
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public void run() {
-            while (!SOCKET_LIST.isEmpty()) {
+        public synchronized void run() {
+            while (continueListenning() && SOCKET != null) {
                 try {
-                    long time = System.currentTimeMillis();
                     String query = null;
                     String result = "";
-                    Socket socket = SOCKET_LIST.poll();
                     try {
-                        InputStream inputStream = socket.getInputStream();
+                        InputStream inputStream = SOCKET.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         query = bufferedReader.readLine();
@@ -146,32 +136,35 @@ public final class QueryTCP extends Server {
                             result = QueryTCP.this.processWHOIS(query);
                         }
                         // Enviando resposta.
-                        OutputStream outputStream = socket.getOutputStream();
+                        OutputStream outputStream = SOCKET.getOutputStream();
                         outputStream.write(result.getBytes("ISO-8859-1"));
                     } finally {
                         // Fecha conexão logo após resposta.
-                        socket.close();
+                        SOCKET.close();
+                        InetAddress address = SOCKET.getInetAddress();
+                        SOCKET = null;
                         // Log da consulta com o respectivo resultado.
                         Server.logQuery(
                                 time,
                                 "WHOQR",
-                                socket.getInetAddress(),
+                                address,
                                 query, result);
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-//                    // Atualiza registros quase expirando durante a consulta.
-//                    Server.tryBackugroundRefresh();
-//                    // Armazena todos os registros atualizados durante a consulta.
-//                    Server.storeCache();
-                    // Oferece a conexão ociosa na última posição da lista.
-                    CONNECTION_POLL.offer(this);
-                    CONNECION_SEMAPHORE.release();
-                    // Aguarda nova chamada.
-                    waitCall();
+                    try {
+                        // Oferece a conexão ociosa na última posição da lista.
+                        offer(this);
+                        CONNECION_SEMAPHORE.release();
+                        // Aguarda nova chamada.
+                        wait();
+                    } catch (InterruptedException ex) {
+                        Server.logError(ex);
+                    }
                 }
             }
+            CONNECTION_COUNT--;
         }
     }
     
@@ -190,13 +183,25 @@ public final class QueryTCP extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
+    private synchronized Connection poll() {
+        return CONNECTION_POLL.poll();
+    }
+    
+    private synchronized void offer(Connection connection) {
+        CONNECTION_POLL.offer(connection);
+    }
+    
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
      */
     private Connection pollConnection() {
         if (CONNECION_SEMAPHORE.tryAcquire()) {
-            return CONNECTION_POLL.poll();
+            Connection connection = poll();
+            if (connection == null) {
+                CONNECION_SEMAPHORE.release();
+            }
+            return connection;
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
@@ -217,6 +222,7 @@ public final class QueryTCP extends Server {
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
+                    long time = System.currentTimeMillis();
                     Connection connection = pollConnection();
                     if (connection == null) {
                         String result = "ERROR: TOO MANY CONNECTIONS\n";
@@ -228,7 +234,7 @@ public final class QueryTCP extends Server {
                             System.out.print(result);
                         }
                     } else {
-                        connection.process(socket);
+                        connection.process(socket, time);
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -244,10 +250,16 @@ public final class QueryTCP extends Server {
     @Override
     protected void close() throws Exception {
         while (CONNECTION_COUNT > 0) {
-            CONNECION_SEMAPHORE.acquire();
-            Connection connection = CONNECTION_POLL.poll();
-            connection.close();
-            CONNECTION_COUNT--;
+            try {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                } else if (connection.isAlive()) {
+                    connection.close();
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
         Server.logDebug("Unbinding querie TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();

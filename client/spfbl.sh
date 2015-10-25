@@ -22,6 +22,8 @@
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas 
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net 
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
+#
+# Última alteração: 21/10/2015 10:00
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -410,6 +412,7 @@ case $1 in
 		#    11: spamtrap.
 		#    12: greylisting.
 		#    13: domínio inexistente.
+		#    14: IP ou remetente inválido.
 		
 		if [ $# -lt "5" ]; then
 			head
@@ -434,6 +437,8 @@ case $1 in
 				exit 13
 			elif [[ $qualifier == "GREYLIST" ]]; then
 				exit 12
+			elif [[ $qualifier == "INVALID" ]]; then
+				exit 14
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED" ]]; then

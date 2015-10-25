@@ -45,6 +45,7 @@ public final class CommandTCP extends Server {
     public CommandTCP(int port) throws IOException {
         super("ServerCOMMAND");
         PORT = port;
+        setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding command TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
@@ -54,7 +55,7 @@ public final class CommandTCP extends Server {
      * Inicialização do serviço.
      */
     @Override
-    public synchronized void run() {
+    public void run() {
         try {
             Server.logDebug("Listening commands on TCP port " + PORT + "...");
             while (continueListenning()) {
@@ -68,7 +69,9 @@ public final class CommandTCP extends Server {
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         command = bufferedReader.readLine();
-                        if (command != null) {
+                        if (command == null) {
+                            command = "DISCONNECTED";
+                        } else {
                             result = CommandTCP.this.processCommand(command);
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
@@ -80,6 +83,12 @@ public final class CommandTCP extends Server {
                         socket.close();
                         // Log da consulta com o respectivo resultado.
                         Server.logCommand(time, socket.getInetAddress(), command, result);
+                        // Verificar se houve falha no fechamento dos processos.
+                        if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
+                            // Fechar forçadamente o programa.
+                            Server.logDebug("System killed.");
+                            System.exit(1);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -94,7 +103,7 @@ public final class CommandTCP extends Server {
     }
     
     @Override
-    protected void close() throws Exception {
+    protected synchronized void close() throws Exception {
         Server.logDebug("Unbinding command TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
