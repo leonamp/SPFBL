@@ -239,7 +239,7 @@ public final class QueryDNSBL extends Server {
      */
     public QueryDNSBL() throws SocketException {
         super("ServerDNSBL");
-        setPriority(Thread.MIN_PRIORITY);
+        setPriority(Thread.NORM_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding DNSBL socket on port " + PORT + "...");
         SERVER_SOCKET = new DatagramSocket(PORT);
@@ -261,7 +261,7 @@ public final class QueryDNSBL extends Server {
         public Connection() {
             super("DNSBL" + (CONNECTION_COUNT+1));
             // Toda connexão recebe prioridade mínima.
-            setPriority(Thread.MIN_PRIORITY);
+            setPriority(Thread.NORM_PRIORITY);
         }
         
         /**
