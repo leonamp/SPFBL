@@ -1927,24 +1927,7 @@ public final class SPF implements Serializable {
                     new TimerTask() {
                 @Override
                 public void run() {
-                    // Verificar reclamações vencidas.
-                    Set<String> complainSet = keySet();
-                    for (String ticket : complainSet) {
-                        try {
-                            long time = System.currentTimeMillis();
-                            String registry = Server.decrypt(ticket);
-                            int index = registry.indexOf(' ');
-                            Date date = getTicketDate(registry.substring(0, index));
-                            if (System.currentTimeMillis() - date.getTime() > 604800000) {
-                                // Expirado por sete dias.
-                                // Remover reclamações.
-                                deleteComplain(time, null, ticket);
-                            }
-                        } catch (ProcessException ex) {
-                            Server.logError(ex);
-                            dropExact(ticket);
-                        }
-                    }
+                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                     // Atualiza registro SPF mais consultado.
                     SPF.tryRefresh();
                 }
@@ -1954,6 +1937,7 @@ public final class SPF implements Serializable {
                     new TimerTask() {
                 @Override
                 public void run() {
+                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                     // Atualiza registros WHOIS expirando.
                     Server.tryBackugroundRefresh();
                 }
@@ -1963,6 +1947,9 @@ public final class SPF implements Serializable {
                     new TimerTask() {
                 @Override
                 public void run() {
+                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                    // Verificar reclamações vencidas.
+                    CacheComplain.droExpired();
                     // Remoção de registros SPF expirados. 
                     CacheSPF.dropExpired();
                     // Apagar todas as distribuições vencidas.
@@ -1976,6 +1963,26 @@ public final class SPF implements Serializable {
                 }
             }, 3600000, 3600000 // Frequência de 1 hora.
                     );
+        }
+        
+        private static void droExpired() {
+            Set<String> complainSet = keySet();
+            for (String ticket : complainSet) {
+                try {
+                    long time = System.currentTimeMillis();
+                    String registry = Server.decrypt(ticket);
+                    int index = registry.indexOf(' ');
+                    Date date = getTicketDate(registry.substring(0, index));
+                    if (System.currentTimeMillis() - date.getTime() > 604800000) {
+                        // Expirado por sete dias.
+                        // Remover reclamações.
+                        deleteComplain(time, null, ticket);
+                    }
+                } catch (ProcessException ex) {
+                    Server.logError(ex);
+                    dropExact(ticket);
+                }
+            }
         }
 
         /**
@@ -5473,11 +5480,11 @@ public final class SPF implements Serializable {
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
-                    // Pelo menos um whois está listado e com atrazo programado de um dia.
+                    // Pelo menos um identificador está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
                 } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
-                    // Pelo menos um whois está em greylisting com atrazo programado de 10min.
+                    // Pelo menos um identificador está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
                 } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
@@ -5715,7 +5722,7 @@ public final class SPF implements Serializable {
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
                             } else if (SPF.isBlocked(tokenSet)) {
-                                // Pelo menos um whois do conjunto está bloqueado.
+                                // Pelo menos um identificador do conjunto está bloqueado.
                                 return "BLOCKED\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
@@ -5723,10 +5730,10 @@ public final class SPF implements Serializable {
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
-                                // Pelo menos um whois do conjunto está em lista negra com atrazo de 1 dia.
+                                // Pelo menos um identificador do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
                             } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
-                                // Pelo menos um whois do conjunto está em greylisting com atrazo de 10min.
+                                // Pelo menos um identificador do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
                             } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
                                 // SOFTFAIL com atrazo de 1min.
@@ -5830,8 +5837,8 @@ public final class SPF implements Serializable {
             // Considerar que não está listado.
             return 0;
         } else {
-            // Transformar em minutos.
-            return distribution.getComplainTTL() / 60000;
+            // Transformar em segundos.
+            return distribution.getComplainTTL() / 1000;
         }
     }
 
