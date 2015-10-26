@@ -5830,8 +5830,8 @@ public final class SPF implements Serializable {
             // Considerar que não está listado.
             return 0;
         } else {
-            // Transformar em minutos.
-            return distribution.getComplainTTL() / 60000;
+            // Transformar em segundos.
+            return distribution.getComplainTTL() / 1000;
         }
     }
 

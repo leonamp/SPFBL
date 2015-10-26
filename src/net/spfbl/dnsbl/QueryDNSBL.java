@@ -47,6 +47,7 @@ import org.xbill.DNS.Record;
 import org.xbill.DNS.SOARecord;
 import org.xbill.DNS.Section;
 import org.xbill.DNS.TXTRecord;
+import org.xbill.DNS.Type;
 
 /**
  * Servidor de consulta DNSBL.
@@ -62,6 +63,8 @@ public final class QueryDNSBL extends Server {
      * Mapa para cache dos registros DNS consultados.
      */
     private static final HashMap<String,ServerDNSBL> MAP = new HashMap<String,ServerDNSBL>();
+    
+    private static final long SERIAL = 2015102500;
     
     /**
      * Flag que indica se o cache foi modificado.
@@ -295,6 +298,7 @@ public final class QueryDNSBL extends Server {
             while (continueListenning() && PACKET != null) {
                 InetAddress ipAddress = null;
                 String query = null;
+                String type = null;
                 try {
                     byte[] data = PACKET.getData();
                     // Processando consulta DNS.
@@ -302,9 +306,10 @@ public final class QueryDNSBL extends Server {
                     Header header = message.getHeader();
                     Record question = message.getQuestion();
                     Name name = question.getName();
+                    type = Type.string(question.getType());
                     query = name.toString();
-                    String result = "NXDOMAIN";
-                    long ttl = 1440; // Tempo padrão de cache de um dia.
+                    String result = "UNDEFINED";
+                    long ttl = 3600; // Uma hora.
                     String information = null;
                     String ip = "";
                     ServerDNSBL server = null;
@@ -339,6 +344,8 @@ public final class QueryDNSBL extends Server {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
+                            } else {
+                                result = "NXDOMAIN";
                             }
                         } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                             // A consulta é um IPv6.
@@ -347,7 +354,12 @@ public final class QueryDNSBL extends Server {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
+                            } else {
+                                result = "NXDOMAIN";
                             }
+                        } else {
+                            // Não está listado.
+                            result = "NXDOMAIN";
                         }
                     }
                     // Alterando mensagem DNS para resposta.
@@ -356,23 +368,29 @@ public final class QueryDNSBL extends Server {
                     if (result.equals("NXDOMAIN")) {
                         header.setRcode(Rcode.NXDOMAIN);
                         if (server != null) {
+                            long refresh = 1800;
+                            long retry = 900;
+                            long expire = 604800;
+                            long minimum = 86400;
                             name = new Name(server.getHostName().substring(1) + '.');
-                            SOARecord soa = new SOARecord(name, DClass.IN, ttl, name, name, 1, 604800, 86400, 2419200, 604800);
+                            SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
+                                    name, SERIAL, refresh, retry, expire, minimum);
                             message.addRecord(soa, Section.ANSWER);
                         }
-                    } else if (result.equals("127.0.0.2") && information != null) {
-                        // Está listado.
+                    } else if (type.equals("A") && result.equals("127.0.0.2")) {
                         InetAddress address = InetAddress.getByName(result);
+                        ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                        message.addRecord(a, Section.ANSWER);
+                    } else if (type.equals("TXT") && information != null) {
+                        ttl = 86400; // Um dia.
                         information = information.replace("<IP>", ip);
-                        ARecord anwser = new ARecord(name, DClass.IN, ttl, address);
                         TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, information);
-                        message.addRecord(anwser, Section.ANSWER);
                         message.addRecord(txt, Section.ANSWER);
-                        result += " " + information;
-                    } else {
+                        result = information;
+                    } else if (type.equals("A")) {
                         InetAddress address = InetAddress.getByName(result);
-                        ARecord anwser = new ARecord(name, DClass.IN, ttl, address);
-                        message.addRecord(anwser, Section.ANSWER);
+                        ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                        message.addRecord(a, Section.ANSWER);
                     }
                     // Enviando resposta.
                     ipAddress = PACKET.getAddress();
@@ -384,10 +402,10 @@ public final class QueryDNSBL extends Server {
                             );
                     SERVER_SOCKET.send(sendPacket);
                     // Log da consulta com o respectivo resultado.
-                    Server.logQueryDNSBL(time, ipAddress.getHostAddress(), query, result);
+                    Server.logQueryDNSBL(time, ipAddress.getHostAddress(), type + ' ' + query, result);
                 } catch (SocketException ex) {
                     // Houve fechamento do socket.
-                    Server.logQueryDNSBL(time, ipAddress == null ? null : ipAddress.getHostAddress(), query, "SOCKET CLOSED");
+                    Server.logQueryDNSBL(time, ipAddress == null ? null : ipAddress.getHostAddress(), type + ' ' + query, "SOCKET CLOSED");
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
