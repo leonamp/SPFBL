@@ -53,12 +53,10 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
-import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
@@ -1960,6 +1958,8 @@ public final class SPF implements Serializable {
                     CacheDefer.dropExpired();
                     // Armazena todos os registros atualizados durante a consulta.
                     Server.storeCache();
+                    // Apaga todos os arquivos de LOG vencidos.
+                    Server.deleteLogExpired();
                 }
             }, 3600000, 3600000 // Frequência de 1 hora.
                     );
