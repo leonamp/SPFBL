@@ -160,7 +160,7 @@ public final class SubnetIPv6 extends Subnet
         for (i = 0; i < n; i++) {
             mask[i] = (short) 0xFFFF;
         }
-        if (i < n) {
+        if (i < mask.length && r > 0) {
             mask[i] = (short) (0xFFFF << 16 - r);
         }
         return mask;
