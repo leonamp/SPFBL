@@ -165,7 +165,7 @@ public final class SubnetIPv4 extends Subnet
         for (i = 0; i < n; i++) {
             mask[i] = (byte) 0xFF;
         }
-        if (i < n) {
+        if (i < mask.length && r > 0) {
             mask[i] = (byte) (0xFF << 8 - r);
         }
         return mask;

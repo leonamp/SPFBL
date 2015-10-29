@@ -53,12 +53,10 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
-import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
@@ -1960,6 +1958,8 @@ public final class SPF implements Serializable {
                     CacheDefer.dropExpired();
                     // Armazena todos os registros atualizados durante a consulta.
                     Server.storeCache();
+                    // Apaga todos os arquivos de LOG vencidos.
+                    Server.deleteLogExpired();
                 }
             }, 3600000, 3600000 // Frequência de 1 hora.
                     );
@@ -1996,6 +1996,7 @@ public final class SPF implements Serializable {
             if (addExact(ticket)) {
                 long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
+                TreeSet<String> blackSet = new TreeSet<String>();
                 String registry = Server.decrypt(ticket);
                 int index = registry.indexOf(' ');
                 Date date = getTicketDate(registry.substring(0, index));
@@ -2012,11 +2013,12 @@ public final class SPF implements Serializable {
                     for (String token : expandTokenSet(tokenSet)) {
                         if (!CacheIgnore.contains(token)) {
                             CacheDistribution.get(token, true).addSpam();
+                            blackSet.add(token);
                         }
                     }
                 }
-                Server.logQuery(time, "SPFSP", client, "SPAM " + ticket, "OK " + tokenSet);
-                return tokenSet;
+                Server.logQuery(time, "SPFBL", client, "SPAM " + ticket, "OK " + blackSet);
+                return blackSet;
             } else {
                 return null;
             }
@@ -4253,12 +4255,12 @@ public final class SPF implements Serializable {
             } else {
                 // Verifica o remetente.
                 if (token.contains("@")) {
-                    token = token.toLowerCase();
-                    int index1 = token.indexOf('@');
-                    int index2 = token.lastIndexOf('@');
-                    String part = token.substring(0, index1 + 1);
-                    String senderDomain = token.substring(index2);
-                    if (containsExact(token)) {
+                    String sender = token.toLowerCase();
+                    int index1 = sender.indexOf('@');
+                    int index2 = sender.lastIndexOf('@');
+                    String part = sender.substring(0, index1 + 1);
+                    String senderDomain = sender.substring(index2);
+                    if (containsExact(sender)) {
                         return true;
                     } else if (containsExact(part)) {
                         return true;
@@ -4274,9 +4276,9 @@ public final class SPF implements Serializable {
                                 return true;
                             }
                         }
-                        int index4 = token.length();
-                        while ((index4 = token.lastIndexOf('.', index4 - 1)) > index2) {
-                            String subsender = token.substring(0, index4 + 1);
+                        int index4 = sender.length();
+                        while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
+                            String subsender = sender.substring(0, index4 + 1);
                             if (containsExact(subsender)) {
                                 return true;
                             }
@@ -4284,22 +4286,25 @@ public final class SPF implements Serializable {
                     }
                 }
                 // Verifica o HELO.
-                if ((token = Domain.extractHost(token, true)) != null) {
-                    if (containsHost(token)) {
+                String helo;
+                if ((helo = Domain.extractHost(token, true)) != null) {
+                    if (containsHost(helo)) {
                         return true;
                     }
                 }
                 // Verifica o IP.
+                String ip;
                 if (Subnet.isValidIP(token)) {
-                    token = Subnet.normalizeIP(token);
-                    if (containsExact(token)) {
+                    ip = Subnet.normalizeIP(token);
+                    if (containsExact(ip)) {
                         return true;
                     }
                     // Verifica o CIDR.
                     for (String cidr : subSet("CIDR=", "CIDR>")) {
                         int index = cidr.indexOf('=');
                         cidr = cidr.substring(index + 1);
-                        if (Subnet.containsIP(cidr, token)) {
+                        Server.logDebug(cidr);
+                        if (Subnet.containsIP(cidr, ip)) {
                             return true;
                         }
                     }

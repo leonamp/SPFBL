@@ -53,11 +53,8 @@ public class Main {
                 FileInputStream confIS = new FileInputStream(confFile);
                 try {
                     properties.load(confIS);
-                    try {
-                        Server.setLogFolder(properties.getProperty("log_folder"));
-                    } catch (ProcessException ex) {
-                        Server.logError(ex);
-                    }
+                    Server.setLogFolder(properties.getProperty("log_folder"));
+                    Server.setLogExpires(properties.getProperty("log_expires"));
                 } finally {
                     confIS.close();
                 }

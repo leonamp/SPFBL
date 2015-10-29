@@ -34,6 +34,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -344,21 +345,40 @@ public abstract class Server extends Thread {
     private static File logFolder = null;
     private static File logFile = null;
     private static PrintWriter logWriter = null;
+    private static short logExpires = 7;
     
-    public static synchronized void setLogFolder(String path) throws ProcessException {
+    public static synchronized void setLogFolder(String path) {
         if (path == null) {
-            logFolder = null;
+            Server.logFolder = null;
         } else {
             File folder = new File(path);
             if (folder.exists()) {
                 if (folder.isDirectory()) {
-                    logFolder = folder;
+                    Server.logFolder = folder;
                 } else {
-                    throw new ProcessException("ERROR: IS NOT A FOLDER");
+                    Server.logError("'" + path + "' is not a folder.");
                 }
             } else {
-                throw new ProcessException("ERROR: FOLDER NOT EXISTS");
+                Server.logError("folder '" + path + "' not exists.");
             }
+        }
+    }
+    
+    public static synchronized void setLogExpires(String expires) {
+        if (expires != null && expires.length() > 0) {
+            try {
+                setLogExpires(Integer.parseInt(expires));
+            } catch (Exception ex) {
+                setLogExpires(-1);
+            }
+        }
+    }
+    
+    public static synchronized void setLogExpires(int expires) {
+        if (expires < 1 || expires > Short.MAX_VALUE) {
+            Server.logError("invalid expires integer value '" + expires + "'.");
+        } else {
+            Server.logExpires = (short) expires;
         }
     }
     
@@ -380,6 +400,30 @@ public abstract class Server extends Thread {
             }
         } catch (Exception ex) {
             return null;
+        }
+    }
+    
+    private static final FilenameFilter logFilter = new FilenameFilter() {
+        @Override
+        public boolean accept(File dir, String name) {
+            return name.startsWith("spfbl.") && name.endsWith(".log");
+        }
+    };
+    
+    public static synchronized void deleteLogExpired() {
+        if (logFolder != null && logFolder.exists()) {
+            for (File logFileLocal : logFolder.listFiles(logFilter)) {
+                long lastModified = logFileLocal.lastModified();
+                long period = System.currentTimeMillis() - lastModified;
+                int days = (int) (period / (1000 * 60 * 60 * 24));
+                if (days > logExpires) {
+                    if (logFileLocal.delete()) {
+                        Server.logDebug("LOG '" + logFileLocal.getName() + "' deleted.");
+                    } else {
+                        Server.logDebug("LOG '" + logFileLocal.getName() + "' not deleted.");
+                    }
+                }
+            }
         }
     }
     

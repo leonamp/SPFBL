@@ -60,10 +60,10 @@ public final class CommandTCP extends Server {
             Server.logDebug("Listening commands on TCP port " + PORT + "...");
             while (continueListenning()) {
                 try {
-                    long time = System.currentTimeMillis();
                     String command = null;
                     String result = null;
                     Socket socket = SERVER_SOCKET.accept();
+                    long time = System.currentTimeMillis();
                     try {
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
