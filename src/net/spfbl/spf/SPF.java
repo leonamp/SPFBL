@@ -227,6 +227,7 @@ public final class SPF implements Serializable {
         registry = registry.replace("\\\"", "\"");
         registry = registry.replace("\" \"", "");
         registry = registry.replace("\"", "");
+        registry = registry.toLowerCase();
         StringTokenizer tokenizer = new StringTokenizer(registry, " ");
         while (tokenizer.hasMoreTokens()) {
             Boolean valid;
@@ -2670,6 +2671,14 @@ public final class SPF implements Serializable {
                     return true;
                 } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
+                } else if (containsExact("@;" + qualifier +  ">" + recipient)) {
+                    return true;
+                } else if (containsExact("@;" + qualifier +  ">" + recipientDomain)) {
+                    return true;
+                } else if (containsExact(client + ":@>" + recipient)) {
+                    return true;
+                } else if (containsExact(client + ":@>" + recipientDomain)) {
+                    return true;
                 } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
                     return true;
                 } else {
@@ -2831,6 +2840,14 @@ public final class SPF implements Serializable {
                 } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
+                    return true;
+                } else if (containsExact("@;" + qualifier +  ">" + recipient)) {
+                    return true;
+                } else if (containsExact("@;" + qualifier +  ">" + recipientDomain)) {
+                    return true;
+                } else if (containsExact(client + ":@>" + recipient)) {
+                    return true;
+                } else if (containsExact(client + ":@>" + recipientDomain)) {
                     return true;
                 } else {
                     int index3 = senderDomain.length();
@@ -4303,7 +4320,6 @@ public final class SPF implements Serializable {
                     for (String cidr : subSet("CIDR=", "CIDR>")) {
                         int index = cidr.indexOf('=');
                         cidr = cidr.substring(index + 1);
-                        Server.logDebug(cidr);
                         if (Subnet.containsIP(cidr, ip)) {
                             return true;
                         }
