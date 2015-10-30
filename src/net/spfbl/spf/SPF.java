@@ -227,6 +227,7 @@ public final class SPF implements Serializable {
         registry = registry.replace("\\\"", "\"");
         registry = registry.replace("\" \"", "");
         registry = registry.replace("\"", "");
+        registry = registry.toLowerCase();
         StringTokenizer tokenizer = new StringTokenizer(registry, " ");
         while (tokenizer.hasMoreTokens()) {
             Boolean valid;
@@ -4303,7 +4304,6 @@ public final class SPF implements Serializable {
                     for (String cidr : subSet("CIDR=", "CIDR>")) {
                         int index = cidr.indexOf('=');
                         cidr = cidr.substring(index + 1);
-                        Server.logDebug(cidr);
                         if (Subnet.containsIP(cidr, ip)) {
                             return true;
                         }
