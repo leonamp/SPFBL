@@ -27,6 +27,8 @@ import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.whois.Domain;
+import net.spfbl.whois.Subnet;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -113,7 +115,9 @@ public final class PeerUDP extends Server {
                     String token = new String(data, "ISO-8859-1").trim();
                     String result;
                     try {
-                        if (SPF.isIgnore(token)) {
+                        if (!isValid(token)) {
+                            result = "INVALID";
+                        } else if (SPF.isIgnore(token)) {
                             result = "IGNORED";
                         } else if (SPF.addBlock(token)) {
                             result = "ADDED";
@@ -147,6 +151,22 @@ public final class PeerUDP extends Server {
                 }
             }
             CONNECTION_COUNT--;
+        }
+    }
+    
+    private static boolean isValid(String token) {
+        if (token == null || token.length() == 0) {
+            return false;
+        } else if (Subnet.isValidIP(token)) {
+            return false;
+        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
+            return true;
+        } else if (token.contains("@") && Domain.isEmail(token)) {
+            return true;
+        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
+            return true;
+        } else {
+            return false;
         }
     }
     
