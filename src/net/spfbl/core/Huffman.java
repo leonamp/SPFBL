@@ -87,7 +87,7 @@ public class Huffman implements Comparable<Huffman>, Serializable {
         return builder.toString();
     }
     
-    public byte[] encodeByteArray(String text) {
+    public Byte[] encodeByteArray(String text) {
         text += '\0';
         char[] input = text.toCharArray();
         String[] st = new String[256];
@@ -110,7 +110,7 @@ public class Huffman implements Comparable<Huffman>, Serializable {
             builder.append('0');
         }
         int n = builder.length() / 8;
-        byte[] array = new byte[n];
+        Byte[] array = new Byte[n];
         String code = builder.toString();
         for (int i = 0; i < n; i++) {
             String octet = code.substring(i * 8, i * 8 + 8);
@@ -192,10 +192,11 @@ public class Huffman implements Comparable<Huffman>, Serializable {
         return builder.toString();
     }
     
-    public String decode(byte[] byteArray) {
+    public String decode(Byte[] byteArray) {
         StringBuilder builder = new StringBuilder();
         for (byte octet : byteArray) {
-            String code = Integer.toBinaryString(octet);
+            int codeInt = octet & 0xFF;
+            String code = Integer.toBinaryString(codeInt);
             while (code.length() < 8) {
                 code = '0' + code;
             }

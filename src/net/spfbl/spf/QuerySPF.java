@@ -353,6 +353,20 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "ERROR: COMMAND";
                                 }
+                            } else if (line.equals("WHITE SHOW ALL")) {
+                                query = line.substring(6).trim();
+                                type = "WHITE";
+                                // Mecanismo de visualização de bloqueios de remetentes.
+                                for (String recipient : SPF.getAllWhiteSet(client)) {
+                                    if (result == null) {
+                                        result = recipient + "\n";
+                                    } else {
+                                        result += recipient + "\n";
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "EMPTY\n";
+                                }
                             } else if (line.equals("WHITE SHOW")) {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
