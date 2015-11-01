@@ -31,7 +31,7 @@ my $CONFIG = {
         PeerHost => 'matrix.spfbl.net',
         PeerPort => 9877,
         Proto    => 'tcp',
-        Timeout  => 5,
+        Timeout  => 10,
     }
 };
 
