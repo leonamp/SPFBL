@@ -37,6 +37,11 @@ public class User implements Serializable, Comparable<User> {
     private final String email;
     private String name;
     
+    /**
+     * Permissões de usuário.
+     */
+    private boolean permission_spfbl = false; // Pode manipular o SPFBL.
+    
     private User(String email, String name) throws ProcessException {
         if (Domain.isEmail(email) && simplify(name) != null) {
             this.email = email.toLowerCase();
@@ -61,6 +66,14 @@ public class User implements Serializable, Comparable<User> {
     
     public String getName() {
         return name;
+    }
+    
+    public boolean hasPermissionSPFBL() {
+        return permission_spfbl;
+    }
+    
+    public void setPermissionSPFBL(boolean spfbl) {
+        this.permission_spfbl = spfbl;
     }
     
     private static String simplify(String text) {
@@ -136,7 +149,11 @@ public class User implements Serializable, Comparable<User> {
     }
     
     public synchronized static User get(String email) {
-        return MAP.get(email);
+        if (email == null) {
+            return null;
+        } else {
+            return MAP.get(email);
+        }
     }
     
     public static synchronized HashMap<String,User> getMap() {
@@ -209,11 +226,16 @@ public class User implements Serializable, Comparable<User> {
     
     @Override
     public int compareTo(User other) {
-        return this.toString().compareTo(other.toString());
+        if (other == null) {
+            return -1;
+        } else {
+            return this.toString().compareTo(other.toString());
+        }
     }
     
     @Override
     public String toString() {
-        return name + " <" + email + ">";
+        return name + " <" + email + ">"
+                + (permission_spfbl ? " SPFBL" : "");
     }
 }

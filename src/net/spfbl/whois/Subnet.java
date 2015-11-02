@@ -95,6 +95,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     // Temporário até final da transição.
     public abstract String getWhoisServer() throws ProcessException;
     
+    public static String getFirstIP(String cidr) {
+        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+            return SubnetIPv4.getFirstIPv4(cidr);
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.getFirstIPv6(cidr);
+        } else {
+            return null;
+        }
+    }
+    
     public static String normalizeCIDR(String cidr) {
         if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
@@ -110,6 +120,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             return SubnetIPv4.normalizeIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.normalizeIPv6(ip);
+        } else {
+            return ip;
+        }
+    }
+    
+    public static String expandIP(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.expandIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.expandIPv6(ip);
         } else {
             return ip;
         }

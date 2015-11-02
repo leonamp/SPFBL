@@ -104,6 +104,7 @@ public abstract class Server extends Thread {
      * Carregamento de cache em disco.
      */
     public static void loadCache() {
+        Client.load();
         User.load();
         Owner.load();
         Domain.load();
@@ -120,6 +121,7 @@ public abstract class Server extends Thread {
      * Armazenamento de cache em disco.
      */
     public static void storeCache() {
+        Client.store();
         User.store();
         Owner.store();
         Domain.store();
@@ -633,7 +635,7 @@ public abstract class Server extends Thread {
     
     public static synchronized String getLogClient(InetAddress ipAddress) {
         if (ipAddress == null) {
-            return "unknown";
+            return "UNKNOWN";
         } else {
             File clientsFile = new File("./data/clients.txt");
             if (!clientsFile.exists()) {
@@ -1418,6 +1420,59 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
+                } else if (token.equals("CLIENT") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        String cidr = tokenizer.nextToken();
+                        if (tokenizer.hasMoreTokens()) {
+                            String domain = tokenizer.nextToken();
+                            String email;
+                            if (tokenizer.hasMoreTokens()) {
+                                if (tokenizer.countTokens() == 1) {
+                                    email = tokenizer.nextToken();
+                                } else {
+                                    email = null;
+                                }
+                            } else {
+                                email = "";
+                            }
+                            if (email == null) {
+                                result = "ERROR: COMMAND\n";
+                            } else {
+                                try {
+                                    Client client = Client.create(cidr, domain, email);
+                                    if (client == null) {
+                                        result = "ALREADY EXISTS\n";
+                                    } else {
+                                        result = "ADDED " + client + "\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result = ex.getMessage() + "\n";
+                                }
+                                Client.store();
+                            }
+                        } else {
+                            result = "ERROR: COMMAND\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        String email = tokenizer.nextToken();
+                        Client client = Client.drop(email);
+                        if (client == null) {
+                            result += "NOT FOUND\n";
+                        } else {
+                            result += "DROPED " + client + "\n";
+                        }
+                        Client.store();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (Client client : Client.getSet()) {
+                            result += client + "\n";
+                        }
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("USER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -1438,6 +1493,8 @@ public abstract class Server extends Thread {
                                 result = ex.getMessage() + "\n";
                             }
                             User.store();
+                        } else {
+                            result = "ERROR: COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         String email = tokenizer.nextToken();

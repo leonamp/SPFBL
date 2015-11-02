@@ -21,6 +21,7 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
@@ -102,6 +103,20 @@ public final class SubnetIPv4 extends Subnet
         // Atualiza flag de atualização.
         SUBNET_CHANGED = true;
         return isInetnum;
+    }
+    
+    protected static String getFirstIPv4(String inetnum) {
+        int index = inetnum.indexOf('/');
+        String ip = inetnum.substring(0, index);
+        String size = inetnum.substring(index+1);
+        int sizeInt = Integer.parseInt(size);
+        byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+        byte[] address = SubnetIPv4.split(ip, mask);
+        int octet1 = address[0] & 0xFF;
+        int octet2 = address[1] & 0xFF;
+        int octet3 = address[2] & 0xFF;
+        int octet4 = address[3] & 0xFF;
+        return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
     }
     
     /**
@@ -192,6 +207,18 @@ public final class SubnetIPv4 extends Subnet
         int octet3 = splitedIP[2] & 0xFF;
         int octet4 = splitedIP[3] & 0xFF;
         return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+    }
+    
+    public static String expandIPv4(String ip) {
+        byte[] splitedIP = split(ip);
+        int octet1 = splitedIP[0] & 0xFF;
+        int octet2 = splitedIP[1] & 0xFF;
+        int octet3 = splitedIP[2] & 0xFF;
+        int octet4 = splitedIP[3] & 0xFF;
+        return String.format("%3s", octet1).replace(' ', '0')
+                + "." + String.format("%3s", octet2).replace(' ', '0')
+                + "." + String.format("%3s", octet3).replace(' ', '0')
+                + "." + String.format("%3s", octet4).replace(' ', '0');
     }
     
     /**

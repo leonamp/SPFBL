@@ -181,6 +181,26 @@ public final class SubnetIPv6 extends Subnet
         return reverse;
     }
     
+    public static String expandIPv6(String ip) {
+        short[] splitedIP = split(ip);
+        int p1 = splitedIP[0] & 0xFFFF;
+        int p2 = splitedIP[1] & 0xFFFF;
+        int p3 = splitedIP[2] & 0xFFFF;
+        int p4 = splitedIP[3] & 0xFFFF;
+        int p5 = splitedIP[4] & 0xFFFF;
+        int p6 = splitedIP[5] & 0xFFFF;
+        int p7 = splitedIP[6] & 0xFFFF;
+        int p8 = splitedIP[7] & 0xFFFF;
+        return String.format("%4s", Integer.toHexString(p1)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p2)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p3)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p4)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p5)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p6)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p7)).replace(' ', '0') + ":" +
+                String.format("%4s", Integer.toHexString(p8)).replace(' ', '0');
+    }
+    
     /**
      * Meio mais seguro de padronizar os endereços IP.
      * @param ip o endereço IPv6.
@@ -466,6 +486,31 @@ public final class SubnetIPv6 extends Subnet
         SubnetIPv6 subnet = new SubnetIPv6(result);
         subnet.server = server; // Temporário até final de transição.
         addSubnet(subnet);
+    }
+    
+    protected static String getFirstIPv6(String inetnum) {
+        int index = inetnum.indexOf('/');
+        String ip = inetnum.substring(0, index);
+        String size = inetnum.substring(index+1);
+        int sizeInt = Integer.parseInt(size);
+        short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
+        short[] address = SubnetIPv6.split(ip, mask);
+        int p1 = address[0] & 0xFFFF;
+        int p2 = address[1] & 0xFFFF;
+        int p3 = address[2] & 0xFFFF;
+        int p4 = address[3] & 0xFFFF;
+        int p5 = address[4] & 0xFFFF;
+        int p6 = address[5] & 0xFFFF;
+        int p7 = address[6] & 0xFFFF;
+        int p8 = address[7] & 0xFFFF;
+        return Integer.toHexString(p1) + ":" +
+                Integer.toHexString(p2) + ":" +
+                Integer.toHexString(p3) + ":" +
+                Integer.toHexString(p4) + ":" +
+                Integer.toHexString(p5) + ":" +
+                Integer.toHexString(p6) + ":" +
+                Integer.toHexString(p7) + ":" +
+                Integer.toHexString(p8);
     }
     
     /**

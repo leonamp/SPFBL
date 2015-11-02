@@ -2061,7 +2061,7 @@ public final class SPF implements Serializable {
                 Date date = getTicketDate(registry.substring(0, index));
                 if (System.currentTimeMillis() - date.getTime() > 432000000) {
                     // Ticket vencido com mais de 5 dias.
-                    throw new ProcessException("ERROR: TICKET EXPIRED");
+                    throw new ProcessException("TICKET EXPIRED");
                 } else {
                     registry = registry.substring(index + 1);
                     StringTokenizer tokenizer = new StringTokenizer(registry, " ");
@@ -2083,7 +2083,7 @@ public final class SPF implements Serializable {
                         }
                     } else {
                         // Ticket já denunciado.
-                        throw new ProcessException("ERROR: ALREADY COMPLAINED");
+                        return null;
                     }
                 }
                 Server.logQuery(time, "SPFBL", client, "SPAM " + ticket, "OK " + blackSet);
@@ -2123,7 +2123,7 @@ public final class SPF implements Serializable {
                     return tokenSet;
                 } else {
                     // Ticket não foi denunciado.
-                    throw new ProcessException("ERROR: NOT COMPLAINED");
+                    return null;
                 }
             }
         }
