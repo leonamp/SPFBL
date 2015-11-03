@@ -318,6 +318,11 @@ Após todas configurações, dê o comando reload ou restart no Postfix.
 
 O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP do servidor SPFBL dentro dele.
 
+O administrador deve ficar atento à seguinte linha de configuração do arquivo master.cf, pois a mesma deve permenecer comentada:
+```
+# -o soft_bounce=yes
+```
+
 ##### Integração Zimbra
 
 Para utilizar o serviço SPFBL pelo Zimbra, basta adicionar as seguintes linhas no arquivo "/opt/zimbra/postfix/conf/master.cf.in":
