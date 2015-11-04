@@ -1577,7 +1577,7 @@ public abstract class Server extends Thread {
                         if (peer == null) {
                             result = "NOT FOUND " + address + "\n";
                         } else {
-                            result = "UPDATED " + address + "\n";
+                            result = peer + "\n";
                             try {
                                 result += (peer.setSendStatus(send) ? "UPDATED" : "ALREADY") + " SEND=" + send + "\n";
                             } catch (ProcessException ex) {

@@ -209,14 +209,43 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return peerSet;
     }
     
-    public synchronized static TreeSet<Peer> getSendSet() {
+    public static TreeSet<Peer> getSendAllSet() {
         TreeSet<Peer> peerSet = new TreeSet<Peer>();
-        for (Peer peer : MAP.values()) {
+        for (Peer peer : getSet()) {
             switch (peer.getSendStatus()) {
                 case BLOCK:
                 case REPASS:
                     peerSet.add(peer);
                     break;
+            }
+        }
+        return peerSet;
+    }
+    
+    public TreeSet<Peer> getSendSet() {
+        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        for (Peer peer : getSet()) {
+            if (!peer.equals(this)) {
+                switch (peer.getSendStatus()) {
+                    case BLOCK:
+                    case REPASS:
+                        peerSet.add(peer);
+                        break;
+                }
+            }
+        }
+        return peerSet;
+    }
+    
+    public TreeSet<Peer> getRepassSet() {
+        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        for (Peer peer : getSet()) {
+            if (!peer.equals(this)) {
+                switch (peer.getSendStatus()) {
+                    case REPASS:
+                        peerSet.add(peer);
+                        break;
+                }
             }
         }
         return peerSet;
@@ -275,8 +304,54 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public static void sendToAll(String token) {
+    public void send(String token) {
+        long time = System.currentTimeMillis();
+        String address = getAddress();
+        String result;
+        try {
+            int port = getPort();
+            Main.sendTokenToPeer(token, address, port);
+            result = "SENT";
+        } catch (ProcessException ex) {
+            result = ex.getMessage();
+        }
+        Server.logPeerSend(time, address, token, result);
+    }
+    
+    public void sendToOthers(String token) {
         for (Peer peer : getSendSet()) {
+            long time = System.currentTimeMillis();
+            String address = peer.getAddress();
+            String result;
+            try {
+                int port = peer.getPort();
+                Main.sendTokenToPeer(token, address, port);
+                result = "SENT";
+            } catch (ProcessException ex) {
+                result = ex.getMessage();
+            }
+            Server.logPeerSend(time, address, token, result);
+        }
+    }
+    
+    public static void sendToAll(String token) {
+        for (Peer peer : getSendAllSet()) {
+            long time = System.currentTimeMillis();
+            String address = peer.getAddress();
+            String result;
+            try {
+                int port = peer.getPort();
+                Main.sendTokenToPeer(token, address, port);
+                result = "SENT";
+            } catch (ProcessException ex) {
+                result = ex.getMessage();
+            }
+            Server.logPeerSend(time, address, token, result);
+        }
+    }
+    
+    public void sendToRepass(String token) {
+        for (Peer peer : getRepassSet()) {
             long time = System.currentTimeMillis();
             String address = peer.getAddress();
             String result;
@@ -307,15 +382,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    private boolean isDrop() {
+    private boolean isReceiveDrop() {
         return receive == Receive.DROP;
     }
     
-    private boolean isConfirm() {
+    private boolean isReceiveConfirm() {
         return receive == Receive.CONFIRM;
     }
     
-    private boolean isRepass() {
+    private boolean isReceiveRepass() {
         return receive == Receive.REPASS;
     }
     
@@ -329,19 +404,20 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "INVALID";
             } else if (SPF.isIgnore(token)) {
                 return "IGNORED";
-            } else if (isDrop()) {
+            } else if (isReceiveDrop()) {
                 return "DROPED";
-            } else if (isConfirm()) {
+            } else if (isReceiveConfirm()) {
                 if (addConfirm(token)) {
                     return "GUARDED";
                 } else {
                     return "DROPED";
                 }
             } else if (SPF.addBlockExact(token)) {
-                if (isRepass()) {
-                    sendToAll(token);
+                if (isReceiveRepass()) {
+                    sendToOthers(token);
                     return "REPASSED";
                 } else {
+                    sendToRepass(token);
                     return "ADDED";
                 }
             } else {
@@ -440,6 +516,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 + " " + send.name()
                 + " " + receive.name()
                 + " " + confirmSet.size()
-                + (email == null ? "" : "<" + email + ">");
+                + (email == null ? "" : " <" + email + ">");
     }
 }
