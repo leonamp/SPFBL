@@ -63,6 +63,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
 import net.spfbl.core.Huffman;
+import net.spfbl.core.Peer;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -4233,6 +4234,10 @@ public final class SPF implements Serializable {
     public static boolean addBlock(String token) throws ProcessException {
         return CacheBlock.add(token);
     }
+    
+    public static boolean addBlockExact(String token) {
+        return CacheBlock.addExact(token);
+    }
 
     public static boolean addBlock(String client, String sender) throws ProcessException {
         return CacheBlock.add(client, sender);
@@ -4256,6 +4261,10 @@ public final class SPF implements Serializable {
 
     public static TreeSet<String> getProviderSet() throws ProcessException {
         return CacheProvider.getAll();
+    }
+    
+    public static boolean containsBlock(String token) {
+        return CacheBlock.containsExact(token);
     }
 
     public static TreeSet<String> getBlockSet() throws ProcessException {
@@ -4505,217 +4514,217 @@ public final class SPF implements Serializable {
         return CacheIgnore.getAll();
     }
 
-    /**
-     * Classe que representa o cache de peers que serão atualizados.
-     */
-    private static class CachePeer {
-
-        /**
-         * Mapa de registros de peers <endereço,porta>.
-         */
-        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
-        
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static synchronized Integer dropExact(String address) {
-            Integer ret = MAP.remove(address);
-            if (ret != null) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-
-        private static synchronized Integer putExact(String key, Integer value) {
-            Integer ret = MAP.put(key, value);
-            if (!value.equals(ret)) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-        
-        private static synchronized ArrayList<String> keySet() {
-            ArrayList<String> keySet = new ArrayList<String>();
-            keySet.addAll(MAP.keySet());
-            return keySet;
-        }
-        
-        private static synchronized HashMap<String,Integer> getMap() {
-            HashMap<String,Integer> map = new HashMap<String,Integer>();
-            map.putAll(MAP);
-            return map;
-        }
-
-        private static synchronized boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
-        
-        private static synchronized Integer getExact(String host) {
-            return MAP.get(host);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setLoaded() {
-            CHANGED = false;
-        }
-
-        private static void send(String token) {
-            for (String address : keySet()) {
-                long time = System.currentTimeMillis();
-                int port = getExact(address);
-                String result;
-                try {
-                    Main.sendTokenToPeer(token, address, port);
-                    result = "SENT";
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
-                }
-                Server.logPeerSend(time, address, token, result);
-            }
-        }
-
-        private static boolean add(String address,
-                String port) throws ProcessException {
-            try {
-                int portInt = Integer.parseInt(port);
-                return add(address, portInt);
-            } catch (NumberFormatException ex) {
-                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
-            }
-        }
-
-        private static boolean add(String address,
-                Integer port) throws ProcessException {
-            try {
-                InetAddress.getByName(address);
-                if (port == null || port < 1 || port > 65535) {
-                    throw new ProcessException("ERROR: PEER PORT INVALID");
-                } else if (!port.equals(putExact(address, port))) {
-                    // Enviar imediatamente todos os
-                    // tokens bloqueados na base atual.
-                    TreeMap<String,Distribution> distributionSet =
-                            CacheDistribution.getTreeMap();
-                    for (String token : distributionSet.keySet()) {
-                        Distribution distribution = distributionSet.get(token);
-                        if (distribution.isBlocked(token)) {
-                            long time = System.currentTimeMillis();
-                            String result;
-                            try {
-                                Main.sendTokenToPeer(token, address, port);
-                                result = "SENT";
-                            } catch (ProcessException ex) {
-                                result = ex.toString();
-                            }
-                            Server.logPeerSend(time, address, token, result);
-                        }
-                    }
-                    return true;
-                }
-                return false;
-            } catch (UnknownHostException ex) {
-                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-            }
-        }
-
-        private static synchronized boolean drop(
-                String address) throws ProcessException {
-            try {
-                InetAddress.getByName(address);
-                if (dropExact(address) == null) {
-                    return false;
-                } else {
-                    return true;
-                }
-            } catch (UnknownHostException ex) {
-                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-            }
-        }
-
-        private static TreeSet<String> get() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String address : keySet()) {
-                int port = getExact(address);
-                String result = address + ":" + port;
-                blockSet.add(result);
-            }
-            return blockSet;
-        }
-
-        private static void store() {
-            if (isChanged()) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/peer.map");
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(getMap(), outputStream);
-                        setStored();
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/peer.map");
-            if (file.exists()) {
-                try {
-                    HashMap<Object,Integer> map;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        map = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    for (Object key : map.keySet()) {
-                        if (key instanceof InetAddress) {
-                            InetAddress address = (InetAddress) key;
-                            Integer value = map.get(address);
-                            putExact(address.getHostAddress(), value);
-                        } else if (key instanceof String) {
-                            String address = (String) key;
-                            Integer value = map.get(address);
-                            putExact(address, value);
-                        }
-                    }
-                    setLoaded();
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean addPeer(String address, int port) throws ProcessException {
-        return CachePeer.add(address, port);
-    }
-
-    public static boolean addPeer(String address, String port) throws ProcessException {
-        return CachePeer.add(address, port);
-    }
-
-    public static boolean dropPeer(String address) throws ProcessException {
-        return CachePeer.drop(address);
-    }
-
-    public static TreeSet<String> getPeerSet() throws ProcessException {
-        return CachePeer.get();
-    }
+//    /**
+//     * Classe que representa o cache de peers que serão atualizados.
+//     */
+//    private static class CachePeer {
+//
+//        /**
+//         * Mapa de registros de peers <endereço,porta>.
+//         */
+//        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
+//        
+//        /**
+//         * Flag que indica se o cache foi modificado.
+//         */
+//        private static boolean CHANGED = false;
+//        
+//        private static synchronized Integer dropExact(String address) {
+//            Integer ret = MAP.remove(address);
+//            if (ret != null) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//
+//        private static synchronized Integer putExact(String key, Integer value) {
+//            Integer ret = MAP.put(key, value);
+//            if (!value.equals(ret)) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//        
+//        private static synchronized ArrayList<String> keySet() {
+//            ArrayList<String> keySet = new ArrayList<String>();
+//            keySet.addAll(MAP.keySet());
+//            return keySet;
+//        }
+//        
+//        private static synchronized HashMap<String,Integer> getMap() {
+//            HashMap<String,Integer> map = new HashMap<String,Integer>();
+//            map.putAll(MAP);
+//            return map;
+//        }
+//
+//        private static synchronized boolean containsExact(String address) {
+//            return MAP.containsKey(address);
+//        }
+//        
+//        private static synchronized Integer getExact(String host) {
+//            return MAP.get(host);
+//        }
+//        
+//        private static synchronized boolean isChanged() {
+//            return CHANGED;
+//        }
+//        
+//        private static synchronized void setStored() {
+//            CHANGED = false;
+//        }
+//        
+//        private static synchronized void setLoaded() {
+//            CHANGED = false;
+//        }
+//
+//        private static void send(String token) {
+//            for (String address : keySet()) {
+//                long time = System.currentTimeMillis();
+//                int port = getExact(address);
+//                String result;
+//                try {
+//                    Main.sendTokenToPeer(token, address, port);
+//                    result = "SENT";
+//                } catch (ProcessException ex) {
+//                    result = ex.getMessage();
+//                }
+//                Server.logPeerSend(time, address, token, result);
+//            }
+//        }
+//
+//        private static boolean add(String address,
+//                String port) throws ProcessException {
+//            try {
+//                int portInt = Integer.parseInt(port);
+//                return add(address, portInt);
+//            } catch (NumberFormatException ex) {
+//                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
+//            }
+//        }
+//
+//        private static boolean add(String address,
+//                Integer port) throws ProcessException {
+//            try {
+//                InetAddress.getByName(address);
+//                if (port == null || port < 1 || port > 65535) {
+//                    throw new ProcessException("ERROR: PEER PORT INVALID");
+//                } else if (!port.equals(putExact(address, port))) {
+//                    // Enviar imediatamente todos os
+//                    // tokens bloqueados na base atual.
+//                    TreeMap<String,Distribution> distributionSet =
+//                            CacheDistribution.getTreeMap();
+//                    for (String token : distributionSet.keySet()) {
+//                        Distribution distribution = distributionSet.get(token);
+//                        if (distribution.isBlocked(token)) {
+//                            long time = System.currentTimeMillis();
+//                            String result;
+//                            try {
+//                                Main.sendTokenToPeer(token, address, port);
+//                                result = "SENT";
+//                            } catch (ProcessException ex) {
+//                                result = ex.toString();
+//                            }
+//                            Server.logPeerSend(time, address, token, result);
+//                        }
+//                    }
+//                    return true;
+//                }
+//                return false;
+//            } catch (UnknownHostException ex) {
+//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+//            }
+//        }
+//
+//        private static synchronized boolean drop(
+//                String address) throws ProcessException {
+//            try {
+//                InetAddress.getByName(address);
+//                if (dropExact(address) == null) {
+//                    return false;
+//                } else {
+//                    return true;
+//                }
+//            } catch (UnknownHostException ex) {
+//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+//            }
+//        }
+//
+//        private static TreeSet<String> get() throws ProcessException {
+//            TreeSet<String> blockSet = new TreeSet<String>();
+//            for (String address : keySet()) {
+//                int port = getExact(address);
+//                String result = address + ":" + port;
+//                blockSet.add(result);
+//            }
+//            return blockSet;
+//        }
+//
+//        private static void store() {
+//            if (isChanged()) {
+//                try {
+//                    long time = System.currentTimeMillis();
+//                    File file = new File("./data/peer.map");
+//                    FileOutputStream outputStream = new FileOutputStream(file);
+//                    try {
+//                        SerializationUtils.serialize(getMap(), outputStream);
+//                        setStored();
+//                    } finally {
+//                        outputStream.close();
+//                    }
+//                    Server.logStore(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//
+//        private static void load() {
+//            long time = System.currentTimeMillis();
+//            File file = new File("./data/peer.map");
+//            if (file.exists()) {
+//                try {
+//                    HashMap<Object,Integer> map;
+//                    FileInputStream fileInputStream = new FileInputStream(file);
+//                    try {
+//                        map = SerializationUtils.deserialize(fileInputStream);
+//                    } finally {
+//                        fileInputStream.close();
+//                    }
+//                    for (Object key : map.keySet()) {
+//                        if (key instanceof InetAddress) {
+//                            InetAddress address = (InetAddress) key;
+//                            Integer value = map.get(address);
+//                            putExact(address.getHostAddress(), value);
+//                        } else if (key instanceof String) {
+//                            String address = (String) key;
+//                            Integer value = map.get(address);
+//                            putExact(address, value);
+//                        }
+//                    }
+//                    setLoaded();
+//                    Server.logLoad(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//    }
+//
+//    public static boolean addPeer(String address, int port) throws ProcessException {
+//        return CachePeer.add(address, port);
+//    }
+//
+//    public static boolean addPeer(String address, String port) throws ProcessException {
+//        return CachePeer.add(address, port);
+//    }
+//
+//    public static boolean dropPeer(String address) throws ProcessException {
+//        return CachePeer.drop(address);
+//    }
+//
+//    public static TreeSet<String> getPeerSet() throws ProcessException {
+//        return CachePeer.get();
+//    }
 
     public static TreeSet<String> getGuessSet() throws ProcessException {
         return CacheGuess.get();
@@ -4904,9 +4913,9 @@ public final class SPF implements Serializable {
         CacheGuess.store();
     }
 
-    public static void storePeer() {
-        CachePeer.store();
-    }
+//    public static void storePeer() {
+//        CachePeer.store();
+//    }
 
     public static void storeTrap() {
         CacheTrap.store();
@@ -4939,7 +4948,7 @@ public final class SPF implements Serializable {
         CacheGuess.store();
         CacheHELO.store();
         CacheDefer.store();
-        CachePeer.store();
+//        CachePeer.store();
     }
 
     /**
@@ -4957,7 +4966,7 @@ public final class SPF implements Serializable {
         CacheGuess.load();
         CacheHELO.load();
         CacheDefer.load();
-        CachePeer.load();
+//        CachePeer.load();
     }
 
     /**
@@ -6211,7 +6220,7 @@ public final class SPF implements Serializable {
                     // definitivamente o responsável.
                     status = Status.BLOCK;
                     CacheBlock.addExact(token);
-                    CachePeer.send(token);
+                    Peer.sendToAll(token);
                 } else if (max == 0.0f) {
                     status = Status.WHITE;
                 } else if (min > LIMIAR1) {

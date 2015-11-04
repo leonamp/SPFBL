@@ -27,8 +27,7 @@ import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import net.spfbl.whois.Domain;
-import net.spfbl.whois.Subnet;
+import net.spfbl.core.Peer;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -110,29 +109,25 @@ public final class PeerUDP extends Server {
         public synchronized void run() {
             while (continueListenning() && PACKET != null) {
                 try {
+                    String address;
+                    String result;
                     InetAddress ipAddress = PACKET.getAddress();
                     byte[] data = PACKET.getData();
                     String token = new String(data, "ISO-8859-1").trim();
-                    String result;
-                    try {
-                        if (!isValid(token)) {
-                            result = "INVALID";
-                        } else if (SPF.isIgnore(token)) {
-                            result = "IGNORED";
-                        } else if (SPF.addBlock(token)) {
-                            result = "ADDED";
-                        } else {
-                            result = "ALREADY EXISTS";
-                        }
-                    } catch (ProcessException ex) {
-                        result = ex.getMessage();
+                    Peer peer = Peer.get(ipAddress);
+                    if (peer == null) {
+                        address = ipAddress.getHostAddress();
+                        result = "UNKNOWN";
+                    } else {
+                        address = peer.getAddress();
+                        result = peer.processReceive(token);
                     }
                     // Log do bloqueio com o respectivo resultado.
                     Server.logQuery(
                             time,
                             "PEERB",
-                            ipAddress,
-                            token.replace("\n", "\\n"),
+                            address,
+                            token,
                             result
                             );
                 } catch (Exception ex) {
@@ -154,22 +149,6 @@ public final class PeerUDP extends Server {
         }
     }
     
-    private static boolean isValid(String token) {
-        if (token == null || token.length() == 0) {
-            return false;
-        } else if (Subnet.isValidIP(token)) {
-            return false;
-        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
-            return true;
-        } else if (token.contains("@") && Domain.isEmail(token)) {
-            return true;
-        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
     /**
      * Envia um pacote do resultado em UDP para o destino.
      * @param result o resultado que deve ser enviado.
@@ -181,7 +160,7 @@ public final class PeerUDP extends Server {
         try {
             byte[] sendData = token.getBytes("ISO-8859-1");
             if (sendData.length > SIZE) {
-                throw new ProcessException("ERROR: TOKEN TOO BIG");
+                throw new ProcessException("ERROR: TOO BIG");
             } else {
                 InetAddress inetAddress = InetAddress.getByName(address);
                 DatagramPacket sendPacket = new DatagramPacket(
@@ -189,9 +168,9 @@ public final class PeerUDP extends Server {
                 SERVER_SOCKET.send(sendPacket);
             }
         } catch (UnknownHostException ex) {
-            throw new ProcessException("ERROR: UNKNOWN HOST", ex);
+            throw new ProcessException("ERROR: UNKNOWN", ex);
         } catch (IOException ex) {
-            throw new ProcessException("ERROR: PEER UNREACHABLE", ex);
+            throw new ProcessException("ERROR: UNREACHABLE", ex);
         }
     }
     

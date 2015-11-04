@@ -113,6 +113,7 @@ public abstract class Server extends Thread {
         SubnetIPv6.load();
         Handle.load();
         NameServer.load();
+        Peer.load();
         SPF.load();
         QueryDNSBL.load();
     }
@@ -130,6 +131,7 @@ public abstract class Server extends Thread {
         SubnetIPv6.store();
         Handle.store();
         NameServer.store();
+        Peer.store();
         SPF.store();
         QueryDNSBL.store();
     }
@@ -1518,36 +1520,56 @@ public abstract class Server extends Thread {
                 } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
-                        String peer = tokenizer.nextToken();
-                        int index = peer.indexOf(':');
+                        String service = tokenizer.nextToken();
+                        int index = service.indexOf(':');
                         if (index == -1) {
                             result = "ERROR: COMMAND\n";
                         } else {
-                            String address = peer.substring(0, index);
-                            String port = peer.substring(index + 1);
-                            try {
-                                boolean added = SPF.addPeer(address, port);
-                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                SPF.storePeer();
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
+                            String address = service.substring(0, index);
+                            String port = service.substring(index + 1);
+                            Peer peer = Peer.create(address, port);
+                            result = (peer == null ? "ALREADY EXISTS" : "ADDED " + peer) + "\n";
+                            Peer.store();
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         String address = tokenizer.nextToken();
-                        try {
-                            boolean droped = SPF.dropPeer(address);
-                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                            SPF.storePeer();
-                        } catch (ProcessException ex) {
-                            result = ex.getMessage() + "\n";
+                        Peer peer = Peer.drop(address);
+                        result = (peer == null ? "NOT FOUND" : "DROPED " + peer) + "\n";
+                        Peer.store();
+                    } else if (token.equals("SHOW")) {
+                        if (!tokenizer.hasMoreTokens()) {
+                            for (Peer peer : Peer.getSet()) {
+                                result += peer + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
+                        } else if (tokenizer.countTokens() == 1) {
+                            String address = tokenizer.nextToken();
+                            Peer peer = Peer.get(address);
+                            if (peer == null) {
+                                result = "NOT FOUND " + address + "\n";
+                            } else {
+                                result = peer + "\n";
+                                for (String confirm : peer.getConfirmSet()) {
+                                    result += confirm + "\n";
+                                }
+                            }
+                        } else {
+                            result = "ERROR: COMMAND\n";
                         }
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (String sender : SPF.getPeerSet()) {
-                            result += sender + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
+                    } else if (token.equals("SET") && tokenizer.countTokens() == 3) {
+                        String address = tokenizer.nextToken();
+                        String send = tokenizer.nextToken();
+                        String receive = tokenizer.nextToken();
+                        Peer peer = Peer.get(address);
+                        if (peer == null) {
+                            result = "PEER NOT FOUND " + address + "\n";
+                        } else {
+                            result = "UPDATED PEER " + address + "\n";
+                            result += (peer.setSendStatus(send) ? "SEND=" + send : "NOT RECOGNIZED '" + send + "'") + "\n";
+                            result += (peer.setReceiveStatus(receive) ? "RECEIVE=" + receive : "NOT RECOGNIZED '" + receive + "'") + "\n";
+                            Peer.store();
                         }
                     } else {
                         result = "ERROR: COMMAND\n";
