@@ -28,6 +28,7 @@ import net.spfbl.whois.SubnetIPv6;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -45,6 +46,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -61,6 +63,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
 import net.spfbl.core.Huffman;
+import net.spfbl.core.Peer;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -117,6 +120,61 @@ public final class SPF implements Serializable {
         // Sempre usar best-guess em caso de 
         // indisponibilidade de DNS na primeira consulta.
         refresh(false, true);
+    }
+    
+    /**
+     * Timer que controla os processos em background.
+     */
+    private static final Timer TIMER = new Timer("TimerBackground");
+
+    public static void cancel() {
+        TIMER.cancel();
+    }
+    
+    public static void startTimer() {
+        // Agenda processamento de reclamações vencidas.
+        TIMER.schedule(
+                new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registro SPF mais consultado.
+                SPF.tryRefresh();
+                // Verificar reclamações vencidas.
+                CacheComplain.droExpired();
+            }
+        }, 60000, 60000 // Frequência de 1 minuto.
+                );
+        TIMER.schedule(
+                new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registros WHOIS expirando.
+                Server.tryBackugroundRefresh();
+            }
+        }, 600000, 600000 // Frequência de 10 minutos.
+                );
+        TIMER.schedule(
+                new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Remoção de registros SPF expirados. 
+                CacheSPF.dropExpired();
+                // Apagar todas as distribuições vencidas.
+                CacheDistribution.dropExpired();
+                // Apagar todas os registros de DNS de HELO vencidos.
+                CacheHELO.dropExpired();
+                // Apagar todas os registros de atrazo programado vencidos.
+                CacheDefer.dropExpired();
+                // Armazena todos os registros atualizados durante a consulta.
+                Server.storeCache();
+                // Apaga todos os arquivos de LOG vencidos.
+                Server.deleteLogExpired();
+            }
+        }, 3600000, 3600000 // Frequência de 1 hora.
+                );
     }
 
     /**
@@ -1822,39 +1880,59 @@ public final class SPF implements Serializable {
         /**
          * Mapa de reclamações com seus respectivos tickets.
          */
-        private static final TreeSet<String> SET = new TreeSet<String>();
+        private static final TreeMap<Long,String> MAP = new TreeMap<Long,String>();
         
         /**
          * Flag que indica se o cache de reclamações foi modificado.
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean dropExact(String ticket) {
-            if (SET.remove(ticket)) {
+        private static synchronized boolean dropExact(long time) {
+            if (MAP.remove(time) == null) {
+                return false;
+            } else {
                 CHANGED = true;
                 return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static synchronized boolean addExact(String ticket) {
-            if (SET.add(ticket)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
             }
         }
         
-        private static synchronized TreeSet<String> keySet() {
-            TreeSet<String> keySet = new TreeSet<String>();
-            keySet.addAll(SET);
-            return keySet;
+        private static synchronized boolean putExact(long time, String tokens) {
+            if (tokens == null) {
+                return false;
+            } else if (tokens.equals(MAP.put(time, tokens))) {
+                return false;
+            } else {
+                CHANGED = true;
+                return true;
+            }
+        }
+        
+        private static synchronized TreeMap<Long,String> getMap() {
+            TreeMap<Long,String> map = new TreeMap<Long,String>();
+            map.putAll(MAP);
+            return map;
+        }
+        
+        private static synchronized TreeMap<Long,String> headMap(long end) {
+            TreeMap<Long,String> head = new TreeMap<Long,String>();
+            head.putAll(MAP.headMap(end));
+            return head;
+        }
+        
+        private static TreeMap<Long,String> extractHeadMap(long end) {
+            TreeMap<Long,String> map = new TreeMap<Long,String>();
+            TreeMap<Long,String> head = headMap(end);
+            for (long time : head.keySet()) {
+                String tokens = head.get(time);
+                if (dropExact(time)) {
+                    map.put(time, tokens);
+                }
+            }
+            return map;
         }
 
-        private static synchronized boolean containsExact(String ticket) {
-            return SET.contains(ticket);
+        private static synchronized boolean containsExact(long time) {
+            return MAP.containsKey(time);
         }
         
         private static synchronized boolean isChanged() {
@@ -1868,20 +1946,26 @@ public final class SPF implements Serializable {
         private static synchronized void setLoaded() {
             CHANGED = false;
         }
+        
+        private static synchronized void setChanged() {
+            CHANGED = true;
+        }
 
         private static void store() {
             if (isChanged()) {
                 try {
                     long time = System.currentTimeMillis();
-                    File file = new File("./data/complain.set");
+                    File file = new File("./data/complain.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(keySet(), outputStream);
+                        SerializationUtils.serialize(getMap(), outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
                     }
                     Server.logStore(time, file);
+                    file = new File("./data/complain.set");
+                    file.delete();
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -1901,88 +1985,61 @@ public final class SPF implements Serializable {
                         fileInputStream.close();
                     }
                     for (String ticket : set) {
-                        addExact(ticket);
+                        String registry = Server.decrypt(ticket);
+                        int index = registry.indexOf(' ');
+                        Date date = getTicketDate(registry.substring(0, index));
+                        String tokens = registry.substring(index + 1);
+                        putExact(date.getTime(), tokens);
                     }
-                    setLoaded();
+                    setChanged();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
+            } else {
+                file = new File("./data/complain.map");
+                if (file.exists()) {
+                    try {
+                        Map<Long,String> map;
+                        FileInputStream fileInputStream = new FileInputStream(file);
+                        try {
+                            map = SerializationUtils.deserialize(fileInputStream);
+                        } finally {
+                            fileInputStream.close();
+                        }
+                        for (Long date : map.keySet()) {
+                            String tokens = map.get(date);
+                            putExact(date, tokens);
+                        }
+                        setLoaded();
+                        Server.logLoad(time, file);
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                    }
+                }
             }
         }
         
-        /**
-         * Timer que controla as reclamações.
-         */
-        private static final Timer TIMER = new Timer("TimerComplain");
-
-        public static void cancel() {
-            TIMER.cancel();
-        }
-
-        static {
-            // Agenda processamento de reclamações vencidas.
-            TIMER.schedule(
-                    new TimerTask() {
-                @Override
-                public void run() {
-                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                    // Atualiza registro SPF mais consultado.
-                    SPF.tryRefresh();
-                }
-            }, 60000, 60000 // Frequência de 1 minuto.
-                    );
-            TIMER.schedule(
-                    new TimerTask() {
-                @Override
-                public void run() {
-                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                    // Atualiza registros WHOIS expirando.
-                    Server.tryBackugroundRefresh();
-                }
-            }, 600000, 600000 // Frequência de 10 minutos.
-                    );
-            TIMER.schedule(
-                    new TimerTask() {
-                @Override
-                public void run() {
-                    Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                    // Verificar reclamações vencidas.
-                    CacheComplain.droExpired();
-                    // Remoção de registros SPF expirados. 
-                    CacheSPF.dropExpired();
-                    // Apagar todas as distribuições vencidas.
-                    CacheDistribution.dropExpired();
-                    // Apagar todas os registros de DNS de HELO vencidos.
-                    CacheHELO.dropExpired();
-                    // Apagar todas os registros de atrazo programado vencidos.
-                    CacheDefer.dropExpired();
-                    // Armazena todos os registros atualizados durante a consulta.
-                    Server.storeCache();
-                    // Apaga todos os arquivos de LOG vencidos.
-                    Server.deleteLogExpired();
-                }
-            }, 3600000, 3600000 // Frequência de 1 hora.
-                    );
-        }
-        
         private static void droExpired() {
-            Set<String> complainSet = keySet();
-            for (String ticket : complainSet) {
-                try {
-                    long time = System.currentTimeMillis();
-                    String registry = Server.decrypt(ticket);
-                    int index = registry.indexOf(' ');
-                    Date date = getTicketDate(registry.substring(0, index));
-                    if (System.currentTimeMillis() - date.getTime() > 604800000) {
-                        // Expirado por sete dias.
-                        // Remover reclamações.
-                        deleteComplain(time, null, ticket);
-                    }
-                } catch (ProcessException ex) {
-                    Server.logError(ex);
-                    dropExact(ticket);
+            long end = System.currentTimeMillis() - 604800000;
+            String client = null;
+            TreeMap<Long,String> map = extractHeadMap(end);
+            for (long time : map.keySet()) {
+                long time2 = System.currentTimeMillis();
+                String tokens = map.get(time);
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                StringTokenizer tokenizer = new StringTokenizer(tokens, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    tokenSet.add(token);
                 }
+                for (String token : expandTokenSet(tokenSet)) {
+                    Distribution distribution = CacheDistribution.get(token, false);
+                    if (distribution != null) {
+                        distribution.removeSpam();
+                    }
+                }
+                Server.logQuery(time2, "SPFCL", client, "CLEAR", "OK " + tokenSet);
             }
         }
 
@@ -1994,7 +2051,9 @@ public final class SPF implements Serializable {
          */
         public static TreeSet<String> addComplain(String client,
                 String ticket) throws ProcessException {
-            if (addExact(ticket)) {
+            if (ticket == null) {
+                return null;
+            } else {
                 long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 TreeSet<String> blackSet = new TreeSet<String>();
@@ -2003,25 +2062,33 @@ public final class SPF implements Serializable {
                 Date date = getTicketDate(registry.substring(0, index));
                 if (System.currentTimeMillis() - date.getTime() > 432000000) {
                     // Ticket vencido com mais de 5 dias.
-                    throw new ProcessException("ERROR: TICKET EXPIRED");
+                    throw new ProcessException("TICKET EXPIRED");
                 } else {
                     registry = registry.substring(index + 1);
                     StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    StringBuilder builder = new StringBuilder();
                     while (tokenizer.hasMoreTokens()) {
                         String token = tokenizer.nextToken();
                         tokenSet.add(token);
-                    }
-                    for (String token : expandTokenSet(tokenSet)) {
-                        if (!CacheIgnore.contains(token)) {
-                            CacheDistribution.get(token, true).addSpam();
-                            blackSet.add(token);
+                        if (builder.length() > 0) {
+                            builder.append(' ');
                         }
+                        builder.append(token);
+                    }
+                    if (putExact(date.getTime(), builder.toString())) {
+                        for (String token : expandTokenSet(tokenSet)) {
+                            if (!CacheIgnore.contains(token)) {
+                                CacheDistribution.get(token, true).addSpam();
+                                blackSet.add(token);
+                            }
+                        }
+                    } else {
+                        // Ticket já denunciado.
+                        return null;
                     }
                 }
                 Server.logQuery(time, "SPFBL", client, "SPAM " + ticket, "OK " + blackSet);
                 return blackSet;
-            } else {
-                return null;
             }
         }
 
@@ -2033,32 +2100,34 @@ public final class SPF implements Serializable {
          */
         public static TreeSet<String> deleteComplain(long time,
                 String client, String ticket) throws ProcessException {
-            if (dropExact(ticket)) {
+            if (ticket == null) {
+                return null;
+            } else {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String registry = Server.decrypt(ticket);
                 int index = registry.indexOf(' ');
-                registry = registry.substring(index + 1);
-                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                while (tokenizer.hasMoreTokens()) {
-                    String token = tokenizer.nextToken();
-                    tokenSet.add(token);
-                }
-                for (String token : expandTokenSet(tokenSet)) {
-                    Distribution distribution = CacheDistribution.get(token, false);
-                    if (distribution != null) {
-                        distribution.removeSpam();
+                Date date = getTicketDate(registry.substring(0, index));
+                if (dropExact(date.getTime())) {
+                    registry = registry.substring(index + 1);
+                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        tokenSet.add(token);
                     }
+                    for (String token : expandTokenSet(tokenSet)) {
+                        Distribution distribution = CacheDistribution.get(token, false);
+                        if (distribution != null) {
+                            distribution.removeSpam();
+                        }
+                    }
+                    Server.logQuery(time, "SPFCL", client, "CLEAR " + ticket, "OK " + tokenSet);
+                    return tokenSet;
+                } else {
+                    // Ticket não foi denunciado.
+                    return null;
                 }
-                Server.logQuery(time, "SPFCL", client, "CLEAR " + ticket, "OK " + tokenSet);
-                return tokenSet;
-            } else {
-                return null;
             }
         }
-    }
-
-    public static void cancel() {
-        CacheComplain.cancel();
     }
 
     /**
@@ -2561,6 +2630,21 @@ public final class SPF implements Serializable {
             TreeSet<String> whiteSet = new TreeSet<String>();
             for (String sender : getAll()) {
                 if (sender.startsWith(client + ':')) {
+                    int index = sender.indexOf(':') + 1;
+                    sender = sender.substring(index);
+                    whiteSet.add(sender);
+                }
+            }
+            return whiteSet;
+        }
+        
+        private static TreeSet<String> getAll(
+                String client) throws ProcessException {
+            TreeSet<String> whiteSet = new TreeSet<String>();
+            for (String sender : getAll()) {
+                if (!sender.contains(":")) {
+                    whiteSet.add(sender);
+                } else if (sender.startsWith(client + ':')) {
                     int index = sender.indexOf(':') + 1;
                     sender = sender.substring(index);
                     whiteSet.add(sender);
@@ -3154,6 +3238,10 @@ public final class SPF implements Serializable {
 
     public static TreeSet<String> getWhiteSet(String client) throws ProcessException {
         return CacheWhite.get(client);
+    }
+    
+    public static TreeSet<String> getAllWhiteSet(String client) throws ProcessException {
+        return CacheWhite.getAll(client);
     }
     
     public static TreeSet<String> getWhiteSet() throws ProcessException {
@@ -4096,55 +4184,59 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static void main(String[] args) {
-        try {
-            SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
-            Huffman huffman = Huffman.load();
-            SPF.CacheComplain.load();
-            TreeSet<String> ticketSet = SPF.CacheComplain.keySet();
-            int size1 = 0;
-            int size2 = 0;
-            for (String ticket : ticketSet) {
-                String complain = Server.decrypt(ticket);
-                String date = complain.substring(0, 29);
-                String responsible = complain.substring(30);
-                long time = FORMAT.parse(date).getTime();
-                
-                
-                byte[] code = huffman.encodeByteArray(responsible);
-                ByteBuffer buffer = ByteBuffer.allocate(code.length + 8);
-                buffer.putLong(time);
-                buffer.put(code);
-                
-                
-                String ticket2 = Server.encrypt(buffer);
-                size1 += ticket.length();
-                size2 += ticket2.length();
-                
-                byte[] complainByteArray = Server.decryptToByteArray(ticket2);
-                ByteBuffer buffer2 = ByteBuffer.wrap(complainByteArray);
-                long time2 = buffer2.getLong();
-                byte[] code2 = new byte[buffer2.capacity() - 8];
-                buffer2.get(code2);
-                String responsible2 = huffman.decode(code2);
-                String date2 = FORMAT.format(new Date(time2));
-                String complain2 = date2 + " " + responsible2;
+//    public static void main(String[] args) {
+//        try {
+//            SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+//            Huffman huffman = Huffman.load();
+//            SPF.CacheComplain.load();
+//            TreeSet<String> ticketSet = SPF.CacheComplain.keySet();
+//            int size1 = 0;
+//            int size2 = 0;
+//            for (String ticket : ticketSet) {
+//                String complain = Server.decrypt(ticket);
+//                String date = complain.substring(0, 29);
+//                String responsible = complain.substring(30);
+//                long time = FORMAT.parse(date).getTime();
 //                
-                System.out.println(complain);
-                System.out.println(complain2);
-                System.out.println();
-            }
-            float p = (float) size2 / (float) size1;
-            System.out.println(p);
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            System.exit(0);
-        }
-    }
+//                
+//                byte[] code = huffman.encodeByteArray(responsible);
+//                ByteBuffer buffer = ByteBuffer.allocate(code.length + 8);
+//                buffer.putLong(time);
+//                buffer.put(code);
+//                
+//                
+//                String ticket2 = Server.encrypt(buffer);
+//                size1 += ticket.length();
+//                size2 += ticket2.length();
+//                
+//                byte[] complainByteArray = Server.decryptToByteArray(ticket2);
+//                ByteBuffer buffer2 = ByteBuffer.wrap(complainByteArray);
+//                long time2 = buffer2.getLong();
+//                byte[] code2 = new byte[buffer2.capacity() - 8];
+//                buffer2.get(code2);
+//                String responsible2 = huffman.decode(code2);
+//                String date2 = FORMAT.format(new Date(time2));
+//                String complain2 = date2 + " " + responsible2;
+////                
+//                System.out.println(complain);
+//                System.out.println(complain2);
+//                System.out.println();
+//            }
+//            float p = (float) size2 / (float) size1;
+//            System.out.println(p);
+//        } catch (Exception ex) {
+//            Server.logError(ex);
+//        } finally {
+//            System.exit(0);
+//        }
+//    }
 
     public static boolean addBlock(String token) throws ProcessException {
         return CacheBlock.add(token);
+    }
+    
+    public static boolean addBlockExact(String token) {
+        return CacheBlock.addExact(token);
     }
 
     public static boolean addBlock(String client, String sender) throws ProcessException {
@@ -4169,6 +4261,10 @@ public final class SPF implements Serializable {
 
     public static TreeSet<String> getProviderSet() throws ProcessException {
         return CacheProvider.getAll();
+    }
+    
+    public static boolean containsBlock(String token) {
+        return CacheBlock.containsExact(token);
     }
 
     public static TreeSet<String> getBlockSet() throws ProcessException {
@@ -4418,217 +4514,217 @@ public final class SPF implements Serializable {
         return CacheIgnore.getAll();
     }
 
-    /**
-     * Classe que representa o cache de peers que serão atualizados.
-     */
-    private static class CachePeer {
-
-        /**
-         * Mapa de registros de peers <endereço,porta>.
-         */
-        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
-        
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static synchronized Integer dropExact(String address) {
-            Integer ret = MAP.remove(address);
-            if (ret != null) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-
-        private static synchronized Integer putExact(String key, Integer value) {
-            Integer ret = MAP.put(key, value);
-            if (!value.equals(ret)) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-        
-        private static synchronized ArrayList<String> keySet() {
-            ArrayList<String> keySet = new ArrayList<String>();
-            keySet.addAll(MAP.keySet());
-            return keySet;
-        }
-        
-        private static synchronized HashMap<String,Integer> getMap() {
-            HashMap<String,Integer> map = new HashMap<String,Integer>();
-            map.putAll(MAP);
-            return map;
-        }
-
-        private static synchronized boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
-        
-        private static synchronized Integer getExact(String host) {
-            return MAP.get(host);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setLoaded() {
-            CHANGED = false;
-        }
-
-        private static void send(String token) {
-            for (String address : keySet()) {
-                long time = System.currentTimeMillis();
-                int port = getExact(address);
-                String result;
-                try {
-                    Main.sendTokenToPeer(token, address, port);
-                    result = "SENT";
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
-                }
-                Server.logPeerSend(time, address, token, result);
-            }
-        }
-
-        private static boolean add(String address,
-                String port) throws ProcessException {
-            try {
-                int portInt = Integer.parseInt(port);
-                return add(address, portInt);
-            } catch (NumberFormatException ex) {
-                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
-            }
-        }
-
-        private static boolean add(String address,
-                Integer port) throws ProcessException {
-            try {
-                InetAddress.getByName(address);
-                if (port == null || port < 1 || port > 65535) {
-                    throw new ProcessException("ERROR: PEER PORT INVALID");
-                } else if (!port.equals(putExact(address, port))) {
-                    // Enviar imediatamente todos os
-                    // tokens bloqueados na base atual.
-                    TreeMap<String,Distribution> distributionSet =
-                            CacheDistribution.getTreeMap();
-                    for (String token : distributionSet.keySet()) {
-                        Distribution distribution = distributionSet.get(token);
-                        if (distribution.isBlocked(token)) {
-                            long time = System.currentTimeMillis();
-                            String result;
-                            try {
-                                Main.sendTokenToPeer(token, address, port);
-                                result = "SENT";
-                            } catch (ProcessException ex) {
-                                result = ex.toString();
-                            }
-                            Server.logPeerSend(time, address, token, result);
-                        }
-                    }
-                    return true;
-                }
-                return false;
-            } catch (UnknownHostException ex) {
-                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-            }
-        }
-
-        private static synchronized boolean drop(
-                String address) throws ProcessException {
-            try {
-                InetAddress.getByName(address);
-                if (dropExact(address) == null) {
-                    return false;
-                } else {
-                    return true;
-                }
-            } catch (UnknownHostException ex) {
-                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-            }
-        }
-
-        private static TreeSet<String> get() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String address : keySet()) {
-                int port = getExact(address);
-                String result = address + ":" + port;
-                blockSet.add(result);
-            }
-            return blockSet;
-        }
-
-        private static void store() {
-            if (isChanged()) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/peer.map");
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(getMap(), outputStream);
-                        setStored();
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/peer.map");
-            if (file.exists()) {
-                try {
-                    HashMap<Object,Integer> map;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        map = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    for (Object key : map.keySet()) {
-                        if (key instanceof InetAddress) {
-                            InetAddress address = (InetAddress) key;
-                            Integer value = map.get(address);
-                            putExact(address.getHostAddress(), value);
-                        } else if (key instanceof String) {
-                            String address = (String) key;
-                            Integer value = map.get(address);
-                            putExact(address, value);
-                        }
-                    }
-                    setLoaded();
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean addPeer(String address, int port) throws ProcessException {
-        return CachePeer.add(address, port);
-    }
-
-    public static boolean addPeer(String address, String port) throws ProcessException {
-        return CachePeer.add(address, port);
-    }
-
-    public static boolean dropPeer(String address) throws ProcessException {
-        return CachePeer.drop(address);
-    }
-
-    public static TreeSet<String> getPeerSet() throws ProcessException {
-        return CachePeer.get();
-    }
+//    /**
+//     * Classe que representa o cache de peers que serão atualizados.
+//     */
+//    private static class CachePeer {
+//
+//        /**
+//         * Mapa de registros de peers <endereço,porta>.
+//         */
+//        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
+//        
+//        /**
+//         * Flag que indica se o cache foi modificado.
+//         */
+//        private static boolean CHANGED = false;
+//        
+//        private static synchronized Integer dropExact(String address) {
+//            Integer ret = MAP.remove(address);
+//            if (ret != null) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//
+//        private static synchronized Integer putExact(String key, Integer value) {
+//            Integer ret = MAP.put(key, value);
+//            if (!value.equals(ret)) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//        
+//        private static synchronized ArrayList<String> keySet() {
+//            ArrayList<String> keySet = new ArrayList<String>();
+//            keySet.addAll(MAP.keySet());
+//            return keySet;
+//        }
+//        
+//        private static synchronized HashMap<String,Integer> getMap() {
+//            HashMap<String,Integer> map = new HashMap<String,Integer>();
+//            map.putAll(MAP);
+//            return map;
+//        }
+//
+//        private static synchronized boolean containsExact(String address) {
+//            return MAP.containsKey(address);
+//        }
+//        
+//        private static synchronized Integer getExact(String host) {
+//            return MAP.get(host);
+//        }
+//        
+//        private static synchronized boolean isChanged() {
+//            return CHANGED;
+//        }
+//        
+//        private static synchronized void setStored() {
+//            CHANGED = false;
+//        }
+//        
+//        private static synchronized void setLoaded() {
+//            CHANGED = false;
+//        }
+//
+//        private static void send(String token) {
+//            for (String address : keySet()) {
+//                long time = System.currentTimeMillis();
+//                int port = getExact(address);
+//                String result;
+//                try {
+//                    Main.sendTokenToPeer(token, address, port);
+//                    result = "SENT";
+//                } catch (ProcessException ex) {
+//                    result = ex.getMessage();
+//                }
+//                Server.logPeerSend(time, address, token, result);
+//            }
+//        }
+//
+//        private static boolean add(String address,
+//                String port) throws ProcessException {
+//            try {
+//                int portInt = Integer.parseInt(port);
+//                return add(address, portInt);
+//            } catch (NumberFormatException ex) {
+//                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
+//            }
+//        }
+//
+//        private static boolean add(String address,
+//                Integer port) throws ProcessException {
+//            try {
+//                InetAddress.getByName(address);
+//                if (port == null || port < 1 || port > 65535) {
+//                    throw new ProcessException("ERROR: PEER PORT INVALID");
+//                } else if (!port.equals(putExact(address, port))) {
+//                    // Enviar imediatamente todos os
+//                    // tokens bloqueados na base atual.
+//                    TreeMap<String,Distribution> distributionSet =
+//                            CacheDistribution.getTreeMap();
+//                    for (String token : distributionSet.keySet()) {
+//                        Distribution distribution = distributionSet.get(token);
+//                        if (distribution.isBlocked(token)) {
+//                            long time = System.currentTimeMillis();
+//                            String result;
+//                            try {
+//                                Main.sendTokenToPeer(token, address, port);
+//                                result = "SENT";
+//                            } catch (ProcessException ex) {
+//                                result = ex.toString();
+//                            }
+//                            Server.logPeerSend(time, address, token, result);
+//                        }
+//                    }
+//                    return true;
+//                }
+//                return false;
+//            } catch (UnknownHostException ex) {
+//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+//            }
+//        }
+//
+//        private static synchronized boolean drop(
+//                String address) throws ProcessException {
+//            try {
+//                InetAddress.getByName(address);
+//                if (dropExact(address) == null) {
+//                    return false;
+//                } else {
+//                    return true;
+//                }
+//            } catch (UnknownHostException ex) {
+//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
+//            }
+//        }
+//
+//        private static TreeSet<String> get() throws ProcessException {
+//            TreeSet<String> blockSet = new TreeSet<String>();
+//            for (String address : keySet()) {
+//                int port = getExact(address);
+//                String result = address + ":" + port;
+//                blockSet.add(result);
+//            }
+//            return blockSet;
+//        }
+//
+//        private static void store() {
+//            if (isChanged()) {
+//                try {
+//                    long time = System.currentTimeMillis();
+//                    File file = new File("./data/peer.map");
+//                    FileOutputStream outputStream = new FileOutputStream(file);
+//                    try {
+//                        SerializationUtils.serialize(getMap(), outputStream);
+//                        setStored();
+//                    } finally {
+//                        outputStream.close();
+//                    }
+//                    Server.logStore(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//
+//        private static void load() {
+//            long time = System.currentTimeMillis();
+//            File file = new File("./data/peer.map");
+//            if (file.exists()) {
+//                try {
+//                    HashMap<Object,Integer> map;
+//                    FileInputStream fileInputStream = new FileInputStream(file);
+//                    try {
+//                        map = SerializationUtils.deserialize(fileInputStream);
+//                    } finally {
+//                        fileInputStream.close();
+//                    }
+//                    for (Object key : map.keySet()) {
+//                        if (key instanceof InetAddress) {
+//                            InetAddress address = (InetAddress) key;
+//                            Integer value = map.get(address);
+//                            putExact(address.getHostAddress(), value);
+//                        } else if (key instanceof String) {
+//                            String address = (String) key;
+//                            Integer value = map.get(address);
+//                            putExact(address, value);
+//                        }
+//                    }
+//                    setLoaded();
+//                    Server.logLoad(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//    }
+//
+//    public static boolean addPeer(String address, int port) throws ProcessException {
+//        return CachePeer.add(address, port);
+//    }
+//
+//    public static boolean addPeer(String address, String port) throws ProcessException {
+//        return CachePeer.add(address, port);
+//    }
+//
+//    public static boolean dropPeer(String address) throws ProcessException {
+//        return CachePeer.drop(address);
+//    }
+//
+//    public static TreeSet<String> getPeerSet() throws ProcessException {
+//        return CachePeer.get();
+//    }
 
     public static TreeSet<String> getGuessSet() throws ProcessException {
         return CacheGuess.get();
@@ -4817,9 +4913,9 @@ public final class SPF implements Serializable {
         CacheGuess.store();
     }
 
-    public static void storePeer() {
-        CachePeer.store();
-    }
+//    public static void storePeer() {
+//        CachePeer.store();
+//    }
 
     public static void storeTrap() {
         CacheTrap.store();
@@ -4852,7 +4948,7 @@ public final class SPF implements Serializable {
         CacheGuess.store();
         CacheHELO.store();
         CacheDefer.store();
-        CachePeer.store();
+//        CachePeer.store();
     }
 
     /**
@@ -4870,7 +4966,7 @@ public final class SPF implements Serializable {
         CacheGuess.load();
         CacheHELO.load();
         CacheDefer.load();
-        CachePeer.load();
+//        CachePeer.load();
     }
 
     /**
@@ -5491,13 +5587,13 @@ public final class SPF implements Serializable {
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
-                } else if (SPF.isBlocked(tokenSet)) {
-                    return "action=REJECT [RBL] "
-                            + "you are permanently blocked in this server.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     CacheComplain.addComplain(client, ticket);
+                    return "action=REJECT [RBL] "
+                            + "you are permanently blocked in this server.\n\n";
+                } else if (SPF.isBlocked(tokenSet)) {
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
@@ -5742,13 +5838,13 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
-                            } else if (SPF.isBlocked(tokenSet)) {
-                                // Pelo menos um identificador do conjunto está bloqueado.
-                                return "BLOCKED\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                                 CacheComplain.addComplain(client, ticket);
+                                return "BLOCKED\n";
+                            } else if (SPF.isBlocked(tokenSet)) {
+                                // Pelo menos um identificador do conjunto está bloqueado.
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet, true) && CacheDefer.defer(fluxo, 1435)) {
                                 // Pelo menos um identificador do conjunto está em lista negra com atrazo de 1 dia.
@@ -5803,7 +5899,7 @@ public final class SPF implements Serializable {
     }
     
     private static TreeSet<String> expandTokenSet(
-            TreeSet<String> tokenSet) throws ProcessException {
+            TreeSet<String> tokenSet) {
         TreeSet<String> expandedSet = new TreeSet<String>();
         for (String token : tokenSet) {
             if (token != null) {
@@ -5821,14 +5917,19 @@ public final class SPF implements Serializable {
                     expand = false;
                 }
                 if (expand) {
-                    String dominio = Domain.extractDomain(token, true);
-                    String subdominio = Domain.extractHost(token, true);
-                    while (!subdominio.equals(dominio)) {
-                        expandedSet.add(subdominio);
-                        int index = subdominio.indexOf('.', 1);
-                        subdominio = subdominio.substring(index);
+                    try {
+                        String dominio = Domain.extractDomain(token, true);
+                        String subdominio = Domain.extractHost(token, true);
+                        while (!subdominio.equals(dominio)) {
+                            expandedSet.add(subdominio);
+                            int index = subdominio.indexOf('.', 1);
+                            subdominio = subdominio.substring(index);
+                        }
+                        expandedSet.add(dominio);
+                    } catch (ProcessException ex) {
+                        expandedSet.add(token);
+                        Server.logError(ex);
                     }
-                    expandedSet.add(dominio);
                 }
             }
         }
@@ -6119,7 +6220,7 @@ public final class SPF implements Serializable {
                     // definitivamente o responsável.
                     status = Status.BLOCK;
                     CacheBlock.addExact(token);
-                    CachePeer.send(token);
+                    Peer.sendToAll(token);
                 } else if (max == 0.0f) {
                     status = Status.WHITE;
                 } else if (min > LIMIAR1) {

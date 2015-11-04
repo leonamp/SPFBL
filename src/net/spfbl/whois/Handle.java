@@ -163,9 +163,19 @@ public class Handle implements Serializable, Comparable<Handle> {
                 return e_mail;
             }
         } else if (key.equals("created")) {
-            return DATE_FORMATTER.format(created);
+            try {
+                return DATE_FORMATTER.format(created);
+            } catch (Exception ex) {
+                Server.logError("Cannot format date: " + created);
+                return null;
+            }
         } else if (key.equals("changed")) {
-            return DATE_FORMATTER.format(changed);
+            try {
+                return DATE_FORMATTER.format(changed);
+            } catch (Exception ex) {
+                Server.logError("Cannot format date: " + changed);
+                return null;
+            }
         } else {
             return null;
         }

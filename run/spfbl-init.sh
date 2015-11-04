@@ -6,7 +6,7 @@
 
 start() {
     cd /opt/spfbl/
-    /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/activity-$(date "+%Y-%m-%d").log &
+    /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 > /var/log/spfbl/spfbl.error.log &
 }
 
 stop() {

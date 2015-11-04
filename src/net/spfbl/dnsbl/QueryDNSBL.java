@@ -340,7 +340,15 @@ public final class QueryDNSBL extends Server {
                         } else if (SubnetIPv4.isValidIPv4(reverse.substring(1))) {
                             // A consulta é um IPv4.
                             ip = SubnetIPv4.reverseToIPv4(reverse.substring(1));
-                            if (SPF.isBlacklisted(ip, false)) {
+                            if (ip.equals("127.0.0.1")) {
+                                // Consulta de teste para negativo.
+                                result = "NXDOMAIN";
+                            } else if (ip.equals("127.0.0.2")) {
+                                // Consulta de teste para positivio.
+                                result = "127.0.0.2";
+                                information = server.getMessage();
+                                ttl = SPF.getComplainTTL(ip);
+                            } else if (SPF.isBlacklisted(ip, false)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
@@ -375,7 +383,7 @@ public final class QueryDNSBL extends Server {
                             name = new Name(server.getHostName().substring(1) + '.');
                             SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
                                     name, SERIAL, refresh, retry, expire, minimum);
-                            message.addRecord(soa, Section.ANSWER);
+                            message.addRecord(soa, Section.AUTHORITY);
                         }
                     } else if (type.equals("A") && result.equals("127.0.0.2")) {
                         InetAddress address = InetAddress.getByName(result);

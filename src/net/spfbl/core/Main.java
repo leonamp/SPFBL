@@ -27,6 +27,7 @@ import net.spfbl.spf.QuerySPF;
 import java.net.InetAddress;
 import java.util.Properties;
 import net.spfbl.dnsbl.QueryDNSBL;
+import net.spfbl.spf.SPF;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -89,6 +90,7 @@ public class Main {
             if (dnsbl) {
                 new QueryDNSBL().start();
             }
+            SPF.startTimer();
         } catch (Exception ex) {
             Server.logError(ex);
             printHelp();
