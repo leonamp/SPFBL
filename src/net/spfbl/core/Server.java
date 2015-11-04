@@ -1521,14 +1521,25 @@ public abstract class Server extends Thread {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
                         String service = tokenizer.nextToken();
+                        String email = null;
+                        if (tokenizer.hasMoreElements()) {
+                            email = tokenizer.nextToken();
+                        }
                         int index = service.indexOf(':');
                         if (index == -1) {
                             result = "ERROR: COMMAND\n";
+                        } else if (email != null && !Domain.isEmail(email)) {
+                            result = "ERROR: INVALID EMAIL\n";
                         } else {
                             String address = service.substring(0, index);
                             String port = service.substring(index + 1);
                             Peer peer = Peer.create(address, port);
-                            result = (peer == null ? "ALREADY EXISTS" : "ADDED " + peer) + "\n";
+                            if (peer == null) {
+                                result = "ALREADY EXISTS\n";
+                            } else {
+                                peer.setEmail(email);
+                                result = "ADDED " + peer + "\n";
+                            }
                             Peer.store();
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1564,12 +1575,29 @@ public abstract class Server extends Thread {
                         String receive = tokenizer.nextToken();
                         Peer peer = Peer.get(address);
                         if (peer == null) {
-                            result = "PEER NOT FOUND " + address + "\n";
+                            result = "NOT FOUND " + address + "\n";
                         } else {
-                            result = "UPDATED PEER " + address + "\n";
-                            result += (peer.setSendStatus(send) ? "SEND=" + send : "NOT RECOGNIZED '" + send + "'") + "\n";
-                            result += (peer.setReceiveStatus(receive) ? "RECEIVE=" + receive : "NOT RECOGNIZED '" + receive + "'") + "\n";
+                            result = "UPDATED " + address + "\n";
+                            try {
+                                result += (peer.setSendStatus(send) ? "UPDATED" : "ALREADY") + " SEND=" + send + "\n";
+                            } catch (ProcessException ex) {
+                                result += "NOT RECOGNIZED '" + send + "'\n";
+                            }
+                            try {
+                                result += (peer.setReceiveStatus(receive) ? "UPDATED" : "ALREADY") + " RECEIVE=" + receive + "\n";
+                            } catch (ProcessException ex) {
+                                result += "NOT RECOGNIZED '" + receive + "'\n";
+                            }
                             Peer.store();
+                        }
+                    } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
+                        String address = tokenizer.nextToken();
+                        Peer peer = Peer.get(address);
+                        if (peer == null) {
+                            result = "NOT FOUND " + address + "\n";
+                        } else {
+                            peer.sendAll();
+                            result = "SENT TO " + address + "\n";
                         }
                     } else {
                         result = "ERROR: COMMAND\n";

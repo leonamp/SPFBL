@@ -23,8 +23,10 @@ import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.spf.SPF;
+import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import org.apache.commons.lang3.SerializationUtils;
@@ -40,8 +42,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     private final String address; // Endereço de acesso ao peer.
     private short port; // Porta de acesso ao peer.
-    private Send send = Send.BLOCK; // Status de envio para este peer.
+    private Send send = Send.DUNNO; // Status de envio para este peer.
     private Receive receive = Receive.DROP; // Status de recebimento deste peer.
+    private String email = null;
     
     /**
      * Guarda os bloqueios que necessitam de confirmação.
@@ -109,23 +112,53 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return receive;
     }
     
-    public boolean setSendStatus(String status) {
-        try {
-            this.send = Send.valueOf(status);
+    public String getEmail() {
+        return email;
+    }
+    
+    public User getUser() {
+        return User.get(email);
+    }
+    
+    public void setEmail(String email) throws ProcessException {
+        if (email == null || email.length() == 0) {
+            this.email = null;
+        } else if (Domain.isEmail(email)) {
+            this.email = email.toLowerCase();
             CHANGED = true;
-            return true;
-        } catch (IllegalArgumentException ex) {
-            return false;
+        } else {
+            throw new ProcessException("ERROR: INVALID EMAIL");
         }
     }
     
-    public boolean setReceiveStatus(String status) {
+    public boolean setSendStatus(String status) throws ProcessException {
         try {
-            this.receive = Receive.valueOf(status);
-            CHANGED = true;
-            return true;
+            Send sendNew =  Send.valueOf(status);
+            if (sendNew == this.send) {
+                return false;
+            } else {
+                this.send = sendNew;
+                CHANGED = true;
+                return true;
+            }
         } catch (IllegalArgumentException ex) {
-            return false;
+            throw new ProcessException("INVALID SEND");
+        }
+    }
+    
+    public boolean setReceiveStatus(String status) throws ProcessException {
+        try {
+            Receive receiveNew =  Receive.valueOf(status);
+            if (receiveNew == this.receive) {
+                return false;
+            } else {
+                this.receive = Receive.valueOf(status);
+                CHANGED = true;
+                return true;
+            }
+            
+        } catch (IllegalArgumentException ex) {
+            throw new ProcessException("INVALID RECEIVE");
         }
     }
     
@@ -220,6 +253,26 @@ public final class Peer implements Serializable, Comparable<Peer> {
         HashMap<String,Peer> map = new HashMap<String,Peer>();
         map.putAll(MAP);
         return map;
+    }
+    
+    public void sendAll() {
+        TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
+        for (String token : distributionSet.keySet()) {
+            Distribution distribution = distributionSet.get(token);
+            if (distribution.isBlocked(token)) {
+                long time = System.currentTimeMillis();
+                String address = getAddress();
+                String result;
+                try {
+                    int port = getPort();
+                    Main.sendTokenToPeer(token, address, port);
+                    result = "SENT";
+                } catch (ProcessException ex) {
+                    result = ex.toString();
+                }
+                Server.logPeerSend(time, address, token, result);
+            }
+        }
     }
     
     public static void sendToAll(String token) {
@@ -386,6 +439,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return address + ":" + port
                 + " " + send.name()
                 + " " + receive.name()
-                + " " + confirmSet.size();
+                + " " + confirmSet.size()
+                + (email == null ? "" : "<" + email + ">");
     }
 }

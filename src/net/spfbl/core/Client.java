@@ -49,7 +49,6 @@ public class Client implements Serializable, Comparable<Client> {
      */
     private boolean permission_spfbl = false; // Pode consultar o serviço SPFBL.
     private boolean permission_dnsbl = false; // Pode consultar o serviço DNSBL.
-    private boolean permission_peer = false; // Pode enviar bloqueios P2P.
     
     public static void main(String[] args) throws Exception {
         File clientsFile = new File("./data/clients.txt");
@@ -117,10 +116,6 @@ public class Client implements Serializable, Comparable<Client> {
         this.permission_dnsbl = dnsbl;
     }
     
-    public void setPermissionPEER(boolean peer) {
-        this.permission_peer = peer;
-    }
-    
     public String getCIDR() {
         return cidr;
     }
@@ -147,10 +142,6 @@ public class Client implements Serializable, Comparable<Client> {
     
     public boolean hasPermissionDNSBL() {
         return permission_dnsbl;
-    }
-    
-    public boolean hasPermissionPEER() {
-        return permission_peer;
     }
     
     /**
@@ -296,7 +287,6 @@ public class Client implements Serializable, Comparable<Client> {
         return domain + ":" + cidr
                 + (email == null ? "" : " <" + email + ">")
                 + (permission_spfbl ? " SPFBL" : "")
-                + (permission_dnsbl ? " DNSBL" : "")
-                + (permission_peer ? " PEER" : "");
+                + (permission_dnsbl ? " DNSBL" : "");
     }
 }
