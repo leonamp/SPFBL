@@ -170,6 +170,16 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static boolean isReserved(String address) {
+        if (address.contains("@")) {
+            int index = address.lastIndexOf('@') + 1;
+            address = '.' + address.substring(index);
+            return TLD_SET.contains(address);
+        } else {
+            return TLD_SET.contains(address);
+        }
+    }
+    
     /**
      * Extrai o domínio pelos TLDs conhecidos.
      * @param address o endereço que contém o domínio.
@@ -180,7 +190,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
         address = "." + extractHost(address, false);
-        if (TLD_SET.contains(address)) {
+        if (isReserved(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
@@ -831,6 +841,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
                     return null;
                 } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.getMessage().equals("ERROR: RESERVED")) {
                     return null;
                 } else {
                     Server.logError(ex);

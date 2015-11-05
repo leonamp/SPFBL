@@ -5497,6 +5497,9 @@ public final class SPF implements Serializable {
         if (sender != null && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
+        } else if (sender != null && Domain.isReserved(sender)) {
+            return "action=REJECT [RBL] "
+                    + sender + " has a reserved domain.\n\n";
         } else if (!Subnet.isValidIP(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
@@ -5736,6 +5739,8 @@ public final class SPF implements Serializable {
                         if (!Subnet.isValidIP(ip)) {
                             return "INVALID\n";
                         } else if (sender != null && !Domain.isEmail(sender)) {
+                            return "INVALID\n";
+                        } else if (sender != null && Domain.isReserved(sender)) {
                             return "INVALID\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
