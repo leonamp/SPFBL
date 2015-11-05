@@ -25,6 +25,7 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import net.spfbl.spf.PeerUDP;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
@@ -44,7 +45,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private short port; // Porta de acesso ao peer.
     private Send send = Send.DUNNO; // Status de envio para este peer.
     private Receive receive = Receive.DROP; // Status de recebimento deste peer.
-    private String email = null;
+    private String email = null; // E-mail do responsável.
+    private long last = 0; // Último recebimento.
     
     /**
      * Guarda os bloqueios que necessitam de confirmação.
@@ -73,12 +75,24 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public void setPort(int port) throws ProcessException {
-        if (port >= 1024 && port < 49152) {
+    public boolean setPort(int port) throws ProcessException {
+        if (port < 1024 || port >= 49152) {
+            throw new ProcessException("ERROR: INVALID PORT");
+        } else if (this.port != port) {
             this.port = (short) port;
             CHANGED = true;
+            return true;
         } else {
-            throw new ProcessException("ERROR: INVALID PORT");
+            return false;
+        }
+    }
+    
+    public boolean setPort(String port) throws ProcessException {
+        try {
+            int portInt = Integer.parseInt(port);
+            return setPort(portInt);
+        } catch (NumberFormatException ex) {
+            throw new ProcessException("ERROR: INVALID PORT", ex);
         }
     }
     
@@ -120,14 +134,39 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return User.get(email);
     }
     
+    public void updateLast() {
+        this.last = System.currentTimeMillis();
+    }
+    
+    public boolean isAlive() {
+        return (System.currentTimeMillis() - last) / Server.DAY_TIME == 0;
+    }
+    
     public void setEmail(String email) throws ProcessException {
         if (email == null || email.length() == 0) {
-            this.email = null;
+            if (this.email != null) {
+                this.email = null;
+                CHANGED = true;
+            }
         } else if (Domain.isEmail(email)) {
-            this.email = email.toLowerCase();
-            CHANGED = true;
+            if (!email.toLowerCase().equals(this.email)) {
+                this.email = email.toLowerCase();
+                CHANGED = true;
+            }
         } else {
             throw new ProcessException("ERROR: INVALID EMAIL");
+        }
+    }
+    
+    public boolean setSendStatus(Send status) throws ProcessException {
+        if (status == null) {
+            throw new ProcessException("INVALID SEND");
+        } else if (status == this.send) {
+            return false;
+        } else {
+            this.send = status;
+            CHANGED = true;
+            return true;
         }
     }
     
@@ -146,6 +185,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public boolean setReceiveStatus(Receive status) throws ProcessException {
+        if (status == null) {
+            throw new ProcessException("INVALID RECEIVE");
+        } else if (status == this.receive) {
+            return false;
+        } else {
+            this.receive = status;
+            CHANGED = true;
+            return true;
+        }
+    }
+    
     public boolean setReceiveStatus(String status) throws ProcessException {
         try {
             Receive receiveNew =  Receive.valueOf(status);
@@ -156,7 +207,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 CHANGED = true;
                 return true;
             }
-            
         } catch (IllegalArgumentException ex) {
             throw new ProcessException("INVALID RECEIVE");
         }
@@ -177,6 +227,19 @@ public final class Peer implements Serializable, Comparable<Peer> {
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
+    
+    public boolean drop() {
+        return Peer.drop(address) != null;
+    }
+    
+    public Peer clone(String hostname) throws ProcessException {
+        Peer peerNew = create(hostname, port);
+        peerNew.send = this.send;
+        peerNew.receive = this.receive;
+        peerNew.email = this.email;
+        peerNew.last = this.last;
+        return peerNew;
+    }
     
     public synchronized static Peer create(
             String hostname, String port
@@ -350,6 +413,42 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public void sendHELO() {
+        String email = Main.getAdminEmail();
+        String connection = Main.getPeerConnection();
+        String helo = "HELO " + connection + (email == null ? "" : " " + email);
+        long time = System.currentTimeMillis();
+        String address = getAddress();
+        String result;
+        try {
+            int port = getPort();
+            Main.sendTokenToPeer(helo, address, port);
+            result = "SENT";
+        } catch (ProcessException ex) {
+            result = ex.getMessage();
+        }
+        Server.logQuery(time, "PEERH", address, helo, result);
+    }
+    
+    public static void sendHeloToAll() {
+        String email = Main.getAdminEmail();
+        String connection = Main.getPeerConnection();
+        String helo = "HELO " + connection + (email == null ? "" : " " + email);
+        for (Peer peer : getSet()) {
+            long time = System.currentTimeMillis();
+            String address = peer.getAddress();
+            String result;
+            try {
+                int port = peer.getPort();
+                Main.sendTokenToPeer(helo, address, port);
+                result = "SENT";
+            } catch (ProcessException ex) {
+                result = ex.getMessage();
+            }
+            Server.logQuery(time, "PEERH", address, helo, result);
+        }
+    }
+    
     public void sendToRepass(String token) {
         for (Peer peer : getRepassSet()) {
             long time = System.currentTimeMillis();
@@ -400,6 +499,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String processReceive(String token) {
         try {
+            updateLast();
             if (!isValid(token)) {
                 return "INVALID";
             } else if (SPF.isIgnore(token)) {
@@ -516,6 +616,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 + " " + send.name()
                 + " " + receive.name()
                 + " " + confirmSet.size()
+                + " " + (isAlive() ? "ALIVE" : "DEAD")
                 + (email == null ? "" : " <" + email + ">");
     }
 }

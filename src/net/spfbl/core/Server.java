@@ -1590,6 +1590,15 @@ public abstract class Server extends Thread {
                             }
                             Peer.store();
                         }
+                    } else if (token.equals("PING") && tokenizer.countTokens() == 1) {
+                        String address = tokenizer.nextToken();
+                        Peer peer = Peer.get(address);
+                        if (peer == null) {
+                            result = "NOT FOUND " + address + "\n";
+                        } else {
+                            peer.sendHELO();
+                            result = "SENT HELO TO " + address + "\n";
+                        }
                     } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
                         String address = tokenizer.nextToken();
                         Peer peer = Peer.get(address);

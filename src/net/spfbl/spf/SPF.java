@@ -160,6 +160,8 @@ public final class SPF implements Serializable {
             @Override
             public void run() {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Envio de PING para os peers cadastrados.
+                Peer.sendHeloToAll();
                 // Remoção de registros SPF expirados. 
                 CacheSPF.dropExpired();
                 // Apagar todas as distribuições vencidas.

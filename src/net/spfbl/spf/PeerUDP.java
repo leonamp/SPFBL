@@ -25,9 +25,11 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.LinkedList;
+import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.core.Peer;
+import net.spfbl.whois.Domain;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -38,6 +40,7 @@ import net.spfbl.core.Peer;
  */
 public final class PeerUDP extends Server {
 
+    private final String HOSTNAME;
     private final int PORT;
     private final int SIZE; // Tamanho máximo da mensagem do pacote UDP de reposta.
     private final DatagramSocket SERVER_SOCKET;
@@ -48,14 +51,19 @@ public final class PeerUDP extends Server {
      * @param size o tamanho máximo do pacote UDP.
      * @throws java.net.SocketException se houver falha durante o bind.
      */
-    public PeerUDP(int port, int size) throws SocketException {
+    public PeerUDP(String hostname, int port, int size) throws SocketException {
         super("ServerPEERUDP");
+        HOSTNAME = hostname;
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("Binding peer UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
+    }
+    
+    public String getConnection() {
+        return HOSTNAME + ":" + PORT;
     }
     
     /**
@@ -111,21 +119,91 @@ public final class PeerUDP extends Server {
                 try {
                     String address;
                     String result;
+                    String type;
                     InetAddress ipAddress = PACKET.getAddress();
                     byte[] data = PACKET.getData();
                     String token = new String(data, "ISO-8859-1").trim();
-                    Peer peer = Peer.get(ipAddress);
-                    if (peer == null) {
+                    if (token.startsWith("HELO ")) {
                         address = ipAddress.getHostAddress();
-                        result = "UNKNOWN";
+                        try {
+                            int index = token.indexOf(' ') + 1;
+                            token = token.substring(index);
+                            StringTokenizer tokenizer = new StringTokenizer(token, " ");
+                            String connection = null;
+                            String email = null;
+                            if (tokenizer.hasMoreTokens()) {
+                                connection = tokenizer.nextToken();
+                                connection = connection.toLowerCase();
+                                if (tokenizer.hasMoreTokens()) {
+                                    email = tokenizer.nextToken();
+                                    email = email.toLowerCase();
+                                }
+                            }
+                            if (connection == null || connection.length() == 0) {
+                                result = "INVALID";
+                            } else if (email != null && !Domain.isEmail(email)) {
+                                result = "INVALID";
+                            } else {
+                                index = connection.indexOf(':');
+                                String hostname = connection.substring(0, index);
+                                String port = connection.substring(index + 1);
+                                InetAddress heloAddress = InetAddress.getByName(hostname);
+                                if (heloAddress.equals(ipAddress)) {
+                                    Peer peer = Peer.get(heloAddress);
+                                    if (peer == null) {
+                                        peer = Peer.create(hostname, port);
+                                        if (peer == null) {
+                                            result = "NOT CREATED";
+                                        } else {
+                                            peer.setEmail(email);
+                                            peer.updateLast();
+                                            result = "CREATED";
+                                        }
+                                    } else if (peer.getAddress().equals(hostname)) {
+                                        peer.setPort(port);
+                                        peer.setEmail(email);
+                                        peer.updateLast();
+                                        result = "UPDATED";
+                                    } else {
+                                        peer.drop();
+                                        peer = peer.clone(hostname);
+                                        peer.updateLast();
+                                        result = "UPDATED";
+                                    }
+                                } else {
+                                    result = "NOT MATCH";
+                                }
+                            }
+                        } catch (UnknownHostException ex) {
+                            result = "UNKNOWN";
+                        } catch (Exception ex) {
+                            Server.logError(ex);
+                            result = "ERROR " + ex.getMessage();
+                        } finally {
+                            type = "PEERH";
+                        }
                     } else {
-                        address = peer.getAddress();
-                        result = peer.processReceive(token);
+                        Peer peer = Peer.get(ipAddress);
+                        if (peer == null) {
+                            address = ipAddress.getHostAddress();
+                            result = "UNKNOWN";
+                            type = "PEERU";
+                        } else if (token.equals("PING")) {
+                            address = peer.getAddress();
+                            peer.updateLast();
+                            peer.send("PONG");
+                            result = "UPDATED";
+                            type = "PEERP";
+                        } else {
+                            address = peer.getAddress();
+                            result = peer.processReceive(token);
+                            type = "PEERB";
+                        }
                     }
                     // Log do bloqueio com o respectivo resultado.
                     Server.logQuery(
                             time,
-                            "PEERB",
+                            type,
                             address,
                             token,
                             result
