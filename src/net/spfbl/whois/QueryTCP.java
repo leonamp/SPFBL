@@ -53,7 +53,7 @@ public final class QueryTCP extends Server {
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding TCP socket on port " + port + "...");
+        Server.logDebug("binding TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
     
@@ -97,7 +97,7 @@ public final class QueryTCP extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             SOCKET = null;
             notify();
         }
@@ -205,7 +205,7 @@ public final class QueryTCP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating WHOISTCP" + (CONNECTION_COUNT+1) + "...");
+            Server.logDebug("creating WHOISTCP" + (CONNECTION_COUNT+1) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;
@@ -218,7 +218,7 @@ public final class QueryTCP extends Server {
     @Override
     public synchronized void run() {
         try {
-            Server.logDebug("Listening queries on TCP port " + PORT + "...");
+            Server.logDebug("listening queries on TCP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
@@ -243,7 +243,7 @@ public final class QueryTCP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie TCP server closed.");
+            Server.logDebug("querie TCP server closed.");
         }
     }
     
@@ -261,7 +261,7 @@ public final class QueryTCP extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding querie TCP socket on port " + PORT + "...");
+        Server.logDebug("unbinding querie TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

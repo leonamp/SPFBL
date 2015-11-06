@@ -42,8 +42,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     private final String address; // Endereço de acesso ao peer.
     private short port; // Porta de acesso ao peer.
-    private Send send = Send.DUNNO; // Status de envio para este peer.
-    private Receive receive = Receive.DROP; // Status de recebimento deste peer.
+    private Send send = Send.NEVER; // Status de envio para este peer.
+    private Receive receive = Receive.REJECT; // Status de recebimento deste peer.
     private String email = null; // E-mail do responsável.
     private long last = 0; // Último recebimento.
     
@@ -53,14 +53,17 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private final TreeSet<String> confirmSet = new TreeSet<String>();
     
     public enum Send {
-        DUNNO, // Não envia bloqueios para este peer.
-        BLOCK, // Envia todos os bloqueios identificados.
+        NEVER, // Nunca enviar bloqueios para este peer.
+        DUNNO, // Obsoleto.
+        ALWAYS, // Sempre enviar os bloqueios identificados.
+        BLOCK, // Obsoleto.
         REPASS // Envia e repassa todos os bloqueios identificados.
     }
     
     public enum Receive {
         ACCEPT, // Aceita imediatamente os bloqueios sem repassar.
-        DROP, // Ignora todos os bloqueios recebidos.
+        REJECT, // Ignora todos os bloqueios recebidos.
+        DROP, // Decarta todos os bloqueios recebidos e manda o firewall dropar.
         CONFIRM, // Aguarda confirmação para aceitar os bloqueios.
         REPASS // Aceita e repassa imediatamente os bloqueios.
     }
@@ -160,6 +163,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
     public boolean setSendStatus(Send status) throws ProcessException {
         if (status == null) {
             throw new ProcessException("INVALID SEND");
+        } else if (status == Send.BLOCK) {
+            throw new ProcessException("INVALID SEND");
+        } else if (status == Send.DUNNO) {
+            throw new ProcessException("INVALID SEND");
         } else if (status == this.send) {
             return false;
         } else {
@@ -171,14 +178,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public boolean setSendStatus(String status) throws ProcessException {
         try {
-            Send sendNew =  Send.valueOf(status);
-            if (sendNew == this.send) {
-                return false;
-            } else {
-                this.send = sendNew;
-                CHANGED = true;
-                return true;
-            }
+            return setSendStatus(Send.valueOf(status));
         } catch (IllegalArgumentException ex) {
             throw new ProcessException("INVALID SEND");
         }
@@ -198,14 +198,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public boolean setReceiveStatus(String status) throws ProcessException {
         try {
-            Receive receiveNew =  Receive.valueOf(status);
-            if (receiveNew == this.receive) {
-                return false;
-            } else {
-                this.receive = Receive.valueOf(status);
-                CHANGED = true;
-                return true;
-            }
+            return setReceiveStatus(Receive.valueOf(status));
         } catch (IllegalArgumentException ex) {
             throw new ProcessException("INVALID RECEIVE");
         }
@@ -276,6 +269,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         for (Peer peer : getSet()) {
             switch (peer.getSendStatus()) {
                 case BLOCK:
+                case ALWAYS:
                 case REPASS:
                     peerSet.add(peer);
                     break;
@@ -290,6 +284,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             if (!peer.equals(this)) {
                 switch (peer.getSendStatus()) {
                     case BLOCK:
+                    case ALWAYS:
                     case REPASS:
                         peerSet.add(peer);
                         break;
@@ -412,39 +407,49 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public void sendHELO() {
-        String email = Main.getAdminEmail();
+    public boolean sendHELO() {
         String connection = Main.getPeerConnection();
-        String helo = "HELO " + connection + (email == null ? "" : " " + email);
-        long time = System.currentTimeMillis();
-        String address = getAddress();
-        String result;
-        try {
-            int port = getPort();
-            Main.sendTokenToPeer(helo, address, port);
-            result = "SENT";
-        } catch (ProcessException ex) {
-            result = ex.getMessage();
-        }
-        Server.logQuery(time, "PEERH", address, helo, result);
-    }
-    
-    public static void sendHeloToAll() {
-        String email = Main.getAdminEmail();
-        String connection = Main.getPeerConnection();
-        String helo = "HELO " + connection + (email == null ? "" : " " + email);
-        for (Peer peer : getSet()) {
+        if (connection == null) {
+            return false;
+        } else {
+            String email = Main.getAdminEmail();
+            String helo = "HELO " + connection + (email == null ? "" : " " + email);
             long time = System.currentTimeMillis();
-            String address = peer.getAddress();
+            String address = getAddress();
             String result;
             try {
-                int port = peer.getPort();
+                int port = getPort();
                 Main.sendTokenToPeer(helo, address, port);
                 result = "SENT";
             } catch (ProcessException ex) {
                 result = ex.getMessage();
             }
             Server.logQuery(time, "PEERH", address, helo, result);
+            return true;
+        }
+    }
+    
+    public static boolean sendHeloToAll() {
+        String connection = Main.getPeerConnection();
+        if (connection == null) {
+            return false;
+        } else {
+            String email = Main.getAdminEmail();
+            String helo = "HELO " + connection + (email == null ? "" : " " + email);
+            for (Peer peer : getSendAllSet()) {
+                long time = System.currentTimeMillis();
+                String address = peer.getAddress();
+                String result;
+                try {
+                    int port = peer.getPort();
+                    Main.sendTokenToPeer(helo, address, port);
+                    result = "SENT";
+                } catch (ProcessException ex) {
+                    result = ex.getMessage();
+                }
+                Server.logQuery(time, "PEERH", address, helo, result);
+            }
+            return true;
         }
     }
     
@@ -484,6 +489,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return receive == Receive.DROP;
     }
     
+    private boolean isReceiveReject() {
+        return receive == Receive.REJECT;
+    }
+    
     private boolean isReceiveConfirm() {
         return receive == Receive.CONFIRM;
     }
@@ -503,6 +512,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "INVALID";
             } else if (SPF.isIgnore(token)) {
                 return "IGNORED";
+            } else if (isReceiveReject()) {
+                return "REJECTED";
             } else if (isReceiveDrop()) {
                 return "DROPED";
             } else if (isReceiveConfirm()) {
@@ -574,6 +585,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
                             create(address, port);
                         } else if (value instanceof Peer) {
                             Peer peer = (Peer) value;
+                            if (peer.send == Send.DUNNO) {
+                                // Obsoleto.
+                                peer.send = Send.NEVER;
+                            } else if (peer.send == Send.BLOCK) {
+                                // Obsoleto.
+                                peer.send = Send.ALWAYS;
+                            }
                             MAP.put(address, peer);
                         }
                     }

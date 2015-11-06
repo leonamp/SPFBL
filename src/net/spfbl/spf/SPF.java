@@ -1671,7 +1671,15 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static SPF dropExact(String token) {
+        private static synchronized boolean isChanged() {
+            return CHANGED;
+        }
+        
+        private static synchronized void setNotChanged() {
+            CHANGED = false;
+        }
+        
+        private static synchronized SPF dropExact(String token) {
             SPF ret = MAP.remove(token);
             if (ret != null) {
                 CHANGED = true;
@@ -1679,7 +1687,7 @@ public final class SPF implements Serializable {
             return ret;
         }
 
-        private static SPF putExact(String key, SPF value) {
+        private static synchronized SPF putExact(String key, SPF value) {
             SPF ret = MAP.put(key, value);
             if (!value.equals(ret)) {
                 CHANGED = true;
@@ -1698,12 +1706,8 @@ public final class SPF implements Serializable {
             map.putAll(MAP);
             return map;
         }
-
-        private static boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
         
-        private static SPF getExact(String host) {
+        private static synchronized SPF getExact(String host) {
             return MAP.get(host);
         }
         
@@ -1780,14 +1784,14 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (CHANGED) {
+            if (isChanged()) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/spf.map");
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(getMap(), outputStream);
-                        CHANGED = false;
+                        setNotChanged();
                     } finally {
                         outputStream.close();
                     }
@@ -1817,7 +1821,7 @@ public final class SPF implements Serializable {
                             putExact(key, spf);
                         }
                     }
-                    CHANGED = false;
+                    setNotChanged();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);

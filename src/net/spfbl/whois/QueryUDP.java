@@ -54,7 +54,7 @@ public final class QueryUDP extends Server {
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding querie UDP socket on port " + port + "...");
+        Server.logDebug("binding querie UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
@@ -96,7 +96,7 @@ public final class QueryUDP extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             PACKET = null;
             notify();
         }
@@ -196,7 +196,7 @@ public final class QueryUDP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating WHOISUDP" + (CONNECTION_COUNT+1) + "...");
+            Server.logDebug("creating WHOISUDP" + (CONNECTION_COUNT+1) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;
@@ -209,7 +209,7 @@ public final class QueryUDP extends Server {
     @Override
     public synchronized void run() {
         try {
-            Server.logDebug("Listening queries on UDP port " + PORT + "...");
+            Server.logDebug("listening queries on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -234,7 +234,7 @@ public final class QueryUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie UDP server closed.");
+            Server.logDebug("querie UDP server closed.");
         }
     }
     
@@ -256,7 +256,7 @@ public final class QueryUDP extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding querie UDP socket on port " + PORT + "...");
+        Server.logDebug("unbinding querie UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

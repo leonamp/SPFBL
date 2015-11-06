@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
@@ -108,6 +109,18 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public void setEmail(String email) throws ProcessException {
+        if (email == null || email.length() == 0) {
+            this.email = null;
+            CHANGED = true;
+        } else if (Domain.isEmail(email)) {
+            this.email = email.toLowerCase();
+            CHANGED = true;
+        } else {
+            throw new ProcessException("ERROR: INVALID EMAIL");
+        }
+    }
+    
     public void setPermissionSPFBL(boolean spfbl) {
         this.permission_spfbl = spfbl;
     }
@@ -159,7 +172,7 @@ public class Client implements Serializable, Comparable<Client> {
             ) throws ProcessException {
         if (Subnet.isValidCIDR(cidr)) {
             String ip = Subnet.getFirstIP(cidr);
-            Client client = get(ip);
+            Client client = getByIP(ip);
             if (client == null) {
                 ip = Subnet.expandIP(ip);
                 client = new Client(cidr, domain, email);
@@ -180,15 +193,59 @@ public class Client implements Serializable, Comparable<Client> {
         return clientSet;
     }
     
-    public synchronized static Client drop(String email) {
-        Client client = MAP.remove(email);
+    public static Client drop(String cidr) throws ProcessException {
+        if (cidr == null || !Subnet.isValidCIDR(cidr)) {
+            throw new ProcessException("ERROR: INVALID CIDR");
+        } else {
+            return getByCIDR(cidr);
+        }
+    }
+    
+    private synchronized static Client getExact(String key) {
+        return MAP.get(key);
+    }
+    
+    private synchronized static Client dropExact(String key) {
+        Client client = MAP.remove(key);
         if (client != null) {
             CHANGED = true;
         }
         return client;
     }
     
-    public synchronized static Client get(String ip) {
+    public static String getDomain(InetAddress address) {
+        if (address == null) {
+            return "UNKNOW";
+        } else {
+            String ip = address.getHostAddress();
+            Client client = getByIP(ip);
+            if (client == null) {
+                return ip;
+            } else {
+                return client.getDomain();
+            }
+        }
+    }
+    
+    public synchronized static Client getByCIDR(String cidr) throws ProcessException {
+        if (cidr == null) {
+            return null;
+        } else if (!Subnet.isValidCIDR(cidr)) {
+            throw new ProcessException("ERROR: INVALID CIDR");
+        } else {
+            cidr = Subnet.normalizeCIDR(cidr);
+            String ip = Subnet.getFirstIP(cidr);
+            String key = Subnet.expandIP(ip);
+            Client cliente = getExact(key);
+            if (cliente.getCIDR().equals(cidr)) {
+                return cliente;
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public synchronized static Client getByIP(String ip) {
         if (ip == null) {
             return null;
         } else {

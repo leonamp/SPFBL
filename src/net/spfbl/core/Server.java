@@ -745,7 +745,7 @@ public abstract class Server extends Thread {
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
-        Server.logDebug("Shutting down server...");
+        Server.logDebug("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {
@@ -1457,8 +1457,8 @@ public abstract class Server extends Thread {
                             result = "ERROR: COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String email = tokenizer.nextToken();
-                        Client client = Client.drop(email);
+                        String cidr = tokenizer.nextToken();
+                        Client client = Client.drop(cidr);
                         if (client == null) {
                             result += "NOT FOUND\n";
                         } else {
@@ -1471,6 +1471,27 @@ public abstract class Server extends Thread {
                         }
                         if (result.length() == 0) {
                             result = "EMPTY\n";
+                        }
+                    } else if (token.equals("SET") && tokenizer.hasMoreTokens()) {
+                        String cidr = tokenizer.nextToken();
+                        String domain = tokenizer.nextToken();
+                        String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                        if (tokenizer.hasMoreTokens()) {
+                            result = "ERROR: COMMAND\n";
+                        } else if (!Domain.isHostname(domain)) {
+                            result = "ERROR: INVALID DOMAIN\n";
+                        } else if (email != null && !Domain.isEmail(email)) {
+                            result = "ERROR: INVALID EMAIL\n";
+                        } else {
+                            Client client = Client.getByCIDR(cidr);
+                            if (client == null) {
+                                result += "NOT FOUND\n";
+                            } else {
+                                client.setDomain(domain);
+                                client.setEmail(email);
+                                result += "UPDATED " + client + "\n";
+                            }
+                            Client.store();
                         }
                     } else {
                         result = "ERROR: COMMAND\n";
@@ -1538,6 +1559,7 @@ public abstract class Server extends Thread {
                                 result = "ALREADY EXISTS\n";
                             } else {
                                 peer.setEmail(email);
+                                peer.sendHELO();
                                 result = "ADDED " + peer + "\n";
                             }
                             Peer.store();
@@ -1595,9 +1617,10 @@ public abstract class Server extends Thread {
                         Peer peer = Peer.get(address);
                         if (peer == null) {
                             result = "NOT FOUND " + address + "\n";
+                        } else if (peer.sendHELO()) {
+                            result = "HELO SENT TO " + address + "\n";
                         } else {
-                            peer.sendHELO();
-                            result = "SENT HELO TO " + address + "\n";
+                            result = "HELO NOT SENT local hostname is invalid\n";
                         }
                     } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
                         String address = tokenizer.nextToken();

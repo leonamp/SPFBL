@@ -57,7 +57,7 @@ public final class QuerySPF extends Server {
         PORT = port;
         setPriority(Thread.MAX_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding SPF socket on port " + port + "...");
+        Server.logDebug("binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
     
@@ -104,7 +104,7 @@ public final class QuerySPF extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             SOCKET = null;
             notify();
         }
@@ -495,7 +495,7 @@ public final class QuerySPF extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("Creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
+                Server.logDebug("creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;
@@ -518,7 +518,7 @@ public final class QuerySPF extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening queries on SPF port " + PORT + "...");
+            Server.logDebug("listening queries on SPF port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
@@ -547,7 +547,7 @@ public final class QuerySPF extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie SPFBL server closed.");
+            Server.logDebug("querie SPFBL server closed.");
         }
     }
     
@@ -565,7 +565,7 @@ public final class QuerySPF extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding querie SPF socket on port " + PORT + "...");
+        Server.logDebug("unbinding querie SPF socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

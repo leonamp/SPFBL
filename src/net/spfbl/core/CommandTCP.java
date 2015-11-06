@@ -47,7 +47,7 @@ public final class CommandTCP extends Server {
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding command TCP socket on port " + port + "...");
+        Server.logDebug("binding command TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
     
@@ -57,7 +57,7 @@ public final class CommandTCP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening commands on TCP port " + PORT + "...");
+            Server.logDebug("listening commands on TCP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     String command = null;
@@ -86,25 +86,25 @@ public final class CommandTCP extends Server {
                         // Verificar se houve falha no fechamento dos processos.
                         if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
                             // Fechar forçadamente o programa.
-                            Server.logDebug("System killed.");
+                            Server.logDebug("system killed.");
                             System.exit(1);
                         }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
-                    Server.logDebug("Command TCP listening stoped.");
+                    Server.logDebug("command TCP listening stoped.");
                 }
             }
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Command TCP server closed.");
+            Server.logDebug("command TCP server closed.");
         }
     }
     
     @Override
     protected synchronized void close() throws Exception {
-        Server.logDebug("Unbinding command TCP socket on port " + PORT + "...");
+        Server.logDebug("unbinding command TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

@@ -22,12 +22,18 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import net.spfbl.core.Peer;
 import net.spfbl.whois.Domain;
 
@@ -58,12 +64,37 @@ public final class PeerUDP extends Server {
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding peer UDP socket on port " + port + "...");
+        Server.logDebug("binding peer UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
     public String getConnection() {
-        return HOSTNAME + ":" + PORT;
+        try {
+            for (InetAddress address : InetAddress.getAllByName(HOSTNAME)) {
+                if (address.isAnyLocalAddress()) {
+                    return null;
+                } else if (address.isLinkLocalAddress()) {
+                    return null;
+                } else if (address.isLoopbackAddress()) {
+                    return null;
+                } else {
+                    return HOSTNAME + ":" + PORT;
+                }
+            }
+            return null;
+        } catch (UnknownHostException ex) {
+            return null;
+        }
+    }
+    
+    private static boolean hasAddress(String hostname,
+            InetAddress ipAddress) throws UnknownHostException {
+        for (InetAddress address : InetAddress.getAllByName(hostname)) {
+            if (address.equals(ipAddress)) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
@@ -104,7 +135,7 @@ public final class PeerUDP extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             PACKET = null;
             notify();
         }
@@ -127,8 +158,8 @@ public final class PeerUDP extends Server {
                         address = ipAddress.getHostAddress();
                         try {
                             int index = token.indexOf(' ') + 1;
-                            token = token.substring(index);
-                            StringTokenizer tokenizer = new StringTokenizer(token, " ");
+                            String helo = token.substring(index);
+                            StringTokenizer tokenizer = new StringTokenizer(helo, " ");
                             String connection = null;
                             String email = null;
                             if (tokenizer.hasMoreTokens()) {
@@ -147,9 +178,8 @@ public final class PeerUDP extends Server {
                                 index = connection.indexOf(':');
                                 String hostname = connection.substring(0, index);
                                 String port = connection.substring(index + 1);
-                                InetAddress heloAddress = InetAddress.getByName(hostname);
-                                if (heloAddress.equals(ipAddress)) {
-                                    Peer peer = Peer.get(heloAddress);
+                                if (hasAddress(hostname, ipAddress)) {
+                                    Peer peer = Peer.get(ipAddress);
                                     if (peer == null) {
                                         peer = Peer.create(hostname, port);
                                         if (peer == null) {
@@ -188,12 +218,6 @@ public final class PeerUDP extends Server {
                             address = ipAddress.getHostAddress();
                             result = "UNKNOWN";
                             type = "PEERU";
-                        } else if (token.equals("PING")) {
-                            address = peer.getAddress();
-                            peer.updateLast();
-                            peer.send("PONG");
-                            result = "UPDATED";
-                            type = "PEERP";
                         } else {
                             address = peer.getAddress();
                             result = peer.processReceive(token);
@@ -292,7 +316,7 @@ public final class PeerUDP extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("Creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
+                Server.logDebug("creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;
@@ -311,7 +335,7 @@ public final class PeerUDP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening peers on UDP port " + PORT + "...");
+            Server.logDebug("listening peers on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -338,7 +362,7 @@ public final class PeerUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie peer UDP server closed.");
+            Server.logDebug("querie peer UDP server closed.");
         }
     }
     
@@ -360,7 +384,7 @@ public final class PeerUDP extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding peer UDP socket on port " + PORT + "...");
+        Server.logDebug("unbinding peer UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

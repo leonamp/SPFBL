@@ -16,6 +16,9 @@
  */
 package net.spfbl.core;
 
+import it.sauronsoftware.junique.AlreadyLockedException;
+import it.sauronsoftware.junique.JUnique;
+import it.sauronsoftware.junique.MessageHandler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -176,103 +179,57 @@ public class Main {
             Main.PORT_DNSBL = (short) port;
         }
     }
+    
+    private static class ApplicationMessageHandler implements MessageHandler {
+        @Override
+        public synchronized String handle(String message) {
+            if (message.equals("register")) {
+                Server.logDebug("another instance of this application tried to start.");
+            }
+            return null;
+        }
+    }
 
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
         try {
-            startConfiguration();
-            Server.logDebug("Starting server...");
-            Server.loadCache();
-            new CommandTCP(PORT_ADMIN).start();
-            if (PORT_WHOIS > 0) {
-                new QueryTCP(PORT_WHOIS).start();
+            String appId = Server.class.getCanonicalName();
+            ApplicationMessageHandler messageHandler = new ApplicationMessageHandler();
+            boolean alreadyRunning;
+            try {
+                JUnique.acquireLock(appId, messageHandler);
+                alreadyRunning = false;
+            } catch (AlreadyLockedException ex) {
+                alreadyRunning = true;
             }
-            if (PORT_SPFBL > 0) {
-                new QuerySPF(PORT_SPFBL).start();
-                peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, UDP_MAX);
-                peerUDP.start();
+            if (alreadyRunning) {
+                JUnique.sendMessage(appId, "register");
+            } else {
+                startConfiguration();
+                Server.logDebug("starting server...");
+                Server.loadCache();
+                new CommandTCP(PORT_ADMIN).start();
+                if (PORT_WHOIS > 0) {
+                    new QueryTCP(PORT_WHOIS).start();
+                }
+                if (PORT_SPFBL > 0) {
+                    new QuerySPF(PORT_SPFBL).start();
+                    peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, UDP_MAX);
+                    peerUDP.start();
+                }
+                if (PORT_DNSBL > 0) {
+                    new QueryDNSBL(PORT_DNSBL).start();
+                }
+                if (!Peer.sendHeloToAll()) {
+                    Server.logDebug("the hostname '" +  HOSTNAME + "' has non global scope address.");
+                }
+                SPF.startTimer();
             }
-            if (PORT_DNSBL > 0) {
-                new QueryDNSBL(PORT_DNSBL).start();
-            }
-            SPF.startTimer();
         } catch (Exception ex) {
             Server.logError(ex);
-            printHelp();
             System.exit(1);
         }
-    }
-    
-    /**
-     * Imprime a ajuda.
-     */
-    private static void printHelp() {
-        System.out.println("Starting server:");
-        System.out.println("java -jar SPFBL.jar <port> <size>");
-        System.out.println();
-        System.out.println("Parameters:");
-        System.out.println("port: port to listen commands, port+1 to listen WHOIS qeries and port+2 to listem SPFBL queries.");
-        System.out.println("size: maximum packet size for result, just one packet for UDP.");
-        System.out.println();
-        System.out.println("Queries WHOIS:");
-        System.out.println("   <host> <field1> [<field2>...]");
-        System.out.println("      Query a host and return the domain fields.");
-        System.out.println("   <ip> <field1> [<field2>...]");
-        System.out.println("      Query an IP and return the IP block fields.");
-        System.out.println("");
-        System.out.println("Queries SPFBL:");
-        System.out.println("   <ip> <sender> <helo>");
-        System.out.println("      Query a SPF and return the qualifier and the ticket.");
-        System.out.println("");
-        System.out.println("Commands:");
-        System.out.println("   SHUTDOWN");
-        System.out.println("      Shutdown the server.");
-        System.out.println("   STORE");
-        System.out.println("      Store cache in disk.");
-        System.out.println("   PROVIDER");
-        System.out.println("      Add a e-mail provider.");
-        System.out.println("   TLD");
-        System.out.println("      Add a TLD.");
-        System.out.println();
-        System.out.println("Error messages:");
-        System.out.println("   Any error message starts with 'ERROR: ' string and before comes de message.");
-        System.out.println();
-        System.out.println("   DOMAIN NOT FOUND");
-        System.out.println("      No one domain is found to host.");
-        System.out.println("   RESERVED");
-        System.out.println("      The query key is a reserved TLD.");
-        System.out.println("   SUBNET NOT FOUND");
-        System.out.println("      No one sunbbet is found to IP.");
-        System.out.println("   WAITING");
-        System.out.println("      The domain is in waiting process.");
-        System.out.println("   PARSING");
-        System.out.println("      Fail to parse the WHOIS response.");
-        System.out.println("   NSLOOKUP");
-        System.out.println("      Fail to try to do a NS lookup in domain.");
-        System.out.println("   SERVER NOT FOUND");
-        System.out.println("      WHOIS server not found to domain or IP.");
-        System.out.println("   QUERY");
-        System.out.println("      Query not reconized.");
-        System.out.println("   COMMAND");
-        System.out.println("      Command not reconized.");
-        System.out.println("   WHOIS CONNECTION FAIL");
-        System.out.println("      Fail in try to connect to WHOIS service.");
-        System.out.println("   WHOIS CONNECTION LIMIT");
-        System.out.println("      Concurrent connection limit to WHOIS service.");
-        System.out.println("   WHOIS DENIED");
-        System.out.println("      Acess denied to WHOIS service.");
-        System.out.println("   WHOIS QUERY LIMIT");
-        System.out.println("      Query limit to WHOIS service.");
-        System.out.println("   ENCODING");
-        System.out.println("      WHOIS response comes not in ISO-8859-1.");
-        System.out.println("   TOO MANY CONNECTIONS");
-        System.out.println("      Too many simultaneous connections.");
-        System.out.println("   FATAL");
-        System.out.println("      A fatal error, check the LOG.");
-        System.out.println();
-        System.out.println("Queries and results for WHOIS in ISO-8859-1 charset.");
-        System.out.println("Queries and results for SPFBL in UTF-8 charset.");
     }
 }
