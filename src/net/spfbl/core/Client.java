@@ -145,6 +145,10 @@ public class Client implements Serializable, Comparable<Client> {
         return User.get(email);
     }
     
+    public boolean hasEmail() {
+        return email != null;
+    }
+    
     public boolean contains(String ip) {
         return Subnet.containsIP(cidr, ip);
     }
@@ -197,7 +201,17 @@ public class Client implements Serializable, Comparable<Client> {
         if (cidr == null || !Subnet.isValidCIDR(cidr)) {
             throw new ProcessException("ERROR: INVALID CIDR");
         } else {
-            return getByCIDR(cidr);
+            cidr = Subnet.normalizeCIDR(cidr);
+            String ip = Subnet.getFirstIP(cidr);
+            String key = Subnet.expandIP(ip);
+            Client client = getExact(key);
+            if (client == null) {
+                return null;
+            } else if (client.getCIDR().equals(cidr)) {
+                return dropExact(key);
+            } else {
+                return null;
+            }
         }
     }
     
@@ -211,6 +225,37 @@ public class Client implements Serializable, Comparable<Client> {
             CHANGED = true;
         }
         return client;
+    }
+    
+    public static String getOrigin(InetAddress address) {
+        if (address == null) {
+            return "UNKNOWN";
+        } else {
+            String ip = address.getHostAddress();
+            Client client = Client.get(address);
+            if (client == null) {
+                return ip + " " + Server.getLogClientOld(address);
+            } else if (client.hasEmail()) {
+                return ip + " " + client.getDomain() + " " + client.getEmail();
+            } else {
+                return ip + " " + client.getDomain();
+            }
+        }
+    }
+    
+    public static String getIdentification(InetAddress address) {
+        if (address == null) {
+            return "UNKNOWN";
+        } else {
+            Client client = Client.get(address);
+            if (client == null) {
+                return Server.getLogClientOld(address);
+            } else if (client.hasEmail()) {
+                return client.getEmail();
+            } else {
+                return client.getDomain();
+            }
+        }
     }
     
     public static String getDomain(InetAddress address) {
@@ -242,6 +287,14 @@ public class Client implements Serializable, Comparable<Client> {
             } else {
                 return null;
             }
+        }
+    }
+    
+    public static Client get(InetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            return getByIP(address.getHostAddress());
         }
     }
     

@@ -132,7 +132,16 @@ public final class SPF implements Serializable {
     }
     
     public static void startTimer() {
-        // Agenda processamento de reclamações vencidas.
+        TIMER.schedule(
+                new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Verificar reclamações vencidas.
+                CacheComplain.droExpired();
+            }
+        }, 1000, 1000 // Frequência de 1 segundo.
+                );
         TIMER.schedule(
                 new TimerTask() {
             @Override
@@ -140,8 +149,6 @@ public final class SPF implements Serializable {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro SPF mais consultado.
                 SPF.tryRefresh();
-                // Verificar reclamações vencidas.
-                CacheComplain.droExpired();
             }
         }, 60000, 60000 // Frequência de 1 minuto.
                 );

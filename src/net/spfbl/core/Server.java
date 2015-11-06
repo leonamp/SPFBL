@@ -290,21 +290,6 @@ public abstract class Server extends Thread {
      *    - Tipo de registro de LOG com 5 caracteres fixos e
      *    - Mensagem do LOG.
      * 
-     * Tipos de registros de LOG:
-     *    - CMMND: comandos ao servidor.
-     *    - DEBUG: debug do sistema.
-     *    - DNSBL: consulta DNSBL via DNS.
-     *    - ERROR: erro de sistema.
-     *    - MATCH: verificação se HELO aponta para IP.
-     *    - SPFER: consulta SPF com erros de sintaxe.
-     *    - SPFOK: consulta SPF sem erros de sintaxe.
-     *    - SPFQR: consulta SPFBL pelo cliente.
-     *    - SPFBL: adição de denúncia SPFBL pelo cliente.
-     *    - SPFWL: remoção de denúncia SPFBL pelo cliente.
-     *    - TIKET: geração de ticket pelo SPFBL.
-     *    - WHOIS: consulta externa do WHOIS.
-     *    - WHOQR: consulta de campos WHOIS pelo cliente.
-     * 
      * Nenhum processamento deve durar mais que 9999 milisegundos.
      * Por este motivo o valor foi limitado a 4 digitos.
      * Se acontecer do valor ser maior que 9999, significa que o código 
@@ -635,8 +620,9 @@ public abstract class Server extends Thread {
     private static long lastClientsFileModified = 0;
     private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
     
-    public static synchronized String getLogClient(InetAddress ipAddress) {
-        if (ipAddress == null) {
+    @Deprecated
+    public static synchronized String getLogClientOld(InetAddress address) {
+        if (address == null) {
             return "UNKNOWN";
         } else {
             File clientsFile = new File("./data/clients.txt");
@@ -664,7 +650,7 @@ public abstract class Server extends Thread {
                     Server.logError(ex);
                 }
             }
-            String ip = ipAddress.getHostAddress();
+            String ip = address.getHostAddress();
             try {
                 for (String cidr : subnetClientsMap.keySet()) {
                     if (SubnetIPv4.isValidCIDRv4(cidr)) {
@@ -705,10 +691,11 @@ public abstract class Server extends Thread {
             String type,
             InetAddress ipAddress,
             String query, String result) {
+        String origin = Client.getOrigin(ipAddress);
         if (query == null) {
-            log(time, type, getLogClient(ipAddress) + ":", result);
+            log(time, type, origin + ":", result);
         } else {
-            log(time, type, getLogClient(ipAddress) + ": " + query, result);
+            log(time, type, origin + ": " + query, result);
         }
     }
     
@@ -720,13 +707,6 @@ public abstract class Server extends Thread {
         log(time, type, (client == null ? "" : client + ": ") + query, result);
     }
     
-//    public static void logQuery(
-//            long time,
-//            String type,
-//            String query, String result) {
-//        log(time, type, query, result);
-//    }
-    
     /**
      * Registra as mensagens de comando.
      * Uma iniciativa para formalização das mensagens de log.
@@ -736,7 +716,8 @@ public abstract class Server extends Thread {
      */
     public static void logCommand(long time,
             InetAddress ipAddress, String command, String result) {
-        log(time, "CMMND", getLogClient(ipAddress) + ": " + command, result);
+        String origin = Client.getOrigin(ipAddress);
+        log(time, "CMMND", origin + ": " + command, result);
     }
     
     /**

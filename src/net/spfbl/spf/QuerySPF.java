@@ -34,6 +34,7 @@ import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.core.Client;
 
 /**
  * Servidor de consulta em SPF.
@@ -121,7 +122,9 @@ public final class QuerySPF extends Server {
                     String query = null;
                     String result = null;
                     try {
-                        String client = Server.getLogClient(SOCKET.getInetAddress());
+//                        String client = Server.getLogClient(SOCKET.getInetAddress());
+                        InetAddress ipAddress = SOCKET.getInetAddress();
+                        String client = Client.getIdentification(ipAddress);
                         InputStream inputStream = SOCKET.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
