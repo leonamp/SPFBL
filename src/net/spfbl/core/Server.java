@@ -708,16 +708,16 @@ public abstract class Server extends Thread {
     }
     
     /**
-     * Registra as mensagens de comando.
+     * Registra as mensagens de comando administrativo.
      * Uma iniciativa para formalização das mensagens de log.
      * @param ipAddress o IP da conexão.
      * @param command a expressão do comando.
      * @param result a expressão do resultado.
      */
-    public static void logCommand(long time,
+    public static void logAdministration(long time,
             InetAddress ipAddress, String command, String result) {
         String origin = Client.getOrigin(ipAddress);
-        log(time, "CMMND", origin + ": " + command, result);
+        log(time, "ADMIN", origin + ": " + command, result);
     }
     
     /**
@@ -1408,31 +1408,38 @@ public abstract class Server extends Thread {
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
                         String cidr = tokenizer.nextToken();
                         if (tokenizer.hasMoreTokens()) {
-                            String domain = tokenizer.nextToken();
-                            String email;
+                            String permission = tokenizer.nextToken();
                             if (tokenizer.hasMoreTokens()) {
-                                if (tokenizer.countTokens() == 1) {
-                                    email = tokenizer.nextToken();
-                                } else {
-                                    email = null;
-                                }
-                            } else {
-                                email = "";
-                            }
-                            if (email == null) {
-                                result = "ERROR: COMMAND\n";
-                            } else {
-                                try {
-                                    Client client = Client.create(cidr, domain, email);
-                                    if (client == null) {
-                                        result = "ALREADY EXISTS\n";
+                                String domain = tokenizer.nextToken();
+                                String email;
+                                if (tokenizer.hasMoreTokens()) {
+                                    if (tokenizer.countTokens() == 1) {
+                                        email = tokenizer.nextToken();
                                     } else {
-                                        result = "ADDED " + client + "\n";
+                                        email = null;
                                     }
-                                } catch (ProcessException ex) {
-                                    result = ex.getMessage() + "\n";
+                                } else {
+                                    email = "";
                                 }
-                                Client.store();
+                                if (email == null) {
+                                    result = "ERROR: COMMAND\n";
+                                } else {
+                                    try {
+                                        Client client = Client.create(
+                                                cidr, domain, permission, email
+                                        );
+                                        if (client == null) {
+                                            result = "ALREADY EXISTS\n";
+                                        } else {
+                                            result = "ADDED " + client + "\n";
+                                        }
+                                    } catch (ProcessException ex) {
+                                        result = ex.getMessage() + "\n";
+                                    }
+                                    Client.store();
+                                }
+                            } else {
+                                result = "ERROR: COMMAND\n";
                             }
                         } else {
                             result = "ERROR: COMMAND\n";
@@ -1455,24 +1462,34 @@ public abstract class Server extends Thread {
                         }
                     } else if (token.equals("SET") && tokenizer.hasMoreTokens()) {
                         String cidr = tokenizer.nextToken();
-                        String domain = tokenizer.nextToken();
-                        String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
                         if (tokenizer.hasMoreTokens()) {
-                            result = "ERROR: COMMAND\n";
-                        } else if (!Domain.isHostname(domain)) {
-                            result = "ERROR: INVALID DOMAIN\n";
-                        } else if (email != null && !Domain.isEmail(email)) {
-                            result = "ERROR: INVALID EMAIL\n";
-                        } else {
-                            Client client = Client.getByCIDR(cidr);
-                            if (client == null) {
-                                result += "NOT FOUND\n";
+                            String domain = tokenizer.nextToken();
+                            if (tokenizer.hasMoreTokens()) {
+                                String permission = tokenizer.nextToken();
+                                String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                if (tokenizer.hasMoreTokens()) {
+                                    result = "ERROR: COMMAND\n";
+                                } else if (!Domain.isHostname(domain)) {
+                                    result = "ERROR: INVALID DOMAIN\n";
+                                } else if (email != null && !Domain.isEmail(email)) {
+                                    result = "ERROR: INVALID EMAIL\n";
+                                } else {
+                                    Client client = Client.getByCIDR(cidr);
+                                    if (client == null) {
+                                        result += "NOT FOUND\n";
+                                    } else {
+                                        client.setPermission(permission);
+                                        client.setDomain(domain);
+                                        client.setEmail(email);
+                                        result += "UPDATED " + client + "\n";
+                                    }
+                                    Client.store();
+                                }
                             } else {
-                                client.setDomain(domain);
-                                client.setEmail(email);
-                                result += "UPDATED " + client + "\n";
+                                result = "ERROR: COMMAND\n";
                             }
-                            Client.store();
+                        } else {
+                            result = "ERROR: COMMAND\n";
                         }
                     } else {
                         result = "ERROR: COMMAND\n";
@@ -1565,7 +1582,7 @@ public abstract class Server extends Thread {
                                 result = "NOT FOUND " + address + "\n";
                             } else {
                                 result = peer + "\n";
-                                for (String confirm : peer.getConfirmSet()) {
+                                for (String confirm : peer.getRetationSet()) {
                                     result += confirm + "\n";
                                 }
                             }
@@ -1611,6 +1628,81 @@ public abstract class Server extends Thread {
                         } else {
                             peer.sendAll();
                             result = "SENT TO " + address + "\n";
+                        }
+                    } else if (token.equals("RETENTION") && tokenizer.hasMoreElements()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("SHOW") && tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                TreeSet<String> retationSet = Peer.getAllRetationSet();
+                                if (retationSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String tokenRetained : retationSet) {
+                                        result += tokenRetained + '\n';
+                                    }
+                                }
+                            } else if (Domain.isHostname(token)) {
+                                Peer peer = Peer.get(token);
+                                if (peer == null) {
+                                    result = "PEER '" + token + "' NOT FOUND\n";
+                                } else {
+                                    TreeSet<String> retationSet = peer.getRetationSet();
+                                    if (retationSet.isEmpty()) {
+                                        result = "EMPTY\n";
+                                    } else {
+                                        for (String tokenRetained : retationSet) {
+                                            result += tokenRetained + '\n';
+                                        }
+                                    }
+                                }
+                            } else {
+                                result = "ERROR: COMMAND\n";
+                            }
+                        } else if (token.equals("RELEASE")) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                TreeSet<String> returnSet = Peer.releaseAll();
+                                if (returnSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String response : returnSet) {
+                                        result += response + '\n';
+                                    }
+                                }
+                            } else {
+                                TreeSet<String> returnSet = Peer.releaseAll(token);
+                                if (returnSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String response : returnSet) {
+                                        result += response + '\n';
+                                    }
+                                }
+                            }
+                        } else if (token.equals("REJECT")) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                TreeSet<String> returnSet = Peer.rejectAll();
+                                if (returnSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String response : returnSet) {
+                                        result += response + '\n';
+                                    }
+                                }
+                            } else {
+                                TreeSet<String> returnSet = Peer.rejectAll(token);
+                                if (returnSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String response : returnSet) {
+                                        result += response + '\n';
+                                    }
+                                }
+                            }
+                        } else {
+                            result = "ERROR: COMMAND\n";
                         }
                     } else {
                         result = "ERROR: COMMAND\n";

@@ -210,7 +210,7 @@ public class Main {
                 startConfiguration();
                 Server.logDebug("starting server...");
                 Server.loadCache();
-                new CommandTCP(PORT_ADMIN).start();
+                new AdministrationTCP(PORT_ADMIN).start();
                 if (PORT_WHOIS > 0) {
                     new QueryTCP(PORT_WHOIS).start();
                 }

@@ -44,44 +44,13 @@ public class Client implements Serializable, Comparable<Client> {
     private final String cidr;
     private String domain;
     private String email;
+    private Permission permission = Permission.NONE;
     
-    /**
-     * Permissões de cliente.
-     */
-    private boolean permission_spfbl = false; // Pode consultar o serviço SPFBL.
-    private boolean permission_dnsbl = false; // Pode consultar o serviço DNSBL.
-    
-    public static void main(String[] args) throws Exception {
-        File clientsFile = new File("./data/clients.txt");
-        BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
-        try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-                if (tokenizer.countTokens() == 3) {
-                    String cidr = tokenizer.nextToken();
-                    String email = tokenizer.nextToken();
-                    String nome = tokenizer.nextToken();
-                    String domain;
-                    if (Domain.isEmail(email)) {
-                        domain = Domain.extractDomain(email, false);
-                        User user = User.create(email, nome);
-                        if (user != null) {
-                            user.setPermissionSPFBL(true);
-                            System.out.println(user);
-                        }
-                    } else {
-                        domain = email;
-                        email = null;
-                    }
-                    Client client = create(cidr, domain, email);
-                    client.setPermissionSPFBL(true);
-                    System.out.println(client);
-                }
-            }
-        } finally {
-            reader.close();
-        }
+    public enum Permission {
+        NONE,
+        DNSBL,
+        SPFBL,
+        ALL
     }
     
     private Client(String cidr, String domain, String email) throws ProcessException {
@@ -121,12 +90,21 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public void setPermissionSPFBL(boolean spfbl) {
-        this.permission_spfbl = spfbl;
+    public void setPermission(String permission) throws ProcessException {
+        try {
+            setPermission(Permission.valueOf(permission));
+        } catch (Exception ex) {
+            throw new ProcessException("ERROR: INVALID PERMISSION");
+        }
     }
     
-    public void setPermissionDNSBL(boolean dnsbl) {
-        this.permission_dnsbl = dnsbl;
+    public void setPermission(Permission permission) throws ProcessException {
+        if (permission == null) {
+            throw new ProcessException("ERROR: INVALID PERMISSION");
+        } else if (this.permission != permission) {
+            this.permission = permission;
+            CHANGED = true;
+        }
     }
     
     public String getCIDR() {
@@ -153,12 +131,8 @@ public class Client implements Serializable, Comparable<Client> {
         return Subnet.containsIP(cidr, ip);
     }
     
-    public boolean hasPermissionSPFBL() {
-        return permission_spfbl;
-    }
-    
-    public boolean hasPermissionDNSBL() {
-        return permission_dnsbl;
+    public Permission getPermission() {
+        return permission;
     }
     
     /**
@@ -172,7 +146,7 @@ public class Client implements Serializable, Comparable<Client> {
     private static boolean CHANGED = false;
     
     public static Client create(
-            String cidr, String domain, String email
+            String cidr, String domain, String permission, String email
             ) throws ProcessException {
         if (Subnet.isValidCIDR(cidr)) {
             String ip = Subnet.getFirstIP(cidr);
@@ -180,6 +154,7 @@ public class Client implements Serializable, Comparable<Client> {
             if (client == null) {
                 ip = Subnet.expandIP(ip);
                 client = new Client(cidr, domain, email);
+                client.setPermission(permission);
                 MAP.put(ip, client);
                 CHANGED = true;
                 return client;
@@ -394,9 +369,15 @@ public class Client implements Serializable, Comparable<Client> {
     
     @Override
     public String toString() {
-        return domain + ":" + cidr
-                + (email == null ? "" : " <" + email + ">")
-                + (permission_spfbl ? " SPFBL" : "")
-                + (permission_dnsbl ? " DNSBL" : "");
+        User user = getUser();
+        if (user == null) {
+            return domain + ":" + cidr
+                    + (permission == null ? " NONE" : " " + permission.name())
+                    + (email == null ? "" : " <" + email + ">");
+        } else {
+            return domain + ":" + cidr
+                    + (permission == null ? " NONE" : " " + permission.name())
+                    + " " + user;
+        }
     }
 }

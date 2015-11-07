@@ -57,6 +57,7 @@ import org.xbill.DNS.Type;
  */
 public final class QueryDNSBL extends Server {
 
+    private final int PORT;
     private final DatagramSocket SERVER_SOCKET;
     
     /**
@@ -242,6 +243,7 @@ public final class QueryDNSBL extends Server {
         setPriority(Thread.NORM_PRIORITY);
         // Criando conexões.
         Server.logDebug("binding DNSBL socket on port " + port + "...");
+        PORT = port;
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
@@ -491,7 +493,7 @@ public final class QueryDNSBL extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening DNSBL on UDP port " + SERVER_SOCKET.getPort() + "...");
+            Server.logDebug("listening DNSBL on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -536,7 +538,7 @@ public final class QueryDNSBL extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("unbinding DSNBL socket on port " + SERVER_SOCKET.getPort() + "...");
+        Server.logDebug("unbinding DSNBL socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

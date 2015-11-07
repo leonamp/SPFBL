@@ -32,7 +32,7 @@ import java.net.SocketException;
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class CommandTCP extends Server {
+public final class AdministrationTCP extends Server {
 
     private final int PORT;
     private final ServerSocket SERVER_SOCKET;
@@ -42,7 +42,7 @@ public final class CommandTCP extends Server {
      * @param port a porta TCP a ser vinculada.
      * @throws java.io.IOException se houver falha durante o bind.
      */
-    public CommandTCP(int port) throws IOException {
+    public AdministrationTCP(int port) throws IOException {
         super("ServerCOMMAND");
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
@@ -72,7 +72,7 @@ public final class CommandTCP extends Server {
                         if (command == null) {
                             command = "DISCONNECTED";
                         } else {
-                            result = CommandTCP.this.processCommand(command);
+                            result = AdministrationTCP.this.processCommand(command);
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
@@ -82,7 +82,7 @@ public final class CommandTCP extends Server {
                         // Fecha conexão logo após resposta.
                         socket.close();
                         // Log da consulta com o respectivo resultado.
-                        Server.logCommand(time, socket.getInetAddress(), command, result);
+                        Server.logAdministration(time, socket.getInetAddress(), command, result);
                         // Verificar se houve falha no fechamento dos processos.
                         if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
                             // Fechar forçadamente o programa.

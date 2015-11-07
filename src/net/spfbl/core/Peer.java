@@ -48,9 +48,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private long last = 0; // Último recebimento.
     
     /**
-     * Guarda os bloqueios que necessitam de confirmação.
+     * Retém os bloqueios que necessitam de confirmação.
      */
-    private final TreeSet<String> confirmSet = new TreeSet<String>();
+    private final TreeSet<String> retainSet = new TreeSet<String>();
     
     public enum Send {
         NEVER, // Nunca enviar bloqueios para este peer.
@@ -64,7 +64,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
         ACCEPT, // Aceita imediatamente os bloqueios sem repassar.
         REJECT, // Ignora todos os bloqueios recebidos.
         DROP, // Decarta todos os bloqueios recebidos e manda o firewall dropar.
-        CONFIRM, // Aguarda confirmação para aceitar os bloqueios.
+        CONFIRM, // Obsoleto.
+        RETAIN, // Retém todos os bloqueios recebidos para confirmação.
         REPASS // Aceita e repassa imediatamente os bloqueios.
     }
     
@@ -187,6 +188,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
     public boolean setReceiveStatus(Receive status) throws ProcessException {
         if (status == null) {
             throw new ProcessException("INVALID RECEIVE");
+        } else if (status == Receive.CONFIRM) {
+            throw new ProcessException("INVALID RECEIVE");
         } else if (status == this.receive) {
             return false;
         } else {
@@ -204,9 +207,109 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public TreeSet<String> getConfirmSet() {
+    public TreeSet<String> getRetationSet() {
         TreeSet<String> returnSet = new TreeSet<String>();
-        returnSet.addAll(confirmSet);
+        returnSet.addAll(retainSet);
+        return returnSet;
+    }
+    
+    public static TreeSet<String> getAllRetationSet() {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            for (String token : peer.getRetationSet()) {
+                returnSet.add(peer.getAddress() + ':' + token);
+            }
+        }
+        return returnSet;
+    }
+    
+    public synchronized boolean dropExact(String token) {
+        return retainSet.remove(token);
+    }
+    
+    public String reject(String token) {
+        if (dropExact(token)) {
+            return "REJECTED";
+        } else {
+            return "NOT FOUND";
+        }
+    }
+    
+    public TreeSet<String> reject() {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (String token : getRetationSet()) {
+            String response = reject(token);
+            if (!response.equals("NOT FOUND")) {
+                returnSet.add(token + " => " + response);
+            }
+        }
+        return returnSet;
+    }
+    
+    public static TreeSet<String> rejectAll() {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            for (String response : peer.reject()) {
+                returnSet.add(peer.getAddress() + ':' + response);
+            }
+        }
+        return returnSet;
+    }
+    
+    public static TreeSet<String> rejectAll(String token) {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            String response = peer.reject(token);
+            returnSet.add(peer.getAddress() + ':' + response);
+        }
+        return returnSet;
+    }
+    
+    public String release(String token) {
+        if (dropExact(token)) {
+            if (SPF.addBlockExact(token)) {
+                if (isReceiveRepass()) {
+                    sendToOthers(token);
+                    return "REPASSED";
+                } else {
+                    sendToRepass(token);
+                    return "ADDED";
+                }
+            } else {
+                return "EXISTS";
+            }
+        } else {
+            return "NOT FOUND";
+        }
+    }
+    
+    public TreeSet<String> release() {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (String token : getRetationSet()) {
+            String response = release(token);
+            if (!response.equals("NOT FOUND")) {
+                returnSet.add(token + " => " + response);
+            }
+        }
+        return returnSet;
+    }
+    
+    public static TreeSet<String> releaseAll() {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            for (String response : peer.release()) {
+                returnSet.add(peer.getAddress() + ':' + response);
+            }
+        }
+        return returnSet;
+    }
+    
+    public static TreeSet<String> releaseAll(String token) {
+        TreeSet<String> returnSet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            String response = peer.release(token);
+            returnSet.add(peer.getAddress() + ':' + response);
+        }
         return returnSet;
     }
     
@@ -412,19 +515,20 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (connection == null) {
             return false;
         } else {
+            String client = null;
             String email = Main.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
             long time = System.currentTimeMillis();
             String address = getAddress();
-            String result;
+            String result = address;
             try {
                 int port = getPort();
                 Main.sendTokenToPeer(helo, address, port);
-                result = "SENT";
+                result += "SENT";
             } catch (ProcessException ex) {
-                result = ex.getMessage();
+                result += ex.getMessage();
             }
-            Server.logQuery(time, "PEERH", address, helo, result);
+            Server.logQuery(time, "PEERP", client, helo, result);
             return true;
         }
     }
@@ -493,16 +597,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return receive == Receive.REJECT;
     }
     
-    private boolean isReceiveConfirm() {
-        return receive == Receive.CONFIRM;
+    private boolean isReceiveRetain() {
+        return receive == Receive.RETAIN;
     }
     
     private boolean isReceiveRepass() {
         return receive == Receive.REPASS;
     }
     
-    private synchronized boolean addConfirm(String token) {
-        return confirmSet.add(token);
+    private synchronized boolean addRetain(String token) {
+        return retainSet.add(token);
     }
     
     public String processReceive(String token) {
@@ -516,9 +620,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
                 return "DROPED";
-            } else if (isReceiveConfirm()) {
-                if (addConfirm(token)) {
-                    return "GUARDED";
+            } else if (isReceiveRetain()) {
+                if (addRetain(token)) {
+                    return "RETAINED";
                 } else {
                     return "DROPED";
                 }
@@ -592,6 +696,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
                                 // Obsoleto.
                                 peer.send = Send.ALWAYS;
                             }
+                            if (peer.receive == Receive.CONFIRM) {
+                                // Obsoleto.
+                                peer.receive = Receive.RETAIN;
+                            }
                             MAP.put(address, peer);
                         }
                     }
@@ -630,9 +738,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
     @Override
     public String toString() {
         return address + ":" + port
-                + " " + send.name()
-                + " " + receive.name()
-                + " " + confirmSet.size()
+                + (send == null ? "" : " " + send.name())
+                + (receive == null ? "" : " " + receive.name())
+                + (retainSet == null ? "" : " " + retainSet.size())
                 + " " + (isAlive() ? "ALIVE" : "DEAD")
                 + (email == null ? "" : " <" + email + ">");
     }

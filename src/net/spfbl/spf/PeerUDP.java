@@ -321,7 +321,8 @@ public final class PeerUDP extends Server {
                 CONNECTION_COUNT++;
                 return connection;
             } else {
-                return null;
+                CONNECION_SEMAPHORE.acquire();
+                return CONNECTION_POLL.poll();
             }
         } catch (InterruptedException ex) {
             Server.logError(ex);
