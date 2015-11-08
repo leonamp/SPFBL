@@ -1408,36 +1408,23 @@ public abstract class Server extends Thread {
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
                         String cidr = tokenizer.nextToken();
                         if (tokenizer.hasMoreTokens()) {
-                            String permission = tokenizer.nextToken();
+                            String domain = tokenizer.nextToken();
                             if (tokenizer.hasMoreTokens()) {
-                                String domain = tokenizer.nextToken();
-                                String email;
-                                if (tokenizer.hasMoreTokens()) {
-                                    if (tokenizer.countTokens() == 1) {
-                                        email = tokenizer.nextToken();
+                                String permission = tokenizer.nextToken();
+                                String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                try {
+                                    Client client = Client.create(
+                                            cidr, domain, permission, email
+                                    );
+                                    if (client == null) {
+                                        result = "ALREADY EXISTS\n";
                                     } else {
-                                        email = null;
+                                        result = "ADDED " + client + "\n";
                                     }
-                                } else {
-                                    email = "";
+                                } catch (ProcessException ex) {
+                                    result = ex.getMessage() + "\n";
                                 }
-                                if (email == null) {
-                                    result = "ERROR: COMMAND\n";
-                                } else {
-                                    try {
-                                        Client client = Client.create(
-                                                cidr, domain, permission, email
-                                        );
-                                        if (client == null) {
-                                            result = "ALREADY EXISTS\n";
-                                        } else {
-                                            result = "ADDED " + client + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        result = ex.getMessage() + "\n";
-                                    }
-                                    Client.store();
-                                }
+                                Client.store();
                             } else {
                                 result = "ERROR: COMMAND\n";
                             }
@@ -1453,12 +1440,26 @@ public abstract class Server extends Thread {
                             result += "DROPED " + client + "\n";
                         }
                         Client.store();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (Client client : Client.getSet()) {
-                            result += client + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
+                    } else if (token.equals("SHOW")) {
+                        if (tokenizer.hasMoreTokens()) {
+                            token = tokenizer.nextToken();
+                            if (Subnet.isValidIP(token)) {
+                                Client client = Client.getByIP(token);
+                                if (client == null) {
+                                    result += "NOT FOUND\n";
+                                } else {
+                                    result += client + "\n";
+                                }
+                            } else {
+                                result = "ERROR: COMMAND\n";
+                            }
+                        } else {
+                            for (Client client : Client.getSet()) {
+                                result += client + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
                         }
                     } else if (token.equals("SET") && tokenizer.hasMoreTokens()) {
                         String cidr = tokenizer.nextToken();

@@ -16,16 +16,12 @@
  */
 package net.spfbl.core;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.util.HashMap;
-import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.whois.Domain;
@@ -45,6 +41,9 @@ public class Client implements Serializable, Comparable<Client> {
     private String domain;
     private String email;
     private Permission permission = Permission.NONE;
+    private int limit = 1000;
+    private NormalDistribution frequency = null;
+    private long last = 0;
     
     public enum Permission {
         NONE,
@@ -257,7 +256,9 @@ public class Client implements Serializable, Comparable<Client> {
             String ip = Subnet.getFirstIP(cidr);
             String key = Subnet.expandIP(ip);
             Client cliente = getExact(key);
-            if (cliente.getCIDR().equals(cidr)) {
+            if (cliente == null) {
+                return null;
+            } else if (cliente.getCIDR().equals(cidr)) {
                 return cliente;
             } else {
                 return null;
@@ -333,6 +334,7 @@ public class Client implements Serializable, Comparable<Client> {
                     Object value = map.get(key);
                     if (value instanceof Client) {
                         Client client = (Client) value;
+                        client.limit = 100;
                         MAP.put(key, client);
                     }
                 }
@@ -340,6 +342,43 @@ public class Client implements Serializable, Comparable<Client> {
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+        }
+    }
+    
+    public boolean hasFrequency() {
+        return frequency != null;
+    }
+    
+    public String getFrequencyLiteral() {
+        if (hasFrequency()) {
+            return "~" + frequency.getMaximumInt() + "ms";
+        } else {
+            return "UNDEFINED";
+        }
+    }
+    
+    private Float getInterval() {
+        long current = System.currentTimeMillis();
+        Float interval;
+        if (last == 0) {
+            interval = null;
+        } else {
+            interval = (float) (current - last);
+        }
+        last = current;
+        return interval;
+    }
+    
+    public void addQuery() {
+        Float interval = getInterval();
+        if (interval == null) {
+            // Se não houver intervalo definido,
+            // considerar frequência nula.
+            frequency = null;
+        } else if (frequency == null) {
+            frequency = new NormalDistribution(interval);
+        } else {
+            frequency.addElement(interval);
         }
     }
     
@@ -373,10 +412,14 @@ public class Client implements Serializable, Comparable<Client> {
         if (user == null) {
             return domain + ":" + cidr
                     + (permission == null ? " NONE" : " " + permission.name())
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
                     + (email == null ? "" : " <" + email + ">");
         } else {
             return domain + ":" + cidr
                     + (permission == null ? " NONE" : " " + permission.name())
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
                     + " " + user;
         }
     }

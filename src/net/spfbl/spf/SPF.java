@@ -2100,7 +2100,7 @@ public final class SPF implements Serializable {
                         return null;
                     }
                 }
-                Server.logQuery(time, "SPFBL", client, "SPAM " + ticket, "OK " + blackSet);
+                Server.logQuery(time, "SPFCP", client, "SPAM " + ticket, "OK " + blackSet);
                 return blackSet;
             }
         }
@@ -6129,7 +6129,7 @@ public final class SPF implements Serializable {
             if (hasFrequency()) {
                 return frequency.toStringInt() + "s";
             } else {
-                return "undefined";
+                return "UNDEFINED";
             }
         }
 

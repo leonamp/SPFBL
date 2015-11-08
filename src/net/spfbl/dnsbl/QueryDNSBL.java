@@ -412,8 +412,15 @@ public final class QueryDNSBL extends Server {
                             );
                     SERVER_SOCKET.send(sendPacket);
                     // Log da consulta com o respectivo resultado.
-                    String client = Client.getDomain(ipAddress);
-                    Server.logQueryDNSBL(time, client, type + ' ' + query, result);
+                    Client client = Client.get(ipAddress);
+                    if (client == null) {
+                        String origin = ipAddress.getHostAddress();
+                        Server.logQueryDNSBL(time, origin, type + ' ' + query, result);
+                    } else {
+                        client.addQuery();
+                        String origin = ipAddress.getHostAddress() + ' ' + client.getDomain();
+                        Server.logQueryDNSBL(time, origin, type + ' ' + query, result);
+                    }
                 } catch (SocketException ex) {
                     // Houve fechamento do socket.
                     Server.logQueryDNSBL(time, ipAddress == null ? null : ipAddress.getHostAddress(), type + ' ' + query, "SOCKET CLOSED");

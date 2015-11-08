@@ -118,7 +118,7 @@ public final class QuerySPF extends Server {
         public synchronized void run() {
             while (continueListenning() && SOCKET != null) {
                 try {
-                    String type = "SPFQR";
+                    String type = "SPFBL";
                     String query = null;
                     String result = null;
                     try {
@@ -432,9 +432,17 @@ public final class QuerySPF extends Server {
                         InetAddress address = SOCKET.getInetAddress();
                         SOCKET = null;
                         // Log da consulta com o respectivo resultado.
+                        String origin;
+                        Client client = Client.get(address);
+                        if (client == null) {
+                            origin = address.getHostAddress();
+                        } else {
+                            client.addQuery();
+                            origin = address.getHostAddress() + ' ' + client.getDomain();
+                        }
                         Server.logQuery(
                                 time, type,
-                                address,
+                                origin,
                                 query == null ? "DISCONNECTED" : query,
                                 result
                                 );
@@ -535,7 +543,7 @@ public final class QuerySPF extends Server {
                         } finally {
                             socket.close();
                             Server.logQuery(
-                                time, "SPFQR",
+                                time, "SPFBL",
                                 socket.getInetAddress(),
                                 null, result
                                 );

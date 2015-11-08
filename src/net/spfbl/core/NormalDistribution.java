@@ -67,8 +67,16 @@ public class NormalDistribution implements Serializable {
         return getAverage() - getStandardError();
     }
     
+    public int getMinimumInt() {
+        return (int) getMinimum();
+    }
+    
     public double getMaximum() {
         return getAverage() + getStandardError();
+    }
+    
+    public int getMaximumInt() {
+        return (int) getMaximum();
     }
     
     public double getStandardDeviation() {
