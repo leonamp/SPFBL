@@ -50,7 +50,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     /**
      * Retém os bloqueios que necessitam de confirmação.
      */
-    private final TreeSet<String> retainSet = new TreeSet<String>();
+    private TreeSet<String> retainSet = new TreeSet<String>();
     
     public enum Send {
         NEVER, // Nunca enviar bloqueios para este peer.
@@ -445,6 +445,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public void sendAll() {
+        String origin = null;
         TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
         for (String token : distributionSet.keySet()) {
             Distribution distribution = distributionSet.get(token);
@@ -455,30 +456,32 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 try {
                     int port = getPort();
                     Main.sendTokenToPeer(token, address, port);
-                    result = "SENT";
+                    result = address;
                 } catch (ProcessException ex) {
                     result = ex.toString();
                 }
-                Server.logPeerSend(time, address, token, result);
+                Server.logPeerSend(time, origin, token, result);
             }
         }
     }
     
     public void send(String token) {
         long time = System.currentTimeMillis();
+        String origin = null;
         String address = getAddress();
         String result;
         try {
             int port = getPort();
             Main.sendTokenToPeer(token, address, port);
-            result = "SENT";
+            result = address;
         } catch (ProcessException ex) {
             result = ex.getMessage();
         }
-        Server.logPeerSend(time, address, token, result);
+        Server.logPeerSend(time, origin, token, result);
     }
     
     public void sendToOthers(String token) {
+        String origin = null;
         for (Peer peer : getSendSet()) {
             long time = System.currentTimeMillis();
             String address = peer.getAddress();
@@ -486,15 +489,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
             try {
                 int port = peer.getPort();
                 Main.sendTokenToPeer(token, address, port);
-                result = "SENT";
+                result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();
             }
-            Server.logPeerSend(time, address, token, result);
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
     public static void sendToAll(String token) {
+        String origin = null;
         for (Peer peer : getSendAllSet()) {
             long time = System.currentTimeMillis();
             String address = peer.getAddress();
@@ -502,11 +506,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
             try {
                 int port = peer.getPort();
                 Main.sendTokenToPeer(token, address, port);
-                result = "SENT";
+                result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();
             }
-            Server.logPeerSend(time, address, token, result);
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
@@ -515,7 +519,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (connection == null) {
             return false;
         } else {
-            String client = null;
+            String origin = null;
             String email = Main.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
             long time = System.currentTimeMillis();
@@ -524,11 +528,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
             try {
                 int port = getPort();
                 Main.sendTokenToPeer(helo, address, port);
-                result += "SENT";
+                result += address;
             } catch (ProcessException ex) {
                 result += ex.getMessage();
             }
-            Server.logQuery(time, "PEERP", client, helo, result);
+            Server.logQuery(time, "PEERP", origin, helo, result);
             return true;
         }
     }
@@ -538,6 +542,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (connection == null) {
             return false;
         } else {
+            String origin = null;
             String email = Main.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
             for (Peer peer : getSendAllSet()) {
@@ -551,7 +556,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 } catch (ProcessException ex) {
                     result = ex.getMessage();
                 }
-                Server.logQuery(time, "PEERH", address, helo, result);
+                Server.logQuery(time, "PEERP", origin, helo, result);
             }
             return true;
         }
@@ -699,6 +704,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
                             if (peer.receive == Receive.CONFIRM) {
                                 // Obsoleto.
                                 peer.receive = Receive.RETAIN;
+                            }
+                            if (peer.retainSet == null) {
+                                peer.retainSet = new TreeSet<String>();
                             }
                             MAP.put(address, peer);
                         }
