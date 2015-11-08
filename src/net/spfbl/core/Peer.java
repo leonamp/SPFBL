@@ -25,6 +25,8 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
@@ -45,6 +47,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private Send send = Send.NEVER; // Status de envio para este peer.
     private Receive receive = Receive.REJECT; // Status de recebimento deste peer.
     private String email = null; // E-mail do responsável.
+    private int limit = 100;
+    private NormalDistribution frequency = null;
     private long last = 0; // Último recebimento.
     
     /**
@@ -137,9 +141,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return User.get(email);
     }
     
-    public void updateLast() {
-        this.last = System.currentTimeMillis();
-    }
+//    public void updateLast() {
+//        this.last = System.currentTimeMillis();
+//    }
     
     public boolean isAlive() {
         return (System.currentTimeMillis() - last) / Server.DAY_TIME == 0;
@@ -332,6 +336,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
         peerNew.send = this.send;
         peerNew.receive = this.receive;
         peerNew.email = this.email;
+        peerNew.limit = this.limit;
+        peerNew.frequency = this.frequency.replicate();
         peerNew.last = this.last;
         return peerNew;
     }
@@ -462,6 +468,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 }
                 Server.logPeerSend(time, origin, token, result);
             }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ex) {
+                // Interrompido.
+            }
         }
     }
     
@@ -552,7 +563,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 try {
                     int port = peer.getPort();
                     Main.sendTokenToPeer(helo, address, port);
-                    result = "SENT";
+                    result = address;
                 } catch (ProcessException ex) {
                     result = ex.getMessage();
                 }
@@ -563,6 +574,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public void sendToRepass(String token) {
+        String origin = null;
         for (Peer peer : getRepassSet()) {
             long time = System.currentTimeMillis();
             String address = peer.getAddress();
@@ -570,11 +582,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
             try {
                 int port = peer.getPort();
                 Main.sendTokenToPeer(token, address, port);
-                result = "SENT";
+                result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();
             }
-            Server.logPeerSend(time, address, token, result);
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
@@ -616,7 +628,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String processReceive(String token) {
         try {
-            updateLast();
+//            updateLast();
             if (!isValid(token)) {
                 return "INVALID";
             } else if (SPF.isIgnore(token)) {
@@ -708,6 +720,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
                             if (peer.retainSet == null) {
                                 peer.retainSet = new TreeSet<String>();
                             }
+                            if (peer.limit == 0) {
+                                peer.limit = 100;
+                            }
                             MAP.put(address, peer);
                         }
                     }
@@ -716,6 +731,41 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+        }
+    }
+    
+    public boolean hasFrequency() {
+        return frequency != null;
+    }
+    
+    public String getFrequencyLiteral() {
+        if (hasFrequency()) {
+            return "~" + frequency.getMaximumInt() + "ms";
+        } else {
+            return "UNDEFINED";
+        }
+    }
+    
+    private Float getInterval() {
+        long current = System.currentTimeMillis();
+        Float interval;
+        if (last == 0) {
+            interval = null;
+        } else {
+            interval = (float) (current - last);
+        }
+        last = current;
+        return interval;
+    }
+    
+    public void addNotification() {
+        Float interval = getInterval();
+        if (interval == null) {
+            // Se não houver intervalo definido, fazer nada.
+        } else if (frequency == null) {
+            frequency = new NormalDistribution(interval);
+        } else {
+            frequency.addElement(interval);
         }
     }
     
@@ -745,11 +795,26 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     @Override
     public String toString() {
-        return address + ":" + port
-                + (send == null ? "" : " " + send.name())
-                + (receive == null ? "" : " " + receive.name())
-                + (retainSet == null ? "" : " " + retainSet.size())
-                + " " + (isAlive() ? "ALIVE" : "DEAD")
-                + (email == null ? "" : " <" + email + ">");
+        User user = getUser();
+        if (user == null) {
+            return address + ":" + port
+                    + (send == null ? "" : " " + send.name())
+                    + (receive == null ? "" : " " + receive.name())
+                    + (retainSet == null ? "" : " " + retainSet.size())
+                    + " " + (isAlive() ? "ALIVE" : "DEAD")
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
+                    + (email == null ? "" : " <" + email + ">");
+        } else {
+            return address + ":" + port
+                    + (send == null ? "" : " " + send.name())
+                    + (receive == null ? "" : " " + receive.name())
+                    + (retainSet == null ? "" : " " + retainSet.size())
+                    + " " + (isAlive() ? "ALIVE" : "DEAD")
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
+                    + " " + user;
+        }
+        
     }
 }

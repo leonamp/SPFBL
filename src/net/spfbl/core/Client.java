@@ -41,7 +41,7 @@ public class Client implements Serializable, Comparable<Client> {
     private String domain;
     private String email;
     private Permission permission = Permission.NONE;
-    private int limit = 1000;
+    private int limit = 100;
     private NormalDistribution frequency = null;
     private long last = 0;
     
@@ -334,7 +334,9 @@ public class Client implements Serializable, Comparable<Client> {
                     Object value = map.get(key);
                     if (value instanceof Client) {
                         Client client = (Client) value;
-                        client.limit = 100;
+                        if (client.limit == 0) {
+                            client.limit = 100;
+                        }
                         MAP.put(key, client);
                     }
                 }
@@ -372,9 +374,7 @@ public class Client implements Serializable, Comparable<Client> {
     public void addQuery() {
         Float interval = getInterval();
         if (interval == null) {
-            // Se não houver intervalo definido,
-            // considerar frequência nula.
-            frequency = null;
+            // Se não houver intervalo definido, fazer nada.
         } else if (frequency == null) {
             frequency = new NormalDistribution(interval);
         } else {

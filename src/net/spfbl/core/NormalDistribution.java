@@ -40,6 +40,13 @@ public class NormalDistribution implements Serializable {
         xi2Sum = 0.0f;
     }
     
+    public NormalDistribution replicate() {
+        NormalDistribution clone = new NormalDistribution();
+        clone.xiSum = this.xiSum;
+        clone.xi2Sum = this.xi2Sum;
+        return clone;
+    }
+    
     /**
      * Inicia uma distribuição normal com população cheia com média definida.
      * @param avg a média da população.

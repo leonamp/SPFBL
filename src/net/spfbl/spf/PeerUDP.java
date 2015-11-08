@@ -186,18 +186,21 @@ public final class PeerUDP extends Server {
                                             result = "NOT CREATED";
                                         } else {
                                             peer.setEmail(email);
-                                            peer.updateLast();
+                                            peer.addNotification();
+//                                            peer.updateLast();
                                             result = "CREATED";
                                         }
                                     } else if (peer.getAddress().equals(hostname)) {
                                         peer.setPort(port);
                                         peer.setEmail(email);
-                                        peer.updateLast();
+                                        peer.addNotification();
+//                                        peer.updateLast();
                                         result = "UPDATED";
                                     } else {
                                         peer.drop();
                                         peer = peer.clone(hostname);
-                                        peer.updateLast();
+                                        peer.addNotification();
+//                                        peer.updateLast();
                                         result = "UPDATED";
                                     }
                                 } else {
@@ -219,6 +222,7 @@ public final class PeerUDP extends Server {
                             result = "UNKNOWN";
                             type = "PEERU";
                         } else {
+                            peer.addNotification();
                             address = peer.getAddress();
                             result = peer.processReceive(token);
                             type = "PEERB";

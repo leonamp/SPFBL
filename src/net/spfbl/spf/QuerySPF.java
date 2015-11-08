@@ -436,9 +436,15 @@ public final class QuerySPF extends Server {
                         Client client = Client.get(address);
                         if (client == null) {
                             origin = address.getHostAddress();
+                        } else if (client.hasEmail()) {
+                            client.addQuery();
+                            origin = address.getHostAddress()
+                                    + ' ' + client.getDomain()
+                                    + ' ' + client.getEmail();
                         } else {
                             client.addQuery();
-                            origin = address.getHostAddress() + ' ' + client.getDomain();
+                            origin = address.getHostAddress()
+                                    + ' ' + client.getDomain();
                         }
                         Server.logQuery(
                                 time, type,
