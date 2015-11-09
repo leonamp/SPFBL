@@ -28,13 +28,10 @@ import net.spfbl.whois.SubnetIPv6;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -46,7 +43,6 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -62,7 +58,6 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
-import net.spfbl.core.Huffman;
 import net.spfbl.core.Peer;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -139,6 +134,8 @@ public final class SPF implements Serializable {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Verificar reclamações vencidas.
                 CacheComplain.droExpired();
+                // Interromper conexões vencidas.
+                Main.interruptTimeout();
             }
         }, 1000, 1000 // Frequência de 1 segundo.
                 );
@@ -149,6 +146,7 @@ public final class SPF implements Serializable {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro SPF mais consultado.
                 SPF.tryRefresh();
+                
             }
         }, 60000, 60000 // Frequência de 1 minuto.
                 );

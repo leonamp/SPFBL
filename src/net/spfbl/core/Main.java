@@ -37,18 +37,30 @@ import net.spfbl.whois.Domain;
  */
 public class Main {
     
-    private static PeerUDP peerUDP;
+    private static PeerUDP peerUDP = null;
     
     public static void sendTokenToPeer(
             String token,
             String address,
             int port
             ) throws ProcessException {
-        peerUDP.send(token, address, port);
+        if (peerUDP != null) {
+            peerUDP.send(token, address, port);
+        }
     }
     
     public static String getPeerConnection() {
         return peerUDP.getConnection();
+    }
+    
+    private static AdministrationTCP administrationTCP = null;
+    private static QuerySPF querySPF = null;
+    
+    public static void interruptTimeout() {
+        if (querySPF != null) {
+            administrationTCP.interruptTimeout();
+            querySPF.interruptTimeout();
+        }
     }
     
     private static void startConfiguration() {
@@ -67,6 +79,8 @@ public class Main {
                     Main.setPortWHOIS(properties.getProperty("whois_port"));
                     Main.setPortSPFBL(properties.getProperty("spfbl_port"));
                     Main.setPortDNSBL(properties.getProperty("dnsbl_port"));
+                    QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
+                    QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
                 } finally {
                     confIS.close();
                 }
@@ -109,12 +123,10 @@ public class Main {
     }
     
     public static synchronized void setPortAdmin(String port) {
-        if (port != null && port.length() > 0) {
-            try {
-                setPortAdmin(Integer.parseInt(port));
-            } catch (Exception ex) {
-                Server.logError("invalid administration port '" + port + "'.");
-            }
+        try {
+            setPortAdmin(Integer.parseInt(port));
+        } catch (Exception ex) {
+            Server.logError("invalid administration port '" + port + "'.");
         }
     }
     
@@ -127,12 +139,10 @@ public class Main {
     }
     
     public static synchronized void setPortWHOIS(String port) {
-        if (port != null && port.length() > 0) {
-            try {
-                setPortWHOIS(Integer.parseInt(port));
-            } catch (Exception ex) {
-                Server.logError("invalid WHOIS port '" + port + "'.");
-            }
+        try {
+            setPortWHOIS(Integer.parseInt(port));
+        } catch (Exception ex) {
+            Server.logError("invalid WHOIS port '" + port + "'.");
         }
     }
     
@@ -145,12 +155,10 @@ public class Main {
     }
     
     public static synchronized void setPortSPFBL(String port) {
-        if (port != null && port.length() > 0) {
-            try {
-                setPortSPFBL(Integer.parseInt(port));
-            } catch (Exception ex) {
-                Server.logError("invalid SPFBL port '" + port + "'.");
-            }
+        try {
+            setPortSPFBL(Integer.parseInt(port));
+        } catch (Exception ex) {
+            Server.logError("invalid SPFBL port '" + port + "'.");
         }
     }
     
@@ -163,12 +171,10 @@ public class Main {
     }
     
     public static synchronized void setPortDNSBL(String port) {
-        if (port != null && port.length() > 0) {
-            try {
-                setPortDNSBL(Integer.parseInt(port));
-            } catch (Exception ex) {
-                Server.logError("invalid DNSBL port '" + port + "'.");
-            }
+        try {
+            setPortDNSBL(Integer.parseInt(port));
+        } catch (Exception ex) {
+            Server.logError("invalid DNSBL port '" + port + "'.");
         }
     }
     
@@ -210,12 +216,14 @@ public class Main {
                 startConfiguration();
                 Server.logDebug("starting server...");
                 Server.loadCache();
-                new AdministrationTCP(PORT_ADMIN).start();
+                administrationTCP = new AdministrationTCP(PORT_ADMIN);
+                administrationTCP.start();
                 if (PORT_WHOIS > 0) {
                     new QueryTCP(PORT_WHOIS).start();
                 }
                 if (PORT_SPFBL > 0) {
-                    new QuerySPF(PORT_SPFBL).start();
+                    querySPF = new QuerySPF(PORT_SPFBL);
+                    querySPF.start();
                     peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, UDP_MAX);
                     peerUDP.start();
                 }

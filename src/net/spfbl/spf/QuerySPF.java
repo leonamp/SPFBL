@@ -29,9 +29,11 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.core.Client;
@@ -74,11 +76,7 @@ public final class QuerySPF extends Server {
         private Socket SOCKET = null;
         
         private long time = 0;
-        
-//        /**
-//         * Semáforo que controla o pool de sockets.
-//         */
-//        private final Semaphore SOCKET_SEMAPHORE = new Semaphore(0);
+       
         
         public Connection() {
             super("SPFTCP" + (CONNECTION_COUNT + 1));
@@ -101,6 +99,15 @@ public final class QuerySPF extends Server {
             }
         }
         
+        private boolean isTimeout() {
+            if (time == 0) {
+                return false;
+            } else {
+                int interval = (int) (System.currentTimeMillis() - time) / 1000;
+                return interval > 10;
+            }
+        }
+        
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -108,6 +115,17 @@ public final class QuerySPF extends Server {
             Server.logDebug("closing " + getName() + "...");
             SOCKET = null;
             notify();
+        }
+        
+        @Override
+        public void interrupt() {
+            try {
+                SOCKET.close();
+            } catch (NullPointerException ex) {
+                // a conexão foi fechada antes da interrupção.
+            } catch (IOException ex) {
+                Server.logError(ex);
+            }
         }
         
         /**
@@ -426,6 +444,10 @@ public final class QuerySPF extends Server {
                             OutputStream outputStream = SOCKET.getOutputStream();
                             outputStream.write(result.getBytes("UTF-8"));
                         }
+                    } catch (SocketException ex) {
+                        // Conexão interrompida.
+                        Server.logDebug("interrupted " + getName() + " connection.");
+                        result = "INTERRUPTED\n";
                     } finally {
                         // Fecha conexão logo após resposta.
                         SOCKET.close();
@@ -452,6 +474,7 @@ public final class QuerySPF extends Server {
                                 query == null ? "DISCONNECTED" : query,
                                 result
                                 );
+                        time = 0;
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -475,6 +498,7 @@ public final class QuerySPF extends Server {
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
+    private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
     
     /**
      * Semáforo que controla o pool de conexões.
@@ -486,14 +510,42 @@ public final class QuerySPF extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static final int CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 10;
+    
+    public static void setConnectionLimit(String limit) {
+        try {
+            setConnectionLimit(Integer.parseInt(limit));
+        } catch (Exception ex) {
+            Server.logError("invalid SPFBL connection limit '" + limit + "'.");
+        }
+    }
+    
+    public static void setConnectionLimit(int limit) {
+        if (limit < 1 || limit > Byte.MAX_VALUE) {
+            Server.logError("invalid SPFBL connection limit '" + limit + "'.");
+        } else {
+            CONNECTION_LIMIT = (byte) limit;
+        }
+    }
     
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
     
+    private synchronized void use(Connection connection) {
+        CONNECTION_USE.offer(connection);
+    }
+    
     private synchronized void offer(Connection connection) {
+        CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
+    }
+    
+    public void interruptTimeout() {
+        Connection connection = CONNECTION_USE.peekFirst();
+        if (connection != null && connection.isTimeout()) {
+            connection.interrupt();
+        }
     }
     
     /**
@@ -507,6 +559,8 @@ public final class QuerySPF extends Server {
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
+                } else {
+                    use(connection);
                 }
                 return connection;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
@@ -514,6 +568,7 @@ public final class QuerySPF extends Server {
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();
+                use(connection);
                 CONNECTION_COUNT++;
                 return connection;
             } else {
@@ -521,7 +576,13 @@ public final class QuerySPF extends Server {
                 // Aguardar a próxima liberação de conexão 
                 // independente de quanto tempo levar.
                 CONNECION_SEMAPHORE.acquire();
-                return CONNECTION_POLL.poll();
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                } else {
+                    use(connection);
+                }
+                return connection;
             }
         } catch (Exception ex) {
             Server.logError(ex);
@@ -575,8 +636,8 @@ public final class QuerySPF extends Server {
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
-                } else if (connection.isAlive()) {
-                    connection.close();
+                } else {
+                    connection.interrupt();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);

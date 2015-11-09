@@ -458,7 +458,23 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static final int CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 10;
+    
+    public static void setConnectionLimit(String limit) {
+        try {
+            setConnectionLimit(Integer.parseInt(limit));
+        } catch (Exception ex) {
+            Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+        }
+    }
+    
+    public static void setConnectionLimit(int limit) {
+        if (limit < 1 || limit > Byte.MAX_VALUE) {
+            Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+        } else {
+            CONNECTION_LIMIT = (byte) limit;
+        }
+    }
     
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
