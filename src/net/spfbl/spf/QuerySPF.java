@@ -513,7 +513,7 @@ public final class QuerySPF extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static byte CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 16;
     
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
@@ -642,7 +642,7 @@ public final class QuerySPF extends Server {
                 if (connection == null) {
                     CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
                 } else {
-                    connection.interrupt();
+                    connection.close();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);

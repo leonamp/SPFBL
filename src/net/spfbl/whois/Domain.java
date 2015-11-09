@@ -989,7 +989,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         try {
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.getAttributesDNS(host, null);
-//            Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
@@ -1215,10 +1214,11 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static Domain getDomain(String address) throws ProcessException {
         String key = extractDomain(address, false);
+        Domain domain = null;
         // Busca eficiente O(1).
         if (DOMAIN_MAP.containsKey(key)) {
             // Domínio encontrado.
-            Domain domain = DOMAIN_MAP.get(key);
+            domain = DOMAIN_MAP.get(key);
             domain.queries++;
             if (domain.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -1233,11 +1233,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                     removeDomain(domain);
                     // Segue para nova consulta.
                 }
-//            } else if (domain.isRegistryAlmostExpired() || domain.isReduced()) {
-//                // Registro quase vencendo ou com informação reduzida.
-//                // Adicionar no conjunto para atualização em background.
-//                DOMAIN_REFRESH.add(domain);
-//                return domain;
             } else {
                 // Registro atualizado.
                 return domain;
@@ -1250,12 +1245,14 @@ public class Domain implements Serializable, Comparable<Domain> {
         String server = getWhoisServer(host);
         // Verifica o DNS do host antes de fazer a consulta no WHOIS.
         // Evita consulta desnecessária no WHOIS.
-        checkHost(host);
+        if (domain == null) {
+            checkHost(host);
+        }
         // Domínio existente.
         // Realizando a consulta no WHOIS.
         String result = Server.whois(host, server);
         try {
-            Domain domain = new Domain(result);
+            domain = new Domain(result);
             domain.server = server; // Temporário até final de transição.
             // Adicinando registro em cache.
             addDomain(domain);

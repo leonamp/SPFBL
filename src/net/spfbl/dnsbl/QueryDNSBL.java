@@ -458,7 +458,7 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static byte CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 8;
     
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
