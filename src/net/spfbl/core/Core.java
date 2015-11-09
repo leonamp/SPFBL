@@ -35,7 +35,19 @@ import net.spfbl.whois.Domain;
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public class Main {
+public class Core {
+    
+    private static final byte VERSION = 1;
+    private static final byte SUBVERSION = 0;
+    private static final byte RELEASE = 0;
+    
+    public static String getAplication() {
+        return "SPFBL-" + getVersion();
+    }
+    
+    public static String getVersion() {
+        return VERSION + "." + SUBVERSION + "." + RELEASE;
+    }
     
     private static PeerUDP peerUDP = null;
     
@@ -73,12 +85,12 @@ public class Main {
                     properties.load(confIS);
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
-                    Main.setHostname(properties.getProperty("hostname"));
-                    Main.setAdminEmail(properties.getProperty("admin_email"));
-                    Main.setPortAdmin(properties.getProperty("admin_port"));
-                    Main.setPortWHOIS(properties.getProperty("whois_port"));
-                    Main.setPortSPFBL(properties.getProperty("spfbl_port"));
-                    Main.setPortDNSBL(properties.getProperty("dnsbl_port"));
+                    Core.setHostname(properties.getProperty("hostname"));
+                    Core.setAdminEmail(properties.getProperty("admin_email"));
+                    Core.setPortAdmin(properties.getProperty("admin_port"));
+                    Core.setPortWHOIS(properties.getProperty("whois_port"));
+                    Core.setPortSPFBL(properties.getProperty("spfbl_port"));
+                    Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
                 } finally {
@@ -105,7 +117,7 @@ public class Main {
     public static synchronized void setHostname(String hostame) {
         if (hostame != null && hostame.length() > 0) {
             if (Domain.isHostname(hostame)) {
-                Main.HOSTNAME = Domain.extractHost(hostame, false);
+                Core.HOSTNAME = Domain.extractHost(hostame, false);
             } else {
                 Server.logError("invalid hostame '" + hostame + "'.");
             }
@@ -115,7 +127,7 @@ public class Main {
     public static synchronized void setAdminEmail(String email) {
         if (email != null && email.length() > 0) {
             if (Domain.isEmail(email)) {
-                Main.ADMIN_EMAIL = email.toLowerCase();
+                Core.ADMIN_EMAIL = email.toLowerCase();
             } else {
                 Server.logError("invalid admin e-mail '" + email + "'.");
             }
@@ -123,10 +135,12 @@ public class Main {
     }
     
     public static synchronized void setPortAdmin(String port) {
-        try {
-            setPortAdmin(Integer.parseInt(port));
-        } catch (Exception ex) {
-            Server.logError("invalid administration port '" + port + "'.");
+        if (port != null && port.length() > 0) {
+            try {
+                setPortAdmin(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid administration port '" + port + "'.");
+            }
         }
     }
     
@@ -134,15 +148,17 @@ public class Main {
         if (port < 1 || port > Short.MAX_VALUE) {
             Server.logError("invalid administration port '" + port + "'.");
         } else {
-            Main.PORT_ADMIN = (short) port;
+            Core.PORT_ADMIN = (short) port;
         }
     }
     
     public static synchronized void setPortWHOIS(String port) {
-        try {
-            setPortWHOIS(Integer.parseInt(port));
-        } catch (Exception ex) {
-            Server.logError("invalid WHOIS port '" + port + "'.");
+        if (port != null && port.length() > 0) {
+            try {
+                setPortWHOIS(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid WHOIS port '" + port + "'.");
+            }
         }
     }
     
@@ -150,15 +166,17 @@ public class Main {
         if (port < 1 || port > Short.MAX_VALUE) {
             Server.logError("invalid WHOIS port '" + port + "'.");
         } else {
-            Main.PORT_WHOIS = (short) port;
+            Core.PORT_WHOIS = (short) port;
         }
     }
     
     public static synchronized void setPortSPFBL(String port) {
-        try {
-            setPortSPFBL(Integer.parseInt(port));
-        } catch (Exception ex) {
-            Server.logError("invalid SPFBL port '" + port + "'.");
+        if (port != null && port.length() > 0) {
+            try {
+                setPortSPFBL(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid SPFBL port '" + port + "'.");
+            }
         }
     }
     
@@ -166,15 +184,17 @@ public class Main {
         if (port < 1 || port > Short.MAX_VALUE) {
             Server.logError("invalid SPFBL port '" + port + "'.");
         } else {
-            Main.PORT_SPFBL = (short) port;
+            Core.PORT_SPFBL = (short) port;
         }
     }
     
     public static synchronized void setPortDNSBL(String port) {
-        try {
-            setPortDNSBL(Integer.parseInt(port));
-        } catch (Exception ex) {
-            Server.logError("invalid DNSBL port '" + port + "'.");
+        if (port != null && port.length() > 0) {
+            try {
+                setPortDNSBL(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid DNSBL port '" + port + "'.");
+            }
         }
     }
     
@@ -182,7 +202,7 @@ public class Main {
         if (port < 1 || port > Short.MAX_VALUE) {
             Server.logError("invalid DNSBL port '" + port + "'.");
         } else {
-            Main.PORT_DNSBL = (short) port;
+            Core.PORT_DNSBL = (short) port;
         }
     }
     

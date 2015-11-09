@@ -37,6 +37,7 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.core.Client;
+import net.spfbl.core.Core;
 
 /**
  * Servidor de consulta em SPF.
@@ -148,7 +149,9 @@ public final class QuerySPF extends Server {
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
-                            if (line.equals("request=smtpd_access_policy")) {
+                            if (line.equals("VERSION")) {
+                                result = Core.getAplication() + "\n";
+                            } else if (line.equals("request=smtpd_access_policy")) {
                                 // Entrada padrão do Postfix.
                                 // Extrair os atributos necessários.
                                 String ip = null;
@@ -513,10 +516,12 @@ public final class QuerySPF extends Server {
     private static byte CONNECTION_LIMIT = 10;
     
     public static void setConnectionLimit(String limit) {
-        try {
-            setConnectionLimit(Integer.parseInt(limit));
-        } catch (Exception ex) {
-            Server.logError("invalid SPFBL connection limit '" + limit + "'.");
+        if (limit != null && limit.length() > 0) {
+            try {
+                setConnectionLimit(Integer.parseInt(limit));
+            } catch (Exception ex) {
+                Server.logError("invalid SPFBL connection limit '" + limit + "'.");
+            }
         }
     }
     

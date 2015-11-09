@@ -16,7 +16,7 @@
  */
 package net.spfbl.spf;
 
-import net.spfbl.core.Main;
+import net.spfbl.core.Core;
 import net.spfbl.core.NormalDistribution;
 import net.spfbl.whois.Domain;
 import net.spfbl.core.ProcessException;
@@ -135,7 +135,7 @@ public final class SPF implements Serializable {
                 // Verificar reclamações vencidas.
                 CacheComplain.droExpired();
                 // Interromper conexões vencidas.
-                Main.interruptTimeout();
+                Core.interruptTimeout();
             }
         }, 1000, 1000 // Frequência de 1 segundo.
                 );

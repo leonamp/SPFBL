@@ -461,7 +461,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 String result;
                 try {
                     int port = getPort();
-                    Main.sendTokenToPeer(token, address, port);
+                    Core.sendTokenToPeer(token, address, port);
                     result = address;
                 } catch (ProcessException ex) {
                     result = ex.toString();
@@ -483,7 +483,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         String result;
         try {
             int port = getPort();
-            Main.sendTokenToPeer(token, address, port);
+            Core.sendTokenToPeer(token, address, port);
             result = address;
         } catch (ProcessException ex) {
             result = ex.getMessage();
@@ -499,7 +499,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String result;
             try {
                 int port = peer.getPort();
-                Main.sendTokenToPeer(token, address, port);
+                Core.sendTokenToPeer(token, address, port);
                 result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();
@@ -516,7 +516,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String result;
             try {
                 int port = peer.getPort();
-                Main.sendTokenToPeer(token, address, port);
+                Core.sendTokenToPeer(token, address, port);
                 result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();
@@ -526,19 +526,19 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public boolean sendHELO() {
-        String connection = Main.getPeerConnection();
+        String connection = Core.getPeerConnection();
         if (connection == null) {
             return false;
         } else {
             String origin = null;
-            String email = Main.getAdminEmail();
+            String email = Core.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
             long time = System.currentTimeMillis();
             String address = getAddress();
             String result = address;
             try {
                 int port = getPort();
-                Main.sendTokenToPeer(helo, address, port);
+                Core.sendTokenToPeer(helo, address, port);
                 result += address;
             } catch (ProcessException ex) {
                 result += ex.getMessage();
@@ -549,12 +549,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static boolean sendHeloToAll() {
-        String connection = Main.getPeerConnection();
+        String connection = Core.getPeerConnection();
         if (connection == null) {
             return false;
         } else {
             String origin = null;
-            String email = Main.getAdminEmail();
+            String email = Core.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
             for (Peer peer : getSendAllSet()) {
                 long time = System.currentTimeMillis();
@@ -562,7 +562,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 String result;
                 try {
                     int port = peer.getPort();
-                    Main.sendTokenToPeer(helo, address, port);
+                    Core.sendTokenToPeer(helo, address, port);
                     result = address;
                 } catch (ProcessException ex) {
                     result = ex.getMessage();
@@ -581,7 +581,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String result;
             try {
                 int port = peer.getPort();
-                Main.sendTokenToPeer(token, address, port);
+                Core.sendTokenToPeer(token, address, port);
                 result = address;
             } catch (ProcessException ex) {
                 result = ex.getMessage();

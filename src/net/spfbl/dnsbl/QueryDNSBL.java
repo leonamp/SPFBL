@@ -461,10 +461,12 @@ public final class QueryDNSBL extends Server {
     private static byte CONNECTION_LIMIT = 10;
     
     public static void setConnectionLimit(String limit) {
-        try {
-            setConnectionLimit(Integer.parseInt(limit));
-        } catch (Exception ex) {
-            Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+        if (limit != null && limit.length() > 0) {
+            try {
+                setConnectionLimit(Integer.parseInt(limit));
+            } catch (Exception ex) {
+                Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+            }
         }
     }
     

@@ -1067,7 +1067,9 @@ public abstract class Server extends Thread {
             } else {
                 StringTokenizer tokenizer = new StringTokenizer(command, " ");
                 String token = tokenizer.nextToken();
-                if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
+                if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
+                    return Core.getAplication() + "\n";
+                } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
                     if (shutdown()) {
                         // Fechamento de processos realizado com sucesso.
