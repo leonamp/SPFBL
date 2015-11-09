@@ -38,6 +38,32 @@ head()
 }
 
 case $1 in
+	'version')
+		# Verifica a versão do servidor SPPFBL.
+		#
+		# Códigos de saída:
+		#
+		#    0: versão adquirida com sucesso.
+		#    1: erro ao tentar adiquirir versão.
+		#    2: timeout de conexão.
+		
+
+		response=$(echo "VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+		if [[ $response == "" ]]; then
+			response="TIMEOUT"
+		fi
+
+		echo "$response"
+
+		if [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response == "SPFBL"* ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
 	'block')
 		case $2 in
 			'add')
