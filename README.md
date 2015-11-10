@@ -523,15 +523,76 @@ Responsabilidades dos elementos:
 
 O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
+### Como cadastrar peers
+
+Para cadastrar um peer, primeiro é necessário que a máquina esteja rodando com um IP público e existir um hostname de aponte para este IP.
+
+Com posse do hostname da máquina, supondo que seja "sub.domain.tld", altere o arquivo de configuração "spfbl.conf", que deve ficar junto do arquivo executável JAR:
+```
+# Hostname that point to this server.
+# Define a valid hostname to use P2P network.
+hostname=sub.domain.tld
+```
+
+Descomente e defina também o e-mail de contato para questões P2P:
+```
+# Service administrator e-mail.
+# Uncoment to receive report of P2P problems.
+#admin_email=part@domain.tld
+```
+
+
+A porta escolhida para o serviço SPFBL trabalha com os dois protolocos, sendo TCP para consulta e UDP para P2P.
+
+O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completamente aberta para entrada e saída.
+
+Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
+```
+echo "PEER ADD ub.domain2.tld:9877 <send> <receive>"
+ub.domain2.tld:9877 <send> <receive> 0 DEAD >100ms UNDEFINED
+```
+
+A variável <send> pode admitir estes valores:
+* NEVER: nunca enviar anúncios para este peer.
+* ALWAYS: sempre enviar anúncios para este peer. 
+* REPASS: repassar imediatamente todos os anuncios aceitos dos demais peers para este peer.
+
+A variável <receive> pode admitir estes valores:
+* ACCEPT: aceitar todos os anúncios deste peer.
+* REJECT: rejeitar todos os anúncios deste peer.
+* DROP: dropar os pacotes deste peer (funcionalidade de firewall não implementada ainda).
+* RETAIN: reter todos os anúncios deste peer para confirmação posterior.
+* REPASS: repassar todos os anúncios deste peer para os demais peers.
+
+Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de apresentação. Este pacote contém o hostaname, porta e e-mail de contato. No mesmo intante o peer remoto adcionará o seu com as configurações padrão, onde os parâmetros de envio e recebimento estarão fechados.
+
+Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não:
+```
+echo "PEER SHOW"
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+```
+
+Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para <send> e <receive>:
+```
+echo "PEER SET sub.domain.tld <send> <receive>"
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+UPDATED SEND=<send>
+UPDATED RECEIVE=<receive>
+```
+
+Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
+```
+echo "PEER SHOW"
+sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+```
+
 ### Pools conhecidos em funcionamento
 
-Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
+Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para cadastrar conexão P2P.
 
 Abertos:
-* MatrixDefense: leandro@spfbl.net
-
-Fechados:
-* MX-Protection: gian@spfbl.net
+* MatrixDefense: matrix.spfbl.net:9877 <leandro@spfbl.net>
+* MX-Protection: mx-protection.jsbr.net.br:9877 <gian@spfbl.net>
 
 ### Forum de discussão SPFBL
 
