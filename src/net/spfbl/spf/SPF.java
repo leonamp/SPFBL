@@ -1458,10 +1458,14 @@ public final class SPF implements Serializable {
 
         private String getHostname(String ip, String sender, String helo) {
             String expression = getExpression();
-            int index = expression.indexOf(':') + 1;
-            expression = expression.substring(index);
-            expression = expand(expression, ip, sender, helo);
-            return expression;
+            int index = expression.indexOf(':');
+            if (index == -1) {
+                return SPF.this.getHostname();
+            } else {
+                expression = expression.substring(index + 1);
+                expression = expand(expression, ip, sender, helo);
+                return expression;
+            }
         }
 
         @Override
@@ -5692,7 +5696,7 @@ public final class SPF implements Serializable {
                     } catch (ProcessException ex) {
                         result = ex.getMessage() + "\n";
                     }
-                } else if ((firstToken.equals("SPF") && tokenizer.countTokens() == 4)
+                } else if ((firstToken.equals("SPF") && tokenizer.countTokens() >= 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
@@ -5707,8 +5711,11 @@ public final class SPF implements Serializable {
                             // Nova formatação de consulta.
                             ip = tokenizer.nextToken();
                             sender = tokenizer.nextToken();
-                            helo = tokenizer.nextToken();
-                            recipient = tokenizer.nextToken();
+                            while (!sender.endsWith("'") && tokenizer.hasMoreTokens()) {
+                                sender += " " + tokenizer.nextToken();
+                            }
+                            helo = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : "''";
+                            recipient = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : "''";
                             ip = ip.substring(1, ip.length() - 1);
                             sender = sender.substring(1, sender.length() - 1);
                             helo = helo.substring(1, helo.length() - 1);
@@ -5836,7 +5843,7 @@ public final class SPF implements Serializable {
                                         } else {
                                             probability = 0.0f;
                                             status = SPF.Status.WHITE;
-                                            frequency = "undefined";
+                                            frequency = "UNDEFINED";
                                         }
                                         result += token + " " + frequency + " " + status.name() + " "
                                                 + Server.DECIMAL_FORMAT.format(probability) + "\n";

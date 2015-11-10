@@ -261,7 +261,7 @@ public final class QueryDNSBL extends Server {
         private long time = 0;
         
         public Connection() {
-            super("DNSBL" + (CONNECTION_COUNT+1));
+            super("DNSUDP" + (CONNECTION_COUNT+1));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
         }

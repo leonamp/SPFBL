@@ -23,14 +23,14 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net 
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 21/10/2015 10:00
+# Última alteração: 09/11/2015 16:20
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.1"
+version="0.2"
 
 head()
 {
