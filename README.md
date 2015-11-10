@@ -547,8 +547,8 @@ O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completame
 
 Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
 ```
-echo "PEER ADD sub.domain2.tld:9877 &lt;send&gt; &lt;receive&gt;"
-sub.domain2.tld:9877 &lt;send> &lt;receive&gt; 0 DEAD &gt;100ms UNDEFINED
+echo "PEER ADD sub.domain2.tld:9877 <send> <receive>" | nc localhost 9875
+sub.domain2.tld:9877 <send> <receive>; 0 DEAD &gt;100ms UNDEFINED
 ```
 
 A variável &lt;send&gt; pode admitir estes valores:
@@ -567,22 +567,22 @@ Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de
 
 Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não:
 ```
-echo "PEER SHOW"
-sub.domain.tld:9877 NEVER REJECT 0 ALIVE &gt;100ms UNDEFINED
+echo "PEER SHOW" | nc localhost 9875
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
 Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para &lt;send&gt; e &lt;receive&gt;:
 ```
-echo "PEER SET sub.domain.tld &lt;send&gt; &lt;receive&gt;"
-sub.domain.tld:9877 NEVER REJECT 0 ALIVE &gt;100ms UNDEFINED
-UPDATED SEND=&lt;send&gt;
-UPDATED RECEIVE=&lt;receive&gt;
+echo "PEER SET sub.domain.tld <send> <receive>" | nc localhost 9875
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+UPDATED SEND=<send>;
+UPDATED RECEIVE=<receive>;
 ```
 
 Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
 ```
-echo "PEER SHOW"
-sub.domain2.tld:9877 NEVER REJECT 0 ALIVE &gt;100ms UNDEFINED
+echo "PEER SHOW" | nc localhost 9875
+sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
 ### Pools conhecidos em funcionamento
