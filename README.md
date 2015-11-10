@@ -563,9 +563,9 @@ A variável &lt;receive&gt; pode admitir estes valores:
 * RETAIN: reter todos os anúncios deste peer para confirmação posterior.
 * REPASS: repassar todos os anúncios deste peer para os demais peers.
 
-Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de apresentação. Este pacote contém o hostaname, porta e e-mail de contato do seu peer. No mesmo intante o peer remoto adcionará o seu com as configurações padrão, onde os parâmetros de envio e recebimento estarão fechados.
+Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de apresentação. Este pacote contém o hostname, porta e e-mail de contato do seu peer. No mesmo intante o peer remoto adcionará o seu na lista dele, onde os parâmetros de envio e recebimento estarão fechados por padrão.
 
-Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não:
+Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não. A visualização da lista de peers pode ser feita executando o seguinte comando:
 ```
 echo "PEER SHOW" | nc localhost 9875
 sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
