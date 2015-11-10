@@ -590,8 +590,8 @@ sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para cadastrar conexão P2P.
 
 Abertos:
-* MatrixDefense: matrix.spfbl.net:9877 &lt;leandro@spfbl.net&gt;
-* MX-Protection: mx-protection.jsbr.net.br:9877 &lt;gian@spfbl.net&gt;
+* MatrixDefense: leandro@spfbl.net
+* MX-Protection: gian@spfbl.net
 
 ### Forum de discussão SPFBL
 
