@@ -300,8 +300,11 @@ O SPFBL tem integração nativa com o Postfix a partir da versão 3.
 
 Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
 ```
-check_policy_service {inet:<IP_do_servidor_SPFBL>:9877, timeout=10s, default_action=PREPEND Received-SPFBL: TIMEOUT}
-
+check_policy_service {
+	inet:<IP_do_servidor_SPFBL>:9877,
+	timeout=10s,
+	default_action=DEFER
+}
 ```
 
 Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo master.cf:
@@ -482,18 +485,22 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço normal basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./lib" e "./data/" em "/opt/spfbl/".
+Para instalar o serviço, basta copiar os arquivos "./dist/SPFBL.jar" e "./run/spfbl.conf" do projeto em "/opt/spfbl/".
 
-Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando na mesma pasta:
+Copie também e as pastas "./lib" e "./data/" do projeto em "/opt/spfbl/".
+
+Quando todos os arquivos e pastas estiverem copiados, configure o serviço editando o arquivo "/opt/spfbl/spfbl.conf".
+
+Após a configuração, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
-java -jar /opt/spfbl/SPFBL.jar 9875 512 >> log.001.txt &
+java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
 ```
 
 Caso seja necessário iniciar o serviço com DNSBL, é importante lembrar que o sistema operacional pode requerer permissão especial:
 
 ```
-sudo java -jar /opt/spfbl/SPFBL.jar 9875 512 DNSBL >> log.001.txt &
+sudo java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
