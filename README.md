@@ -489,6 +489,8 @@ Para instalar o serviço, basta copiar os arquivos "./dist/SPFBL.jar" e "./run/s
 
 Copie também e as pastas "./lib" e "./data/" do projeto em "/opt/spfbl/".
 
+Crie a pasta "/var/log/spfbl", se esta não existir, com permissões de leitura e escrita para o usuário que rodará o serviço.
+
 Quando todos os arquivos e pastas estiverem copiados, configure o serviço editando o arquivo "/opt/spfbl/spfbl.conf".
 
 Após a configuração, rode o serviço utilizando o seguinte comando na mesma pasta:
