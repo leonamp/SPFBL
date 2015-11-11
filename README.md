@@ -601,6 +601,7 @@ Aqui vemos alguns pools em funcionamento para que novos membros possam se cadast
 Abertos:
 * MatrixDefense: leandro@spfbl.net
 * MX-Protection: gian@spfbl.net
+* Papuda: smux@spfbl.net
 
 ### Forum de discussão SPFBL
 
