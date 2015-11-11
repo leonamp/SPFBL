@@ -21,9 +21,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.sql.Connection;
 
 /**
  * Servidor de commandos em TCP.
@@ -32,23 +34,36 @@ import java.net.SocketException;
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class CommandTCP extends Server {
+public final class AdministrationTCP extends Server {
 
     private final int PORT;
     private final ServerSocket SERVER_SOCKET;
+    private Socket SOCKET;
+    private long time = 0;
     
     /**
      * Configuração e intanciamento do servidor para comandos.
      * @param port a porta TCP a ser vinculada.
      * @throws java.io.IOException se houver falha durante o bind.
      */
-    public CommandTCP(int port) throws IOException {
-        super("ServerCOMMAND");
+    public AdministrationTCP(int port) throws IOException {
+        super("ServerADMIN");
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding command TCP socket on port " + port + "...");
+        Server.logDebug("binding command TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
+    }
+    
+    @Override
+    public void interrupt() {
+        try {
+            SOCKET.close();
+        } catch (NullPointerException ex) {
+            // a conexão foi fechada antes da interrupção.
+        } catch (IOException ex) {
+            Server.logError(ex);
+        }
     }
     
     /**
@@ -57,54 +72,81 @@ public final class CommandTCP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening commands on TCP port " + PORT + "...");
+            Server.logDebug("listening commands on TCP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     String command = null;
                     String result = null;
-                    Socket socket = SERVER_SOCKET.accept();
-                    long time = System.currentTimeMillis();
+                    SOCKET = SERVER_SOCKET.accept();
+                    time = System.currentTimeMillis();
                     try {
-                        InputStream inputStream = socket.getInputStream();
+                        InputStream inputStream = SOCKET.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         command = bufferedReader.readLine();
                         if (command == null) {
                             command = "DISCONNECTED";
                         } else {
-                            result = CommandTCP.this.processCommand(command);
+                            result = AdministrationTCP.this.processCommand(command);
                             // Enviando resposta.
-                            OutputStream outputStream = socket.getOutputStream();
+                            OutputStream outputStream = SOCKET.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
                             // Mede o tempo de resposta para estatísticas.
                         }
+                    } catch (SocketException ex) {
+                        // Conexão interrompida.
+                        Server.logDebug("interrupted " + getName() + " connection.");
+                        result = "INTERRUPTED\n";
                     } finally {
                         // Fecha conexão logo após resposta.
-                        socket.close();
+                        SOCKET.close();
+                        InetAddress address = SOCKET.getInetAddress();
+                        SOCKET = null;
                         // Log da consulta com o respectivo resultado.
-                        Server.logCommand(time, socket.getInetAddress(), command, result);
+                        Server.logAdministration(
+                                time,
+                                address,
+                                command == null ? "DISCONNECTED" : command,
+                                result
+                                );
+                        time = 0;
                         // Verificar se houve falha no fechamento dos processos.
                         if (result != null && result.equals("ERROR: SHUTDOWN\n")) {
                             // Fechar forçadamente o programa.
-                            Server.logDebug("System killed.");
+                            Server.logDebug("system killed.");
                             System.exit(1);
                         }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
-                    Server.logDebug("Command TCP listening stoped.");
+                    Server.logDebug("command TCP listening stoped.");
                 }
             }
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Command TCP server closed.");
+            Server.logDebug("command TCP server closed.");
+        }
+    }
+    
+    private boolean isTimeout() {
+        if (time == 0) {
+            return false;
+        } else {
+            int interval = (int) (System.currentTimeMillis() - time) / 1000;
+            return interval > 10;
+        }
+    }
+    
+    public void interruptTimeout() {
+        if (isTimeout()) {
+            interrupt();
         }
     }
     
     @Override
     protected synchronized void close() throws Exception {
-        Server.logDebug("Unbinding command TCP socket on port " + PORT + "...");
+        Server.logDebug("unbinding command TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

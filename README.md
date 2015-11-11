@@ -300,8 +300,11 @@ O SPFBL tem integração nativa com o Postfix a partir da versão 3.
 
 Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
 ```
-check_policy_service {inet:<IP_do_servidor_SPFBL>:9877, timeout=10s, default_action=PREPEND Received-SPFBL: TIMEOUT}
-
+check_policy_service {
+	inet:<IP_do_servidor_SPFBL>:9877,
+	timeout=10s,
+	default_action=DEFER
+}
 ```
 
 Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo master.cf:
@@ -482,18 +485,24 @@ O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no proj
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço normal basta copiar o arquivo "./dist/SPFBL.jar" e as pastas "./lib" e "./data/" em "/opt/spfbl/".
+Para instalar o serviço, basta copiar os arquivos "./dist/SPFBL.jar" e "./run/spfbl.conf" do projeto em "/opt/spfbl/".
 
-Quando todos os arquivos estiverem copiados, rode o serviço utilizando o seguinte comando na mesma pasta:
+Copie também e as pastas "./lib" e "./data/" do projeto em "/opt/spfbl/".
+
+Crie a pasta "/var/log/spfbl", se esta não existir, com permissões de leitura e escrita para o usuário que rodará o serviço.
+
+Quando todos os arquivos e pastas estiverem copiados, configure o serviço editando o arquivo "/opt/spfbl/spfbl.conf".
+
+Após a configuração, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
-java -jar /opt/spfbl/SPFBL.jar 9875 512 >> log.001.txt &
+java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
 ```
 
 Caso seja necessário iniciar o serviço com DNSBL, é importante lembrar que o sistema operacional pode requerer permissão especial:
 
 ```
-sudo java -jar /opt/spfbl/SPFBL.jar 9875 512 DNSBL >> log.001.txt &
+sudo java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
@@ -523,14 +532,74 @@ Responsabilidades dos elementos:
 
 O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
+### Como cadastrar peers
+
+Para cadastrar um peer, primeiro é necessário que a máquina esteja rodando com um IP público e existir um hostname de aponte para este IP.
+
+Com posse do hostname da máquina, supondo que seja "sub.domain.tld", altere o arquivo de configuração "spfbl.conf", que deve ficar junto do arquivo executável JAR:
+```
+# Hostname that point to this server.
+# Define a valid hostname to use P2P network.
+hostname=sub.domain.tld
+```
+
+Descomente e defina também o e-mail de contato para questões P2P:
+```
+# Service administrator e-mail.
+# Uncoment to receive report of P2P problems.
+#admin_email=part@domain.tld
+```
+
+A porta escolhida para o serviço SPFBL trabalha com os dois protolocos, sendo TCP para consulta e UDP para P2P.
+
+O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completamente aberta para entrada e saída.
+
+Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
+```
+echo "PEER ADD sub.domain2.tld:9877 <send> <receive>" | nc localhost 9875
+sub.domain2.tld:9877 <send> <receive> 0 DEAD >100ms UNDEFINED
+```
+
+A variável &lt;send&gt; pode admitir estes valores:
+* NEVER: nunca enviar anúncios para este peer.
+* ALWAYS: sempre enviar anúncios para este peer. 
+* REPASS: repassar imediatamente todos os anúncios aceitos dos demais peers para este peer.
+
+A variável &lt;receive&gt; pode admitir estes valores:
+* ACCEPT: aceitar todos os anúncios deste peer.
+* REJECT: rejeitar todos os anúncios deste peer.
+* DROP: dropar os pacotes deste peer (funcionalidade de firewall não implementada ainda).
+* RETAIN: reter todos os anúncios deste peer para confirmação posterior.
+* REPASS: repassar todos os anúncios deste peer para os demais peers.
+
+Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de apresentação. Este pacote contém o hostname, porta e e-mail de contato do seu peer. No mesmo intante o peer remoto adcionará o seu na lista dele, onde os parâmetros de envio e recebimento estarão fechados por padrão.
+
+Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não. A visualização da lista de peers pode ser feita executando o seguinte comando:
+```
+echo "PEER SHOW" | nc localhost 9875
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+```
+
+Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para &lt;send&gt; e &lt;receive&gt;:
+```
+echo "PEER SET sub.domain.tld <send> <receive>" | nc localhost 9875
+sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+UPDATED SEND=<send>
+UPDATED RECEIVE=<receive>
+```
+
+Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
+```
+echo "PEER SHOW" | nc localhost 9875
+sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+```
+
 ### Pools conhecidos em funcionamento
 
-Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para soliticar o envio de informações P2P.
+Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para cadastrar conexão P2P.
 
 Abertos:
 * MatrixDefense: leandro@spfbl.net
-
-Fechados:
 * MX-Protection: gian@spfbl.net
 
 ### Forum de discussão SPFBL

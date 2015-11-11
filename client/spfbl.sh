@@ -23,14 +23,14 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net 
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 21/10/2015 10:00
+# Última alteração: 09/11/2015 16:20
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.1"
+version="0.2"
 
 head()
 {
@@ -38,6 +38,32 @@ head()
 }
 
 case $1 in
+	'version')
+		# Verifica a versão do servidor SPPFBL.
+		#
+		# Códigos de saída:
+		#
+		#    0: versão adquirida com sucesso.
+		#    1: erro ao tentar adiquirir versão.
+		#    2: timeout de conexão.
+		
+
+		response=$(echo "VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+		if [[ $response == "" ]]; then
+			response="TIMEOUT"
+		fi
+
+		echo "$response"
+
+		if [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response == "SPFBL"* ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
 	'block')
 		case $2 in
 			'add')

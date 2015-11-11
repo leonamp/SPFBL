@@ -16,15 +16,12 @@
  */
 package net.spfbl.core;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.util.HashMap;
-import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.whois.Domain;
@@ -43,44 +40,16 @@ public class Client implements Serializable, Comparable<Client> {
     private final String cidr;
     private String domain;
     private String email;
+    private Permission permission = Permission.NONE;
+    private int limit = 100;
+    private NormalDistribution frequency = null;
+    private long last = 0;
     
-    /**
-     * Permissões de cliente.
-     */
-    private boolean permission_spfbl = false; // Pode consultar o serviço SPFBL.
-    private boolean permission_dnsbl = false; // Pode consultar o serviço DNSBL.
-    
-    public static void main(String[] args) throws Exception {
-        File clientsFile = new File("./data/clients.txt");
-        BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
-        try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-                if (tokenizer.countTokens() == 3) {
-                    String cidr = tokenizer.nextToken();
-                    String email = tokenizer.nextToken();
-                    String nome = tokenizer.nextToken();
-                    String domain;
-                    if (Domain.isEmail(email)) {
-                        domain = Domain.extractDomain(email, false);
-                        User user = User.create(email, nome);
-                        if (user != null) {
-                            user.setPermissionSPFBL(true);
-                            System.out.println(user);
-                        }
-                    } else {
-                        domain = email;
-                        email = null;
-                    }
-                    Client client = create(cidr, domain, email);
-                    client.setPermissionSPFBL(true);
-                    System.out.println(client);
-                }
-            }
-        } finally {
-            reader.close();
-        }
+    public enum Permission {
+        NONE,
+        DNSBL,
+        SPFBL,
+        ALL
     }
     
     private Client(String cidr, String domain, String email) throws ProcessException {
@@ -108,12 +77,33 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public void setPermissionSPFBL(boolean spfbl) {
-        this.permission_spfbl = spfbl;
+    public void setEmail(String email) throws ProcessException {
+        if (email == null || email.length() == 0) {
+            this.email = null;
+            CHANGED = true;
+        } else if (Domain.isEmail(email)) {
+            this.email = email.toLowerCase();
+            CHANGED = true;
+        } else {
+            throw new ProcessException("ERROR: INVALID EMAIL");
+        }
     }
     
-    public void setPermissionDNSBL(boolean dnsbl) {
-        this.permission_dnsbl = dnsbl;
+    public void setPermission(String permission) throws ProcessException {
+        try {
+            setPermission(Permission.valueOf(permission));
+        } catch (Exception ex) {
+            throw new ProcessException("ERROR: INVALID PERMISSION");
+        }
+    }
+    
+    public void setPermission(Permission permission) throws ProcessException {
+        if (permission == null) {
+            throw new ProcessException("ERROR: INVALID PERMISSION");
+        } else if (this.permission != permission) {
+            this.permission = permission;
+            CHANGED = true;
+        }
     }
     
     public String getCIDR() {
@@ -132,16 +122,16 @@ public class Client implements Serializable, Comparable<Client> {
         return User.get(email);
     }
     
+    public boolean hasEmail() {
+        return email != null;
+    }
+    
     public boolean contains(String ip) {
         return Subnet.containsIP(cidr, ip);
     }
     
-    public boolean hasPermissionSPFBL() {
-        return permission_spfbl;
-    }
-    
-    public boolean hasPermissionDNSBL() {
-        return permission_dnsbl;
+    public Permission getPermission() {
+        return permission;
     }
     
     /**
@@ -155,14 +145,15 @@ public class Client implements Serializable, Comparable<Client> {
     private static boolean CHANGED = false;
     
     public static Client create(
-            String cidr, String domain, String email
+            String cidr, String domain, String permission, String email
             ) throws ProcessException {
         if (Subnet.isValidCIDR(cidr)) {
             String ip = Subnet.getFirstIP(cidr);
-            Client client = get(ip);
+            Client client = getByIP(ip);
             if (client == null) {
                 ip = Subnet.expandIP(ip);
                 client = new Client(cidr, domain, email);
+                client.setPermission(permission);
                 MAP.put(ip, client);
                 CHANGED = true;
                 return client;
@@ -180,15 +171,128 @@ public class Client implements Serializable, Comparable<Client> {
         return clientSet;
     }
     
-    public synchronized static Client drop(String email) {
-        Client client = MAP.remove(email);
+    public static Client drop(String cidr) throws ProcessException {
+        if (cidr == null || !Subnet.isValidCIDR(cidr)) {
+            throw new ProcessException("ERROR: INVALID CIDR");
+        } else {
+            cidr = Subnet.normalizeCIDR(cidr);
+            String ip = Subnet.getFirstIP(cidr);
+            String key = Subnet.expandIP(ip);
+            Client client = getExact(key);
+            if (client == null) {
+                return null;
+            } else if (client.getCIDR().equals(cidr)) {
+                return dropExact(key);
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    private synchronized static Client getExact(String key) {
+        return MAP.get(key);
+    }
+    
+    private synchronized static Client dropExact(String key) {
+        Client client = MAP.remove(key);
         if (client != null) {
             CHANGED = true;
         }
         return client;
     }
     
-    public synchronized static Client get(String ip) {
+    public static String getOrigin(InetAddress address) {
+        if (address == null) {
+            return "UNKNOWN";
+        } else {
+            String ip = address.getHostAddress();
+            Client client = Client.get(address);
+            if (client == null) {
+                return ip + " " + Server.getLogClientOld(address);
+            } else if (client.hasEmail()) {
+                return ip + " " + client.getDomain() + " " + client.getEmail();
+            } else {
+                return ip + " " + client.getDomain();
+            }
+        }
+    }
+    
+    public static String getIdentification(InetAddress address) {
+        if (address == null) {
+            return "UNKNOWN";
+        } else {
+            Client client = Client.get(address);
+            if (client == null) {
+                return Server.getLogClientOld(address);
+            } else if (client.hasEmail()) {
+                return client.getEmail();
+            } else {
+                return client.getDomain();
+            }
+        }
+    }
+    
+    public static String getDomain(InetAddress address) {
+        if (address == null) {
+            return "UNKNOW";
+        } else {
+            String ip = address.getHostAddress();
+            Client client = getByIP(ip);
+            if (client == null) {
+                return ip;
+            } else {
+                return client.getDomain();
+            }
+        }
+    }
+    
+    public synchronized static Client getByCIDR(String cidr) throws ProcessException {
+        if (cidr == null) {
+            return null;
+        } else if (!Subnet.isValidCIDR(cidr)) {
+            throw new ProcessException("ERROR: INVALID CIDR");
+        } else {
+            cidr = Subnet.normalizeCIDR(cidr);
+            String ip = Subnet.getFirstIP(cidr);
+            String key = Subnet.expandIP(ip);
+            Client cliente = getExact(key);
+            if (cliente == null) {
+                return null;
+            } else if (cliente.getCIDR().equals(cidr)) {
+                return cliente;
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static Client get(InetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            return getByIP(address.getHostAddress());
+        }
+    }
+    
+    public static TreeSet<Client> getSet(Permission permission) {
+        if (permission == null) {
+            return null;
+        } else {
+            TreeSet<Client> clientSet = new TreeSet<Client>();
+            for (Client client : getSet()) {
+                if (client.getPermission() == permission) {
+                    clientSet.add(client);
+                } else if (permission == Permission.SPFBL && client.getPermission() == Permission.ALL) {
+                    clientSet.add(client);
+                } else if (permission == Permission.DNSBL && client.getPermission() == Permission.ALL) {
+                    clientSet.add(client);
+                }
+            }
+            return clientSet;
+        }
+    }
+    
+    public synchronized static Client getByIP(String ip) {
         if (ip == null) {
             return null;
         } else {
@@ -248,6 +352,9 @@ public class Client implements Serializable, Comparable<Client> {
                     Object value = map.get(key);
                     if (value instanceof Client) {
                         Client client = (Client) value;
+                        if (client.limit == 0) {
+                            client.limit = 100;
+                        }
                         MAP.put(key, client);
                     }
                 }
@@ -255,6 +362,57 @@ public class Client implements Serializable, Comparable<Client> {
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+        }
+    }
+    
+    public boolean hasFrequency() {
+        return frequency != null;
+    }
+    
+    public int getIdleTimeMillis() {
+        if (last == 0) {
+            return 0;
+        } else {
+            return (int) (System.currentTimeMillis() - last);
+        }
+    }
+    
+    public String getFrequencyLiteral() {
+        if (hasFrequency()) {
+            int frequencyInt = frequency.getMaximumInt();
+            int idleTime = getIdleTimeMillis();
+            if (idleTime > Server.DAY_TIME) {
+                return "DEAD";
+            } else if (idleTime > frequencyInt * 2) {
+                return "IDLE";
+            } else {
+                return "~" + frequencyInt + "ms";
+            }
+        } else {
+            return "UNDEFINED";
+        }
+    }
+    
+    private Float getInterval() {
+        long current = System.currentTimeMillis();
+        Float interval;
+        if (last == 0) {
+            interval = null;
+        } else {
+            interval = (float) (current - last);
+        }
+        last = current;
+        return interval;
+    }
+    
+    public void addQuery() {
+        Float interval = getInterval();
+        if (interval == null) {
+            // Se não houver intervalo definido, fazer nada.
+        } else if (frequency == null) {
+            frequency = new NormalDistribution(interval);
+        } else {
+            frequency.addElement(interval);
         }
     }
     
@@ -284,9 +442,19 @@ public class Client implements Serializable, Comparable<Client> {
     
     @Override
     public String toString() {
-        return domain + ":" + cidr
-                + (email == null ? "" : " <" + email + ">")
-                + (permission_spfbl ? " SPFBL" : "")
-                + (permission_dnsbl ? " DNSBL" : "");
+        User user = getUser();
+        if (user == null) {
+            return domain + ":" + cidr
+                    + (permission == null ? " NONE" : " " + permission.name())
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
+                    + (email == null ? "" : " <" + email + ">");
+        } else {
+            return domain + ":" + cidr
+                    + (permission == null ? " NONE" : " " + permission.name())
+                    + " >" + limit + "ms"
+                    + " " + getFrequencyLiteral()
+                    + " " + user;
+        }
     }
 }

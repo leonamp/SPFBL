@@ -170,6 +170,16 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static boolean isReserved(String address) {
+        if (address.contains("@")) {
+            int index = address.lastIndexOf('@') + 1;
+            address = '.' + address.substring(index);
+            return TLD_SET.contains(address);
+        } else {
+            return TLD_SET.contains(address);
+        }
+    }
+    
     /**
      * Extrai o domínio pelos TLDs conhecidos.
      * @param address o endereço que contém o domínio.
@@ -180,7 +190,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
         address = "." + extractHost(address, false);
-        if (TLD_SET.contains(address)) {
+        if (isReserved(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
@@ -832,6 +842,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return null;
                 } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                     return null;
+                } else if (ex.getMessage().equals("ERROR: RESERVED")) {
+                    return null;
                 } else {
                     Server.logError(ex);
                     return null;
@@ -880,14 +892,21 @@ public class Domain implements Serializable, Comparable<Domain> {
         storeTLD();
     }
     
-    private static synchronized void storeDomain() {
+    private static synchronized HashMap<String,Domain> getDomainMap() {
+        HashMap<String,Domain> map = new HashMap<String,Domain>();
+        map.putAll(DOMAIN_MAP);
+        return map;
+    }
+    
+    private static void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/domain.map");
+                HashMap<String,Domain> map = getDomainMap();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(DOMAIN_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     DOMAIN_CHANGED = false;
                 } finally {
@@ -900,14 +919,21 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    private static synchronized void storeTLD() {
+    private static synchronized ArrayList<String> getSetTLD() {
+        ArrayList<String> set = new ArrayList<String>();
+        set.addAll(TLD_SET);
+        return set;
+    }
+    
+    private static void storeTLD() {
         if (TLD_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/tld.set");
+                ArrayList<String> set = getSetTLD();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(TLD_SET, outputStream);
+                    SerializationUtils.serialize(set, outputStream);
                     // Atualiza flag de atualização.
                     TLD_CHANGED = false;
                 } finally {
@@ -977,7 +1003,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         try {
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.getAttributesDNS(host, null);
-//            Server.logCheckDNS(time, host, "EXIST");
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
@@ -1203,10 +1228,11 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static Domain getDomain(String address) throws ProcessException {
         String key = extractDomain(address, false);
+        Domain domain = null;
         // Busca eficiente O(1).
         if (DOMAIN_MAP.containsKey(key)) {
             // Domínio encontrado.
-            Domain domain = DOMAIN_MAP.get(key);
+            domain = DOMAIN_MAP.get(key);
             domain.queries++;
             if (domain.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -1221,11 +1247,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                     removeDomain(domain);
                     // Segue para nova consulta.
                 }
-//            } else if (domain.isRegistryAlmostExpired() || domain.isReduced()) {
-//                // Registro quase vencendo ou com informação reduzida.
-//                // Adicionar no conjunto para atualização em background.
-//                DOMAIN_REFRESH.add(domain);
-//                return domain;
             } else {
                 // Registro atualizado.
                 return domain;
@@ -1238,12 +1259,14 @@ public class Domain implements Serializable, Comparable<Domain> {
         String server = getWhoisServer(host);
         // Verifica o DNS do host antes de fazer a consulta no WHOIS.
         // Evita consulta desnecessária no WHOIS.
-        checkHost(host);
+        if (domain == null) {
+            checkHost(host);
+        }
         // Domínio existente.
         // Realizando a consulta no WHOIS.
         String result = Server.whois(host, server);
         try {
-            Domain domain = new Domain(result);
+            domain = new Domain(result);
             domain.server = server; // Temporário até final de transição.
             // Adicinando registro em cache.
             addDomain(domain);

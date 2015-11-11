@@ -16,7 +16,7 @@
  */
 package net.spfbl.spf;
 
-import net.spfbl.core.Main;
+import net.spfbl.core.Core;
 import net.spfbl.core.NormalDistribution;
 import net.spfbl.whois.Domain;
 import net.spfbl.core.ProcessException;
@@ -28,13 +28,10 @@ import net.spfbl.whois.SubnetIPv6;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -46,7 +43,6 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -62,7 +58,6 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
-import net.spfbl.core.Huffman;
 import net.spfbl.core.Peer;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -132,7 +127,18 @@ public final class SPF implements Serializable {
     }
     
     public static void startTimer() {
-        // Agenda processamento de reclamações vencidas.
+        TIMER.schedule(
+                new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Verificar reclamações vencidas.
+                CacheComplain.droExpired();
+                // Interromper conexões vencidas.
+                Core.interruptTimeout();
+            }
+        }, 1000, 1000 // Frequência de 1 segundo.
+                );
         TIMER.schedule(
                 new TimerTask() {
             @Override
@@ -140,8 +146,7 @@ public final class SPF implements Serializable {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro SPF mais consultado.
                 SPF.tryRefresh();
-                // Verificar reclamações vencidas.
-                CacheComplain.droExpired();
+                
             }
         }, 60000, 60000 // Frequência de 1 minuto.
                 );
@@ -160,6 +165,8 @@ public final class SPF implements Serializable {
             @Override
             public void run() {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Envio de PING para os peers cadastrados.
+                Peer.sendHeloToAll();
                 // Remoção de registros SPF expirados. 
                 CacheSPF.dropExpired();
                 // Apagar todas as distribuições vencidas.
@@ -192,13 +199,13 @@ public final class SPF implements Serializable {
             boolean bgWhenUnavailable) throws ProcessException {
         LinkedList<String> registryList = new LinkedList<String>();
         try {
-            if (CacheGuess.contains(hostname)) {
-                // Sempre que houver registro de
-                // chute, sobrepor registro atual.
-                registryList.add(CacheGuess.get(hostname));
-            } else {
-                // Caso contrário procurar nos
-                // registros oficiais do domínio.
+//            if (CacheGuess.contains(hostname)) {
+//                // Sempre que houver registro de
+//                // chute, sobrepor registro atual.
+//                registryList.add(CacheGuess.get(hostname));
+//            } else {
+//                // Caso contrário procurar nos
+//                // registros oficiais do domínio.
                 try {
                     Attributes attributes = Server.getAttributesDNS(
                             hostname, new String[]{"SPF"});
@@ -238,20 +245,25 @@ public final class SPF implements Serializable {
                         // Não encontrou registro TXT.
                     }
                 }
-            }
+//            }
             if (registryList.isEmpty()) {
 //                hostname = "." + hostname;
 //                if (CacheGuess.contains(hostname)) {
 //                    // Significa que um palpite SPF
-//                    // foi registrado ara este hostname.
-//                    // Neste caso utilizar o paltpite.
+//                    // foi registrado para este hostname.
+//                    // Neste caso utilizar o paltpite específico.
 //                    registryList.add(CacheGuess.get(hostname));
 //                } else {
-                // Se não hoouver palpite específico para o hostname,
-                // utilizar o palpite padrão.
-                // http://www.openspf.org/FAQ/Best_guess_record
-                registryList.add(CacheGuess.BEST_GUESS);
+//                    // Se não hoouver palpite específico para o hostname,
+//                    // utilizar o palpite padrão, porém adaptado para IPv6.
+//                    // http://www.openspf.org/FAQ/Best_guess_record
+//                    registryList.add(CacheGuess.BEST_GUESS);
 //                }
+                
+                // Como o domínio não tem registro SPF,
+                // Utilizar um registro SPF de chute do sistema.
+                String guess = CacheGuess.get(hostname);
+                registryList.add(guess);
             }
             return registryList;
         } catch (NameNotFoundException ex) {
@@ -692,7 +704,7 @@ public final class SPF implements Serializable {
         String local = sender.substring(0, index);
         String domain = sender.substring(index + 1);
         hostname = hostname.replace("%{i}", ip);
-        hostname = hostname.replace("%{h}", helo);
+        hostname = hostname.replace("%{h}", helo.startsWith(".") ? helo.substring(1) : helo);
         hostname = hostname.replace("%{l}", local);
         hostname = hostname.replace("%{o}", domain);
         hostname = hostname.replace("%{d}", domain);
@@ -827,12 +839,46 @@ public final class SPF implements Serializable {
      * @return o resultado SPF para um IP especifico.
      * @throws ProcessException se houver falha no processamento.
      */
-    public String getResult(String ip, String sender, String helo) throws ProcessException {
-        Qualifier qualifier = getQualifier(ip, sender, helo, 0, new TreeSet<String>());
+    public String getResult(String ip, String sender, String helo,
+            LinkedList<String> logList) throws ProcessException {
+        Qualifier qualifier = getQualifier(
+                ip, sender, helo, 0,
+                new TreeSet<String>(), logList
+        );
         if (qualifier == null) {
             return "NONE";
         } else {
             return qualifier.name();
+        }
+    }
+    
+    private void logRedirect(String redirect, Qualifier qualifier, LinkedList<String> logList) {
+        if (logList != null) {
+            logList.add(getHostname() + ":redirect:" + redirect + " => " + (qualifier == null ? "NOT MATCH" : qualifier.name()));
+        }
+    }
+    
+    private void logRedirect(String redirect, String message, LinkedList<String> logList) {
+        if (logList != null) {
+            logList.add(getHostname() + ":redirect:" + redirect + " => " + message);
+        }
+    }
+    
+    private void logError(Qualifier qualifier, LinkedList<String> logList) {
+        if (logList != null) {
+            logList.add(getHostname() + ":error => " + (qualifier == null ? "NOT MATCH" : qualifier.name()));
+        }
+    }
+    
+    private void logAll(Qualifier qualifier, LinkedList<String> logList) {
+        if (logList != null) {
+            logList.add(getHostname() + ":all => " + (qualifier == null ? "NOT MATCH" : qualifier.name()));
+        }
+    }
+    
+    private void logMechanism(Mechanism mechanism, Qualifier qualifier, LinkedList<String> logList) {
+        if (logList != null) {
+            logList.add(getHostname() + ":" + mechanism + " => " + (qualifier == null ? "NOT MATCH" : qualifier.name()));
         }
     }
 
@@ -846,7 +892,8 @@ public final class SPF implements Serializable {
      * @throws ProcessException se houver falha no processamento.
      */
     private Qualifier getQualifier(String ip, String sender, String helo,
-            int deep, TreeSet<String> hostVisitedSet) throws ProcessException {
+            int deep, TreeSet<String> hostVisitedSet,
+            LinkedList<String> logList) throws ProcessException {
         if (deep > 10) {
             return null; // Evita excesso de consultas.
         } else if (hostVisitedSet.contains(getHostname())) {
@@ -861,7 +908,7 @@ public final class SPF implements Serializable {
                     try {
                         MechanismInclude include = (MechanismInclude) mechanism;
                         Qualifier qualifier = include.getQualifierSPF(
-                                ip, sender, helo, deep + 1, hostVisitedSet);
+                                ip, sender, helo, deep + 1, hostVisitedSet, logList);
                         if (qualifier == null) {
                             // Nenhum qualificador foi definido
                             // então continuar busca.
@@ -881,19 +928,30 @@ public final class SPF implements Serializable {
                     if (deep == 0 && mechanism.match(ip, sender, helo)) {
                         // Mecanismo PTR só será processado
                         // no primeiro nível da árvore.
-                        return mechanism.getQualifier();
+                        Qualifier qualifier = mechanism.getQualifier();
+                        logMechanism(mechanism, qualifier, logList);
+                        return qualifier;
+                    } else {
+                        logMechanism(mechanism, null, logList);
                     }
                 } else if (mechanism.match(ip, sender, helo)) {
-                    return mechanism.getQualifier();
+                    Qualifier qualifier = mechanism.getQualifier();
+                    logMechanism(mechanism, qualifier, logList);
+                    return qualifier;
+                } else {
+                    logMechanism(mechanism, null, logList);
                 }
             }
             if (redirect != null) {
 //                hostVisitedSet.add(getHostname());
                 SPF spf = CacheSPF.get(redirect);
                 if (spf == null) {
+                    logRedirect(redirect, "NOT FOUND", logList);
                     return null;
                 } else {
-                    return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
+                    Qualifier qualifier = spf.getQualifier(ip, sender, helo, 0, hostVisitedSet, logList);
+                    logRedirect(redirect, qualifier, logList);
+                    return qualifier;
                 }
             } else if (error) {
 //                // Foi encontrado um erro em algum mecanismos
@@ -902,6 +960,7 @@ public final class SPF implements Serializable {
 
                 // Nova interpretação SPF para erro de sintaxe.
                 // Em caso de erro, retornar SOFTFAIL.
+                logError(Qualifier.SOFTFAIL, logList);
                 return Qualifier.SOFTFAIL;
             } else if (deep > 0) {
                 // O mecanismo all só deve ser
@@ -910,6 +969,7 @@ public final class SPF implements Serializable {
             } else {
                 // Retorna o qualificador do mecanismo all.
                 // Pode ser nulo caso o registro não apresente o mecanismo all.
+                logAll(all, logList);
                 return all;
             }
 //        } else {
@@ -1366,9 +1426,9 @@ public final class SPF implements Serializable {
                                             }
                                         }
                                     }
-                                    attributesA = Server.getAttributesDNS(
+                                    Attributes attributesAAAA = Server.getAttributesDNS(
                                             hostAddress, new String[]{"AAAA"});
-                                    Attribute attributeAAAA = attributesA.get("AAAA");
+                                    Attribute attributeAAAA = attributesAAAA.get("AAAA");
                                     if (attributeAAAA != null) {
                                         for (int i = 0; i < attributeAAAA.size(); i++) {
                                             String host6Address = (String) attributeAAAA.get(i);
@@ -1451,10 +1511,14 @@ public final class SPF implements Serializable {
 
         private String getHostname(String ip, String sender, String helo) {
             String expression = getExpression();
-            int index = expression.indexOf(':') + 1;
-            expression = expression.substring(index);
-            expression = expand(expression, ip, sender, helo);
-            return expression;
+            int index = expression.indexOf(':');
+            if (index == -1) {
+                return SPF.this.getHostname();
+            } else {
+                expression = expression.substring(index + 1);
+                expression = expand(expression, ip, sender, helo);
+                return expression;
+            }
         }
 
         @Override
@@ -1633,13 +1697,14 @@ public final class SPF implements Serializable {
 
         private Qualifier getQualifierSPF(
                 String ip, String sender, String helo,
-                int deep, TreeSet<String> hostVisitedSet) throws ProcessException {
+                int deep, TreeSet<String> hostVisitedSet,
+                LinkedList<String> logList) throws ProcessException {
             String hostname = getHostname(ip, sender, helo);
             SPF spf = CacheSPF.get(hostname);
             if (spf == null) {
                 return null;
             } else {
-                return spf.getQualifier(ip, sender, helo, deep, hostVisitedSet);
+                return spf.getQualifier(ip, sender, helo, deep, hostVisitedSet, logList);
             }
 
         }
@@ -1669,7 +1734,15 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static SPF dropExact(String token) {
+        private static synchronized boolean isChanged() {
+            return CHANGED;
+        }
+        
+        private static synchronized void setNotChanged() {
+            CHANGED = false;
+        }
+        
+        private static synchronized SPF dropExact(String token) {
             SPF ret = MAP.remove(token);
             if (ret != null) {
                 CHANGED = true;
@@ -1677,7 +1750,7 @@ public final class SPF implements Serializable {
             return ret;
         }
 
-        private static SPF putExact(String key, SPF value) {
+        private static synchronized SPF putExact(String key, SPF value) {
             SPF ret = MAP.put(key, value);
             if (!value.equals(ret)) {
                 CHANGED = true;
@@ -1696,12 +1769,8 @@ public final class SPF implements Serializable {
             map.putAll(MAP);
             return map;
         }
-
-        private static boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
         
-        private static SPF getExact(String host) {
+        private static synchronized SPF getExact(String host) {
             return MAP.get(host);
         }
         
@@ -1778,14 +1847,15 @@ public final class SPF implements Serializable {
         }
 
         private static void store() {
-            if (CHANGED) {
+            if (isChanged()) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/spf.map");
+                    HashMap<String,SPF> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
-                        CHANGED = false;
+                        SerializationUtils.serialize(map, outputStream);
+                        setNotChanged();
                     } finally {
                         outputStream.close();
                     }
@@ -1815,7 +1885,7 @@ public final class SPF implements Serializable {
                             putExact(key, spf);
                         }
                     }
-                    CHANGED = false;
+                    setNotChanged();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -1956,9 +2026,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/complain.map");
+                    TreeMap<Long,String> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
+                        SerializationUtils.serialize(map, outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
@@ -2087,7 +2158,7 @@ public final class SPF implements Serializable {
                         return null;
                     }
                 }
-                Server.logQuery(time, "SPFBL", client, "SPAM " + ticket, "OK " + blackSet);
+                Server.logQuery(time, "SPFCP", client, "SPAM " + ticket, "OK " + blackSet);
                 return blackSet;
             }
         }
@@ -2203,9 +2274,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/distribution.map");
+                    HashMap<String,Distribution> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
+                        SerializationUtils.serialize(map, outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
@@ -2485,9 +2557,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/provider.set");
+                    TreeSet<String> set = getAll();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getAll(), outputStream);
+                        SerializationUtils.serialize(set, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
@@ -3162,9 +3235,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/white.set");
+                    TreeSet<String> set = getAll();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getAll(), outputStream);
+                        SerializationUtils.serialize(set, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
@@ -3408,9 +3482,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/trap.set");
+                    TreeSet<String> set = getAll();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getAll(), outputStream);
+                        SerializationUtils.serialize(set, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
@@ -4126,9 +4201,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/block.set");
+                    TreeSet<String> set = getAll();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getAll(), outputStream);
+                        SerializationUtils.serialize(set, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
@@ -4442,9 +4518,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/ignore.set");
+                    TreeSet<String> set = getAll();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(SET, outputStream);
+                        SerializationUtils.serialize(set, outputStream);
                         CHANGED = false;
                     } finally {
                         outputStream.close();
@@ -4513,218 +4590,6 @@ public final class SPF implements Serializable {
     public static TreeSet<String> getIgnoreSet() throws ProcessException {
         return CacheIgnore.getAll();
     }
-
-//    /**
-//     * Classe que representa o cache de peers que serão atualizados.
-//     */
-//    private static class CachePeer {
-//
-//        /**
-//         * Mapa de registros de peers <endereço,porta>.
-//         */
-//        private static final HashMap<String,Integer> MAP = new HashMap<String,Integer>();
-//        
-//        /**
-//         * Flag que indica se o cache foi modificado.
-//         */
-//        private static boolean CHANGED = false;
-//        
-//        private static synchronized Integer dropExact(String address) {
-//            Integer ret = MAP.remove(address);
-//            if (ret != null) {
-//                CHANGED = true;
-//            }
-//            return ret;
-//        }
-//
-//        private static synchronized Integer putExact(String key, Integer value) {
-//            Integer ret = MAP.put(key, value);
-//            if (!value.equals(ret)) {
-//                CHANGED = true;
-//            }
-//            return ret;
-//        }
-//        
-//        private static synchronized ArrayList<String> keySet() {
-//            ArrayList<String> keySet = new ArrayList<String>();
-//            keySet.addAll(MAP.keySet());
-//            return keySet;
-//        }
-//        
-//        private static synchronized HashMap<String,Integer> getMap() {
-//            HashMap<String,Integer> map = new HashMap<String,Integer>();
-//            map.putAll(MAP);
-//            return map;
-//        }
-//
-//        private static synchronized boolean containsExact(String address) {
-//            return MAP.containsKey(address);
-//        }
-//        
-//        private static synchronized Integer getExact(String host) {
-//            return MAP.get(host);
-//        }
-//        
-//        private static synchronized boolean isChanged() {
-//            return CHANGED;
-//        }
-//        
-//        private static synchronized void setStored() {
-//            CHANGED = false;
-//        }
-//        
-//        private static synchronized void setLoaded() {
-//            CHANGED = false;
-//        }
-//
-//        private static void send(String token) {
-//            for (String address : keySet()) {
-//                long time = System.currentTimeMillis();
-//                int port = getExact(address);
-//                String result;
-//                try {
-//                    Main.sendTokenToPeer(token, address, port);
-//                    result = "SENT";
-//                } catch (ProcessException ex) {
-//                    result = ex.getMessage();
-//                }
-//                Server.logPeerSend(time, address, token, result);
-//            }
-//        }
-//
-//        private static boolean add(String address,
-//                String port) throws ProcessException {
-//            try {
-//                int portInt = Integer.parseInt(port);
-//                return add(address, portInt);
-//            } catch (NumberFormatException ex) {
-//                throw new ProcessException("ERROR: PEER PORT INVALID", ex);
-//            }
-//        }
-//
-//        private static boolean add(String address,
-//                Integer port) throws ProcessException {
-//            try {
-//                InetAddress.getByName(address);
-//                if (port == null || port < 1 || port > 65535) {
-//                    throw new ProcessException("ERROR: PEER PORT INVALID");
-//                } else if (!port.equals(putExact(address, port))) {
-//                    // Enviar imediatamente todos os
-//                    // tokens bloqueados na base atual.
-//                    TreeMap<String,Distribution> distributionSet =
-//                            CacheDistribution.getTreeMap();
-//                    for (String token : distributionSet.keySet()) {
-//                        Distribution distribution = distributionSet.get(token);
-//                        if (distribution.isBlocked(token)) {
-//                            long time = System.currentTimeMillis();
-//                            String result;
-//                            try {
-//                                Main.sendTokenToPeer(token, address, port);
-//                                result = "SENT";
-//                            } catch (ProcessException ex) {
-//                                result = ex.toString();
-//                            }
-//                            Server.logPeerSend(time, address, token, result);
-//                        }
-//                    }
-//                    return true;
-//                }
-//                return false;
-//            } catch (UnknownHostException ex) {
-//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-//            }
-//        }
-//
-//        private static synchronized boolean drop(
-//                String address) throws ProcessException {
-//            try {
-//                InetAddress.getByName(address);
-//                if (dropExact(address) == null) {
-//                    return false;
-//                } else {
-//                    return true;
-//                }
-//            } catch (UnknownHostException ex) {
-//                throw new ProcessException("ERROR: PEER ADDRESS INVALID", ex);
-//            }
-//        }
-//
-//        private static TreeSet<String> get() throws ProcessException {
-//            TreeSet<String> blockSet = new TreeSet<String>();
-//            for (String address : keySet()) {
-//                int port = getExact(address);
-//                String result = address + ":" + port;
-//                blockSet.add(result);
-//            }
-//            return blockSet;
-//        }
-//
-//        private static void store() {
-//            if (isChanged()) {
-//                try {
-//                    long time = System.currentTimeMillis();
-//                    File file = new File("./data/peer.map");
-//                    FileOutputStream outputStream = new FileOutputStream(file);
-//                    try {
-//                        SerializationUtils.serialize(getMap(), outputStream);
-//                        setStored();
-//                    } finally {
-//                        outputStream.close();
-//                    }
-//                    Server.logStore(time, file);
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                }
-//            }
-//        }
-//
-//        private static void load() {
-//            long time = System.currentTimeMillis();
-//            File file = new File("./data/peer.map");
-//            if (file.exists()) {
-//                try {
-//                    HashMap<Object,Integer> map;
-//                    FileInputStream fileInputStream = new FileInputStream(file);
-//                    try {
-//                        map = SerializationUtils.deserialize(fileInputStream);
-//                    } finally {
-//                        fileInputStream.close();
-//                    }
-//                    for (Object key : map.keySet()) {
-//                        if (key instanceof InetAddress) {
-//                            InetAddress address = (InetAddress) key;
-//                            Integer value = map.get(address);
-//                            putExact(address.getHostAddress(), value);
-//                        } else if (key instanceof String) {
-//                            String address = (String) key;
-//                            Integer value = map.get(address);
-//                            putExact(address, value);
-//                        }
-//                    }
-//                    setLoaded();
-//                    Server.logLoad(time, file);
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                }
-//            }
-//        }
-//    }
-//
-//    public static boolean addPeer(String address, int port) throws ProcessException {
-//        return CachePeer.add(address, port);
-//    }
-//
-//    public static boolean addPeer(String address, String port) throws ProcessException {
-//        return CachePeer.add(address, port);
-//    }
-//
-//    public static boolean dropPeer(String address) throws ProcessException {
-//        return CachePeer.drop(address);
-//    }
-//
-//    public static TreeSet<String> getPeerSet() throws ProcessException {
-//        return CachePeer.get();
-//    }
 
     public static TreeSet<String> getGuessSet() throws ProcessException {
         return CacheGuess.get();
@@ -4842,7 +4707,18 @@ public final class SPF implements Serializable {
             if (!host.startsWith(".")) {
                 host = "." + host;
             }
-            return getExact(host);
+            String guess = getExact(host);
+            if (guess == null) {
+                // Se não hoouver palpite específico para o hostname,
+                // utilizar o palpite padrão, porém adaptado para IPv6.
+                // http://www.openspf.org/FAQ/Best_guess_record
+                return BEST_GUESS;
+            } else {
+                // Significa que um palpite SPF
+                // foi registrado para este hostname.
+                // Neste caso utilizar o paltpite específico.
+                return guess;
+            }
         }
 
         private static void store() {
@@ -4850,9 +4726,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/guess.map");
+                    HashMap<String,String> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
+                        SerializationUtils.serialize(map, outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
@@ -5284,9 +5161,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/helo.map");
+                    HashMap<String,HELO> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
+                        SerializationUtils.serialize(map, outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
@@ -5444,9 +5322,10 @@ public final class SPF implements Serializable {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/defer.map");
+                    HashMap<String,Long> map = getMap();
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
-                        SerializationUtils.serialize(getMap(), outputStream);
+                        SerializationUtils.serialize(map, outputStream);
                         setStored();
                     } finally {
                         outputStream.close();
@@ -5495,6 +5374,9 @@ public final class SPF implements Serializable {
         if (sender != null && !Domain.isEmail(sender)) {
             return "action=REJECT [RBL] "
                     + sender + " is not a valid e-mail address.\n\n";
+        } else if (sender != null && Domain.isReserved(sender)) {
+            return "action=REJECT [RBL] "
+                    + sender + " has a reserved domain.\n\n";
         } else if (!Subnet.isValidIP(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
@@ -5525,6 +5407,7 @@ public final class SPF implements Serializable {
                     }
                 }
                 String result;
+                LinkedList<String> logList = new LinkedList<String>();
                 SPF spf = CacheSPF.get(sender);
                 if (spf == null) {
                     result = "NONE";
@@ -5539,7 +5422,7 @@ public final class SPF implements Serializable {
                     return "action=REJECT [RBL] "
                             + "sender has non-existent internet domain.\n\n";
                 } else {
-                    result = spf.getResult(ip, sender, helo);
+                    result = spf.getResult(ip, sender, helo, logList);
                 }
                 String origem;
                 String fluxo;
@@ -5678,7 +5561,7 @@ public final class SPF implements Serializable {
                     } catch (ProcessException ex) {
                         result = ex.getMessage() + "\n";
                     }
-                } else if ((firstToken.equals("SPF") && tokenizer.countTokens() == 4)
+                } else if ((firstToken.equals("SPF") && tokenizer.countTokens() >= 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
@@ -5693,8 +5576,11 @@ public final class SPF implements Serializable {
                             // Nova formatação de consulta.
                             ip = tokenizer.nextToken();
                             sender = tokenizer.nextToken();
-                            helo = tokenizer.nextToken();
-                            recipient = tokenizer.nextToken();
+                            while (!sender.endsWith("'") && tokenizer.hasMoreTokens()) {
+                                sender += " " + tokenizer.nextToken();
+                            }
+                            helo = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : "''";
+                            recipient = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : "''";
                             ip = ip.substring(1, ip.length() - 1);
                             sender = sender.substring(1, sender.length() - 1);
                             helo = helo.substring(1, helo.length() - 1);
@@ -5735,6 +5621,8 @@ public final class SPF implements Serializable {
                             return "INVALID\n";
                         } else if (sender != null && !Domain.isEmail(sender)) {
                             return "INVALID\n";
+                        } else if (sender != null && Domain.isReserved(sender)) {
+                            return "INVALID\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
@@ -5760,6 +5648,12 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ipv6);
                                 }
                             }
+                            if (sender != null && firstToken.equals("CHECK")) {
+                                int index = sender.lastIndexOf('@');
+                                String domain = sender.substring(index + 1);
+                                CacheSPF.refresh(domain, false);
+                            }
+                            LinkedList<String> logList = new LinkedList<String>();
                             SPF spf = CacheSPF.get(sender);
                             if (spf == null) {
                                 result = "NONE";
@@ -5772,7 +5666,7 @@ public final class SPF implements Serializable {
                             } else if (spf.isInexistent()) {
                                 return "NXDOMAIN\n";
                             } else {
-                                result = spf.getResult(ip, sender, helo);
+                                result = spf.getResult(ip, sender, helo, logList);
                             }
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
                                 // Retornar FAIL somente se não houver 
@@ -5804,29 +5698,33 @@ public final class SPF implements Serializable {
                                 fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
-                                result += "\n";
+                                result = "SPF resolution results:\n";
+                                for (String log : logList) {
+                                    result += "   " + log + "\n";
+                                }
                                 String block = CacheBlock.find(client, ip, sender, helo, query, recipient);
-                                if (block == null) {
-                                    TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
-                                    for (String token : tokenSet) {
-                                        float probability;
-                                        Status status;
-                                        String frequency;
-                                        if (distributionMap.containsKey(token)) {
-                                            Distribution distribution = distributionMap.get(token);
-                                            probability = distribution.getMinSpamProbability();
-                                            status = distribution.getStatus(token);
-                                            frequency = distribution.getFrequencyLiteral();
-                                        } else {
-                                            probability = 0.0f;
-                                            status = SPF.Status.WHITE;
-                                            frequency = "undefined";
-                                        }
-                                        result += token + " " + frequency + " " + status.name() + " "
-                                                + Server.DECIMAL_FORMAT.format(probability) + "\n";
+                                if (block != null) {
+                                    result += "\nFirst BLOCK match: " + block + "\n";
+                                }
+                                result += "\n";
+                                result += "Considered identifiers and status:\n";
+                                TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
+                                for (String token : tokenSet) {
+                                    float probability;
+                                    Status status;
+                                    String frequency;
+                                    if (distributionMap.containsKey(token)) {
+                                        Distribution distribution = distributionMap.get(token);
+                                        probability = distribution.getMinSpamProbability();
+                                        status = distribution.getStatus(token);
+                                        frequency = distribution.getFrequencyLiteral();
+                                    } else {
+                                        probability = 0.0f;
+                                        status = SPF.Status.WHITE;
+                                        frequency = "UNDEFINED";
                                     }
-                                } else {
-                                    result = "BLOCK " + block + "\n";
+                                    result += "   " + token + " " + frequency + " " + status.name() + " "
+                                            + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
                                 return result;
                             } else if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
@@ -6111,7 +6009,7 @@ public final class SPF implements Serializable {
             if (hasFrequency()) {
                 return frequency.toStringInt() + "s";
             } else {
-                return "undefined";
+                return "UNDEFINED";
             }
         }
 

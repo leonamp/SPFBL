@@ -25,9 +25,16 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.LinkedList;
+import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
 import net.spfbl.core.Peer;
+import net.spfbl.whois.Domain;
+import net.spfbl.whois.SubnetIPv4;
+import net.spfbl.whois.SubnetIPv6;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -38,6 +45,7 @@ import net.spfbl.core.Peer;
  */
 public final class PeerUDP extends Server {
 
+    private final String HOSTNAME;
     private final int PORT;
     private final int SIZE; // Tamanho máximo da mensagem do pacote UDP de reposta.
     private final DatagramSocket SERVER_SOCKET;
@@ -48,14 +56,93 @@ public final class PeerUDP extends Server {
      * @param size o tamanho máximo do pacote UDP.
      * @throws java.net.SocketException se houver falha durante o bind.
      */
-    public PeerUDP(int port, int size) throws SocketException {
+    public PeerUDP(String hostname, int port, int size) throws SocketException {
         super("ServerPEERUDP");
+        HOSTNAME = hostname;
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding peer UDP socket on port " + port + "...");
+        Server.logDebug("binding peer UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
+    }
+    
+    public String getConnection() {
+        if (HOSTNAME == null) {
+            return null;
+        } else if (HOSTNAME.toLowerCase().equals("localhost")) {
+            return null;
+        } else {
+            try {
+    //            for (InetAddress address : InetAddress.getAllByName(HOSTNAME)) {
+    //                if (address.isAnyLocalAddress()) {
+    //                    return null;
+    //                } else if (address.isLinkLocalAddress()) {
+    //                    return null;
+    //                } else if (address.isLoopbackAddress()) {
+    //                    return null;
+    //                } else {
+    //                    return HOSTNAME + ":" + PORT;
+    //                }
+    //            }
+                Attributes attributesA = Server.getAttributesDNS(
+                        HOSTNAME, new String[]{"A"});
+                Attribute attributeA = attributesA.get("A");
+                if (attributeA == null) {
+                    Attributes attributesAAAA = Server.getAttributesDNS(
+                            HOSTNAME, new String[]{"AAAA"});
+                    Attribute attributeAAAA = attributesAAAA.get("AAAA");
+                    if (attributeAAAA != null) {
+                        for (int i = 0; i < attributeAAAA.size(); i++) {
+                            String host6Address = (String) attributeAAAA.get(i);
+                            if (SubnetIPv6.isValidIPv6(host6Address)) {
+                                try {
+                                    InetAddress address = InetAddress.getByName(host6Address);
+                                    if (address.isLinkLocalAddress()) {
+                                        return null;
+                                    } else if (address.isLoopbackAddress()) {
+                                        return null;
+                                    }
+                                } catch (UnknownHostException ex) {
+                                }
+                            } else {
+                                return null;
+                            }
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < attributeA.size(); i++) {
+                        String host4Address = (String) attributeA.get(i);
+                        if (SubnetIPv4.isValidIPv4(host4Address)) {
+                            try {
+                                InetAddress address = InetAddress.getByName(host4Address);
+                                if (address.isLinkLocalAddress()) {
+                                    return null;
+                                } else if (address.isLoopbackAddress()) {
+                                    return null;
+                                }
+                            } catch (UnknownHostException ex) {
+                            }
+                        } else {
+                            return null;
+                        }
+                    }
+                }
+                return HOSTNAME + ":" + PORT;
+            } catch (NamingException ex) {
+                return null;
+            }
+        }
+    }
+    
+    private static boolean hasAddress(String hostname,
+            InetAddress ipAddress) throws UnknownHostException {
+        for (InetAddress address : InetAddress.getAllByName(hostname)) {
+            if (address.equals(ipAddress)) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
@@ -96,7 +183,7 @@ public final class PeerUDP extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             PACKET = null;
             notify();
         }
@@ -111,21 +198,88 @@ public final class PeerUDP extends Server {
                 try {
                     String address;
                     String result;
+                    String type;
                     InetAddress ipAddress = PACKET.getAddress();
                     byte[] data = PACKET.getData();
                     String token = new String(data, "ISO-8859-1").trim();
-                    Peer peer = Peer.get(ipAddress);
-                    if (peer == null) {
+                    if (token.startsWith("HELO ")) {
                         address = ipAddress.getHostAddress();
-                        result = "UNKNOWN";
+                        try {
+                            int index = token.indexOf(' ') + 1;
+                            String helo = token.substring(index);
+                            StringTokenizer tokenizer = new StringTokenizer(helo, " ");
+                            String connection = null;
+                            String email = null;
+                            if (tokenizer.hasMoreTokens()) {
+                                connection = tokenizer.nextToken();
+                                connection = connection.toLowerCase();
+                                if (tokenizer.hasMoreTokens()) {
+                                    email = tokenizer.nextToken();
+                                    email = email.toLowerCase();
+                                }
+                            }
+                            if (connection == null || connection.length() == 0) {
+                                result = "INVALID";
+                            } else if (email != null && !Domain.isEmail(email)) {
+                                result = "INVALID";
+                            } else {
+                                index = connection.indexOf(':');
+                                String hostname = connection.substring(0, index);
+                                String port = connection.substring(index + 1);
+                                if (hasAddress(hostname, ipAddress)) {
+                                    Peer peer = Peer.get(ipAddress);
+                                    if (peer == null) {
+                                        peer = Peer.create(hostname, port);
+                                        if (peer == null) {
+                                            result = "NOT CREATED";
+                                        } else {
+                                            peer.setEmail(email);
+                                            peer.addNotification();
+//                                            peer.updateLast();
+                                            result = "CREATED";
+                                        }
+                                    } else if (peer.getAddress().equals(hostname)) {
+                                        peer.setPort(port);
+                                        peer.setEmail(email);
+                                        peer.addNotification();
+//                                        peer.updateLast();
+                                        result = "UPDATED";
+                                    } else {
+                                        peer.drop();
+                                        peer = peer.clone(hostname);
+                                        peer.addNotification();
+//                                        peer.updateLast();
+                                        result = "UPDATED";
+                                    }
+                                } else {
+                                    result = "NOT MATCH";
+                                }
+                            }
+                        } catch (UnknownHostException ex) {
+                            result = "UNKNOWN";
+                        } catch (Exception ex) {
+                            Server.logError(ex);
+                            result = "ERROR " + ex.getMessage();
+                        } finally {
+                            type = "PEERH";
+                        }
                     } else {
-                        address = peer.getAddress();
-                        result = peer.processReceive(token);
+                        Peer peer = Peer.get(ipAddress);
+                        if (peer == null) {
+                            address = ipAddress.getHostAddress();
+                            result = "UNKNOWN";
+                            type = "PEERU";
+                        } else {
+                            peer.addNotification();
+                            address = peer.getAddress();
+                            result = peer.processReceive(token);
+                            type = "PEERB";
+                        }
                     }
                     // Log do bloqueio com o respectivo resultado.
                     Server.logQuery(
                             time,
-                            "PEERB",
+                            type,
                             address,
                             token,
                             result
@@ -214,12 +368,13 @@ public final class PeerUDP extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("Creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
+                Server.logDebug("creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;
             } else {
-                return null;
+                CONNECION_SEMAPHORE.acquire();
+                return CONNECTION_POLL.poll();
             }
         } catch (InterruptedException ex) {
             Server.logError(ex);
@@ -233,7 +388,7 @@ public final class PeerUDP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening peers on UDP port " + PORT + "...");
+            Server.logDebug("listening peers on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -260,7 +415,7 @@ public final class PeerUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie peer UDP server closed.");
+            Server.logDebug("querie peer UDP server closed.");
         }
     }
     
@@ -282,7 +437,7 @@ public final class PeerUDP extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding peer UDP socket on port " + PORT + "...");
+        Server.logDebug("unbinding peer UDP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

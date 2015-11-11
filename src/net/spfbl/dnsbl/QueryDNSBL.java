@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.core.Client;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
@@ -56,7 +57,7 @@ import org.xbill.DNS.Type;
  */
 public final class QueryDNSBL extends Server {
 
-    private final int PORT = 53;
+    private final int PORT;
     private final DatagramSocket SERVER_SOCKET;
     
     /**
@@ -175,9 +176,10 @@ public final class QueryDNSBL extends Server {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/dnsbl.map");
+                HashMap<String,ServerDNSBL> map = getMap();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(getMap(), outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     CHANGED = false;
                 } finally {
                     outputStream.close();
@@ -237,12 +239,13 @@ public final class QueryDNSBL extends Server {
      * Configuração e intanciamento do servidor.
      * @throws java.net.SocketException se houver falha durante o bind.
      */
-    public QueryDNSBL() throws SocketException {
+    public QueryDNSBL(int port) throws SocketException {
         super("ServerDNSBL");
         setPriority(Thread.NORM_PRIORITY);
         // Criando conexões.
-        Server.logDebug("Binding DNSBL socket on port " + PORT + "...");
-        SERVER_SOCKET = new DatagramSocket(PORT);
+        Server.logDebug("binding DNSBL socket on port " + port + "...");
+        PORT = port;
+        SERVER_SOCKET = new DatagramSocket(port);
     }
     
     /**
@@ -259,7 +262,7 @@ public final class QueryDNSBL extends Server {
         private long time = 0;
         
         public Connection() {
-            super("DNSBL" + (CONNECTION_COUNT+1));
+            super("DNSUDP" + (CONNECTION_COUNT+1));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
         }
@@ -284,7 +287,7 @@ public final class QueryDNSBL extends Server {
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
-            Server.logDebug("Closing " + getName() + "...");
+            Server.logDebug("closing " + getName() + "...");
             PACKET = null;
             notify();
         }
@@ -410,7 +413,15 @@ public final class QueryDNSBL extends Server {
                             );
                     SERVER_SOCKET.send(sendPacket);
                     // Log da consulta com o respectivo resultado.
-                    Server.logQueryDNSBL(time, ipAddress.getHostAddress(), type + ' ' + query, result);
+                    Client client = Client.get(ipAddress);
+                    if (client == null) {
+                        String origin = ipAddress.getHostAddress();
+                        Server.logQueryDNSBL(time, origin, type + ' ' + query, result);
+                    } else {
+                        client.addQuery();
+                        String origin = ipAddress.getHostAddress() + ' ' + client.getDomain();
+                        Server.logQueryDNSBL(time, origin, type + ' ' + query, result);
+                    }
                 } catch (SocketException ex) {
                     // Houve fechamento do socket.
                     Server.logQueryDNSBL(time, ipAddress == null ? null : ipAddress.getHostAddress(), type + ' ' + query, "SOCKET CLOSED");
@@ -448,7 +459,25 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static final int CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 8;
+    
+    public static void setConnectionLimit(String limit) {
+        if (limit != null && limit.length() > 0) {
+            try {
+                setConnectionLimit(Integer.parseInt(limit));
+            } catch (Exception ex) {
+                Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+            }
+        }
+    }
+    
+    public static void setConnectionLimit(int limit) {
+        if (limit < 1 || limit > Byte.MAX_VALUE) {
+            Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+        } else {
+            CONNECTION_LIMIT = (byte) limit;
+        }
+    }
     
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
@@ -472,7 +501,7 @@ public final class QueryDNSBL extends Server {
         } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("Creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
+            Server.logDebug("creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;
@@ -490,7 +519,7 @@ public final class QueryDNSBL extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("Listening DNSBL on UDP port " + PORT + "...");
+            Server.logDebug("listening DNSBL on UDP port " + PORT + "...");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -513,7 +542,7 @@ public final class QueryDNSBL extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("Querie DNSBL server closed.");
+            Server.logDebug("querie DNSBL server closed.");
         }
     }
     
@@ -535,7 +564,7 @@ public final class QueryDNSBL extends Server {
                 Server.logError(ex);
             }
         }
-        Server.logDebug("Unbinding DSNBL socket on port " + PORT + "...");
+        Server.logDebug("unbinding DSNBL socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }
