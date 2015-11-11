@@ -892,14 +892,21 @@ public class Domain implements Serializable, Comparable<Domain> {
         storeTLD();
     }
     
-    private static synchronized void storeDomain() {
+    private static synchronized HashMap<String,Domain> getDomainMap() {
+        HashMap<String,Domain> map = new HashMap<String,Domain>();
+        map.putAll(DOMAIN_MAP);
+        return map;
+    }
+    
+    private static void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/domain.map");
+                HashMap<String,Domain> map = getDomainMap();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(DOMAIN_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     DOMAIN_CHANGED = false;
                 } finally {
@@ -912,14 +919,21 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    private static synchronized void storeTLD() {
+    private static synchronized ArrayList<String> getSetTLD() {
+        ArrayList<String> set = new ArrayList<String>();
+        set.addAll(TLD_SET);
+        return set;
+    }
+    
+    private static void storeTLD() {
         if (TLD_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/tld.set");
+                ArrayList<String> set = getSetTLD();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(TLD_SET, outputStream);
+                    SerializationUtils.serialize(set, outputStream);
                     // Atualiza flag de atualização.
                     TLD_CHANGED = false;
                 } finally {

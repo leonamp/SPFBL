@@ -451,22 +451,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public void sendAll() {
-        String origin = null;
         TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
         for (String token : distributionSet.keySet()) {
             Distribution distribution = distributionSet.get(token);
             if (distribution.isBlocked(token)) {
-                long time = System.currentTimeMillis();
-                String address = getAddress();
-                String result;
-                try {
-                    int port = getPort();
-                    Core.sendTokenToPeer(token, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
-                    result = ex.toString();
-                }
-                Server.logPeerSend(time, origin, token, result);
+                send(token);
             }
             try {
                 Thread.sleep(100);
@@ -738,9 +727,25 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return frequency != null;
     }
     
+    public int getIdleTimeMillis() {
+        if (last == 0) {
+            return 0;
+        } else {
+            return (int) (System.currentTimeMillis() - last);
+        }
+    }
+    
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
-            return "~" + frequency.getMaximumInt() + "ms";
+            int frequencyInt = frequency.getMaximumInt();
+            int idleTime = getIdleTimeMillis();
+            if (idleTime > Server.DAY_TIME) {
+                return "DEAD";
+            } else if (idleTime > frequencyInt * 2) {
+                return "IDLE";
+            } else {
+                return "~" + frequencyInt + "ms";
+            }
         } else {
             return "UNDEFINED";
         }
@@ -801,7 +806,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
                     + (retainSet == null ? "" : " " + retainSet.size())
-                    + " " + (isAlive() ? "ALIVE" : "DEAD")
+//                    + " " + (isAlive() ? "ALIVE" : "DEAD")
                     + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + (email == null ? "" : " <" + email + ">");
@@ -810,7 +815,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
                     + (retainSet == null ? "" : " " + retainSet.size())
-                    + " " + (isAlive() ? "ALIVE" : "DEAD")
+//                    + " " + (isAlive() ? "ALIVE" : "DEAD")
                     + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + " " + user;

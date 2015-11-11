@@ -274,6 +274,24 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public static TreeSet<Client> getSet(Permission permission) {
+        if (permission == null) {
+            return null;
+        } else {
+            TreeSet<Client> clientSet = new TreeSet<Client>();
+            for (Client client : getSet()) {
+                if (client.getPermission() == permission) {
+                    clientSet.add(client);
+                } else if (permission == Permission.SPFBL && client.getPermission() == Permission.ALL) {
+                    clientSet.add(client);
+                } else if (permission == Permission.DNSBL && client.getPermission() == Permission.ALL) {
+                    clientSet.add(client);
+                }
+            }
+            return clientSet;
+        }
+    }
+    
     public synchronized static Client getByIP(String ip) {
         if (ip == null) {
             return null;
@@ -351,9 +369,25 @@ public class Client implements Serializable, Comparable<Client> {
         return frequency != null;
     }
     
+    public int getIdleTimeMillis() {
+        if (last == 0) {
+            return 0;
+        } else {
+            return (int) (System.currentTimeMillis() - last);
+        }
+    }
+    
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
-            return "~" + frequency.getMaximumInt() + "ms";
+            int frequencyInt = frequency.getMaximumInt();
+            int idleTime = getIdleTimeMillis();
+            if (idleTime > Server.DAY_TIME) {
+                return "DEAD";
+            } else if (idleTime > frequencyInt * 2) {
+                return "IDLE";
+            } else {
+                return "~" + frequencyInt + "ms";
+            }
         } else {
             return "UNDEFINED";
         }

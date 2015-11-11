@@ -1445,7 +1445,35 @@ public abstract class Server extends Thread {
                     } else if (token.equals("SHOW")) {
                         if (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
-                            if (Subnet.isValidIP(token)) {
+                            if (token.equals("DNSBL")) {
+                                for (Client client : Client.getSet(Client.Permission.DNSBL)) {
+                                    result += client + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (token.equals("SPFBL")) {
+                                for (Client client : Client.getSet(Client.Permission.SPFBL)) {
+                                    result += client + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (token.equals("NONE")) {
+                                for (Client client : Client.getSet(Client.Permission.NONE)) {
+                                    result += client + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (token.equals("ALL")) {
+                                for (Client client : Client.getSet(Client.Permission.ALL)) {
+                                    result += client + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            } else if (Subnet.isValidIP(token)) {
                                 Client client = Client.getByIP(token);
                                 if (client == null) {
                                     result += "NOT FOUND\n";

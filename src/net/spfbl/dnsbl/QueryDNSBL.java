@@ -176,9 +176,10 @@ public final class QueryDNSBL extends Server {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/dnsbl.map");
+                HashMap<String,ServerDNSBL> map = getMap();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(getMap(), outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     CHANGED = false;
                 } finally {
                     outputStream.close();

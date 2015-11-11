@@ -22,20 +22,19 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.util.Enumeration;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
-import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
 import net.spfbl.core.Peer;
 import net.spfbl.whois.Domain;
+import net.spfbl.whois.SubnetIPv4;
+import net.spfbl.whois.SubnetIPv6;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -69,21 +68,70 @@ public final class PeerUDP extends Server {
     }
     
     public String getConnection() {
-        try {
-            for (InetAddress address : InetAddress.getAllByName(HOSTNAME)) {
-                if (address.isAnyLocalAddress()) {
-                    return null;
-                } else if (address.isLinkLocalAddress()) {
-                    return null;
-                } else if (address.isLoopbackAddress()) {
-                    return null;
+        if (HOSTNAME == null) {
+            return null;
+        } else if (HOSTNAME.toLowerCase().equals("localhost")) {
+            return null;
+        } else {
+            try {
+    //            for (InetAddress address : InetAddress.getAllByName(HOSTNAME)) {
+    //                if (address.isAnyLocalAddress()) {
+    //                    return null;
+    //                } else if (address.isLinkLocalAddress()) {
+    //                    return null;
+    //                } else if (address.isLoopbackAddress()) {
+    //                    return null;
+    //                } else {
+    //                    return HOSTNAME + ":" + PORT;
+    //                }
+    //            }
+                Attributes attributesA = Server.getAttributesDNS(
+                        HOSTNAME, new String[]{"A"});
+                Attribute attributeA = attributesA.get("A");
+                if (attributeA == null) {
+                    Attributes attributesAAAA = Server.getAttributesDNS(
+                            HOSTNAME, new String[]{"AAAA"});
+                    Attribute attributeAAAA = attributesAAAA.get("AAAA");
+                    if (attributeAAAA != null) {
+                        for (int i = 0; i < attributeAAAA.size(); i++) {
+                            String host6Address = (String) attributeAAAA.get(i);
+                            if (SubnetIPv6.isValidIPv6(host6Address)) {
+                                try {
+                                    InetAddress address = InetAddress.getByName(host6Address);
+                                    if (address.isLinkLocalAddress()) {
+                                        return null;
+                                    } else if (address.isLoopbackAddress()) {
+                                        return null;
+                                    }
+                                } catch (UnknownHostException ex) {
+                                }
+                            } else {
+                                return null;
+                            }
+                        }
+                    }
                 } else {
-                    return HOSTNAME + ":" + PORT;
+                    for (int i = 0; i < attributeA.size(); i++) {
+                        String host4Address = (String) attributeA.get(i);
+                        if (SubnetIPv4.isValidIPv4(host4Address)) {
+                            try {
+                                InetAddress address = InetAddress.getByName(host4Address);
+                                if (address.isLinkLocalAddress()) {
+                                    return null;
+                                } else if (address.isLoopbackAddress()) {
+                                    return null;
+                                }
+                            } catch (UnknownHostException ex) {
+                            }
+                        } else {
+                            return null;
+                        }
+                    }
                 }
+                return HOSTNAME + ":" + PORT;
+            } catch (NamingException ex) {
+                return null;
             }
-            return null;
-        } catch (UnknownHostException ex) {
-            return null;
         }
     }
     
