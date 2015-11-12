@@ -738,16 +738,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
-            int idleTime = getIdleTimeMillis();
-            if (idleTime > Server.DAY_TIME) {
+            int idleTimeInt = getIdleTimeMillis();
+            if (idleTimeInt > Server.DAY_TIME) {
                 return "DEAD";
-            } else if (idleTime > frequencyInt * 2) {
+            } else if (idleTimeInt > frequencyInt * 2) {
                 return "IDLE";
+            } else if (frequencyInt < limit) {
+                return "<" + limit + "ms";
             } else {
                 return "~" + frequencyInt + "ms";
             }
         } else {
-            return "UNDEFINED";
+            return "DEAD";
         }
     }
     
@@ -806,8 +808,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
                     + (retainSet == null ? "" : " " + retainSet.size())
-//                    + " " + (isAlive() ? "ALIVE" : "DEAD")
-                    + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + (email == null ? "" : " <" + email + ">");
         } else {
@@ -815,8 +815,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
                     + (retainSet == null ? "" : " " + retainSet.size())
-//                    + " " + (isAlive() ? "ALIVE" : "DEAD")
-                    + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + " " + user;
         }

@@ -44,6 +44,7 @@ public class Handle implements Serializable, Comparable<Handle> {
     private String e_mail; // E-mail da pessoa.
     private Date created; // Data de criação do registro.
     private Date changed = null; // Data de alteração do registro.
+    private String provider = null;
     
     /**
      * Formatação padrão dos campos de data do WHOIS.
@@ -147,6 +148,25 @@ public class Handle implements Serializable, Comparable<Handle> {
     }
     
     /**
+     * Altera o provedor da pessoa.
+     * @param provider o novo provedor da pessoa.
+     * @throws ProcessException se houver falha no processamento.
+     */
+    public void setProvider(String provider) throws ProcessException {
+        if (provider == null) {
+            if (this.provider != null) {
+                this.provider = provider;
+                // Atualiza flag de atualização.
+                HANDLE_CHANGED = true;
+            }
+        } else if (!provider.equals(this.provider)) {
+            this.provider = provider;
+            // Atualiza flag de atualização.
+            HANDLE_CHANGED = true;
+        }
+    }
+    
+    /**
      * Retorna o valor de um campo do registro ou o valor de uma função.
      * @param key o campo do registro cujo valor deve ser retornado.
      * @return o valor de um campo do registro ou o valor de uma função.
@@ -176,6 +196,8 @@ public class Handle implements Serializable, Comparable<Handle> {
                 Server.logError("Cannot format date: " + changed);
                 return null;
             }
+        } else if (key.equals("provider")) {
+            return provider;
         } else {
             return null;
         }
