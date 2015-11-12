@@ -261,7 +261,7 @@ public final class SPF implements Serializable {
 //                }
                 
                 // Como o domínio não tem registro SPF,
-                // Utilizar um registro SPF de chute do sistema.
+                // utilizar um registro SPF de chute do sistema.
                 String guess = CacheGuess.get(hostname);
                 registryList.add(guess);
             }
@@ -270,9 +270,13 @@ public final class SPF implements Serializable {
             return null;
         } catch (NamingException ex) {
             if (bgWhenUnavailable) {
-                // Na indisponibilidade do DNS, considerar o best-guess.
-                registryList.add(CacheGuess.BEST_GUESS);
+                // Na indisponibilidade do DNS
+                // utilizar um registro SPF de chute do sistema.
+                String guess = CacheGuess.get(hostname);
+                registryList.add(guess);
                 return registryList;
+            } else if (ex instanceof CommunicationException) {
+                throw new ProcessException("ERROR: DNS UNAVAILABLE");
             } else {
                 throw new ProcessException("ERROR: DNS UNAVAILABLE", ex);
             }
@@ -2060,7 +2064,7 @@ public final class SPF implements Serializable {
                         int index = registry.indexOf(' ');
                         Date date = getTicketDate(registry.substring(0, index));
                         String tokens = registry.substring(index + 1);
-                        putExact(date.getTime(), tokens);
+                        putExact(date.getTime(), tokens.toLowerCase());
                     }
                     setChanged();
                     Server.logLoad(time, file);
@@ -2305,7 +2309,7 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
-                            putExact(key, distribution);
+                            putExact(key.toLowerCase(), distribution);
                         }
                     }
                     setLoaded();
@@ -2390,14 +2394,14 @@ public final class SPF implements Serializable {
          * @return uma distribuição binomial do whois informado.
          */
         private static Distribution get(String token, boolean create) {
-            Distribution distribution = MAP.get(token);
+            Distribution distribution = getExact(token);
             if (distribution != null) {
                 if (distribution.isExpired7()) {
                     distribution.reset();
                 }
             } else if (create) {
                 distribution = new Distribution();
-                MAP.put(token, distribution);
+                putExact(token, distribution);
             } else {
                 distribution = null;
             }
@@ -4709,12 +4713,12 @@ public final class SPF implements Serializable {
             }
             String guess = getExact(host);
             if (guess == null) {
-                // Se não hoouver palpite específico para o hostname,
+                // Se não hoouver palpite SPF específico para o hostname,
                 // utilizar o palpite padrão, porém adaptado para IPv6.
                 // http://www.openspf.org/FAQ/Best_guess_record
                 return BEST_GUESS;
             } else {
-                // Significa que um palpite SPF
+                // Significa que um palpite SPF específico
                 // foi registrado para este hostname.
                 // Neste caso utilizar o paltpite específico.
                 return guess;
@@ -5365,8 +5369,12 @@ public final class SPF implements Serializable {
     protected static String processPostfixSPF(
             String client, String ip, String sender, String helo,
             String recipient) throws ProcessException {
-        if (sender != null && sender.trim().length() == 0) {
+        if (sender == null) {
             sender = null;
+        } else if (sender.trim().length() == 0) {
+            sender = null;
+        } else {
+            sender = sender.toLowerCase();
         }
         if (!Domain.isEmail(recipient)) {
             recipient = null;
@@ -5389,9 +5397,7 @@ public final class SPF implements Serializable {
                 // HELO quando apontados para o IP para 
                 // uma nova forma de interpretar dados.
                 if (CacheHELO.match(ip, helo, true)) {
-                    if (!helo.startsWith(".")) {
-                        helo = "." + helo;
-                    }
+                    helo = Domain.normalizeHostname(helo, true);
                     tokenSet.add(helo);
                     String ipv4 = CacheHELO.getUniqueIPv4(helo);
                     if (ipv4 != null) {
@@ -5427,6 +5433,8 @@ public final class SPF implements Serializable {
                 String origem;
                 String fluxo;
                 if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
+                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    CacheComplain.addComplain(client, ticket);
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
                     return "action=REJECT "
@@ -5587,6 +5595,8 @@ public final class SPF implements Serializable {
                             recipient = recipient.substring(1, recipient.length() - 1);
                             if (sender.length() == 0) {
                                 sender = null;
+                            } else {
+                                sender = sender.toLowerCase();
                             }
                             if (!Domain.isEmail(recipient)) {
                                 recipient = null;
@@ -5631,9 +5641,7 @@ public final class SPF implements Serializable {
                             // HELO quando apontados para o IP para 
                             // uma nova forma de interpretar dados.
                             if (CacheHELO.match(ip, helo, true)) {
-                                if (!helo.startsWith(".")) {
-                                    helo = "." + helo;
-                                }
+                                helo = Domain.normalizeHostname(helo, true);
                                 tokenSet.add(helo);
                                 String ipv4 = CacheHELO.getUniqueIPv4(helo);
                                 if (ipv4 != null) {
@@ -5648,12 +5656,18 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ipv6);
                                 }
                             }
+                            LinkedList<String> logList = null;
                             if (sender != null && firstToken.equals("CHECK")) {
                                 int index = sender.lastIndexOf('@');
                                 String domain = sender.substring(index + 1);
-                                CacheSPF.refresh(domain, false);
+                                logList = new LinkedList<String>();
+                                try {
+                                    CacheSPF.refresh(domain, false);
+                                } catch (ProcessException ex) {
+                                    logList.add("Cannot refresh SPF registry: " + ex.getErrorMessage());
+                                    logList.add("Using cached SPF registry.");
+                                }
                             }
-                            LinkedList<String> logList = new LinkedList<String>();
                             SPF spf = CacheSPF.get(sender);
                             if (spf == null) {
                                 result = "NONE";
@@ -5669,6 +5683,8 @@ public final class SPF implements Serializable {
                                 result = spf.getResult(ip, sender, helo, logList);
                             }
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
+                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                CacheComplain.addComplain(client, ticket);
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
@@ -5698,9 +5714,13 @@ public final class SPF implements Serializable {
                                 fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
-                                result = "SPF resolution results:\n";
-                                for (String log : logList) {
-                                    result += "   " + log + "\n";
+                                result = "\nSPF resolution results:\n";
+                                if (logList == null || logList.isEmpty()) {
+                                    result += "   NONE\n";
+                                } else {
+                                    for (String log : logList) {
+                                        result += "   " + log + "\n";
+                                    }
                                 }
                                 String block = CacheBlock.find(client, ip, sender, helo, query, recipient);
                                 if (block != null) {
@@ -5726,6 +5746,7 @@ public final class SPF implements Serializable {
                                     result += "   " + token + " " + frequency + " " + status.name() + " "
                                             + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
+                                result += "\n";
                                 return result;
                             } else if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.

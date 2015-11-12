@@ -380,16 +380,18 @@ public class Client implements Serializable, Comparable<Client> {
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
-            int idleTime = getIdleTimeMillis();
-            if (idleTime > Server.DAY_TIME) {
+            int idleTimeInt = getIdleTimeMillis();
+            if (idleTimeInt > Server.DAY_TIME) {
                 return "DEAD";
-            } else if (idleTime > frequencyInt * 2) {
+            } else if (idleTimeInt > frequencyInt * 2) {
                 return "IDLE";
+            } else if (frequencyInt < limit) {
+                return "<" + limit + "ms";
             } else {
                 return "~" + frequencyInt + "ms";
             }
         } else {
-            return "UNDEFINED";
+            return "DEAD";
         }
     }
     
@@ -446,13 +448,11 @@ public class Client implements Serializable, Comparable<Client> {
         if (user == null) {
             return domain + ":" + cidr
                     + (permission == null ? " NONE" : " " + permission.name())
-                    + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + (email == null ? "" : " <" + email + ">");
         } else {
             return domain + ":" + cidr
                     + (permission == null ? " NONE" : " " + permission.name())
-                    + " >" + limit + "ms"
                     + " " + getFrequencyLiteral()
                     + " " + user;
         }
