@@ -387,6 +387,12 @@ public class Client implements Serializable, Comparable<Client> {
                 return "IDLE";
             } else if (frequencyInt < limit) {
                 return "<" + limit + "ms";
+            } else if (frequencyInt >= 3600000) {
+                return "~" + frequencyInt / 3600000 + "h";
+            } else if (frequencyInt >= 60000) {
+                return "~" + frequencyInt / 60000 + "min";
+            } else if (frequencyInt >= 1000) {
+                return "~" + frequencyInt / 1000 + "s";
             } else {
                 return "~" + frequencyInt + "ms";
             }
