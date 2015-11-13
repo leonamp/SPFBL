@@ -617,9 +617,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String processReceive(String token) {
         try {
-//            updateLast();
             if (!isValid(token)) {
                 return "INVALID";
+            } else if (Domain.isTLD(token)) {
+                return "TLD";
             } else if (SPF.isIgnore(token)) {
                 return "IGNORED";
             } else if (isReceiveReject()) {
@@ -745,6 +746,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "IDLE";
             } else if (frequencyInt < limit) {
                 return "<" + limit + "ms";
+            } else if (frequencyInt >= 3600000) {
+                return "~" + frequencyInt / 3600000 + "h";
+            } else if (frequencyInt >= 60000) {
+                return "~" + frequencyInt / 60000 + "min";
+            } else if (frequencyInt >= 1000) {
+                return "~" + frequencyInt / 1000 + "s";
             } else {
                 return "~" + frequencyInt + "ms";
             }

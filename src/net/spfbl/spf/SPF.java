@@ -712,7 +712,7 @@ public final class SPF implements Serializable {
         hostname = hostname.replace("%{l}", local);
         hostname = hostname.replace("%{o}", domain);
         hostname = hostname.replace("%{d}", domain);
-        hostname = hostname.replace("%{s}", sender);
+        hostname = hostname.replace("%{s}", sender.replace('@', '.'));
         hostname = hostname.replace("%{ir}", Subnet.reverse(ip));
         return hostname;
     }
