@@ -244,7 +244,7 @@ A tabela REPUTATION é formada por quatro colunas:
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais quatro qualificadores novos, chamados LISTED, BLOCKED, SPAMTRAP e GREYLIST:
+O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificadores novos, chamados LISTED, BLOCKED, SPAMTRAP, GREYLIST, NXDOMAIN e INVALID:
 
 * PASS &lt;ticket&gt;: permite o recebimento da mensagem.
 * FAIL: rejeita o recebimento da mensagem e informa à origem o descumprimento do SPF.
@@ -255,6 +255,8 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais quatro qualific
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
+* NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remtente não existe.
+* INVALID: rejeita o recebimento e informa à origem que o endereço do remetente não é válido.
 
 ##### Método de listagem
 
@@ -265,6 +267,8 @@ O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: W
 Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
 
 Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio permanente, retornando BLOCKED. Esta transição é utilizada para disseminar a lista de bloqueio entre pools via P2P. Deve haver concenso total dentro do mesmo pool para passar a diante o bloqueio para outros pools associados.
+
+Os identificadores por IP não passam para o estado BLOCK. O estado BLOCK só é usado pelo HELO e pelo remetente.
 
 ##### Fluxo do SPFBL
 
@@ -282,17 +286,28 @@ Responsabilizar o HELO, quando um hostname for válido e aponta para o IP, é mo
 
 ##### Checagem SPFBL
 
-É possível fazer uma consulta de checagem SPFBL. Este tipo de consulta não retorna ticket, mas mostra todos os responsáveis considerados pelo SPFBL, de modo que o administrador possa entender melhor a resposta de uma consulta normal SPFBL.
+É possível fazer uma consulta de checagem SPFBL. Este tipo de consulta não retorna ticket, mas mostra a checagem SPF completa, os bloqueios e também todos os responsáveis considerados pelo SPFBL, de modo que o administrador possa entender melhor a resposta de uma consulta normal SPFBL.
 
 ```
 user:~# ./spfbl.sh check 191.243.197.31 op4o@adsensum.com.br smtp-197-31.adsensum.com.br
-PASS
-.adsensum.com.br 2656±1218s GRAY 0.061
-013.566.954/0001-08 2831±714s BLACK 0.108
-@adsensum.com.br 2656±1218s GRAY 0.061
+
+SPF resolution results:
+   adsensum.com.br:ip4:74.63.197.130 => NOT MATCH
+   adsensum.com.br:ip4:191.243.196.0/22 => PASS
+
+First BLOCK match: WHOIS/owner-c=SIR51
+
+Considered identifiers and status:
+   .smtp-197-31.adsensum.com.br UNDEFINED WHITE 0
+   191.243.197.31 32351±1368s BLACK 0.512
+   @adsensum.com.br UNDEFINED WHITE 0
 ```
 
-Na primeira linha, temos o qualificador SPF convencional. Nas demais linhas, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
+Na primeira seção, temos todos os passos de checagem SPF, sendo que o último sempre mostra o qualificador considerado.
+
+Na segunda seção, temos o bloqueio encontrado para aquela consulta. Se houver esta seção, significa que a consulta formal será bloqueada.
+
+Na terceira seção, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
 
 ##### Integração Postfix
 
@@ -509,9 +524,9 @@ O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar cor
 
 ### Como parar o serviço SPFBL
 
-O serviço SPFBL não tem ainda um script para ser parado, mas é possível usar este comando para pará-lo:
+Este este comando pode ser usado para parar o SPFBL:
 ```
-echo "SHUTDOWN" | nc 127.0.0.1 9875
+./spfbl.sh shutdown
 ```
 
 O script de inicio e parada do SPFBL na inicialização do sistema operacional está sendo desenvolvido.
@@ -592,6 +607,67 @@ Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequênc
 ```
 echo "PEER SHOW" | nc localhost 9875
 sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
+```
+
+### Como administrar listas de retenção dos peers
+
+Sempre que o status <receive> do peer for RETAIN, o SPFBL vai criar uma lista separada para aquele peer e guardar todos os identificadores que receber dele.
+
+Quando os peers tiverem identificadores retidos, a lista deles poderão ser vistas através deste comando:
+```
+user:~# ./spfbl.sh "PEER RETENTION SHOW (ALL|<peer>)"
+```
+Exemplo:
+```
+user:~# ./spfbl.sh "PEER RETENTION SHOW ALL"
+<peer1_hostame>:.br.netunoserver.net.br
+<peer1_hostame>:.carrosvermelhos.top
+<peer1_hostame>:.rdns-3.k7mail.com.br
+<peer1_hostame>:@carrosvermelhos.top
+<peer2_hostame>:.cloud2fun.com.br
+<peer2_hostame>:.cloudmask.com.br
+<peer2_hostame>:.cloversend.com.br
+<peer2_hostame>:.email-a.first.cloudmask.com.br
+<peer2_hostame>:.email.cloversend.com.br
+<peer2_hostame>:.first.cloudmask.com.br
+<peer2_hostame>:.marisa.email.cloversend.com.br
+<peer2_hostame>:@cloud2fun.com.br
+<peer2_hostame>:@email-a.first.cloudmask.com.br
+<peer3_hostame>:.br.netunoserver.net.br
+<peer3_hostame>:.carrosvermelhos.top
+<peer3_hostame>:.rdns-3.k7mail.com.br
+<peer3_hostame>:@carrosvermelhos.top
+```
+
+Para liberar todas as retenções, fazendo com que o SPFBL considere todos para BLOCK, utilie este comando:
+```
+user:~# ./spfbl.sh "PEER RETENTION REJECT (ALL|<identificador>)"
+```
+Exemplo:
+```
+user:~# ./spfbl.sh "PEER RETENTION RELEASE ALL"
+<peer1_hostame>:.br.netunoserver.net.br => ADDED
+<peer1_hostame>:.carrosvermelhos.top => EXISTS
+<peer1_hostame>:.rdns-3.k7mail.com.br => ADDED
+<peer1_hostame>:@carrosvermelhos.top => EXISTS
+<peer2_hostame>:.cloud2fun.com.br => EXISTS
+<peer2_hostame>:.cloudmask.com.br => EXISTS
+<peer2_hostame>:.cloversend.com.br => EXISTS
+<peer2_hostame>:.email-a.first.cloudmask.com.br => EXISTS
+<peer2_hostame>:.email.cloversend.com.br => EXISTS
+<peer2_hostame>:.first.cloudmask.com.br => EXISTS
+<peer2_hostame>:.marisa.email.cloversend.com.br => EXISTS
+<peer2_hostame>:@cloud2fun.com.br => EXISTS
+<peer2_hostame>:@email-a.first.cloudmask.com.br => ADDED
+<peer3_hostame>:.br.netunoserver.net.br => EXISTS
+<peer3_hostame>:.carrosvermelhos.top => EXISTS
+<peer3_hostame>:.rdns-3.k7mail.com.br => EXISTS
+<peer3_hostame>:@carrosvermelhos.top => EXISTS
+```
+
+Para rejeitar os identificadores retidos, utilize este comando:
+```
+user:~# ./spfbl.sh "PEER RETENTION REJECT (ALL|<identificador>)"
 ```
 
 ### Pools conhecidos em funcionamento
