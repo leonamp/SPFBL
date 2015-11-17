@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 13/11/2015 07:19
+# Última alteração: 17/11/2015 11:44
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -31,7 +31,7 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.4"
+version="0.5"
 
 head()
 {
@@ -1317,6 +1317,8 @@ case $1 in
 				exit 10
 			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
+			elif [[ $qualifier == "INVALID" ]]; then
+				exit 11
 			elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
 				exit 6
 			elif [[ $qualifier == "ERROR: QUERY" ]]; then
@@ -1359,7 +1361,10 @@ case $1 in
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
-			if [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
+                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
+                                # O parâmentro é uma URL de denúncia SPFBL.
+                                url=$2
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$1" ]; then
@@ -1383,14 +1388,32 @@ case $1 in
 				exit 5
 			fi
 
-			if [[ -z $ticket ]]; then
-				echo "Ticket SPFBL inválido."
-				exit 6
-			else
-				# Registra reclamação SPFBL.
-				resposta=$(echo "SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+                        if [[ -z $url ]]; then
+				if [[ -z $ticket ]]; then
+					echo "Ticket SPFBL inválido."
+					exit 6
+				else
+					# Registra reclamação SPFBL.
+					resposta=$(echo "SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
-				if [[ $resposta == "" ]]; then
+					if [[ $resposta == "" ]]; then
+						echo "A reclamação SPFBL não foi enviada por timeout."
+						exit 4
+					elif [[ $resposta == "OK"* ]]; then
+						echo "Reclamação SPFBL enviada com sucesso."
+						exit 0
+					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
+						echo "Ticket SPFBL inválido."
+						exit 6
+					else
+						echo "A reclamação SPFBL não foi enviada: $resposta"
+						exit 3
+					fi
+				fi
+			else
+				# Registra reclamação SPFBL via HTTP.
+                                resposta=$(curl -s -m 3 $url)
+				if [[ $? == "28" ]]; then
 					echo "A reclamação SPFBL não foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
@@ -1403,6 +1426,7 @@ case $1 in
 					echo "A reclamação SPFBL não foi enviada: $resposta"
 					exit 3
 				fi
+
 			fi
 		fi
 	;;
@@ -1427,7 +1451,12 @@ case $1 in
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
-			if [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
+			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
+                                # O parâmentro é uma URL de denúncia SPFBL.
+                                spamURL=/spam/
+                                hamURL=/ham/
+                                url=${2/$spamURL/$hamURL}
+			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$1" ]; then
@@ -1451,14 +1480,32 @@ case $1 in
 				exit 5
 			fi
 
-			if [[ -z $ticket ]]; then
-				echo "Ticket SPFBL inválido."
-				exit 6
-			else
-				# Registra reclamação SPFBL.
-				resposta=$(echo "HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			if [[ -z $url ]]; then
+				if [[ -z $ticket ]]; then
+					echo "Ticket SPFBL inválido."
+					exit 6
+				else
+					# Registra reclamação SPFBL.
+					resposta=$(echo "HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
-				if [[ $resposta == "" ]]; then
+					if [[ $resposta == "" ]]; then
+						echo "A revogação SPFBL não foi enviada por timeout."
+						exit 4
+					elif [[ $resposta == "OK"* ]]; then
+						echo "Revogação SPFBL enviada com sucesso."
+						exit 0
+					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
+						echo "Ticket SPFBL inválido."
+						exit 6
+					else
+						echo "A revogação SPFBL não foi enviada: $resposta"
+						exit 3
+					fi
+				fi
+			else
+				# Registra reclamação SPFBL via HTTP.
+                                resposta=$(curl -s -m 3 $url)
+				if [[ $? == "28" ]]; then
 					echo "A revogação SPFBL não foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
@@ -1471,6 +1518,7 @@ case $1 in
 					echo "A revogação SPFBL não foi enviada: $resposta"
 					exit 3
 				fi
+
 			fi
 		fi
 	;;
