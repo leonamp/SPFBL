@@ -1367,7 +1367,7 @@ case $1 in
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
-			elif [ -f "$1" ]; then
+			elif [ -f "$2" ]; then
 				# O parâmetro é um arquivo.
 				file=$2
 				
@@ -1376,8 +1376,14 @@ case $1 in
 					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
 					
 					if [ $? -gt 0 ]; then
-						echo "Nenhum ticket SPFBL foi encontrado na mensagem."
-						exit 2
+
+						# Extrai o ticket incorporado no arquivo.
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						
+						if [ $? -gt 0 ]; then
+							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
+							exit 2
+						fi
 					fi
 				else
 					echo "O arquivo não existe."
@@ -1453,13 +1459,11 @@ case $1 in
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
-                                spamURL=/spam/
-                                hamURL=/ham/
-                                url=${2/$spamURL/$hamURL}
+                                url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
-			elif [ -f "$1" ]; then
+			elif [ -f "$2" ]; then
 				# O parâmetro é um arquivo.
 				file=$2
 				
@@ -1468,8 +1472,14 @@ case $1 in
 					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
 					
 					if [ $? -gt 0 ]; then
-						echo "Nenhum ticket SPFBL foi encontrado na mensagem."
-						exit 2
+
+						# Extrai o ticket incorporado no arquivo.
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+
+						if [ $? -gt 0 ]; then
+							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
+							exit 2
+						fi
 					fi
 				else
 					echo "O arquivo não existe."
@@ -1504,6 +1514,9 @@ case $1 in
 				fi
 			else
 				# Registra reclamação SPFBL via HTTP.
+				spamURL=/spam/
+                                hamURL=/ham/
+				url=${url/$spamURL/$hamURL}
                                 resposta=$(curl -s -m 3 $url)
 				if [[ $? == "28" ]]; then
 					echo "A revogação SPFBL não foi enviada por timeout."
