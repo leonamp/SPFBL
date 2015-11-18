@@ -17,6 +17,14 @@ PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5B
 
 Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para uma possível denúncia de SPAM futura.
 
+Caso o serviço seja configurado para trabalhar com HTTP, os tickets serão enviados com seus respectivos prefixos da URL de quem gerou o ticket:
+```
+user:~# ./spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
+PASS http://<hostname>[:<port>]/spam/cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
+```
+
+Este último método de denuncia com URL facilita o desenvolvimento de novas ferramentas, como plugins de mail client por exemplo, para que as denúncias sejam feitas diretamente pelo destinatário, aonde quer que ele esteja.
+
 Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo comando "spfbl.sh spam", que vai extrair o ticket contido no campo "Received-SPFBL" e enviá-lo ao serviço SPFBL:
 
 ```
