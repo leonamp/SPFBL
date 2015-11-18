@@ -46,9 +46,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class SubnetIPv6 extends Subnet
-//implements Comparable<SubnetIPv6>
-{
+public final class SubnetIPv6 extends Subnet {
     
     private static final long serialVersionUID = 1L;
     
@@ -99,7 +97,7 @@ public final class SubnetIPv6 extends Subnet
     protected boolean refresh() throws ProcessException {
         boolean isInetnum = super.refresh();
         // Atualiza flag de atualização.
-        SUBNET_CHANGED = true;
+        CHANGED = true;
         return isInetnum;
     }
     
@@ -307,7 +305,8 @@ public final class SubnetIPv6 extends Subnet
     public static boolean isValidIPv6(String ip) {
         ip = ip.trim();
         ip = ip.toLowerCase();
-        return Pattern.matches("^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+        return Pattern.matches("^"
+                + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
                 + "([0-9a-fA-F]{1,4}:){1,7}:|"
                 + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
                 + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
@@ -316,19 +315,8 @@ public final class SubnetIPv6 extends Subnet
                 + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
                 + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
                 + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|"
-                + "::(ffff(:0{1,4}){0,1}:){0,1}"
-                + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
-                + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|"
-                + "([0-9a-fA-F]{1,4}:){1,4}:"
-                + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
-                + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$", ip);
-//        return Pattern.matches("^"
-//                + "([\\da-f]{1,4}:|((?=.*(::))(?!.*\\3.+\\3))\\3?)"
-//                + "([\\da-f]{1,4}(\\3|:\\b)|\\2){5}"
-//                + "(([\\da-f]{1,4}(\\3|:\\b|$)|\\2){2}|(((2[0-4]|1\\d|[1-9])?\\d|25[0-5])\\.?\\b){4})"
-//                + "/[0-9]{1,3}"
-//                + "$", ip);
+                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
+                + "$", ip);
     }
     
     /**
@@ -339,22 +327,6 @@ public final class SubnetIPv6 extends Subnet
     public static boolean isValidCIDRv6(String cidr) {
         cidr = cidr.trim();
         cidr = cidr.toLowerCase();
-//        return Pattern.matches("^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-//                + "([0-9a-fA-F]{1,4}:){1,7}:|"
-//                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-//                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-//                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-//                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-//                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-//                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-//                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-//                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|"
-//                + "::(ffff(:0{1,4}){0,1}:){0,1}"
-//                + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
-//                + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|"
-//                + "([0-9a-fA-F]{1,4}:){1,4}:"
-//                + "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}"
-//                + "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])/[0-9]{1,3}$", cidr);
         return Pattern.matches("^"
                 + "([\\da-f]{1,4}:|((?=.*(::))(?!.*\\3.+\\3))\\3?)"
                 + "([\\da-f]{1,4}(\\3|:\\b)|\\2){5}"
@@ -389,28 +361,7 @@ public final class SubnetIPv6 extends Subnet
     /**
      * Mapa de blocos IP de ASs com busca em árvore binária log2(n).
      */
-    private static final TreeMap<Long,SubnetIPv6> SUBNET_MAP = new TreeMap<Long,SubnetIPv6>();
-    
-    /**
-     * Adciiona o registro de bloco de IP no cache.
-     * @param subnet o de bloco de IP que deve ser adicionado.
-     */
-    private static synchronized void addSubnet(SubnetIPv6 subnet) {
-        SUBNET_MAP.put(subnet.address, subnet);
-        // Atualiza flag de atualização.
-        SUBNET_CHANGED = true;
-    }
-    
-    /**
-     * Remove o registro de bloco de IP do cache.
-     * @param subnet o de bloco de IP que deve ser removido.
-     */
-    private static synchronized void removeSubnet(SubnetIPv6 subnet) {
-        if (SUBNET_MAP.remove(subnet.address) != null) {
-            // Atualiza flag de atualização.
-            SUBNET_CHANGED = true;
-        }
-    }
+    private static final TreeMap<String,SubnetIPv6> MAP = new TreeMap<String,SubnetIPv6>();
     
     /**
      * Remove registro de bloco de IP para AS do cache.
@@ -418,21 +369,16 @@ public final class SubnetIPv6 extends Subnet
      * @return o registro de bloco removido, se existir.
      */
     public static synchronized SubnetIPv6 removeSubnet(String ip) {
-        long address = getAddressIP(ip.trim()); // Implementar validação.
         // Busca eficiente O(log2(n)).
         // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Long key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
+        String key = expandIPv6(ip);
+        key = MAP.floorKey(key);
         if (key == null) {
             return null;
         } else {
-            SubnetIPv6 subnet = SUBNET_MAP.remove(key);
+            SubnetIPv6 subnet = MAP.remove(key);
             // Atualiza flag de atualização.
-            SUBNET_CHANGED = true;
+            CHANGED = true;
             return subnet;
         }
     }
@@ -440,11 +386,11 @@ public final class SubnetIPv6 extends Subnet
     /**
      * Flag que indica se o cache foi modificado.
      */
-    private static boolean SUBNET_CHANGED = false;
+    private static boolean CHANGED = false;
     
     protected static synchronized TreeSet<Subnet> getSubnetSet() {
         TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
-        subnetSet.addAll(SUBNET_MAP.values());
+        subnetSet.addAll(MAP.values());
         return subnetSet;
     }
     
@@ -453,39 +399,37 @@ public final class SubnetIPv6 extends Subnet
      * @param ip o IP cujo bloco deve ser retornado.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static void refreshSubnet(String ip) throws ProcessException {
-        long address = getAddressIP(ip.trim()); // Implementar validação.
-        // Busca eficiente O(log2(n)).
-        // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Long key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
-        if (key != null) {
-            // Encontrou uma subrede com endereço inicial imediatemente inferior.
-            SubnetIPv6 subnet = SUBNET_MAP.get(key);
-            // Verifica se o ip pertence à subrede encontrada.
-            if (subnet.contains(address)) {
+    public static synchronized void refreshSubnet(String ip) throws ProcessException {
+        SubnetIPv6 subnet;
+        String key = MAP.floorKey(expandIPv6(ip));
+        while (key != null) {
+            subnet = MAP.get(key);
+            if (subnet.contains(ip)) {
                 // Atualizando campos do registro.
                 if (!subnet.refresh()) {
                     // Domínio real do resultado WHOIS não bate com o registro.
                     // Pode haver mudança na distribuição dos blocos.
                     // Apagando registro de bloco do cache.
-                    removeSubnet(subnet);
+                    MAP.remove(key);
+                    CHANGED = true;
                     // Segue para nova consulta.
+                    break;
                 }
+            } else {
+                key = MAP.lowerKey(key);
             }
         }
         // Não encontrou a sub-rede em cache.
         // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(address);
+        String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        SubnetIPv6 subnet = new SubnetIPv6(result);
+        subnet = new SubnetIPv6(result);
         subnet.server = server; // Temporário até final de transição.
-        addSubnet(subnet);
+        key = getFirstIPv6(subnet.getInetnum());
+        key = expandIPv6(key);
+        MAP.put(key, subnet);
+        CHANGED = true;
     }
     
     protected static String getFirstIPv6(String inetnum) {
@@ -609,68 +553,67 @@ public final class SubnetIPv6 extends Subnet
      * @return o registro de bloco IPv6 de AS de um determinado IP.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static SubnetIPv6 getSubnet(String ip) throws ProcessException {
-        long address = getAddressIP(ip.trim()); // Implementar validação.
-        // Busca eficiente O(log2(n)).
-        // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Long key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
-        if (key != null) {
-            // Encontrou uma subrede com endereço inicial imediatemente inferior.
-            SubnetIPv6 subnet = SUBNET_MAP.get(key);
-            // Verifica se o ip pertence à subrede encontrada.
-            if (subnet.contains(address)) {
+    public static synchronized SubnetIPv6 getSubnet(String ip) throws ProcessException {
+        SubnetIPv6 subnet;
+        String key = MAP.floorKey(expandIPv6(ip));
+        while (key != null) {
+            subnet = MAP.get(key);
+            if (subnet.contains(ip)) {
                 if (subnet.isRegistryExpired()) {
                     // Registro expirado.
                     // Atualizando campos do registro.
                     if (subnet.refresh()) {
                         // Bloco do resultado WHOIS bate com o bloco do registro.
                         return subnet;
-                    } else {
+                    } else if (MAP.remove(key) != null) {
                         // Domínio real do resultado WHOIS não bate com o registro.
                         // Pode haver mudança na distribuição dos blocos.
                         // Apagando registro de bloco do cache.
-                        removeSubnet(subnet);
+                        CHANGED = true;
                         // Segue para nova consulta.
+                        break;
                     }
-//                } else if (subnet.isRegistryAlmostExpired() || subnet.isReduced()) {
-//                    // Registro quase vencendo ou com informação reduzida.
-//                    // Adicionar no conjunto para atualização em background.
-//                    SUBNET_REFRESH.add(subnet);
-//                    return subnet;
                 } else {
                     return subnet;
                 }
+            } else {
+                key = MAP.lowerKey(key);
             }
         }
         // Não encontrou a sub-rede em cache.
         // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(address);
+        String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        SubnetIPv6 subnet = new SubnetIPv6(result);
+        subnet = new SubnetIPv6(result);
         subnet.server = server; // Temporário até final de transição.
-        addSubnet(subnet);
+        key = getFirstIPv6(subnet.getInetnum());
+        key = expandIPv6(key);
+        MAP.put(key, subnet);
+        CHANGED = true;
         return subnet;
+    }
+    
+    private static synchronized TreeMap<String,SubnetIPv6> getMap() {
+        TreeMap<String,SubnetIPv6> map = new TreeMap<String,SubnetIPv6>();
+        map.putAll(MAP);
+        return map;
     }
     
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
-        if (SUBNET_CHANGED) {
+    public static void store() {
+        if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                TreeMap<String,SubnetIPv6> map = getMap();
                 File file = new File("./data/subnet6.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(SUBNET_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
-                    SUBNET_CHANGED = false;
+                    CHANGED = false;
                 } finally {
                     outputStream.close();
                 }
@@ -681,26 +624,33 @@ public final class SubnetIPv6 extends Subnet
         }
     }
     
+    private static synchronized SubnetIPv6 put(String key, SubnetIPv6 subnet) {
+        return MAP.put(key, subnet);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/subnet6.map");
         if (file.exists()) {
             try {
-                TreeMap<Long,Object> map;
+                TreeMap<Object,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                for (Long key : map.keySet()) {
-                    Object value = map.get(key);
+                for (Object value : map.values()) {
                     if (value instanceof SubnetIPv6) {
                         SubnetIPv6 sub6 = (SubnetIPv6) value;
-                        SUBNET_MAP.put(key, sub6);
+                        sub6.normalize();
+                        String cidr = sub6.getInetnum();
+                        String ip = getFirstIPv6(cidr);
+                        String key = expandIPv6(ip);
+                        put(key, sub6);
                     }
                 }
                 Server.logLoad(time, file);
@@ -742,7 +692,6 @@ public final class SubnetIPv6 extends Subnet
         return this.address == (ip & mask);
     }
     
-//    @Override
     public int compareTo(SubnetIPv6 other) {
         return new Long(this.address).compareTo(other.address);
     }
@@ -750,7 +699,7 @@ public final class SubnetIPv6 extends Subnet
     /**
      * Mapa completo dos blocos alocados aos países.
      */
-    private static final TreeMap<Long,SubnetIPv6> SERVER_MAP = new TreeMap<Long,SubnetIPv6>();
+    private static final TreeMap<String,SubnetIPv6> SERVER_MAP = new TreeMap<String,SubnetIPv6>();
     
     /**
      * Adiciona um servidor WHOIS na lista com seu respecitivo bloco.
@@ -760,7 +709,9 @@ public final class SubnetIPv6 extends Subnet
     private static void addServer(String inetnum, String server) {
         try {
             SubnetIPv6 subnet = new SubnetIPv6(inetnum, server);
-            SERVER_MAP.put(subnet.address, subnet);
+            String ip = getFirstIPv6(subnet.getInetnum());
+            ip = expandIPv6(ip);
+            SERVER_MAP.put(ip, subnet);
         } catch (Exception ex) {
             Server.logError(ex);
         }
@@ -769,7 +720,8 @@ public final class SubnetIPv6 extends Subnet
     // Temporário
     @Override
     public String getWhoisServer() throws ProcessException {
-        return getWhoisServer(address);
+        String ip = getFirstIPv6(getInetnum());
+        return getWhoisServer(ip);
     }
     
     /**
@@ -778,18 +730,15 @@ public final class SubnetIPv6 extends Subnet
      * @return o servidor que possui a informação de bloco IPv6 de AS de um IP.
      * @throws QueryException se o bloco não for encontrado para o IP especificado.
      */
-    private static String getWhoisServer(long address) throws ProcessException {
+    private static String getWhoisServer(String ip) throws ProcessException {
         // Busca eficiente O(log2(n)).
-        // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Long key = SERVER_MAP.floorKey(address);
-        if (key == null && !SERVER_MAP.isEmpty()) {
-            key = SERVER_MAP.lastKey();
-        }
+        ip = expandIPv6(ip);
+        String key = SERVER_MAP.floorKey(ip);
         if (key == null) {
             throw new ProcessException("ERROR: SERVER NOT FOUND");
         } else {
             SubnetIPv6 subnet = SERVER_MAP.get(key);
-            if (subnet.contains(address)) {
+            if (subnet.contains(ip)) {
                 return subnet.getServer();
             } else {
                 throw new ProcessException("ERROR: SERVER NOT FOUND");

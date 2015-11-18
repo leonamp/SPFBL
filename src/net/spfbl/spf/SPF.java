@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.ParseException;
@@ -120,7 +121,7 @@ public final class SPF implements Serializable {
     /**
      * Timer que controla os processos em background.
      */
-    private static final Timer TIMER = new Timer("TimerBackground");
+    private static final Timer TIMER = new Timer("BCKGROUND");
 
     public static void cancel() {
         TIMER.cancel();
@@ -797,6 +798,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um modificador redirect válido.
      */
     private static boolean isModifierRedirect(String token) {
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^redirect="
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
@@ -810,6 +812,7 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um modificador explanation válido.
      */
     private static boolean isModifierExplanation(String token) {
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
         return Pattern.matches(
                 "^exp="
                 + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
@@ -1298,18 +1301,21 @@ public final class SPF implements Serializable {
                             String hostAddress = (String) enumeration.next();
                             int indexSpace = hostAddress.indexOf(' ') + 1;
                             hostAddress = hostAddress.substring(indexSpace);
-                            if (!SubnetIPv6.isValidIPv6(hostAddress)) {
+                            if (Domain.isHostname(hostAddress)) {
                                 try {
-                                    hostAddress = InetAddress.getByName(hostAddress).getHostAddress();
+                                    hostAddress = Inet6Address.getByName(hostAddress).getHostAddress();
                                 } catch (UnknownHostException ex) {
                                     // Registro AAAA não encontrado.
+                                    hostAddress = null;
                                 }
                             }
-                            if (maskIPv6 != null) {
-                                hostAddress += "/" + maskIPv6;
+                            if (SubnetIPv6.isValidIPv6(hostAddress)) {
+                                if (maskIPv6 != null) {
+                                    hostAddress += "/" + maskIPv6;
+                                }
+                                mechanismList.add(new MechanismIPv6(hostAddress));
+                                resultSet.add(hostAddress);
                             }
-                            mechanismList.add(new MechanismIPv6(hostAddress));
-                            resultSet.add(hostAddress);
                         }
                     }
                     Server.logMecanismA(time, expression, resultSet.toString());
@@ -2005,28 +2011,8 @@ public final class SPF implements Serializable {
             return map;
         }
 
-        private static synchronized boolean containsExact(long time) {
-            return MAP.containsKey(time);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setLoaded() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setChanged() {
-            CHANGED = true;
-        }
-
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/complain.map");
@@ -2034,13 +2020,11 @@ public final class SPF implements Serializable {
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(map, outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
                     Server.logStore(time, file);
-                    file = new File("./data/complain.set");
-                    file.delete();
                 } catch (Exception ex) {
                     Server.logError(ex);
                 }
@@ -2049,48 +2033,24 @@ public final class SPF implements Serializable {
 
         private static void load() {
             long time = System.currentTimeMillis();
-            File file = new File("./data/complain.set");
+            File file = new File("./data/complain.map");
             if (file.exists()) {
                 try {
-                    Set<String> set;
+                    Map<Long,String> map;
                     FileInputStream fileInputStream = new FileInputStream(file);
                     try {
-                        set = SerializationUtils.deserialize(fileInputStream);
+                        map = SerializationUtils.deserialize(fileInputStream);
                     } finally {
                         fileInputStream.close();
                     }
-                    for (String ticket : set) {
-                        String registry = Server.decrypt(ticket);
-                        int index = registry.indexOf(' ');
-                        Date date = getTicketDate(registry.substring(0, index));
-                        String tokens = registry.substring(index + 1);
-                        putExact(date.getTime(), tokens.toLowerCase());
+                    for (Long date : map.keySet()) {
+                        String tokens = map.get(date);
+                        putExact(date, tokens);
                     }
-                    setChanged();
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
-                }
-            } else {
-                file = new File("./data/complain.map");
-                if (file.exists()) {
-                    try {
-                        Map<Long,String> map;
-                        FileInputStream fileInputStream = new FileInputStream(file);
-                        try {
-                            map = SerializationUtils.deserialize(fileInputStream);
-                        } finally {
-                            fileInputStream.close();
-                        }
-                        for (Long date : map.keySet()) {
-                            String tokens = map.get(date);
-                            putExact(date, tokens);
-                        }
-                        setLoaded();
-                        Server.logLoad(time, file);
-                    } catch (Exception ex) {
-                        Server.logError(ex);
-                    }
                 }
             }
         }
@@ -2124,7 +2084,7 @@ public final class SPF implements Serializable {
          * @param ticket o ticket da mensagem original.
          * @throws ProcessException se houver falha no processamento do ticket.
          */
-        public static TreeSet<String> addComplain(String client,
+        public static TreeSet<String> addComplain(String origin,
                 String ticket) throws ProcessException {
             if (ticket == null) {
                 return null;
@@ -2162,7 +2122,7 @@ public final class SPF implements Serializable {
                         return null;
                     }
                 }
-                Server.logQuery(time, "SPFCP", client, "SPAM " + ticket, "OK " + blackSet);
+                Server.logQuery(time, "SPFCP", origin, "SPAM " + ticket, "OK " + blackSet);
                 return blackSet;
             }
         }
@@ -2173,11 +2133,12 @@ public final class SPF implements Serializable {
          * @param ticket o ticket da mensagem original.
          * @throws ProcessException se houver falha no processamento do ticket.
          */
-        public static TreeSet<String> deleteComplain(long time,
+        public static TreeSet<String> deleteComplain(
                 String client, String ticket) throws ProcessException {
             if (ticket == null) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 String registry = Server.decrypt(ticket);
                 int index = registry.indexOf(' ');
@@ -2203,6 +2164,16 @@ public final class SPF implements Serializable {
                 }
             }
         }
+    }
+    
+    public static TreeSet<String> addComplain(String origin,
+                String ticket) throws ProcessException {
+        return CacheComplain.addComplain(origin, ticket);
+    }
+    
+    public static TreeSet<String> deleteComplain(String origin,
+                String ticket) throws ProcessException {
+        return CacheComplain.deleteComplain(origin, ticket);
     }
 
     /**
@@ -2251,10 +2222,6 @@ public final class SPF implements Serializable {
         private static synchronized NavigableMap<String,Distribution> getSubMap(
                 String fromKey, String toKey) {
             return MAP.subMap(fromKey, false, toKey, false);
-        }
-
-        private static synchronized boolean containsExact(String address) {
-            return MAP.containsKey(address);
         }
         
         private static synchronized Distribution getExact(String host) {
@@ -2523,6 +2490,16 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        private static TreeSet<String> dropAll() throws ProcessException {
+            TreeSet<String> blockSet = new TreeSet<String>();
+            for (String token : getAll()) {
+                if (dropExact(token)) {
+                    blockSet.add(token);
+                }
+            }
+            return blockSet;
+        }
 
         private static boolean drop(String address) throws ProcessException {
             if ((address = normalizeProvider(address)) == null) {
@@ -2535,7 +2512,7 @@ public final class SPF implements Serializable {
         }
 
         private static boolean containsHELO(String ip, String helo) {
-            if (CacheHELO.match(ip, helo, false)) {
+            if (CacheHELO.match(ip, helo)) {
                 helo = Domain.extractHost(helo, true);
                 do {
                     int index = helo.indexOf('.') + 1;
@@ -2602,6 +2579,10 @@ public final class SPF implements Serializable {
 
     public static boolean addProvider(String provider) throws ProcessException {
         return CacheProvider.add(provider);
+    }
+    
+    public static TreeSet<String> dropAllProvider() throws ProcessException {
+        return CacheProvider.dropAll();
     }
 
     public static boolean dropProvider(String provider) throws ProcessException {
@@ -2676,6 +2657,16 @@ public final class SPF implements Serializable {
             } else {
                 return false;
             }
+        }
+        
+        private static TreeSet<String> dropAll() throws ProcessException {
+            TreeSet<String> whiteSet = new TreeSet<String>();
+            for (String white : getAll()) {
+                if (dropExact(white)) {
+                    whiteSet.add(white);
+                }
+            }
+            return whiteSet;
         }
 
         private static boolean drop(
@@ -3080,7 +3071,7 @@ public final class SPF implements Serializable {
                 if (containsHost(client, helo, qualifier, recipient, recipientDomain)) {
                     return true;
                 }
-                if (helo.endsWith(".br") && CacheHELO.match(ip, helo, false)) {
+                if (helo.endsWith(".br") && CacheHELO.match(ip, helo)) {
                     whoisSet.add(helo);
                 }
                 regexSet.add(helo);
@@ -3279,7 +3270,7 @@ public final class SPF implements Serializable {
                             identifier = token;
                         }
                         if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + identifier;
+                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                         } else if (Owner.isOwnerID(identifier)) {
                             identifier = "WHOIS/ownerid=" + identifier;
                         }
@@ -3306,6 +3297,10 @@ public final class SPF implements Serializable {
         return CacheWhite.add(client, sender);
     }
 
+    public static TreeSet<String> dropAllWhite() throws ProcessException {
+        return CacheWhite.dropAll();
+    }
+    
     public static boolean dropWhite(String sender) throws ProcessException {
         return CacheWhite.drop(sender);
     }
@@ -3405,6 +3400,16 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        private static TreeSet<String> dropAll() throws ProcessException {
+            TreeSet<String> trapSet = new TreeSet<String>();
+            for (String trap : getAll()) {
+                if (dropExact(trap)) {
+                    trapSet.add(trap);
+                }
+            }
+            return trapSet;
+        }
 
         private static boolean drop(String recipient) throws ProcessException {
             if (!isValid(recipient)) {
@@ -3428,12 +3433,22 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static synchronized TreeSet<String> get(String client) throws ProcessException {
+        private static TreeSet<String> get(String client) throws ProcessException {
             TreeSet<String> trapSet = new TreeSet<String>();
             for (String recipient : getAll()) {
                 if (recipient.startsWith(client + ':')) {
                     int index = recipient.indexOf(':') + 1;
                     recipient = recipient.substring(index);
+                    trapSet.add(recipient);
+                }
+            }
+            return trapSet;
+        }
+        
+        private static TreeSet<String> get() throws ProcessException {
+            TreeSet<String> trapSet = new TreeSet<String>();
+            for (String recipient : getAll()) {
+                if (!recipient.contains(":")) {
                     trapSet.add(recipient);
                 }
             }
@@ -3532,6 +3547,10 @@ public final class SPF implements Serializable {
     public static boolean addTrap(String client, String sender) throws ProcessException {
         return CacheTrap.add(client, sender);
     }
+    
+    public static TreeSet<String> dropAllTrap() throws ProcessException {
+        return CacheTrap.dropAll();
+    }
 
     public static boolean dropTrap(String sender) throws ProcessException {
         return CacheTrap.drop(sender);
@@ -3541,8 +3560,16 @@ public final class SPF implements Serializable {
         return CacheTrap.drop(client, sender);
     }
 
+    public static TreeSet<String> getTrapSet() throws ProcessException {
+        return CacheTrap.get();
+    }
+    
     public static TreeSet<String> getTrapSet(String client) throws ProcessException {
         return CacheTrap.get(client);
+    }
+    
+    public static TreeSet<String> getAllTrapSet() throws ProcessException {
+        return CacheTrap.getAll();
     }
 
     private static boolean matches(String regex, String token) {
@@ -3704,7 +3731,7 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static boolean dropExact(String token) {
+        private static synchronized boolean dropExact(String token) {
             if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
@@ -3712,9 +3739,20 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        private static synchronized boolean dropAll() {
+            if (SET.isEmpty()) {
+                return false;
+            } else {
+                SET.clear();
+                CHANGED = true;
+                return true;
+            }
+        }
 
-        private static boolean addExact(String token) {
+        private static synchronized boolean addExact(String token) {
             if (SET.add(token)) {
+                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -3728,7 +3766,7 @@ public final class SPF implements Serializable {
             return blockSet;
         }
 
-        private static boolean containsExact(String address) {
+        private static synchronized boolean containsExact(String address) {
             return SET.contains(address);
         }
 
@@ -4034,7 +4072,7 @@ public final class SPF implements Serializable {
                 if (host != null) {
                     return host;
                 }
-                if (helo.endsWith(".br") && CacheHELO.match(ip, helo, false)) {
+                if (helo.endsWith(".br") && CacheHELO.match(ip, helo)) {
                     whoisSet.add(helo);
                 }
                 regexSet.add(helo);
@@ -4132,8 +4170,8 @@ public final class SPF implements Serializable {
                                     if (criterion.equals(value)) {
                                         return whois;
                                     }
-                                } else {
-                                    int criterionInt = Integer.parseInt(criterion);
+                                } else if (value.length() > 0) {
+                                    int criterionInt = parseIntWHOIS(criterion);
                                     int valueInt = parseIntWHOIS(value);
                                     if (signal == '<' && valueInt < criterionInt) {
                                         return whois;
@@ -4151,14 +4189,18 @@ public final class SPF implements Serializable {
         
         private static int parseIntWHOIS(String value) {
             try {
-                Date date = Domain.DATE_FORMATTER.parse(value);
-                long time = date.getTime() / (1000 * 60 * 60 * 24);
-                long today = System.currentTimeMillis() / (1000 * 60 * 60 * 24);
-                return (int) (today - time);
-            } catch (ParseException pex) {
+                if (value == null || value.length() == 0) {
+                    return 0;
+                } else {
+                    Date date = Domain.DATE_FORMATTER.parse(value);
+                    long time = date.getTime() / (1000 * 60 * 60 * 24);
+                    long today = System.currentTimeMillis() / (1000 * 60 * 60 * 24);
+                    return (int) (today - time);
+                }
+            } catch (Exception ex) {
                 try {
                     return Integer.parseInt(value);
-                } catch (NumberFormatException nfex) {
+                } catch (Exception ex2) {
                     return 0;
                 }
             }
@@ -4245,7 +4287,7 @@ public final class SPF implements Serializable {
                             identifier = token;
                         }
                         if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + identifier;
+                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                         } else if (Owner.isOwnerID(identifier)) {
                             identifier = "WHOIS/ownerid=" + identifier;
                         }
@@ -4264,53 +4306,6 @@ public final class SPF implements Serializable {
         }
     }
 
-//    public static void main(String[] args) {
-//        try {
-//            SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
-//            Huffman huffman = Huffman.load();
-//            SPF.CacheComplain.load();
-//            TreeSet<String> ticketSet = SPF.CacheComplain.keySet();
-//            int size1 = 0;
-//            int size2 = 0;
-//            for (String ticket : ticketSet) {
-//                String complain = Server.decrypt(ticket);
-//                String date = complain.substring(0, 29);
-//                String responsible = complain.substring(30);
-//                long time = FORMAT.parse(date).getTime();
-//                
-//                
-//                byte[] code = huffman.encodeByteArray(responsible);
-//                ByteBuffer buffer = ByteBuffer.allocate(code.length + 8);
-//                buffer.putLong(time);
-//                buffer.put(code);
-//                
-//                
-//                String ticket2 = Server.encrypt(buffer);
-//                size1 += ticket.length();
-//                size2 += ticket2.length();
-//                
-//                byte[] complainByteArray = Server.decryptToByteArray(ticket2);
-//                ByteBuffer buffer2 = ByteBuffer.wrap(complainByteArray);
-//                long time2 = buffer2.getLong();
-//                byte[] code2 = new byte[buffer2.capacity() - 8];
-//                buffer2.get(code2);
-//                String responsible2 = huffman.decode(code2);
-//                String date2 = FORMAT.format(new Date(time2));
-//                String complain2 = date2 + " " + responsible2;
-////                
-//                System.out.println(complain);
-//                System.out.println(complain2);
-//                System.out.println();
-//            }
-//            float p = (float) size2 / (float) size1;
-//            System.out.println(p);
-//        } catch (Exception ex) {
-//            Server.logError(ex);
-//        } finally {
-//            System.exit(0);
-//        }
-//    }
-
     public static boolean addBlock(String token) throws ProcessException {
         return CacheBlock.add(token);
     }
@@ -4325,6 +4320,10 @@ public final class SPF implements Serializable {
 
     public static boolean dropBlock(String token) throws ProcessException {
         return CacheBlock.drop(token);
+    }
+    
+    public static boolean dropAllBlock() throws ProcessException {
+        return CacheBlock.dropAll();
     }
 
     public static boolean dropBlock(String client, String sender) throws ProcessException {
@@ -4401,6 +4400,7 @@ public final class SPF implements Serializable {
 
         private static boolean addExact(String token) {
             if (SET.add(token)) {
+                Peer.rejectAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -4409,9 +4409,9 @@ public final class SPF implements Serializable {
         }
         
         private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            blockSet.addAll(SET);
-            return blockSet;
+            TreeSet<String> ignoreSet = new TreeSet<String>();
+            ignoreSet.addAll(SET);
+            return ignoreSet;
         }
 
         private static boolean containsExact(String address) {
@@ -4431,8 +4431,18 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        private static TreeSet<String> dropAll() throws ProcessException {
+            TreeSet<String> ignoreSet = new TreeSet<String>();
+            for (String token : getAll()) {
+                if (dropExact(token)) {
+                    ignoreSet.add(token);
+                }
+            }
+            return ignoreSet;
+        }
 
-        private static synchronized boolean drop(String token) throws ProcessException {
+        private static boolean drop(String token) throws ProcessException {
             if ((token = normalizeTokenCIDR(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (dropExact(token)) {
@@ -4562,7 +4572,7 @@ public final class SPF implements Serializable {
                             identifier = token;
                         }
                         if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + identifier;
+                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                         }
                         if (client == null) {
                             addExact(identifier);
@@ -4586,6 +4596,10 @@ public final class SPF implements Serializable {
     public static boolean addIgnore(String token) throws ProcessException {
         return CacheIgnore.add(token);
     }
+    
+    public static TreeSet<String> dropAllIgnore() throws ProcessException {
+        return CacheIgnore.dropAll();
+    }
 
     public static boolean dropIgnore(String token) throws ProcessException {
         return CacheIgnore.drop(token);
@@ -4598,6 +4612,11 @@ public final class SPF implements Serializable {
     public static TreeSet<String> getGuessSet() throws ProcessException {
         return CacheGuess.get();
     }
+    
+    public static HashMap<String,String> getGuessMap() throws ProcessException {
+        return CacheGuess.getMap();
+    }
+
 
     /**
      * Classe que representa o cache de "best-guess" exclusivos.
@@ -4620,10 +4639,12 @@ public final class SPF implements Serializable {
         
         private static synchronized String dropExact(String token) {
             String ret = MAP.remove(token);
-            if (ret != null) {
+            if (ret == null) {
+                return null;
+            } else {
                 CHANGED = true;
+                return ret;
             }
-            return ret;
         }
 
         private static synchronized String putExact(String key, String value) {
@@ -4677,6 +4698,17 @@ public final class SPF implements Serializable {
             } else {
                 return false;
             }
+        }
+        
+        private static TreeSet<String> dropAll() throws ProcessException {
+            TreeSet<String> guessSet = new TreeSet<String>();
+            for (String domain : keySet()) {
+                String spf = dropExact(domain);
+                if (spf != null) {
+                    guessSet.add(domain + " \"" + spf + "\"");
+                }
+            }
+            return guessSet;
         }
 
         private static boolean drop(String hostname) throws ProcessException {
@@ -4776,6 +4808,10 @@ public final class SPF implements Serializable {
 
     public static boolean dropGuess(String host) throws ProcessException {
         return CacheGuess.drop(host);
+    }
+    
+    public static TreeSet<String> dropAllGuess() throws ProcessException {
+        return CacheGuess.dropAll();
     }
 
     public static void storeProvider() {
@@ -4897,25 +4933,9 @@ public final class SPF implements Serializable {
             map.putAll(MAP);
             return map;
         }
-
-        private static boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
         
         private static HELO getExact(String host) {
             return MAP.get(host);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setLoaded() {
-            CHANGED = false;
         }
 
         /*
@@ -4925,205 +4945,199 @@ public final class SPF implements Serializable {
 
             private static final long serialVersionUID = 1L;
             private Attributes attributes = null;
+            private TreeSet<String> addressSet = null;
+            private String address4 = null;
+            private String address6 = null;
             private int queryCount = 0;
             private long lastQuery;
             
-            private HELO(String hostname) throws NamingException {
+            private HELO(String hostname) {
                 this.lastQuery = System.currentTimeMillis();
                 refresh(hostname);
             }
 
-            public synchronized void refresh(String hostname) throws NamingException {
+            public synchronized void refresh(String hostname) {
                 long time = System.currentTimeMillis();
                 try {
-                    this.attributes = Server.getAttributesDNS(
+                    TreeSet<String> ipv4Set = new TreeSet<String>();
+                    TreeSet<String> ipv6Set = new TreeSet<String>();
+                    Attributes attributesA = Server.getAttributesDNS(
                             hostname, new String[]{"A"});
-                    if (attributes == null) {
-                        Server.logLookupHELO(time, hostname, "NXDOMAIN");
-                    } else {
+                    if (attributesA != null) {
+                        Enumeration enumerationA = attributesA.getAll();
+                        while (enumerationA.hasMoreElements()) {
+                            Attribute attributeA = (Attribute) enumerationA.nextElement();
+                            NamingEnumeration enumeration = attributeA.getAll();
+                            while (enumeration.hasMoreElements()) {
+                                String address = (String) enumeration.next();
+                                if (SubnetIPv4.isValidIPv4(address)) {
+                                    address = SubnetIPv4.normalizeIPv4(address);
+                                    ipv4Set.add(address);
+                                }
+                            }
+                        }
                         Attributes attributesAAAA = Server.getAttributesDNS(
                                 hostname, new String[]{"AAAA"});
                         if (attributesAAAA != null) {
-                            Enumeration enumeration = attributesAAAA.getAll();
-                            while (enumeration.hasMoreElements()) {
-                                Attribute attribute = (Attribute) enumeration.nextElement();
-                                attributes.put(attribute);
+                            Enumeration enumerationAAAA = attributesAAAA.getAll();
+                            while (enumerationAAAA.hasMoreElements()) {
+                                Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
+                                NamingEnumeration enumeration = attributeAAAA.getAll();
+                                while (enumeration.hasMoreElements()) {
+                                    String address = (String) enumeration.next();
+                                    if (SubnetIPv6.isValidIPv6(address)) {
+                                        address = SubnetIPv6.normalizeIPv6(address);
+                                        ipv6Set.add(address);
+                                    }
+                                }
                             }
                         }
-                        Server.logLookupHELO(time, hostname, attributes.toString());
                     }
-                    this.queryCount = 0;
-                    CHANGED = true;
+                    this.addressSet = new TreeSet<String>();
+                    this.addressSet.addAll(ipv4Set);
+                    this.addressSet.addAll(ipv6Set);
+                    if (ipv4Set.size() == 1) {
+                        this.address4 = ipv4Set.first();
+                    } else {
+                        this.address4 = null;
+                    }
+                    if (ipv6Set.size() == 1) {
+                        this.address6 = ipv6Set.first();
+                    } else {
+                        this.address6 = null;
+                    }
+                    Server.logLookupHELO(time, hostname, addressSet.toString());
+                } catch (CommunicationException ex) {
+                    Server.logLookupHELO(time, hostname, "TIMEOUT");
                 } catch (NameNotFoundException ex) {
+                    this.addressSet = null;
+                    this.address4 = null;
+                    this.address6 = null;
+                    Server.logLookupHELO(time, hostname, "NXDOMAIN");
+                } catch (NamingException ex) {
+                    this.addressSet = null;
+                    this.address4 = null;
+                    this.address6 = null;
+                    Server.logLookupHELO(time, hostname, "ERROR " + ex.getExplanation());
+                } finally {
                     this.attributes = null;
                     this.queryCount = 0;
                     CHANGED = true;
-                    Server.logLookupHELO(time, hostname, "NXDOMAIN");
                 }
             }
+            
+            public synchronized TreeSet<String> getAddressSet() {
+                TreeSet<String> set = new TreeSet<String>();
+                set.addAll(this.addressSet);
+                return set;
+            }
+            
+            public synchronized boolean contains(String ip) {
+                if ((ip = Subnet.normalizeIP(ip)) == null) {
+                    return false;
+                } else if (addressSet == null) {
+                    return false;
+                } else {
+                    return addressSet.contains(ip);
+                }
+            }
+            
+            public synchronized String getAddress4() {
+                return address4;
+            }
+            
+            public synchronized String getAddress6() {
+                return address6;
+            }
+            
+            public synchronized void addQuery() {
+                this.queryCount++;
+                this.lastQuery = System.currentTimeMillis();
+            }
 
-            public boolean isExpired7() {
+            public synchronized boolean isExpired7() {
                 return System.currentTimeMillis() - lastQuery > 604800000;
             }
-        }
 
-        /**
-         * Primeiro teste de estrutura de dados simples.
-         *
-         * @param helo
-         * @return
-         * @throws Exception
-         */
-        private static Attributes getAttributes(String hostname) throws NamingException {
-            HELO heloObj = MAP.get(hostname);
-            if (heloObj == null) {
-                heloObj = new HELO(hostname);
-                putExact(hostname, heloObj);
-                return heloObj.attributes;
-            } else {
-                heloObj.queryCount++;
-                heloObj.lastQuery = System.currentTimeMillis();
-                CHANGED = true;
-                return heloObj.attributes;
-            }
-        }
-
-        private static Attribute getAttribute(
-                String helo, String attribute) throws NamingException {
-            Attributes attributes = getAttributes(helo);
-            if (attributes == null) {
-                return null;
-            } else {
-                return attributes.get(attribute);
+            private synchronized void update() {
+                if (attributes != null) {
+                    TreeSet<String> ipv4Set = new TreeSet<String>();
+                    TreeSet<String> ipv6Set = new TreeSet<String>();
+                    Enumeration enumeration = attributes.getAll();
+                    while (enumeration.hasMoreElements()) {
+                        try {
+                            Attribute attribute = (Attribute) enumeration.nextElement();
+                            NamingEnumeration namingEnumeration = attribute.getAll();
+                            while (namingEnumeration.hasMoreElements()) {
+                                String address = (String) namingEnumeration.next();
+                                if (SubnetIPv4.isValidIPv4(address)) {
+                                    address = SubnetIPv4.normalizeIPv4(address);
+                                    ipv4Set.add(address);
+                                } else if (SubnetIPv6.isValidIPv6(address)) {
+                                    address = SubnetIPv6.normalizeIPv6(address);
+                                    ipv6Set.add(address);
+                                }
+                            }
+                        } catch (NamingException ex) {
+                        }
+                    }
+                    this.addressSet = new TreeSet<String>();
+                    this.addressSet.addAll(ipv4Set);
+                    this.addressSet.addAll(ipv6Set);
+                    if (ipv4Set.size() == 1) {
+                        this.address4 = ipv4Set.first();
+                    } else {
+                        this.address4 = null;
+                    }
+                    if (ipv6Set.size() == 1) {
+                        this.address6 = ipv6Set.first();
+                    } else {
+                        this.address6 = null;
+                    }
+                    this.attributes = null;
+                }
             }
         }
         
-        public static String getUniqueIPv4(String helo) throws ProcessException {
-            try {
-                helo = Domain.extractHost(helo, false);
-                Attribute attribute = getAttribute(helo, "A");
-                if (attribute == null) {
-                    return null;
-                } else if (attribute.size() == 1) {
-                    String ip = (String) attribute.get(0);
-                    return SubnetIPv4.normalizeIPv4(ip);
-                } else {
-                    return null;
-                }
-            } catch (NamingException ex) {
+        public static String getUniqueIPv4(String helo) {
+            if ((helo = Domain.extractHost(helo, false)) == null) {
                 return null;
+            } else {
+                HELO heloObj = getExact(helo);
+                if (heloObj == null) {
+                    return null;
+                } else {
+                    return heloObj.getAddress4();
+                }
             }
         }
         
         public static String getUniqueIPv6(String helo) {
-            try {
-                helo = Domain.extractHost(helo, false);
-                Attribute attribute = getAttribute(helo, "AAAA");
-                if (attribute == null) {
-                    return null;
-                } else if (attribute.size() == 1) {
-                    String ip = (String) attribute.get(0);
-                    return SubnetIPv6.normalizeIPv6(ip);
-                } else {
-                    return null;
-                }
-            } catch (NamingException ex) {
+            if ((helo = Domain.extractHost(helo, false)) == null) {
                 return null;
+            } else {
+                HELO heloObj = getExact(helo);
+                if (heloObj == null) {
+                    return null;
+                } else {
+                    return heloObj.getAddress6();
+                }
             }
         }
 
-        public static boolean match(String ip, String helo, boolean log) {
+        public static boolean match(String ip, String helo) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
-                // o HELO é nulo.
                 return false;
-            } else if (!Domain.containsDomain(helo)) {
-                // o HELO não é um hostname válido.
-                return false;
-            } else if (SubnetIPv4.isValidIPv4(ip)) {
-                long time = System.currentTimeMillis();
-                try {
-                    Attribute attribute = getAttribute(helo, "A");
-                    if (attribute == null) {
-                        if (log) {
-                            Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
-                        }
-                        return false;
-                    } else {
-                        int address = SubnetIPv4.getAddressIP(ip);
-                        NamingEnumeration enumeration = attribute.getAll();
-                        while (enumeration.hasMoreElements()) {
-                            String hostAddress = (String) enumeration.next();
-                            int indexSpace = hostAddress.indexOf(' ') + 1;
-                            hostAddress = hostAddress.substring(indexSpace);
-                            if (SubnetIPv4.isValidIPv4(hostAddress)) {
-                                if (address == SubnetIPv4.getAddressIP(hostAddress)) {
-                                    if (log) {
-                                        Server.logMatchHELO(time, helo + " " + ip, "MATCH");
-                                    }
-                                    return true;
-                                }
-                            }
-                        }
-                        if (log) {
-                            Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
-                        }
-                        return false;
-                    }
-                } catch (CommunicationException ex) {
-                    if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
-                    }
-                    return false;
-                } catch (NamingException ex) {
-                    if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, ex.getMessage());
-                    }
-                    return false;
-                }
-            } else if (SubnetIPv6.isValidIPv6(ip)) {
-                long time = System.currentTimeMillis();
-                try {
-                    Attribute attribute = getAttribute(helo, "AAAA");
-                    if (attribute == null) {
-                        if (log) {
-                            Server.logMatchHELO(time, helo + " " + ip, "NXDOMAIN");
-                        }
-                        return false;
-                    } else {
-                        short[] address = SubnetIPv6.split(ip);
-                        NamingEnumeration enumeration = attribute.getAll();
-                        while (enumeration.hasMoreElements()) {
-                            String hostAddress = (String) enumeration.next();
-                            int indexSpace = hostAddress.indexOf(' ') + 1;
-                            hostAddress = hostAddress.substring(indexSpace);
-                            if (SubnetIPv6.isValidIPv6(hostAddress)) {
-                                if (Arrays.equals(address, SubnetIPv6.split(hostAddress))) {
-                                    if (log) {
-                                        Server.logMatchHELO(time, helo + " " + ip, "MATCH");
-                                    }
-                                    return true;
-                                }
-                            }
-                        }
-                        if (log) {
-                            Server.logMatchHELO(time, helo + " " + ip, "NOT MATCH");
-                        }
-                        return false;
-                    }
-                } catch (CommunicationException ex) {
-                    if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, "TIMEOUT");
-                    }
-                    return false;
-                } catch (NamingException ex) {
-                    if (log) {
-                        Server.logMatchHELO(time, helo + " " + ip, ex.getMessage());
-                    }
-                    return false;
-                }
             } else {
-                // O parâmetro ip não é um IP válido.
-                return false;
+                HELO heloObj = getExact(helo);
+                if (heloObj == null) {
+                    heloObj = new HELO(helo);
+                    putExact(helo, heloObj);
+                } else {
+                    heloObj.addQuery();
+                    CHANGED = true;
+                }
+                return heloObj.contains(ip);
             }
         }
 
@@ -5149,19 +5163,16 @@ public final class SPF implements Serializable {
                     heloObjMax = heloObj;
                 }
             }
-            if (heloMax != null && heloObjMax != null
-                    && heloObjMax.queryCount > 3) {
-                try {
-                    heloObjMax.refresh(heloMax);
-                } catch (NamingException ex) {
-                    Server.logError(ex);
-                }
+            if (heloMax != null
+                    && heloObjMax != null
+                    && heloObjMax.queryCount > 3
+                    ) {
+                heloObjMax.refresh(heloMax);
             }
-//            store(); // Problema de deadlock.
         }
 
         private static void store() {
-            if (isChanged()) {
+            if (CHANGED) {
                 try {
                     long time = System.currentTimeMillis();
                     File file = new File("./data/helo.map");
@@ -5169,7 +5180,7 @@ public final class SPF implements Serializable {
                     FileOutputStream outputStream = new FileOutputStream(file);
                     try {
                         SerializationUtils.serialize(map, outputStream);
-                        setStored();
+                        CHANGED = false;
                     } finally {
                         outputStream.close();
                     }
@@ -5196,10 +5207,11 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof HELO) {
                             HELO helo = (HELO) value;
+                            helo.update();
                             putExact(key, helo);
                         }
                     }
-                    setLoaded();
+                    CHANGED = false;
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -5396,7 +5408,7 @@ public final class SPF implements Serializable {
                 // Passar a acompanhar todos os 
                 // HELO quando apontados para o IP para 
                 // uma nova forma de interpretar dados.
-                if (CacheHELO.match(ip, helo, true)) {
+                if (CacheHELO.match(ip, helo)) {
                     helo = Domain.normalizeHostname(helo, true);
                     tokenSet.add(helo);
                     String ipv4 = CacheHELO.getUniqueIPv4(helo);
@@ -5460,7 +5472,7 @@ public final class SPF implements Serializable {
                         origem = mx;
                     }
                     fluxo = origem + ">" + recipient;
-                } else if (CacheHELO.match(ip, helo, false)) {
+                } else if (CacheHELO.match(ip, helo)) {
                     String dominio = Domain.extractDomain(helo, true);
                     origem = sender + ">" + dominio.substring(1);
                     fluxo = origem + ">" + recipient;
@@ -5501,9 +5513,11 @@ public final class SPF implements Serializable {
                             + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
+                    String url = Core.getSpamURL();
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     return "action=PREPEND "
-                            + "Received-SPFBL: " + result + " " + ticket + "\n\n";
+                            + "Received-SPFBL: " + result + " "
+                            + (url == null ? "" : url) + ticket + "\n\n";
                 }
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: SPF PARSE")) {
@@ -5535,7 +5549,6 @@ public final class SPF implements Serializable {
      */
     protected static String processSPF(String client, String query) {
         try {
-            long time = System.currentTimeMillis();
             String result = "";
             if (query.length() == 0) {
                 return "ERROR: QUERY\n";
@@ -5552,7 +5565,7 @@ public final class SPF implements Serializable {
                     }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(time, client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(client, ticket);
                     if (tokenSet == null) {
                         result = "ALREADY REMOVED\n";
                     } else {
@@ -5640,7 +5653,7 @@ public final class SPF implements Serializable {
                             // Passar a acompanhar todos os 
                             // HELO quando apontados para o IP para 
                             // uma nova forma de interpretar dados.
-                            if (CacheHELO.match(ip, helo, true)) {
+                            if (CacheHELO.match(ip, helo)) {
                                 helo = Domain.normalizeHostname(helo, true);
                                 tokenSet.add(helo);
                                 String ipv4 = CacheHELO.getUniqueIPv4(helo);
@@ -5705,7 +5718,7 @@ public final class SPF implements Serializable {
                                     origem = mx;
                                 }
                                 fluxo = origem + ">" + recipient;
-                            } else if (CacheHELO.match(ip, helo, false)) {
+                            } else if (CacheHELO.match(ip, helo)) {
                                 String dominio = Domain.extractDomain(helo, true);
                                 origem = sender + ">" + dominio.substring(1);
                                 fluxo = origem + ">" + recipient;
@@ -5728,6 +5741,7 @@ public final class SPF implements Serializable {
                                 }
                                 result += "\n";
                                 result += "Considered identifiers and status:\n";
+                                tokenSet = expandTokenSet(tokenSet);
                                 TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
                                 for (String token : tokenSet) {
                                     float probability;
@@ -5776,8 +5790,9 @@ public final class SPF implements Serializable {
                                 return "GREYLIST\n";
                             } else {
                                 // Calcula frequencia de consultas.
+                                String url = Core.getSpamURL();
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
-                                return result + " " + ticket + "\n";
+                                return result + " " + (url == null ? "" : url) + ticket + "\n";
                             }
                         }
                     } catch (ProcessException ex) {

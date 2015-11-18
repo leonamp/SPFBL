@@ -195,7 +195,12 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
+                        Server.removeWhoisQueryHour();
                         reducedLocal = true;
+                    } else if (line.startsWith("% Query rate limit exceeded")) {
+                        // Restrição total devido ao estouro de limite de consultas.
+                        Server.removeWhoisQueryDay();
+                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
                     }
@@ -307,17 +312,24 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         }
     }
     
+    public static synchronized HashMap<String,AutonomousSystem> getMap() {
+        HashMap<String,AutonomousSystem> map = new HashMap<String,AutonomousSystem>();
+        map.putAll(MAP);
+        return map;
+    }
+    
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
+    public static void store() {
         if (AS_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                HashMap<String,AutonomousSystem> map = getMap();
                 File file = new File("./data/as.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(AS_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     AS_CHANGED = false;
                 } finally {
@@ -330,10 +342,14 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         }
     }
     
+    private static synchronized AutonomousSystem put(String key, AutonomousSystem handle) {
+        return MAP.put(key, handle);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/as.map");
         if (file.exists()) {
@@ -349,7 +365,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                     Object value = map.get(key);
                     if (value instanceof AutonomousSystem) {
                         AutonomousSystem as = (AutonomousSystem) value;
-                        AS_MAP.put(key, as);
+                        put(key, as);
                     }
                 }
                 Server.logLoad(time, file);
@@ -362,28 +378,28 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     /**
      * Mapa de domínios com busca de hash O(1).
      */
-    private static final HashMap<String,AutonomousSystem> AS_MAP = new HashMap<String,AutonomousSystem>();
+    private static final HashMap<String,AutonomousSystem> MAP = new HashMap<String,AutonomousSystem>();
     
-    /**
-     * Adciiona o registro de domínio no cache.
-     * @param as o as que deve ser adicionado.
-     */
-    private static synchronized void addAutonomousSystem(AutonomousSystem as) {
-        AS_MAP.put(as.getNumber(), as);
-        // Atualiza flag de atualização.
-        AS_CHANGED = true;
-    }
+//    /**
+//     * Adciiona o registro de domínio no cache.
+//     * @param as o as que deve ser adicionado.
+//     */
+//    private static synchronized void addAutonomousSystem(AutonomousSystem as) {
+//        MAP.put(as.getNumber(), as);
+//        // Atualiza flag de atualização.
+//        AS_CHANGED = true;
+//    }
     
-    /**
-     * Remove o registro de domínio do cache.
-     * @param as o as que deve ser removido.
-     */
-    private static synchronized void removeAutonomousSystem(AutonomousSystem as) {
-        if (AS_MAP.remove(as.getNumber()) != null) {
-            // Atualiza flag de atualização.
-            AS_CHANGED = true;
-        }
-    }
+//    /**
+//     * Remove o registro de domínio do cache.
+//     * @param as o as que deve ser removido.
+//     */
+//    private static synchronized void removeAutonomousSystem(AutonomousSystem as) {
+//        if (MAP.remove(as.getNumber()) != null) {
+//            // Atualiza flag de atualização.
+//            AS_CHANGED = true;
+//        }
+//    }
     
     /**
      * Flag que indica se o cache foi modificado.
@@ -397,12 +413,12 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
      * @return o registro de AS de um determinado número.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static AutonomousSystem getAS(String number,
+    public static synchronized AutonomousSystem getAS(String number,
             String server) throws ProcessException {
         // Busca eficiente O(1).
-        if (AS_MAP.containsKey(number)) {
+        if (MAP.containsKey(number)) {
             // Domínio encontrado.
-            AutonomousSystem as = AS_MAP.get(number);
+            AutonomousSystem as = MAP.get(number);
             as.queries++;
             if (as.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -411,14 +427,15 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
             } else if (as.isRegistryAlmostExpired()) {
                 // Registro quase vencendo.
                 // Adicionar no conjunto para atualização em background.
-                AS_REFRESH.add(as);
+                REFRESH.add(as);
             }
             return as;
         } else {
             // Realizando a consulta no WHOIS.
             AutonomousSystem as = new AutonomousSystem(number, server);
             // Adicinando registro em cache.
-            addAutonomousSystem(as);
+            MAP.put(as.getNumber(), as);
+            AS_CHANGED = true;
             return as;
         }
     }
@@ -426,14 +443,14 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     /**
      * Conjunto de registros para atualização em background.
      */
-    private static final TreeSet<AutonomousSystem> AS_REFRESH = new TreeSet<AutonomousSystem>();
+    private static final TreeSet<AutonomousSystem> REFRESH = new TreeSet<AutonomousSystem>();
     
     /**
      * Atualiza em background todos os registros adicionados no conjunto.
      */
     public static synchronized void backgroundRefresh() {
-        while (!AS_REFRESH.isEmpty()) {
-            AutonomousSystem as = AS_REFRESH.pollFirst();
+        while (!REFRESH.isEmpty()) {
+            AutonomousSystem as = REFRESH.pollFirst();
             try {
                 // Atualizando campos do registro.
                 as.refresh();

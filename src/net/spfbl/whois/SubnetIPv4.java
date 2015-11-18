@@ -21,8 +21,6 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -48,9 +46,7 @@ import org.apache.commons.lang3.SerializationUtils;
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class SubnetIPv4 extends Subnet
-//implements Comparable<SubnetIPv4>
-{
+public final class SubnetIPv4 extends Subnet {
     
     private static final long serialVersionUID = 1L;
     
@@ -63,7 +59,7 @@ public final class SubnetIPv4 extends Subnet
      * @param server o server que possui as informações daquele bloco.
      */
     protected SubnetIPv4(String inetnum, String server) {
-        super(inetnum = normalizeCIDRv4(inetnum), server);
+        super(inetnum, server);
         // Endereçamento do bloco.
         this.mask = getMaskNet(inetnum);
         this.address = getAddressNet(inetnum) & mask; // utiliza a máscara para garantir que o endereço passado seja o primeiro endereço do bloco.
@@ -101,11 +97,12 @@ public final class SubnetIPv4 extends Subnet
     protected boolean refresh() throws ProcessException {
         boolean isInetnum = super.refresh();
         // Atualiza flag de atualização.
-        SUBNET_CHANGED = true;
+        CHANGED = true;
         return isInetnum;
     }
     
     protected static String getFirstIPv4(String inetnum) {
+        inetnum = normalizeCIDRv4(inetnum);
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String size = inetnum.substring(index+1);
@@ -144,8 +141,8 @@ public final class SubnetIPv4 extends Subnet
      * @return o endereço IP em inteiro de 32 bits da notação CIDR.
      */
     public static int getAddressNet(String inetnum) {
-        int index = inetnum.indexOf('/');
-        String ip = inetnum.substring(0, index);
+        inetnum = normalizeCIDRv4(inetnum);
+        String ip = getFirstIP(inetnum);
         return getAddressIP(ip);
     }
     
@@ -238,6 +235,18 @@ public final class SubnetIPv4 extends Subnet
         return address;
     }
     
+    public static long getLongIP(String ip) {
+        long address = 0;
+        int i = 0;
+        for (byte octeto : split(ip)) {
+            address += (int) octeto & 0xFF;
+            if (i++ < 3) {
+                address <<= 8;
+            }
+        }
+        return address;
+    }
+    
     /**
      * Retorna a máscara em inteiro de 32 bits da notação CIDR.
      * @param inetnum endereço de bloco em notação CIDR.
@@ -259,8 +268,10 @@ public final class SubnetIPv4 extends Subnet
             return false;
         } else {
             ip = ip.trim();
-            return Pattern.matches("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$", ip);
+            return Pattern.matches("^"
+                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+                    + "$", ip);
         }
     }
     
@@ -282,35 +293,16 @@ public final class SubnetIPv4 extends Subnet
      */
     public static boolean isValidCIDRv4(String cidr) {
         cidr = cidr.trim();
-        return Pattern.matches("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}$", cidr);
+        return Pattern.matches("^"
+                + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){1,3}"
+                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
+                + "$", cidr);
     }
     
     /**
      * Mapa de blocos IP de ASs com busca em árvore binária log2(n).
      */
-    private static final TreeMap<Integer,SubnetIPv4> SUBNET_MAP = new TreeMap<Integer,SubnetIPv4>();
-    
-    /**
-     * Adciiona o registro de bloco de IP no cache.
-     * @param subnet o de bloco de IP que deve ser adicionado.
-     */
-    private static synchronized void addSubnet(SubnetIPv4 subnet) {
-        SUBNET_MAP.put(subnet.address, subnet);
-        // Atualiza flag de atualização.
-        SUBNET_CHANGED = true;
-    }
-    
-    /**
-     * Remove o registro de bloco de IP do cache.
-     * @param subnet o de bloco de IP que deve ser removido.
-     */
-    private static synchronized void removeSubnet(SubnetIPv4 subnet) {
-        if (SUBNET_MAP.remove(subnet.address) != null) {
-            // Atualiza flag de atualização.
-            SUBNET_CHANGED = true;
-        }
-    }
+    private static final TreeMap<Long,SubnetIPv4> MAP = new TreeMap<Long,SubnetIPv4>();
     
     /**
      * Remove registro de bloco de IP para AS do cache.
@@ -318,21 +310,16 @@ public final class SubnetIPv4 extends Subnet
      * @return o registro de bloco removido, se existir.
      */
     public static synchronized SubnetIPv4 removeSubnet(String ip) {
-        int address = getAddressIP(ip.trim()); // Implementar validação.
         // Busca eficiente O(log2(n)).
         // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Integer key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
+        Long key = getLongIP(ip);
+        key = MAP.floorKey(key);
         if (key == null) {
             return null;
         } else {
-            SubnetIPv4 subnet = SUBNET_MAP.remove(key);
+            SubnetIPv4 subnet = MAP.remove(key);
             // Atualiza flag de atualização.
-            SUBNET_CHANGED = true;
+            CHANGED = true;
             return subnet;
         }
     }
@@ -340,11 +327,11 @@ public final class SubnetIPv4 extends Subnet
     /**
      * Flag que indica se o cache foi modificado.
      */
-    private static boolean SUBNET_CHANGED = false;
+    private static boolean CHANGED = false;
     
     protected static synchronized TreeSet<Subnet> getSubnetSet() {
         TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
-        subnetSet.addAll(SUBNET_MAP.values());
+        subnetSet.addAll(MAP.values());
         return subnetSet;
     }
     
@@ -353,39 +340,38 @@ public final class SubnetIPv4 extends Subnet
      * @param ip o IP cujo bloco deve ser retornado.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static void refreshSubnet(String ip) throws ProcessException {
-        int address = getAddressIP(ip.trim()); // Implementar validação.
-        // Busca eficiente O(log2(n)).
-        // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Integer key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
-        if (key != null) {
-            // Encontrou uma subrede com endereço inicial imediatemente inferior.
-            SubnetIPv4 subnet = SUBNET_MAP.get(key);
-            // Verifica se o ip pertence à subrede encontrada.
-            if (subnet.contains(address)) {
+    public static synchronized void refreshSubnet(String ip) throws ProcessException {
+        SubnetIPv4 subnet;
+        Long key = getLongIP(ip);
+        key = MAP.floorKey(key);
+        while (key != null) {
+            subnet = MAP.get(key);
+            if (subnet.contains(ip)) {
                 // Atualizando campos do registro.
                 if (!subnet.refresh()) {
                     // Domínio real do resultado WHOIS não bate com o registro.
                     // Pode haver mudança na distribuição dos blocos.
                     // Apagando registro de bloco do cache.
-                    removeSubnet(subnet);
+                    MAP.remove(key);
+                    CHANGED = true;
                     // Segue para nova consulta.
+                    break;
                 }
+            } else {
+                key = MAP.lowerKey(key);
             }
         }
         // Não encontrou a sub-rede em cache.
         // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(address);
+        String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        SubnetIPv4 subnet = new SubnetIPv4(result);
+        subnet = new SubnetIPv4(result);
         subnet.server = server; // Temporário até final de transição.
-        addSubnet(subnet);
+        ip = getFirstIPv4(subnet.getInetnum());
+        key = getLongIP(ip);
+        MAP.put(key, subnet);
+        CHANGED = true;
     }
     
     public static String getOwnerID(String ip) {
@@ -454,68 +440,68 @@ public final class SubnetIPv4 extends Subnet
      * @return o registro de bloco IPv4 de AS de um determinado IP.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static SubnetIPv4 getSubnet(String ip) throws ProcessException {
-        int address = getAddressIP(ip.trim()); // Implementar validação.
-        // Busca eficiente O(log2(n)).
-        // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Integer key = SUBNET_MAP.floorKey(address);
-        if (key == null && !SUBNET_MAP.isEmpty()) {
-            // Devido à limitação do Java em não traballhar com unsigned int,
-            // fazer uma consulta circular pelo último bloco do mapa.
-            key = SUBNET_MAP.lastKey();
-        }
-        if (key != null) {
-            // Encontrou uma subrede com endereço inicial imediatemente inferior.
-            SubnetIPv4 subnet = SUBNET_MAP.get(key);
-            // Verifica se o ip pertence à subrede encontrada.
-            if (subnet.contains(address)) {
+    public static synchronized SubnetIPv4 getSubnet(String ip) throws ProcessException {
+        SubnetIPv4 subnet;
+        Long key = getLongIP(ip);
+        key = MAP.floorKey(key);
+        while (key != null) {
+            subnet = MAP.get(key);
+            if (subnet.contains(ip)) {
                 if (subnet.isRegistryExpired()) {
                     // Registro expirado.
                     // Atualizando campos do registro.
                     if (subnet.refresh()) {
                         // Bloco do resultado WHOIS bate com o bloco do registro.
                         return subnet;
-                    } else {
+                    } else if (MAP.remove(key) != null) {
                         // Domínio real do resultado WHOIS não bate com o registro.
                         // Pode haver mudança na distribuição dos blocos.
                         // Apagando registro de bloco do cache.
-                        removeSubnet(subnet);
+                        CHANGED = true;
                         // Segue para nova consulta.
+                        break;
                     }
-//                } else if (subnet.isRegistryAlmostExpired() || subnet.isReduced()) {
-//                    // Registro quase vencendo ou com informação reduzida.
-//                    // Adicionar no conjunto para atualização em background.
-//                    SUBNET_REFRESH.add(subnet);
-//                    return subnet;
                 } else {
                     return subnet;
                 }
+            } else {
+                key = MAP.lowerKey(key);
             }
         }
         // Não encontrou a sub-rede em cache.
         // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(address);
+        String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        SubnetIPv4 subnet = new SubnetIPv4(result);
+        subnet = new SubnetIPv4(result);
         subnet.server = server; // Temporário até final de transição.
-        addSubnet(subnet);
+        ip = getFirstIPv4(subnet.getInetnum());
+        key = getLongIP(ip);
+        MAP.put(key, subnet);
+        CHANGED = true;
         return subnet;
+    }
+    
+    private static synchronized TreeMap<Long,SubnetIPv4> getMap() {
+        TreeMap<Long,SubnetIPv4> map = new TreeMap<Long,SubnetIPv4>();
+        map.putAll(MAP);
+        return map;
     }
     
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
-        if (SUBNET_CHANGED) {
+    public static void store() {
+        if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                TreeMap<Long,SubnetIPv4> map = getMap();
                 File file = new File("./data/subnet4.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(SUBNET_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
-                    SUBNET_CHANGED = false;
+                    CHANGED = false;
                 } finally {
                     outputStream.close();
                 }
@@ -526,26 +512,33 @@ public final class SubnetIPv4 extends Subnet
         }
     }
     
+    private static synchronized SubnetIPv4 put(Long key, SubnetIPv4 subnet) {
+        return MAP.put(key, subnet);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/subnet4.map");
         if (file.exists()) {
             try {
-                TreeMap<Integer,Object> map;
+                TreeMap<Object,Object> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
                 } finally {
                     fileInputStream.close();
                 }
-                for (Integer key : map.keySet()) {
-                    Object value = map.get(key);
+                for (Object value : map.values()) {
                     if (value instanceof SubnetIPv4) {
                         SubnetIPv4 sub4 = (SubnetIPv4) value;
-                        SUBNET_MAP.put(key, sub4);
+                        sub4.normalize();
+                        String cidr = sub4.getInetnum();
+                        String ip = getFirstIPv4(cidr);
+                        Long key = getLongIP(ip);
+                        put(key, sub4);
                     }
                 }
                 Server.logLoad(time, file);
@@ -575,6 +568,7 @@ public final class SubnetIPv4 extends Subnet
     
     public static boolean containsIPv4(String cidr, String ip) {
         if (isValidCIDRv4(cidr) && isValidIPv4(ip)) {
+            cidr = Subnet.normalizeCIDR(cidr);
             int mask = SubnetIPv4.getMaskNet(cidr);
             int address1 = SubnetIPv4.getAddressNet(cidr);
             int address2 = SubnetIPv4.getAddressIP(ip);
@@ -584,7 +578,6 @@ public final class SubnetIPv4 extends Subnet
         }
     }
     
-//    @Override
     public int compareTo(SubnetIPv4 other) {
         return new Integer(this.address).compareTo(other.address);
     }
@@ -592,7 +585,7 @@ public final class SubnetIPv4 extends Subnet
     /**
      * Mapa completo dos blocos alocados aos países.
      */
-    private static final TreeMap<Integer,SubnetIPv4> SERVER_MAP = new TreeMap<Integer,SubnetIPv4>();
+    private static final TreeMap<Long,SubnetIPv4> SERVER_MAP = new TreeMap<Long,SubnetIPv4>();
     
     /**
      * Adiciona um servidor WHOIS na lista com seu respecitivo bloco.
@@ -602,7 +595,9 @@ public final class SubnetIPv4 extends Subnet
     private static void addServer(String inetnum, String server) {
         try {
             SubnetIPv4 subnet = new SubnetIPv4(inetnum, server);
-            SERVER_MAP.put(subnet.address, subnet);
+            String ip = getFirstIPv4(subnet.getInetnum());
+            Long key = getLongIP(ip);
+            SERVER_MAP.put(key, subnet);
         } catch (Exception ex) {
             Server.logError(ex);
         }
@@ -611,7 +606,8 @@ public final class SubnetIPv4 extends Subnet
     // Temporário
     @Override
     public String getWhoisServer() throws ProcessException {
-        return getWhoisServer(address);
+        String ip = getFirstIPv4(getInetnum());
+        return getWhoisServer(ip);
     }
     
     /**
@@ -620,18 +616,16 @@ public final class SubnetIPv4 extends Subnet
      * @return o servidor que possui a informação de bloco IPv4 de AS de um IP.
      * @throws QueryException se o bloco não for encontrado para o IP especificado.
      */
-    private static String getWhoisServer(int address) throws ProcessException {
+    private static String getWhoisServer(String ip) throws ProcessException {
         // Busca eficiente O(log2(n)).
         // Este método só funciona se o mapa não tiver intersecção de blocos.
-        Integer key = SERVER_MAP.floorKey(address);
-        if (key == null && !SERVER_MAP.isEmpty()) {
-            key = SERVER_MAP.lastKey();
-        }
+        Long key = getLongIP(ip);
+        key = SERVER_MAP.floorKey(key);
         if (key == null) {
             throw new ProcessException("ERROR: SERVER NOT FOUND");
         } else {
             SubnetIPv4 subnet = SERVER_MAP.get(key);
-            if (subnet.contains(address)) {
+            if (subnet.contains(ip)) {
                 return subnet.getServer();
             } else {
                 throw new ProcessException("ERROR: SERVER NOT FOUND");

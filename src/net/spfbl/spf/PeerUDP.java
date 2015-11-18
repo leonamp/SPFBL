@@ -28,13 +28,8 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import javax.naming.NamingException;
-import javax.naming.directory.Attribute;
-import javax.naming.directory.Attributes;
 import net.spfbl.core.Peer;
 import net.spfbl.whois.Domain;
-import net.spfbl.whois.SubnetIPv4;
-import net.spfbl.whois.SubnetIPv6;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
@@ -57,7 +52,7 @@ public final class PeerUDP extends Server {
      * @throws java.net.SocketException se houver falha durante o bind.
      */
     public PeerUDP(String hostname, int port, int size) throws SocketException {
-        super("ServerPEERUDP");
+        super("SERVERP2P");
         HOSTNAME = hostname;
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
@@ -70,68 +65,8 @@ public final class PeerUDP extends Server {
     public String getConnection() {
         if (HOSTNAME == null) {
             return null;
-        } else if (HOSTNAME.toLowerCase().equals("localhost")) {
-            return null;
         } else {
-            try {
-    //            for (InetAddress address : InetAddress.getAllByName(HOSTNAME)) {
-    //                if (address.isAnyLocalAddress()) {
-    //                    return null;
-    //                } else if (address.isLinkLocalAddress()) {
-    //                    return null;
-    //                } else if (address.isLoopbackAddress()) {
-    //                    return null;
-    //                } else {
-    //                    return HOSTNAME + ":" + PORT;
-    //                }
-    //            }
-                Attributes attributesA = Server.getAttributesDNS(
-                        HOSTNAME, new String[]{"A"});
-                Attribute attributeA = attributesA.get("A");
-                if (attributeA == null) {
-                    Attributes attributesAAAA = Server.getAttributesDNS(
-                            HOSTNAME, new String[]{"AAAA"});
-                    Attribute attributeAAAA = attributesAAAA.get("AAAA");
-                    if (attributeAAAA != null) {
-                        for (int i = 0; i < attributeAAAA.size(); i++) {
-                            String host6Address = (String) attributeAAAA.get(i);
-                            if (SubnetIPv6.isValidIPv6(host6Address)) {
-                                try {
-                                    InetAddress address = InetAddress.getByName(host6Address);
-                                    if (address.isLinkLocalAddress()) {
-                                        return null;
-                                    } else if (address.isLoopbackAddress()) {
-                                        return null;
-                                    }
-                                } catch (UnknownHostException ex) {
-                                }
-                            } else {
-                                return null;
-                            }
-                        }
-                    }
-                } else {
-                    for (int i = 0; i < attributeA.size(); i++) {
-                        String host4Address = (String) attributeA.get(i);
-                        if (SubnetIPv4.isValidIPv4(host4Address)) {
-                            try {
-                                InetAddress address = InetAddress.getByName(host4Address);
-                                if (address.isLinkLocalAddress()) {
-                                    return null;
-                                } else if (address.isLoopbackAddress()) {
-                                    return null;
-                                }
-                            } catch (UnknownHostException ex) {
-                            }
-                        } else {
-                            return null;
-                        }
-                    }
-                }
-                return HOSTNAME + ":" + PORT;
-            } catch (NamingException ex) {
-                return null;
-            }
+            return HOSTNAME + ":" + PORT;
         }
     }
     
@@ -144,6 +79,8 @@ public final class PeerUDP extends Server {
         }
         return false;
     }
+    
+    private int CONNECTION_ID = 1;
     
     /**
      * Representa uma conexão ativa.
@@ -158,7 +95,7 @@ public final class PeerUDP extends Server {
         private long time = 0;
         
         public Connection() {
-            super("PEERUDP" + (CONNECTION_COUNT+1));
+            super("P2PUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -368,7 +305,7 @@ public final class PeerUDP extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating PEERUDP" + (CONNECTION_COUNT + 1) + "...");
+                Server.logDebug("creating P2PUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 CONNECTION_COUNT++;
                 return connection;

@@ -25,8 +25,6 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
@@ -271,7 +269,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String release(String token) {
         if (dropExact(token)) {
-            if (SPF.addBlockExact(token)) {
+            if (SPF.isIgnore(token)) {
+                return "IGNORED";
+            } else if (SPF.addBlockExact(token)) {
                 if (isReceiveRepass()) {
                     sendToOthers(token);
                     return "REPASSED";
@@ -412,6 +412,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
                         peerSet.add(peer);
                         break;
                 }
+            }
+        }
+        return peerSet;
+    }
+    
+    public static TreeSet<Peer> dropAll() {
+        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        for (Peer peer : getSet()) {
+            if (peer.drop()) {
+                peerSet.add(peer);
             }
         }
         return peerSet;
@@ -619,8 +629,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
         try {
             if (!isValid(token)) {
                 return "INVALID";
-            } else if (Domain.isTLD(token)) {
-                return "TLD";
+            } else if (Domain.isReserved(token)) {
+                return "RESERVED";
             } else if (SPF.isIgnore(token)) {
                 return "IGNORED";
             } else if (isReceiveReject()) {
@@ -724,6 +734,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public boolean hasEmail() {
+        return email != null;
+    }
+    
     public boolean hasFrequency() {
         return frequency != null;
     }
@@ -740,9 +754,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > Server.DAY_TIME) {
+            if (idleTimeInt > frequencyInt * 5) {
                 return "DEAD";
-            } else if (idleTimeInt > frequencyInt * 2) {
+            } else if (idleTimeInt > frequencyInt * 3) {
                 return "IDLE";
             } else if (frequencyInt < limit) {
                 return "<" + limit + "ms";

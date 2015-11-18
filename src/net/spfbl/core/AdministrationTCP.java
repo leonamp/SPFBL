@@ -25,7 +25,6 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.sql.Connection;
 
 /**
  * Servidor de commandos em TCP.
@@ -47,7 +46,7 @@ public final class AdministrationTCP extends Server {
      * @throws java.io.IOException se houver falha durante o bind.
      */
     public AdministrationTCP(int port) throws IOException {
-        super("ServerADMIN");
+        super("SERVERADM");
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
@@ -134,7 +133,7 @@ public final class AdministrationTCP extends Server {
             return false;
         } else {
             int interval = (int) (System.currentTimeMillis() - time) / 1000;
-            return interval > 10;
+            return interval > 600;
         }
     }
     

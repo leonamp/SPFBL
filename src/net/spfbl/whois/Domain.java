@@ -123,15 +123,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         return expiredTime > 3;
     }
     
-//    /**
-//     * Verifica se o registro atual está quase expirando.
-//     * @return verdadeiro se o registro atual está quase expirando.
-//     */
-//    public boolean isRegistryAlmostExpired() {
-//        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
-//        return expiredTime > (2 * REFRESH_TIME / 3); // Dois terços da expiração.
-//    }
-    
     /**
      * Verifica se o registro atual está com informação reduzida.
      * @return verdadeiro se o registro atual com informação reduzida.
@@ -416,40 +407,36 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static synchronized boolean removeTLD(String tld) throws ProcessException {
+    public static synchronized boolean dropExactTLD(String tld) throws ProcessException {
+        if (TLD_SET.remove(tld)) {
+            // Atualiza flag de atualização.
+            TLD_CHANGED = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static TreeSet<String> dropAllTLD() throws ProcessException {
+        TreeSet<String> tldSet = new TreeSet<String>();
+        for (String tld : getTLDSet()) {
+            if (dropExactTLD(tld)) {
+                tldSet.add(tld);
+            }
+        }
+        return tldSet;
+    }
+    
+    public static boolean removeTLD(String tld) throws ProcessException {
         if (tld.charAt(0) != '.') {
             // Corrigir TLD sem ponto.
             tld = "." + tld;
         }
         if (Domain.isTLD(tld)) {
             tld = tld.toLowerCase();
-            if (TLD_SET.remove(tld)) {
-                // Atualiza flag de atualização.
-                TLD_CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
+            return dropExactTLD(tld);
         } else {
             throw new ProcessException("ERROR: TLD INVALID");
-        }
-    }
-    
-    public static void main(String[] args) {
-        try {
-            String result = "\n% Copyright (c) Nic.br\n%  The use of the data below is only permitted as described in\n%  full by the terms of use at http://registro.br/termo/en.html ,\n%  being prohibited its distribution, commercialization or\n%  reproduction, in particular, to use it for advertising or\n%  any similar purpose.\n%  2015-09-29 14:23:51 (BRT -03:00)\n\n% Query rate limit exceeded. Reduced information.\n% Use https://registro.br/cgi-bin/nicbr/busca_dominio for domain availability.\n\ndomain:      mandatudo.net.br\nowner:       Vitor Gilmar Pereira\ncountry:     BR\nowner-c:     VIGPE13\nadmin-c:     VIGPE13\ntech-c:      VIGPE13\nbilling-c:   VIGPE13\nnserver:     ns12.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nnserver:     pns11.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nnserver:     pns15.cloudns.net  \nnsstat:      20150928 AA\nnslastaa:    20150928\nsaci:        yes\ncreated:     20150923 #14698273\nexpires:     20160923\nchanged:     20150923\nstatus:      published\n\nnic-hdl-br:  VIGPE13\nperson:      Vitor Gilmar Pereira\ncreated:     20130610\nchanged:     20140108\n\n% Security and mail abuse issues should also be addressed to\n% cert.br, http://www.cert.br/ , respectivelly to cert@cert.br\n% and mail-abuse@cert.br\n%\n% whois.registro.br accepts only direct match queries. Types\n% of queries are: domain (.br), registrant (tax ID), ticket,\n% provider, contact handle (ID), CIDR block, IP and ASN.\n\n";
-            Domain domain = Domain.getDomain("mandatudo.net.br");
-            for (int i = 0; i < 100; i++) {
-                try {
-                    System.out.println(domain.refresh(result));
-                } catch (ProcessException ex) {
-                    System.out.println(ex.getErrorMessage());
-                }
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            System.exit(0);
         }
     }
     
@@ -613,11 +600,11 @@ public class Domain implements Serializable, Comparable<Domain> {
                         throw new ProcessException("ERROR: WHOIS CONCURRENT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
-                        Server.removeWhoisQuery();
+                        Server.removeWhoisQueryHour();
                         reducedNew = true;
                     } else if (line.startsWith("% Query rate limit exceeded")) {
                         // Restrição total devido ao estouro de limite de consultas.
-                        Server.removeWhoisQuery();
+                        Server.removeWhoisQueryDay();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
@@ -894,7 +881,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     private static synchronized HashMap<String,Domain> getDomainMap() {
         HashMap<String,Domain> map = new HashMap<String,Domain>();
-        map.putAll(DOMAIN_MAP);
+        map.putAll(MAP);
         return map;
     }
     
@@ -946,10 +933,18 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    private static synchronized Domain put(String key, Domain domain) {
+        return MAP.put(key, domain);
+    }
+    
+    private static synchronized boolean addAll(HashSet<String> set) {
+        return TLD_SET.addAll(set);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/domain.map");
         if (file.exists()) {
@@ -965,7 +960,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                     Object value = map.get(key);
                     if (value instanceof Domain) {
                         Domain domain = (Domain) value;
-                        DOMAIN_MAP.put(key, domain);
+                        put(key, domain);
                     }
                 }
                 Server.logLoad(time, file);
@@ -984,7 +979,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } finally {
                     fileInputStream.close();
                 }
-                TLD_SET.addAll(set);
+                addAll(set);
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -1033,28 +1028,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Mapa de domínios com busca de hash O(1).
      */
-    private static final HashMap<String,Domain> DOMAIN_MAP = new HashMap<String,Domain>();
-    
-    /**
-     * Adciiona o registro de domínio no cache.
-     * @param domain o domain que deve ser adicionado.
-     */
-    private static synchronized void addDomain(Domain domain) {
-        DOMAIN_MAP.put(domain.getDomain(), domain);
-        // Atualiza flag de atualização.
-        DOMAIN_CHANGED = true;
-    }
-    
-    /**
-     * Remove o registro de domínio do cache.
-     * @param domain o domain que deve ser removido.
-     */
-    private static synchronized void removeDomain(Domain domain) {
-        if (DOMAIN_MAP.remove(domain.getDomain()) != null) {
-            // Atualiza flag de atualização.
-            DOMAIN_CHANGED = true;
-        }
-    }
+    private static final HashMap<String,Domain> MAP = new HashMap<String,Domain>();
     
     /**
      * Remove registro de domínio do cache.
@@ -1064,7 +1038,7 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static synchronized Domain removeDomain(String host) throws ProcessException {
         String key = extractDomain(host, false);
-        Domain domain = DOMAIN_MAP.remove(key);
+        Domain domain = MAP.remove(key);
         // Atualiza flag de atualização.
         DOMAIN_CHANGED = true;
         return domain;
@@ -1075,20 +1049,15 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     private static boolean DOMAIN_CHANGED = false;
     
-//    /**
-//     * Conjunto de registros para atualização em background.
-//     */
-//    private static final TreeSet<Domain> DOMAIN_REFRESH = new TreeSet<Domain>();
-    
     public static synchronized TreeSet<Domain> getDomainSet() {
         TreeSet<Domain> domainSet = new TreeSet<Domain>();
-        domainSet.addAll(DOMAIN_MAP.values());
+        domainSet.addAll(MAP.values());
         return domainSet;
     }
     
     public static synchronized TreeSet<String> getDomainNameSet() {
         TreeSet<String> domainSet = new TreeSet<String>();
-        domainSet.addAll(DOMAIN_MAP.keySet());
+        domainSet.addAll(MAP.keySet());
         return domainSet;
     }
     
@@ -1128,18 +1097,21 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @param address o endereço cujo registro de domínio deve ser atualizado.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static void refreshDomain(String address) throws ProcessException {
+    public static synchronized void refreshDomain(String address) throws ProcessException {
         String key = extractDomain(address, false);
         // Busca eficiente O(1).
-        if (DOMAIN_MAP.containsKey(key)) {
+        if (MAP.containsKey(key)) {
             // Domínio encontrado.
-            Domain domain = DOMAIN_MAP.get(key);
+            Domain domain = MAP.get(key);
             // Atualizando campos do registro.
             if (!domain.refresh()) {
                 // Domínio real do resultado WHOIS não bate com o registro.
                 // Pode haver a criação de uma nova TLD.
                 // Apagando registro de domínio do cache.
-                removeDomain(domain);
+                if (MAP.remove(domain.getDomain()) != null) {
+                    // Atualiza flag de atualização.
+                    DOMAIN_CHANGED = true;
+                }
                 // Segue para nova consulta.
             }
         } else {
@@ -1158,7 +1130,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 Domain domain = new Domain(result);
                 domain.server = server; // Temporário até final de transição.
                 // Adicinando registro em cache.
-                addDomain(domain);
+                MAP.put(domain.getDomain(), domain);
+                DOMAIN_CHANGED = true;
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: RESERVED")) {
                     // A chave de busca é um TLD.
@@ -1226,13 +1199,13 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return o registro de domínio de um determinado endereço.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static Domain getDomain(String address) throws ProcessException {
+    public static synchronized Domain getDomain(String address) throws ProcessException {
         String key = extractDomain(address, false);
         Domain domain = null;
         // Busca eficiente O(1).
-        if (DOMAIN_MAP.containsKey(key)) {
+        if (MAP.containsKey(key)) {
             // Domínio encontrado.
-            domain = DOMAIN_MAP.get(key);
+            domain = MAP.get(key);
             domain.queries++;
             if (domain.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -1240,11 +1213,11 @@ public class Domain implements Serializable, Comparable<Domain> {
                 if (domain.refresh()) {
                     // Domínio real do resultado WHOIS bate com o registro.
                     return domain;
-                } else {
+                } else if (MAP.remove(domain.getDomain()) != null) {
                     // Domínio real do resultado WHOIS não bate com o registro.
                     // Pode haver a criação de uma nova TLD.
                     // Apagando registro de domínio do cache.
-                    removeDomain(domain);
+                    DOMAIN_CHANGED = true;
                     // Segue para nova consulta.
                 }
             } else {
@@ -1269,7 +1242,8 @@ public class Domain implements Serializable, Comparable<Domain> {
             domain = new Domain(result);
             domain.server = server; // Temporário até final de transição.
             // Adicinando registro em cache.
-            addDomain(domain);
+            MAP.put(domain.getDomain(), domain);
+            DOMAIN_CHANGED = true;
             return domain;
         } catch (ProcessException ex) {
             if (ex.getMessage().equals("ERROR: RESERVED")) {

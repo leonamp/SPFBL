@@ -35,6 +35,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -58,6 +59,7 @@ import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -242,7 +244,7 @@ public abstract class Server extends Thread {
      * portanto é necessário utilizar sincronismo
      * nos métodos que o utilizam.
      */
-    private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
+    private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
     
     /**
      * Constante de formatação da data no ticket.
@@ -279,7 +281,12 @@ public abstract class Server extends Thread {
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
-    public static final int DAY_TIME = 1000 * 60 * 60 * 24;
+    public static final int HOUR_TIME = 1000 * 60 * 60;
+    
+    /**
+     * Constante que representa a quantidade de tempo de um dia em milisegundos.
+     */
+    public static final int DAY_TIME = HOUR_TIME * 24;
     
     /**
      * Registra uma linha de LOG
@@ -321,6 +328,7 @@ public abstract class Server extends Thread {
         Date date = new Date(time);
         String text = FORMAT_DATE_LOG.format(date)
                 + " " + LATENCIA_FORMAT.format(latencia)
+                + " " + Thread.currentThread().getName()
                 + " " + type + " " + message
                 + (result == null ? "" : " => " + result);
         PrintWriter writer = getLogWriter(date);
@@ -653,14 +661,15 @@ public abstract class Server extends Thread {
             String ip = address.getHostAddress();
             try {
                 for (String cidr : subnetClientsMap.keySet()) {
-                    if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                    if (SubnetIPv4.isValidCIDRv4(cidr) && SubnetIPv4.isValidIPv4(ip)) {
+                        cidr = SubnetIPv4.normalizeCIDR(cidr);
                         int mask = SubnetIPv4.getMaskNet(cidr);
                         int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
                         int address2 = SubnetIPv4.getAddressIP(ip) & mask;
                         if (address1 == address2) {
                             return subnetClientsMap.get(cidr);
                         }
-                    } else if (SubnetIPv6.isValidIPv6(cidr)) {
+                    } else if (SubnetIPv6.isValidIPv6(cidr) && SubnetIPv6.isValidIPv6(ip)) {
                         int index = cidr.indexOf('/');
                         short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
                         short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
@@ -755,7 +764,7 @@ public abstract class Server extends Thread {
     /**
      * Timer que controla a liberação dos semáforos do WHOIS.
      */
-    private static final Timer WHOIS_SEMAPHORE_TIMER = new Timer("TimerWHOIS");
+    private static final Timer WHOIS_SEMAPHORE_TIMER = new Timer("TIMEWHOIS");
     
     /**
      * Semáphoro que controla o número máximo de consultas no WHOIS.
@@ -801,9 +810,20 @@ public abstract class Server extends Thread {
      * Este método é uma forma de reduzir drasticamente a frequência.
      * @throws ProcessException se houver falha no processo.
      */
-    public static void removeWhoisQuery() throws ProcessException {
+    public static void removeWhoisQueryDay() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
         WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, DAY_TIME);
+    }
+    
+    /**
+     * Remove o direito a uma consulta comum no WHOIS por uma hora.
+     * As vezes a consulta WHOIS restringe as consultas.
+     * Este método é uma forma de reduzir drasticamente a frequência.
+     * @throws ProcessException se houver falha no processo.
+     */
+    public static void removeWhoisQueryHour() throws ProcessException {
+        WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
+        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, HOUR_TIME);
     }
     
     /**
@@ -860,22 +880,26 @@ public abstract class Server extends Thread {
         long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-            WHOIS_CONNECTION_SEMAPHORE.acquire();
-            try {
-                acquireWhoisIDQuery();
-                WhoisClient whoisClient = new WhoisClient();
+//            WHOIS_CONNECTION_SEMAPHORE.acquire();
+            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
                 try {
-                    whoisClient.connect(server);
-                    InputStream inputStream = whoisClient.getInputStream(query);
-                    int code;
-                    while ((code = inputStream.read()) != -1) {
-                        outputStream.write(code);
+                    acquireWhoisIDQuery();
+                    WhoisClient whoisClient = new WhoisClient();
+                    try {
+                        whoisClient.connect(server);
+                        InputStream inputStream = whoisClient.getInputStream(query);
+                        int code;
+                        while ((code = inputStream.read()) != -1) {
+                            outputStream.write(code);
+                        }
+                    } finally {
+                        whoisClient.disconnect();
                     }
                 } finally {
-                    whoisClient.disconnect();
+                    WHOIS_CONNECTION_SEMAPHORE.release();
                 }
-            } finally {
-                WHOIS_CONNECTION_SEMAPHORE.release();
+            } else {
+                throw new ProcessException("ERROR: TOO MANY CONNECTIONS");
             }
         } catch (ProcessException ex) {
             throw ex;
@@ -930,28 +954,36 @@ public abstract class Server extends Thread {
         long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-            WHOIS_CONNECTION_SEMAPHORE.acquire();
-            try {
-                acquireWhoisQuery();
-                WhoisClient whoisClient = new WhoisClient();
+//            WHOIS_CONNECTION_SEMAPHORE.acquire();
+            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
                 try {
-                    whoisClient.connect(server);
-                    InputStream inputStream = whoisClient.getInputStream(query);
-                    int code;
-                    while ((code = inputStream.read()) != -1) {
-                        outputStream.write(code);
+                    acquireWhoisQuery();
+                    WhoisClient whoisClient = new WhoisClient();
+                    try {
+                        whoisClient.connect(server);
+                        InputStream inputStream = whoisClient.getInputStream(query);
+                        try {
+                            int code;
+                            while ((code = inputStream.read()) != -1) {
+                                outputStream.write(code);
+                            }
+                        } finally {
+                            inputStream.close();
+                        }
+                    } finally {
+                        whoisClient.disconnect();
                     }
                 } finally {
-                    whoisClient.disconnect();
+                    WHOIS_CONNECTION_SEMAPHORE.release();
                 }
-            } finally {
-                WHOIS_CONNECTION_SEMAPHORE.release();
+            } else {
+                throw new ProcessException("ERROR: TOO MANY CONNECTIONS");
             }
         } catch (ProcessException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new ProcessException("ERROR: WHOIS CONNECTION FAIL", ex);
-        }
+        } 
         try {
             String result = outputStream.toString("ISO-8859-1");
             result = result.replace("\r", "");
@@ -1052,6 +1084,8 @@ public abstract class Server extends Thread {
         }
     }
     
+    public static final DecimalFormat CENTENA_FORMAT = new DecimalFormat("000");
+    
     public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
     
     /**
@@ -1069,6 +1103,104 @@ public abstract class Server extends Thread {
                 String token = tokenizer.nextToken();
                 if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
                     return Core.getAplication() + "\n";
+                } else if (token.equals("DUMP") && !tokenizer.hasMoreTokens()) {
+                    StringBuilder builder = new StringBuilder();
+                    builder.append("BLOCK DROP ALL\n");
+                    for (String block : SPF.getAllBlockSet()) {
+                        builder.append("BLOCK ADD ");
+                        builder.append(block);
+                        builder.append('\n');
+                    }
+                    builder.append("CLIENT DROP ALL\n");
+                    for (Client client : Client.getSet()) {
+                        builder.append("CLIENT ADD ");
+                        builder.append(client.getCIDR());
+                        builder.append(' ');
+                        builder.append(client.getDomain());
+                        builder.append(' ');
+                        builder.append(client.getPermission().name());
+                        if (client.hasEmail()) {
+                            builder.append(' ');
+                            builder.append(client.getEmail());
+                        }
+                        builder.append('\n');
+                    }
+                    builder.append("DNSBL DROP ALL\n");
+                    for (ServerDNSBL server : QueryDNSBL.getValues()) {
+                        builder.append("DNSBL ADD ");
+                        builder.append(server.getHostName());
+                        builder.append(' ');
+                        builder.append(server.getHostAddress());
+                        builder.append(' ');
+                        builder.append(server.getMessage());
+                        builder.append('\n');
+                    }
+                    builder.append("GUESS DROP ALL\n");
+                    HashMap<String,String> guessMap = SPF.getGuessMap();
+                    for (String domain : guessMap.keySet()) {
+                        String guess = guessMap.get(domain);
+                        builder.append("GUESS ADD ");
+                        builder.append(domain);
+                        builder.append(" \"");
+                        builder.append(guess);
+                        builder.append("\"\n");
+                    }
+                    builder.append("IGNORE DROP ALL\n");
+                    for (String ignore : SPF.getIgnoreSet()) {
+                        builder.append("IGNORE ADD ");
+                        builder.append(ignore);
+                        builder.append('\n');
+                    }
+                    builder.append("PEER DROP ALL\n");
+                    for (Peer peer : Peer.getSet()) {
+                        builder.append("PEER ADD ");
+                        builder.append(peer.getAddress());
+                        builder.append(':');
+                        builder.append(peer.getPort());
+                        builder.append(' ');
+                        builder.append(peer.getSendStatus().name());
+                        builder.append(' ');
+                        builder.append(peer.getReceiveStatus().name());
+                        if (peer.hasEmail()) {
+                            builder.append(' ');
+                            builder.append(peer.getEmail());
+                        }
+                        builder.append('\n');
+                    }
+                    builder.append("PROVIDER DROP ALL\n");
+                    for (String provider : SPF.getProviderSet()) {
+                        builder.append("PROVIDER ADD ");
+                        builder.append(provider);
+                        builder.append('\n');
+                    }
+                    builder.append("TLD DROP ALL\n");
+                    for (String tld : Domain.getTLDSet()) {
+                        builder.append("TLD ADD ");
+                        builder.append(tld);
+                        builder.append('\n');
+                    }
+                    builder.append("TRAP DROP ALL\n");
+                    for (String trap : SPF.getAllTrapSet()) {
+                        builder.append("TRAP ADD ");
+                        builder.append(trap);
+                        builder.append('\n');
+                    }
+                    builder.append("USER DROP ALL\n");
+                    for (User user : User.getSet()) {
+                        builder.append("USER ADD ");
+                        builder.append(user.getEmail());
+                        builder.append(' ');
+                        builder.append(user.getName());
+                        builder.append('\n');
+                    }
+                    builder.append("WHITE DROP ALL\n");
+                    for (String white : SPF.getAllWhiteSet()) {
+                        builder.append("WHITE ADD ");
+                        builder.append(white);
+                        builder.append('\n');
+                    }
+                    builder.append("STORE\n");
+                    result = builder.toString();
                 } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
                     if (shutdown()) {
@@ -1099,16 +1231,25 @@ public abstract class Server extends Thread {
                             }
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> tldSet = Domain.dropAllTLD();
+                            if (tldSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String tld : tldSet) {
+                                    result += "DROPED " + tld + "\n";
+                                }
+                            }
+                        } else {
                             try {
-                                token = tokenizer.nextToken();
                                 if (Domain.removeTLD(token)) {
-                                    result += "DROPED\n";
+                                    result = "DROPED\n";
                                 } else {
-                                    result += "NOT FOUND\n";
+                                    result = "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
+                                result = ex.getMessage() + "\n";
                             }
                         }
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
@@ -1162,10 +1303,17 @@ public abstract class Server extends Thread {
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
-                            if (QueryDNSBL.drop(token)) {
-                                result += "DROPED\n";
+                            if (token.equals("ALL")) {
+                                for (ServerDNSBL server : QueryDNSBL.dropAll()) {
+                                    result += "DROPED " + server + "\n";
+                                }
                             } else {
-                                result += "NOT FOUND\n";
+                                ServerDNSBL server = QueryDNSBL.drop(token);
+                                if (server == null) {
+                                    result += "NOT FOUND\n";
+                                } else {
+                                    result += "DROPED " + server + "\n";
+                                }
                             }
                         }
                         QueryDNSBL.store();
@@ -1203,17 +1351,25 @@ public abstract class Server extends Thread {
                         }
                         SPF.storeProvider();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar provedor de e-mail.
-                        while (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> providerSet = SPF.dropAllProvider();
+                            if (providerSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String provider : providerSet) {
+                                    result += "DROPED " + provider + "\n";
+                                }
+                            }
+                        } else {
                             try {
-                                String provider = tokenizer.nextToken();
-                                if (SPF.dropProvider(provider)) {
-                                    result += "DROPED\n";
+                                if (SPF.dropProvider(token)) {
+                                    result = "DROPED\n";
                                 } else {
-                                    result += "NOT FOUND\n";
+                                    result = "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
+                                result = ex.getMessage() + "\n";
                             }
                         }
                         if (result.length() == 0) {
@@ -1252,11 +1408,19 @@ public abstract class Server extends Thread {
                         }
                         SPF.storeIgnore();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar provedor de e-mail.
-                        while (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> ignoreSet = SPF.dropAllIgnore();
+                            if (ignoreSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String ignore : ignoreSet) {
+                                    result += "DROPED " + ignore + "\n";
+                                }
+                            }
+                        } else {
                             try {
-                                String ignore = tokenizer.nextToken();
-                                if (SPF.dropIgnore(ignore)) {
+                                if (SPF.dropIgnore(token)) {
                                     result += "DROPED\n";
                                 } else {
                                     result += "NOT FOUND\n";
@@ -1287,7 +1451,18 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreElements()) {
                             try {
                                 String blockedToken = tokenizer.nextToken();
-                                if (SPF.addBlock(blockedToken)) {
+                                int index = blockedToken.indexOf(':');
+                                String client = null;
+                                if (index != -1) {
+                                    String prefix = blockedToken.substring(0, index);
+                                    if (Domain.isEmail(prefix)) {
+                                        client = prefix;
+                                        blockedToken = blockedToken.substring(index+1);
+                                    }
+                                }
+                                if (client == null && SPF.addBlock(blockedToken)) {
+                                    result += "ADDED\n";
+                                } else if (client != null && SPF.addBlock(client, blockedToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1301,20 +1476,47 @@ public abstract class Server extends Thread {
                         }
                         SPF.storeBlock();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreElements()) {
-                            try {
-                                String blockedToken = tokenizer.nextToken();
-                                if (SPF.dropBlock(blockedToken)) {
-                                    result += "DROPED\n";
-                                } else {
-                                    result += "NOT FOUND\n";
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            if (tokenizer.hasMoreTokens()) {
+                                result = "ERROR: COMMAND\n";
+                            } else {
+                                try {
+                                    if (SPF.dropAllBlock()) {
+                                        result += "DROPED\n";
+                                    } else {
+                                        result += "EMPTY\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result += ex.getMessage() + "\n";
                                 }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
                             }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                        } else {
+                            do {
+                                try {
+                                    int index = token.indexOf(':');
+                                    String client = null;
+                                    if (index != -1) {
+                                        String prefix = token.substring(0, index);
+                                        if (Domain.isEmail(prefix)) {
+                                            client = prefix;
+                                            token = token.substring(index+1);
+                                        }
+                                    }
+                                    if (client == null && SPF.dropBlock(token)) {
+                                        result += "DROPED\n";
+                                    } else if (client != null && SPF.dropBlock(client, token)) {
+                                        result += "DROPED\n";
+                                    } else {
+                                        result += "NOT FOUND\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result += ex.getMessage() + "\n";
+                                }
+                            } while (tokenizer.hasMoreElements());
+                            if (result.length() == 0) {
+                                result = "ERROR: COMMAND\n";
+                            }
                         }
                         SPF.storeBlock();
                     } else if (token.equals("SHOW")) {
@@ -1349,7 +1551,18 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreElements()) {
                             try {
                                 String whiteToken = tokenizer.nextToken();
-                                if (SPF.addWhite(whiteToken)) {
+                                int index = whiteToken.indexOf(':');
+                                String client = null;
+                                if (index != -1) {
+                                    String prefix = whiteToken.substring(0, index);
+                                    if (Domain.isEmail(prefix)) {
+                                        client = prefix;
+                                        whiteToken = whiteToken.substring(index+1);
+                                    }
+                                }
+                                if (client == null && SPF.addWhite(whiteToken)) {
+                                    result += "ADDED\n";
+                                } else if (client != null && SPF.addWhite(client, whiteToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1363,16 +1576,36 @@ public abstract class Server extends Thread {
                         }
                         SPF.storeWhite();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreElements()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> whiteSet = SPF.dropAllWhite();
+                            if (whiteSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String white : whiteSet) {
+                                    result += "DROPED " + white + "\n";
+                                }
+                            }
+                        } else {
                             try {
-                                String whiteedToken = tokenizer.nextToken();
-                                if (SPF.dropWhite(whiteedToken)) {
-                                    result += "DROPED\n";
+                                int index = token.indexOf(':');
+                                String client = null;
+                                if (index != -1) {
+                                    String prefix = token.substring(0, index);
+                                    if (Domain.isEmail(prefix)) {
+                                        client = prefix;
+                                        token = token.substring(index+1);
+                                    }
+                                }
+                                if (client == null && SPF.dropWhite(token)) {
+                                    result = "DROPED\n";
+                                } else if (client != null && SPF.dropWhite(client, token)) {
+                                    result = "DROPED\n";
                                 } else {
-                                    result += "NOT FOUND\n";
+                                    result = "NOT FOUND\n";
                                 }
                             } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
+                                result = ex.getMessage() + "\n";
                             }
                         }
                         if (result.length() == 0) {
@@ -1395,6 +1628,99 @@ public abstract class Server extends Thread {
                                 // Mecanismo de visualização de 
                                 // todos os liberação de remetentes.
                                 for (String sender : SPF.getAllWhiteSet()) {
+                                    result += sender + "\n";
+                                }
+                                if (result.length() == 0) {
+                                    result = "EMPTY\n";
+                                }
+                            }
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("TRAP") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String trapToken = tokenizer.nextToken();
+                                int index = trapToken.indexOf(':');
+                                String client = null;
+                                if (index != -1) {
+                                    String prefix = trapToken.substring(0, index);
+                                    if (Domain.isEmail(prefix)) {
+                                        client = prefix;
+                                        trapToken = trapToken.substring(index+1);
+                                    }
+                                }
+                                if (client == null && SPF.addTrap(trapToken)) {
+                                    result += "ADDED\n";
+                                } else if (client != null && SPF.addTrap(client, trapToken)) {
+                                    result += "ADDED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeTrap();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> trapSet = SPF.dropAllTrap();
+                            if (trapSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String trap : trapSet) {
+                                    result += "DROPED " + trap + "\n";
+                                }
+                            }
+                        } else {
+                            try {
+                                int index = token.indexOf(':');
+                                String client = null;
+                                if (index != -1) {
+                                    String prefix = token.substring(0, index);
+                                    if (Domain.isEmail(prefix)) {
+                                        client = prefix;
+                                        token = token.substring(index+1);
+                                    }
+                                }
+                                if (client == null && SPF.dropTrap(token)) {
+                                    result = "DROPED\n";
+                                } else if (client != null && SPF.dropTrap(client, token)) {
+                                    result = "DROPED\n";
+                                } else {
+                                    result = "NOT FOUND\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        SPF.storeTrap();
+                    } else if (token.equals("SHOW")) {
+                        if (!tokenizer.hasMoreTokens()) {
+                            // Mecanismo de visualização 
+                            // de liberação de remetentes.
+                            for (String sender : SPF.getTrapSet()) {
+                                result += sender + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
+                        } else if (tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                // Mecanismo de visualização de 
+                                // todos os liberação de remetentes.
+                                for (String sender : SPF.getAllTrapSet()) {
                                     result += sender + "\n";
                                 }
                                 if (result.length() == 0) {
@@ -1434,14 +1760,29 @@ public abstract class Server extends Thread {
                             result = "ERROR: COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String cidr = tokenizer.nextToken();
-                        Client client = Client.drop(cidr);
-                        if (client == null) {
-                            result += "NOT FOUND\n";
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<Client> clientSet = Client.dropAll();
+                            if (clientSet.isEmpty()) {
+                                result += "EMPTY\n";
+                            } else {
+                                for (Client client : clientSet) {
+                                    result += "DROPED " + client + "\n";
+                                }
+                            }
+                            Client.store();
+                        } else if (Subnet.isValidCIDR(token)) {
+                            Client client = Client.drop(token);
+                            if (client == null) {
+                                result += "NOT FOUND\n";
+                            } else {
+                                result += "DROPED " + client + "\n";
+                            }
+                            Client.store();
                         } else {
-                            result += "DROPED " + client + "\n";
+                            result = "ERROR: COMMAND\n";
                         }
-                        Client.store();
+                        
                     } else if (token.equals("SHOW")) {
                         if (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
@@ -1549,12 +1890,23 @@ public abstract class Server extends Thread {
                             result = "ERROR: COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String email = tokenizer.nextToken();
-                        User user = User.drop(email);
-                        if (user == null) {
-                            result += "NOT FOUND\n";
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<User> userSet = User.dropAll();
+                            if (userSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (User user : userSet) {
+                                    result += "DROPED " + user + "\n";
+                                }
+                            }
                         } else {
-                            result += "DROPED " + user + "\n";
+                            User user = User.drop(token);
+                            if (user == null) {
+                                result = "NOT FOUND\n";
+                            } else {
+                                result = "DROPED " + user + "\n";
+                            }
                         }
                         User.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
@@ -1594,9 +1946,20 @@ public abstract class Server extends Thread {
                             Peer.store();
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String address = tokenizer.nextToken();
-                        Peer peer = Peer.drop(address);
-                        result = (peer == null ? "NOT FOUND" : "DROPED " + peer) + "\n";
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<Peer> peerSet = Peer.dropAll();
+                            if (peerSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (Peer peer : peerSet) {
+                                    result += "DROPED " + peer + "\n";
+                                }
+                            }
+                        } else {
+                            Peer peer = Peer.drop(token);
+                            result = (peer == null ? "NOT FOUND" : "DROPED " + peer) + "\n";
+                        }
                         Peer.store();
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
@@ -1755,9 +2118,20 @@ public abstract class Server extends Thread {
                             result = "ERROR: COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        String domain = tokenizer.nextToken();
-                        boolean droped = SPF.dropGuess(domain);
-                        result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> guessSet = SPF.dropAllGuess();
+                            if (guessSet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String guess : guessSet) {
+                                    result += "DROPED " + guess + "\n";
+                                }
+                            }
+                        } else {
+                            boolean droped = SPF.dropGuess(token);
+                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                        }
                         SPF.storeGuess();
                         SPF.storeSPF();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {

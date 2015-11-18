@@ -29,11 +29,9 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.core.Client;
@@ -57,13 +55,15 @@ public final class QuerySPF extends Server {
      * @throws java.io.IOException se houver falha durante o bind.
      */
     public QuerySPF(int port) throws IOException {
-        super("ServerSPF");
+        super("SERVERSPF");
         PORT = port;
         setPriority(Thread.MAX_PRIORITY);
         // Criando conexões.
         Server.logDebug("binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
+    
+    private int CONNECTION_ID = 1;
     
     /**
      * Representa uma conexão ativa.
@@ -80,7 +80,7 @@ public final class QuerySPF extends Server {
        
         
         public Connection() {
-            super("SPFTCP" + (CONNECTION_COUNT + 1));
+            super("SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             setPriority(Thread.MAX_PRIORITY);
         }
         
@@ -100,12 +100,21 @@ public final class QuerySPF extends Server {
             }
         }
         
+        private boolean isDead() {
+            if (time == 0) {
+                return false;
+            } else {
+                int interval = (int) (System.currentTimeMillis() - time) / 1000;
+                return interval > 600;
+            }
+        }
+        
         private boolean isTimeout() {
             if (time == 0) {
                 return false;
             } else {
                 int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 10;
+                return interval > 20;
             }
         }
         
@@ -119,7 +128,7 @@ public final class QuerySPF extends Server {
         }
         
         @Override
-        public void interrupt() {
+        public synchronized void interrupt() {
             try {
                 SOCKET.close();
             } catch (NullPointerException ex) {
@@ -129,22 +138,35 @@ public final class QuerySPF extends Server {
             }
         }
         
+        public synchronized void waitCall() throws InterruptedException {
+            wait();
+        }
+        
+        public synchronized Socket getSocket() {
+            return SOCKET;
+        }
+        
+        public synchronized void clearSocket() throws IOException {
+            SOCKET = null;
+        }
+        
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public synchronized void run() {
-            while (continueListenning() && SOCKET != null) {
+        public void run() {
+            Socket socket;
+            while (continueListenning() && (socket = getSocket()) != null) {
                 try {
                     String type = "SPFBL";
                     String query = null;
                     String result = null;
                     try {
 //                        String client = Server.getLogClient(SOCKET.getInetAddress());
-                        InetAddress ipAddress = SOCKET.getInetAddress();
+                        InetAddress ipAddress = socket.getInetAddress();
                         String client = Client.getIdentification(ipAddress);
-                        InputStream inputStream = SOCKET.getInputStream();
+                        InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
@@ -444,7 +466,7 @@ public final class QuerySPF extends Server {
                                 }
                             }
                             // Enviando resposta.
-                            OutputStream outputStream = SOCKET.getOutputStream();
+                            OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("UTF-8"));
                         }
                     } catch (SocketException ex) {
@@ -453,9 +475,9 @@ public final class QuerySPF extends Server {
                         result = "INTERRUPTED\n";
                     } finally {
                         // Fecha conexão logo após resposta.
-                        SOCKET.close();
-                        InetAddress address = SOCKET.getInetAddress();
-                        SOCKET = null;
+                        socket.close();
+                        InetAddress address = socket.getInetAddress();
+                        clearSocket();
                         // Log da consulta com o respectivo resultado.
                         String origin;
                         Client client = Client.get(address);
@@ -487,7 +509,7 @@ public final class QuerySPF extends Server {
                         offer(this);
                         CONNECION_SEMAPHORE.release();
                         // Aguarda nova chamada.
-                        wait();
+                        waitCall();
                     } catch (InterruptedException ex) {
                         Server.logError(ex);
                     }
@@ -546,10 +568,20 @@ public final class QuerySPF extends Server {
         CONNECTION_POLL.offer(connection);
     }
     
-    public void interruptTimeout() {
-        Connection connection = CONNECTION_USE.peekFirst();
-        if (connection != null && connection.isTimeout()) {
-            connection.interrupt();
+    public synchronized void interruptTimeout() {
+        Connection connection = CONNECTION_USE.poll();
+        if (connection != null) {
+            if (connection.isDead()) {
+                Server.logDebug("connection " + connection.getName() + " is deadlocked.");
+                // Temporário até encontrar a deadlock.
+                CONNECTION_COUNT--;
+                connection.stop();
+            } else if (connection.isTimeout()) {
+                CONNECTION_USE.offer(connection);
+                connection.interrupt();
+            } else {
+                CONNECTION_USE.offer(connection);
+            }
         }
     }
     
@@ -571,7 +603,7 @@ public final class QuerySPF extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating SPFTCP" + (CONNECTION_COUNT + 1) + "...");
+                Server.logDebug("creating SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 use(connection);
                 CONNECTION_COUNT++;
