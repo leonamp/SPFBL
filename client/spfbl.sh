@@ -31,7 +31,7 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.5"
+version="0.6"
 
 head()
 {
@@ -47,7 +47,7 @@ case $1 in
 		#    0: versão adquirida com sucesso.
 		#    1: erro ao tentar adiquirir versão.
 		#    2: timeout de conexão.
-		
+
 
 		response=$(echo "VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
@@ -73,7 +73,7 @@ case $1 in
 		#    0: fechamento de processos realizado com sucesso.
 		#    1: houve falha no fechamento dos processos.
 		#    2: timeout de conexão.
-		
+
 
 		response=$(echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
@@ -101,7 +101,7 @@ case $1 in
 		#    0: gravar o cache em disco realizado com sucesso.
 		#    1: houve falha ao gravar o cache em disco.
 		#    2: timeout de conexão.
-		
+
 
 		response=$(echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
@@ -131,7 +131,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 tld add tld\n"
@@ -165,7 +165,7 @@ case $1 in
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 tld drop tld\n"
@@ -196,7 +196,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 tld show\n"
@@ -240,7 +240,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 provider add sender\n"
@@ -274,7 +274,7 @@ case $1 in
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 provider drop sender\n"
@@ -305,7 +305,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 provider show\n"
@@ -347,7 +347,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 ignore add sender\n"
@@ -382,7 +382,7 @@ case $1 in
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 ignore drop sender\n"
@@ -413,7 +413,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 ignore show\n"
@@ -457,7 +457,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block add sender\n"
@@ -494,7 +494,7 @@ case $1 in
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block drop sender\n"
@@ -527,7 +527,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
@@ -574,7 +574,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superblock add sender\n"
@@ -611,7 +611,7 @@ case $1 in
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superblock drop sender\n"
@@ -644,7 +644,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superblock show [all]\n"
@@ -689,7 +689,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
@@ -724,7 +724,7 @@ case $1 in
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white drop recipient\n"
@@ -756,7 +756,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white show\n"
@@ -797,7 +797,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superwhite add recipient\n"
@@ -832,7 +832,7 @@ case $1 in
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superwhite drop recipient\n"
@@ -864,7 +864,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 superwhite show\n"
@@ -906,14 +906,14 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "4" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 client add cidr domain [email]\n"
 				else
 					cidr=$3
 					domain=$4
-					
+
 					if [ -z "$5" ]; then
 						response=$(echo "CLIENT ADD $cidr $domain" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
@@ -948,14 +948,14 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "4" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 client set cidr domain [email]\n"
 				else
 					cidr=$3
 					domain=$4
-					
+
 					if [ -z "$5" ]; then
 						response=$(echo "CLIENT SET $cidr $domain" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
@@ -988,7 +988,7 @@ case $1 in
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 client drop cidr\n"
@@ -1019,7 +1019,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 client show\n"
@@ -1061,7 +1061,7 @@ case $1 in
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "4" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 user add email nome\n"
@@ -1096,7 +1096,7 @@ case $1 in
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 user drop email\n"
@@ -1127,7 +1127,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 user show\n"
@@ -1156,8 +1156,363 @@ case $1 in
 			;;
 		esac
 	;;
-########
-## PEER
+	'peer')
+		case $2 in
+			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#    2. email: E-mail do administrador.
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer add host email\n"
+				else
+					host=$3
+
+					if [ -f "$4" ]; then
+						email=$4
+						response=$(echo "PEER ADD $host $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo "PEER ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ERROR"* ]]; then
+						exit 1
+					elif [[ $response == "ALREADY"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: removido com sucesso.
+				#    1: erro ao tentar remover.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer drop { host | all }\n"
+				else
+					host=$3
+
+					if [ "$host" == "all" ]; then
+						response=$(echo "PEER DROP ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo "PEER DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ERROR"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'show')
+
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "2" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer show [host]\n"
+				else
+
+					if [ -f "$3" ]; then
+						host=$3
+						response=$(echo "PEER SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo "PEER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "NOT FOUND"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'set')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#    2. send: Opções para envio (##??##).
+				#    3. receive: Opções para recebimento (##??##).
+				#
+				# Códigos de saída:
+				#
+				#    0: setado com sucesso.
+				#    1: erro ao tentar setar opções.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "5" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer set host send receive\n"
+				else
+					host=$3
+					send=$4
+					receive=$5
+
+					response=$(echo "PEER SET $host $send $receive" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "NOT"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'ping')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: executado com sucesso.
+				#    1: erro ao tentar executar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer ping host\n"
+				else
+					host=$3
+
+					response=$(echo "PEER PING $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "NOT"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'send')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: executado com sucesso.
+				#    1: erro ao tentar executar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 peer send host\n"
+				else
+					host=$3
+
+					response=$(echo "PEER SEND $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "NOT"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+
+			*)
+				head
+				printf "Syntax:\n    $0 peer add host [email]\n    $0 peer drop { host | all }\n    $0 peer show [host]\n    $0 peer set host send receive\n    $0 peer ping host\n    $0 peer send host\n"
+			;;
+		esac
+	;;
+	'retention')
+		case $2 in
+			'show')
+				# Parâmetros de entrada:
+				#
+				#    1. host: Endereço do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 retention show { host | all }\n"
+				else
+
+					host=$3
+
+					if [ "$host" == "all" ]; then
+                                                response=$(echo "PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        else
+                                                response=$(echo "PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ERROR"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'release')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: Bloqueio recebido do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 retention release { sender | all }\n"
+				else
+
+					sender=$3
+
+					if [ "$sender" == "all" ]; then
+                                                response=$(echo "PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        else
+                                                response=$(echo "PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ERROR"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'reject')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: Bloqueio recebido do peer.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 retention reject { sender | all }\n"
+				else
+
+					sender=$3
+
+					if [ "$sender" == "all" ]; then
+                                                response=$(echo "PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        else
+                                                response=$(echo "PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                        fi
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ERROR"* ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
+			*)
+				head
+				printf "Syntax:\n    $0 retention show { host | all }\n    $0 retention release { sender | all }\n    $0 retention reject { sender | all }\n"
+			;;
+		esac
+	;;
+
+
 ########
 ## GUESS
 ########
@@ -1169,13 +1524,13 @@ case $1 in
 		#    0: listado com sucesso.
 		#    1: lista vazia.
 		#    2: timeout de conexão.
-		
+
 		response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
-			
+
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
 		fi
-			
+
 		echo "$response"
 
 		if [[ $response == "TIMEOUT" ]]; then
@@ -1198,7 +1553,7 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
-		
+
 		if [ $# -lt "2" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 clear hostname\n"
@@ -1206,6 +1561,44 @@ case $1 in
 			hostname=$2
 
 			response=$(echo "CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		fi
+	;;
+	'superclear')
+		# Parâmetros de entrada:
+		#
+		#    1. hostname: o nome do host cujo registro SPF que deve ser limpado.
+		#
+		#
+		# Códigos de saída:
+		#
+		#    0: limpado com sucesso.
+		#    1: registro não encontrado em cache.
+		#    2: erro ao processar atualização.
+		#    3: timeout de conexão.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 superclear hostname\n"
+		else
+			hostname=$2
+
+			response=$(echo "CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1239,7 +1632,7 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
-		
+
 		if [ $# -lt "2" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 refresh hostname\n"
@@ -1294,7 +1687,7 @@ case $1 in
 		#    9: timeout de conexão.
 		#    10: domínio inexistente.
 		#    11: parâmetros inválidos.
-		
+
 		if [ $# -lt "4" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 check ip email helo\n"
@@ -1356,7 +1749,7 @@ case $1 in
 		#  4. Timeout no envio do ticket.
 		#  5. Parâmetro inválido.
 		#  6. Ticket inválido.
-		
+
 		if [ $# -lt "2" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
@@ -1370,16 +1763,16 @@ case $1 in
 			elif [ -f "$2" ]; then
 				# O parâmetro é um arquivo.
 				file=$2
-				
+
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
 					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
-					
+
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
 						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
-						
+
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
 							exit 2
@@ -1466,11 +1859,11 @@ case $1 in
 			elif [ -f "$2" ]; then
 				# O parâmetro é um arquivo.
 				file=$2
-				
+
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
 					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
-					
+
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
@@ -1544,7 +1937,7 @@ case $1 in
 		#    Received-SPFBL: PASS urNq9eFn65wKwDFGNsqCNYmywnlWmmilhZw5jdtvOr5jYk6mgkiWgQC1w696wT3ylP3r8qZnhOjwntTt5mCAuw==
 		#
 		# A informação que precede o qualificador é o ticket da consulta SPFBL.
-		# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL, 
+		# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL,
 		# onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
 		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
 		#
@@ -1584,7 +1977,7 @@ case $1 in
 		#    12: greylisting.
 		#    13: domínio inexistente.
 		#    14: IP ou remetente inválido.
-		
+
 		if [ $# -lt "5" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 query ip email helo recipient\n"
@@ -1688,7 +2081,7 @@ case $1 in
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "3" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
@@ -1720,7 +2113,7 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
-				
+
 				if [ $# -lt "2" ]; then
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
@@ -1766,11 +2159,16 @@ case $1 in
 		printf "Admin Commands:\n"
 		printf "    $0 shutdown\n"
 		printf "    $0 store\n"
+		printf "    $0 superclear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
+		printf "    $0 peer { add host [email] | drop { host | all } | show [host] | set host send receive | ping host | send host }\n"
+		printf "    $0 retention { show [host] | release { sender | all } | reject { sender | all } }\n"
 		printf "    $0 provider { add sender | drop sender | show }\n"
 		printf "    $0 ignore { add sender | drop sender | show }\n"
 		printf "    $0 client { add cidr domain [email] | drop cidr | show }\n"
 		printf "    $0 user { add email nome | drop email | show }\n"
+		printf "    $0 superblock { add sender | drop sender | show [all] }\n"
+		printf "    $0 superwhite { add sender | drop sender | show }\n"
 		printf "\n"
 	;;
 esac
