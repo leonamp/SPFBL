@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 17/11/2015 11:44
+# Última alteração: 22/11/2015 23:51
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -31,7 +31,7 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.6"
+version="0.7"
 
 head()
 {
@@ -1544,45 +1544,7 @@ case $1 in
 	'clear')
 		# Parâmetros de entrada:
 		#
-		#    1. hostname: o nome do host cujo registro SPF que deve ser limpado.
-		#
-		#
-		# Códigos de saída:
-		#
-		#    0: limpado com sucesso.
-		#    1: registro não encontrado em cache.
-		#    2: erro ao processar atualização.
-		#    3: timeout de conexão.
-
-		if [ $# -lt "2" ]; then
-			head
-			printf "Faltando parametro(s).\nSintaxe: $0 clear hostname\n"
-		else
-			hostname=$2
-
-			response=$(echo "CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
-
-			if [[ $response == "" ]]; then
-				response="TIMEOUT"
-			fi
-
-			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
-		fi
-	;;
-	'superclear')
-		# Parâmetros de entrada:
-		#
-		#    1. hostname: o nome do host cujo registro SPF que deve ser limpado.
+		#    1. hostname: o nome do host cujas denúncias devem ser limpadas.
 		#
 		#
 		# Códigos de saída:
