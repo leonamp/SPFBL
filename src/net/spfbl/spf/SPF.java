@@ -5526,9 +5526,11 @@ public final class SPF implements Serializable {
                 }
                 if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
+                    String url = Core.getSpamURL();
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
                     return "action=PREPEND "
-                            + "Received-SPFBL: " + result + " " + ticket + "\n\n";
+                            + "Received-SPFBL: " + result + " "
+                            + (url == null ? "" : url) + ticket + "\n\n";
                 } else if (CacheTrap.contains(client, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
@@ -5813,8 +5815,9 @@ public final class SPF implements Serializable {
                                 return result;
                             } else if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
+                                String url = Core.getSpamURL();
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
-                                return result + " " + ticket + "\n";
+                                return result + " " + (url == null ? "" : url) + ticket + "\n";
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
