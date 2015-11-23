@@ -171,6 +171,20 @@ public class Client implements Serializable, Comparable<Client> {
         return clientSet;
     }
     
+    public static TreeSet<Client> dropAll() throws ProcessException {
+        TreeSet<Client> clientSet = new TreeSet<Client>();
+        for (Client client : getSet()) {
+            if (client != null) {
+                String cidr = client.getCIDR();
+                client = drop(cidr);
+                if (client != null) {
+                    clientSet.add(client);
+                }
+            }
+        }
+        return clientSet;
+    }
+    
     public static Client drop(String cidr) throws ProcessException {
         if (cidr == null || !Subnet.isValidCIDR(cidr)) {
             throw new ProcessException("ERROR: INVALID CIDR");
@@ -381,9 +395,9 @@ public class Client implements Serializable, Comparable<Client> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > Server.DAY_TIME) {
+            if (idleTimeInt > frequencyInt * 5) {
                 return "DEAD";
-            } else if (idleTimeInt > frequencyInt * 2) {
+            } else if (idleTimeInt > frequencyInt * 3) {
                 return "IDLE";
             } else if (frequencyInt < limit) {
                 return "<" + limit + "ms";

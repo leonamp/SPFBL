@@ -148,6 +148,18 @@ public class User implements Serializable, Comparable<User> {
         return user;
     }
     
+    public static TreeSet<User> dropAll() {
+        TreeSet<User> userSet = new TreeSet<User>();
+        for (User user : getSet()) {
+            String email = user.getEmail();
+            user = drop(email);
+            if (email != null) {
+                userSet.add(user);
+            }
+        }
+        return userSet;
+    }
+    
     public synchronized static User get(String email) {
         if (email == null) {
             return null;

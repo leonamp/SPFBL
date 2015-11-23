@@ -58,7 +58,7 @@ public class Handle implements Serializable, Comparable<Handle> {
     private Handle(String nic_hdl_br) {
         this.nic_hdl_br = nic_hdl_br;
         // Atualiza flag de atualização.
-        HANDLE_CHANGED = true;
+        CHANGED = true;
     }
     
     /**
@@ -72,7 +72,7 @@ public class Handle implements Serializable, Comparable<Handle> {
         } else if (!person.equals(this.person)) {
             this.person = person;
             // Atualiza flag de atualização.
-            HANDLE_CHANGED = true;
+            CHANGED = true;
         }
     }
     
@@ -86,12 +86,12 @@ public class Handle implements Serializable, Comparable<Handle> {
             if (this.e_mail != null) {
                 this.e_mail = e_mail;
                 // Atualiza flag de atualização.
-                HANDLE_CHANGED = true;
+                CHANGED = true;
             }
         } else if (!e_mail.equals(this.e_mail)) {
             this.e_mail = e_mail;
             // Atualiza flag de atualização.
-            HANDLE_CHANGED = true;
+            CHANGED = true;
         }
     }
     
@@ -109,7 +109,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                 if (!createdDate.equals(this.created)) {
                     this.created = createdDate;
                     // Atualiza flag de atualização.
-                    HANDLE_CHANGED = true;
+                    CHANGED = true;
                 }
             } catch (ParseException ex) {
                 Server.logError(ex);
@@ -130,7 +130,7 @@ public class Handle implements Serializable, Comparable<Handle> {
             if (this.changed != null) {
                 this.changed = null;
                 // Atualiza flag de atualização.
-                HANDLE_CHANGED = true;
+                CHANGED = true;
             }
         } else {
             try {
@@ -138,7 +138,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                 if (!changedDate.equals(this.changed)) {
                     this.changed = changedDate;
                     // Atualiza flag de atualização.
-                    HANDLE_CHANGED = true;
+                    CHANGED = true;
                 }
             } catch (ParseException ex) {
                 Server.logError(ex);
@@ -157,12 +157,12 @@ public class Handle implements Serializable, Comparable<Handle> {
             if (this.provider != null) {
                 this.provider = provider;
                 // Atualiza flag de atualização.
-                HANDLE_CHANGED = true;
+                CHANGED = true;
             }
         } else if (!provider.equals(this.provider)) {
             this.provider = provider;
             // Atualiza flag de atualização.
-            HANDLE_CHANGED = true;
+            CHANGED = true;
         }
     }
     
@@ -183,18 +183,26 @@ public class Handle implements Serializable, Comparable<Handle> {
                 return e_mail;
             }
         } else if (key.equals("created")) {
-            try {
-                return DATE_FORMATTER.format(created);
-            } catch (Exception ex) {
-                Server.logError("Cannot format date: " + created);
+            if (created == null) {
                 return null;
+            } else {
+                try {
+                    return DATE_FORMATTER.format(created);
+                } catch (Exception ex) {
+                    Server.logError("Cannot format date: " + created);
+                    return null;
+                }
             }
         } else if (key.equals("changed")) {
-            try {
-                return DATE_FORMATTER.format(changed);
-            } catch (Exception ex) {
-                Server.logError("Cannot format date: " + changed);
+            if (changed == null) {
                 return null;
+            } else {
+                try {
+                    return DATE_FORMATTER.format(changed);
+                } catch (Exception ex) {
+                    Server.logError("Cannot format date: " + changed);
+                    return null;
+                }
             }
         } else if (key.equals("provider")) {
             return provider;
@@ -206,12 +214,12 @@ public class Handle implements Serializable, Comparable<Handle> {
     /**
      * Mapa de registros com busca de hash O(1).
      */
-    private static final HashMap<String,Handle> HANDLE_MAP = new HashMap<String,Handle>();
+    private static final HashMap<String,Handle> MAP = new HashMap<String,Handle>();
     
     /**
      * Flag que indica se o cache em disco foi modificado.
      */
-    private static boolean HANDLE_CHANGED = false;
+    private static boolean CHANGED = false;
     
     /**
      * Retorna a pessoa de código informado.
@@ -221,28 +229,35 @@ public class Handle implements Serializable, Comparable<Handle> {
     public static synchronized Handle getHandle(String nichdlbr) {
         if (nichdlbr == null) {
             return null;
-        } else if (HANDLE_MAP.containsKey(nichdlbr)) {
-            return HANDLE_MAP.get(nichdlbr);
+        } else if (MAP.containsKey(nichdlbr)) {
+            return MAP.get(nichdlbr);
         } else {
             Handle ns = new Handle(nichdlbr);
-            HANDLE_MAP.put(nichdlbr, ns);
+            MAP.put(nichdlbr, ns);
             return ns;
         }
+    }
+    
+    public static synchronized HashMap<String,Handle> getMap() {
+        HashMap<String,Handle> map = new HashMap<String,Handle>();
+        map.putAll(MAP);
+        return map;
     }
     
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
-        if (HANDLE_CHANGED) {
+    public static void store() {
+        if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                HashMap<String,Handle> map = getMap();
                 File file = new File("./data/handle.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(HANDLE_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
-                    HANDLE_CHANGED = false;
+                    CHANGED = false;
                 } finally {
                     outputStream.close();
                 }
@@ -253,10 +268,14 @@ public class Handle implements Serializable, Comparable<Handle> {
         }
     }
     
+    private static synchronized Handle put(String key, Handle handle) {
+        return MAP.put(key, handle);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/handle.map");
         if (file.exists()) {
@@ -272,7 +291,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                     Object value = map.get(key);
                     if (value instanceof Handle) {
                         Handle handle = (Handle) value;
-                        HANDLE_MAP.put(key, handle);
+                        put(key, handle);
                     }
                 }
                 Server.logLoad(time, file);

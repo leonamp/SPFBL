@@ -58,6 +58,8 @@ public final class QueryUDP extends Server {
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
+    private int CONNECTION_ID = 1;
+    
     /**
      * Representa uma conexão ativa.
      * Serve para processar todas as requisições.
@@ -71,7 +73,7 @@ public final class QueryUDP extends Server {
         private long time = 0;
         
         public Connection() {
-            super("WHOISUDP" + (CONNECTION_COUNT+1));
+            super("WHSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -196,7 +198,7 @@ public final class QueryUDP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating WHOISUDP" + (CONNECTION_COUNT+1) + "...");
+            Server.logDebug("creating WHSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;

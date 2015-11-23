@@ -210,7 +210,12 @@ public class Owner implements Serializable, Comparable<Owner> {
                         throw new ProcessException("ERROR: WHOIS CONCURRENT");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
+                        Server.removeWhoisQueryHour();
                         reducedLocal = true;
+                    } else if (line.startsWith("% Query rate limit exceeded")) {
+                        // Restrição total devido ao estouro de limite de consultas.
+                        Server.removeWhoisQueryDay();
+                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
                         Server.logError("Linha não reconhecida: " + line);
                     }
@@ -302,17 +307,24 @@ public class Owner implements Serializable, Comparable<Owner> {
         }
     }
     
+    public static synchronized HashMap<String,Owner> getMap() {
+        HashMap<String,Owner> map = new HashMap<String,Owner>();
+        map.putAll(MAP);
+        return map;
+    }
+    
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
+    public static void store() {
         if (OWNER_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                HashMap<String,Owner> map = getMap();
                 File file = new File("./data/owner.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(OWNER_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     OWNER_CHANGED = false;
                 } finally {
@@ -325,10 +337,14 @@ public class Owner implements Serializable, Comparable<Owner> {
         }
     }
     
+    private static synchronized Owner put(String key, Owner owner) {
+        return MAP.put(key, owner);
+    }
+    
     /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/owner.map");
         if (file.exists()) {
@@ -344,7 +360,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                     Object value = map.get(key);
                     if (value instanceof Owner) {
                         Owner owner = (Owner) value;
-                        OWNER_MAP.put(key, owner);
+                        put(key, owner);
                     }
                 }
                 Server.logLoad(time, file);
@@ -357,28 +373,28 @@ public class Owner implements Serializable, Comparable<Owner> {
     /**
      * Mapa de domínios com busca de hash O(1).
      */
-    private static final HashMap<String,Owner> OWNER_MAP = new HashMap<String,Owner>();
+    private static final HashMap<String,Owner> MAP = new HashMap<String,Owner>();
     
-    /**
-     * Adciiona o registro de domínio no cache.
-     * @param owner o owner que deve ser adicionado.
-     */
-    private static synchronized void addOwner(Owner owner) {
-        OWNER_MAP.put(owner.getOwnerID(), owner);
-        // Atualiza flag de atualização.
-        OWNER_CHANGED = true;
-    }
+//    /**
+//     * Adciiona o registro de domínio no cache.
+//     * @param owner o owner que deve ser adicionado.
+//     */
+//    private static synchronized void addOwner(Owner owner) {
+//        MAP.put(owner.getOwnerID(), owner);
+//        // Atualiza flag de atualização.
+//        OWNER_CHANGED = true;
+//    }
     
-    /**
-     * Remove o registro de domínio do cache.
-     * @param owner o dono que deve ser removido.
-     */
-    private static synchronized void removeOwner(Owner owner) {
-        if (OWNER_MAP.remove(owner.getOwnerID()) != null) {
-            // Atualiza flag de atualização.
-            OWNER_CHANGED = true;
-        }
-    }
+//    /**
+//     * Remove o registro de domínio do cache.
+//     * @param owner o dono que deve ser removido.
+//     */
+//    private static synchronized void removeOwner(Owner owner) {
+//        if (MAP.drop(owner.getOwnerID()) != null) {
+//            // Atualiza flag de atualização.
+//            OWNER_CHANGED = true;
+//        }
+//    }
     
     /**
      * Remove registro de domínio do cache.
@@ -388,7 +404,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      */
     public static synchronized Owner removeOwner(String id) throws ProcessException {
         String key = normalizeID(id);
-        Owner owner = OWNER_MAP.remove(key);
+        Owner owner = MAP.remove(key);
         // Atualiza flag de atualização.
         OWNER_CHANGED = true;
         return owner;
@@ -404,29 +420,32 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @param id a identificação do dono que deve ser atualizado.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static void refreshOwner(String id) throws ProcessException {
+    public static synchronized void refreshOwner(String id) throws ProcessException {
         String key = normalizeID(id);
         // Busca eficiente O(1).
-        if (OWNER_MAP.containsKey(key)) {
+        if (MAP.containsKey(key)) {
             // Owner encontrado.
-            Owner owner = OWNER_MAP.get(key);
+            Owner owner = MAP.get(key);
             // Atualizando campos do registro.
             if (!owner.refresh()) {
                 // Owner real do resultado WHOIS não bate com o registro.
                 // Apagando registro de dono do cache.
-                removeOwner(owner);
+                if (MAP.remove(owner.getOwnerID()) != null) {
+                    // Atualiza flag de atualização.
+                    OWNER_CHANGED = true;
+                }
                 // Segue para nova consulta.
             }
         }
         // Não encontrou o dono em cache.
         // Selecionando servidor da pesquisa WHOIS.
         String server = Server.WHOIS_BR;
-        // Owner existente.
         // Realizando a consulta no WHOIS.
         Owner owner = new Owner(key);
-        owner.server = Server.WHOIS_BR; // Temporário até final de transição.
+        owner.server = server; // Temporário até final de transição.
         // Adicinando registro em cache.
-        addOwner(owner);
+        MAP.put(owner.getOwnerID(), owner);
+        OWNER_CHANGED = true;
     }
     
     /**
@@ -435,12 +454,12 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return o registro de domínio de um determinado host.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static Owner getOwner(String id) throws ProcessException {
+    public static synchronized Owner getOwner(String id) throws ProcessException {
         String key = normalizeID(id);
         // Busca eficiente O(1).
-        if (OWNER_MAP.containsKey(key)) {
+        if (MAP.containsKey(key)) {
             // Owner encontrado.
-            Owner owner = OWNER_MAP.get(key);
+            Owner owner = MAP.get(key);
             owner.queries++;
             if (owner.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -448,9 +467,9 @@ public class Owner implements Serializable, Comparable<Owner> {
                 if (owner.refresh()) {
                     // Owner real do resultado WHOIS bate com o registro.
                     return owner;
-                } else {
+                } else if (MAP.remove(owner.getOwnerID()) != null) {
                     // Owner real do resultado WHOIS não bate com o registro.
-                    removeOwner(owner);
+                    OWNER_CHANGED = true;
                     // Segue para nova consulta.
                 }
             } else {
@@ -465,7 +484,8 @@ public class Owner implements Serializable, Comparable<Owner> {
         Owner owner = new Owner(key);
         owner.server = server; // Temporário até final de transição.
         // Adicinando registro em cache.
-        addOwner(owner);
+        MAP.put(owner.getOwnerID(), owner);
+        OWNER_CHANGED = true;
         return owner;
     }
     

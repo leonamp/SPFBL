@@ -72,13 +72,13 @@ public final class QueryDNSBL extends Server {
      */
     private static boolean CHANGED = false;
     
-    private static boolean dropExact(String token) {
+    private static ServerDNSBL dropExact(String token) {
         ServerDNSBL ret = MAP.remove(token);
         if (ret == null) {
-            return false;
+            return null;
         } else {
             CHANGED = true;
-            return true;
+            return ret;
         }
     }
 
@@ -112,8 +112,10 @@ public final class QueryDNSBL extends Server {
         return MAP.get(host);
     }
 
-    private static Collection<ServerDNSBL> getValues() {
-        return MAP.values();
+    public static TreeSet<ServerDNSBL> getValues() {
+        TreeSet<ServerDNSBL> serverSet = new TreeSet<ServerDNSBL>();
+        serverSet.addAll(MAP.values());
+        return serverSet;
     }
     
     /**
@@ -160,14 +162,28 @@ public final class QueryDNSBL extends Server {
         }
     }
     
-    public static boolean drop(String hostname) {
+    public static TreeSet<ServerDNSBL> dropAll() {
+        TreeSet<ServerDNSBL> serverSet = new TreeSet<ServerDNSBL>();
+        for (ServerDNSBL server : getValues()) {
+            if (server != null) {
+                String hostname = server.getHostName();
+                server = dropExact(hostname);
+                if (server != null) {
+                    serverSet.add(server);
+                }
+            }
+        }
+        return serverSet;
+    }
+    
+    public static ServerDNSBL drop(String hostname) {
         if (hostname == null) {
-            return false;
+            return null;
         } else if (Domain.isHostname(hostname)) {
             hostname = Domain.normalizeHostname(hostname, true);
             return dropExact(hostname);
         } else {
-            return false;
+            return null;
         }
     }
     
@@ -240,13 +256,15 @@ public final class QueryDNSBL extends Server {
      * @throws java.net.SocketException se houver falha durante o bind.
      */
     public QueryDNSBL(int port) throws SocketException {
-        super("ServerDNSBL");
+        super("SERVERDNS");
         setPriority(Thread.NORM_PRIORITY);
         // Criando conexões.
         Server.logDebug("binding DNSBL socket on port " + port + "...");
         PORT = port;
         SERVER_SOCKET = new DatagramSocket(port);
     }
+    
+    private int CONNECTION_ID = 1;
     
     /**
      * Representa uma conexão ativa.
@@ -262,7 +280,7 @@ public final class QueryDNSBL extends Server {
         private long time = 0;
         
         public Connection() {
-            super("DNSUDP" + (CONNECTION_COUNT+1));
+            super("DNSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
         }
@@ -350,8 +368,7 @@ public final class QueryDNSBL extends Server {
                                 // Consulta de teste para positivio.
                                 result = "127.0.0.2";
                                 information = server.getMessage();
-                                ttl = SPF.getComplainTTL(ip);
-                            } else if (SPF.isBlacklisted(ip, false)) {
+                            } else if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
@@ -361,7 +378,7 @@ public final class QueryDNSBL extends Server {
                         } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                             // A consulta é um IPv6.
                             ip = SubnetIPv6.reverseToIPv6(reverse);
-                            if (SPF.isBlacklisted(ip, false)) {
+                            if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
@@ -372,6 +389,13 @@ public final class QueryDNSBL extends Server {
                             // Não está listado.
                             result = "NXDOMAIN";
                         }
+                    }
+                    if (ttl < 3600) {
+                        // O TTL nunca será menor que uma hora.
+                        ttl = 3600;
+                    } else if (ttl > 86400) {
+                        // O TTL nunca será maior que um dia.
+                        ttl = 86400;
                     }
                     // Alterando mensagem DNS para resposta.
                     header.setFlag(Flags.QR);
@@ -392,16 +416,20 @@ public final class QueryDNSBL extends Server {
                         InetAddress address = InetAddress.getByName(result);
                         ARecord a = new ARecord(name, DClass.IN, ttl, address);
                         message.addRecord(a, Section.ANSWER);
+                        result = ttl + " " + result;
                     } else if (type.equals("TXT") && information != null) {
-                        ttl = 86400; // Um dia.
+                        ttl = 604800; // Uma semana somente para TXT.
                         information = information.replace("<IP>", ip);
                         TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, information);
                         message.addRecord(txt, Section.ANSWER);
-                        result = information;
+                        result = ttl + " " + information;
                     } else if (type.equals("A")) {
                         InetAddress address = InetAddress.getByName(result);
                         ARecord a = new ARecord(name, DClass.IN, ttl, address);
                         message.addRecord(a, Section.ANSWER);
+                        result = ttl + " " + result;
+                    } else {
+                        result = ttl + " " + result;
                     }
                     // Enviando resposta.
                     ipAddress = PACKET.getAddress();
@@ -459,7 +487,7 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static byte CONNECTION_LIMIT = 8;
+    private static byte CONNECTION_LIMIT = 16;
     
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
@@ -501,7 +529,7 @@ public final class QueryDNSBL extends Server {
         } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating DNSBL" + (CONNECTION_COUNT + 1) + "...");
+            Server.logDebug("creating DNSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
             CONNECTION_COUNT++;
             return connection;

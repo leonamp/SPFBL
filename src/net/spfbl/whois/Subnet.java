@@ -39,7 +39,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     
     private static final long serialVersionUID = 1L;
     
-    private final String inetnum; // Chave primária com notação CIDR.
+    private String inetnum; // Chave primária com notação CIDR.
     private String inetnum_up;
     private String aut_num;
     private String abuse_c; // Código do responsável por abusos na rede.
@@ -52,6 +52,14 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     private String inetrev;
     private Date created; // Data de criação do domínio pelo dono atual.
     private Date changed; // Data da alteração do registro do domínio.
+    
+    /**
+     * Método temporário de correção.
+     * Voltar o atibuto inetnum para final depois da transição.
+     */
+    protected void normalize() {
+        this.inetnum = normalizeCIDR(inetnum);
+    }
     
     /**
      * Lista dos servidores de nome do bloco.
@@ -81,7 +89,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     
     protected Subnet(String result) throws ProcessException {
         // Associação da chave primária final.
-        this.inetnum = refresh(result);
+        this.inetnum = normalizeCIDR(refresh(result));
     }
     
     protected boolean refresh() throws ProcessException {
@@ -89,6 +97,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         server = getWhoisServer(); // Temporário até final de transição.
         String result = Server.whois(inetnum, server);
         String inetnumResult = refresh(result);
+        inetnumResult = normalizeCIDR(inetnumResult);
         return isInetnum(inetnumResult);
     }
     
@@ -116,7 +125,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String normalizeIP(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (ip == null) {
+            return null;
+        } else if (SubnetIPv4.isValidIPv4(ip)) {
             return SubnetIPv4.normalizeIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.normalizeIPv6(ip);
@@ -252,11 +263,11 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
                         // Informação reduzida devido ao estouro de limite de consultas.
-                        Server.removeWhoisQuery();
+                        Server.removeWhoisQueryHour();
                         reducedNew = true;
                     } else if (line.startsWith("% Query rate limit exceeded")) {
                         // Restrição total devido ao estouro de limite de consultas.
-                        Server.removeWhoisQuery();
+                        Server.removeWhoisQueryDay();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                         throw new ProcessException("ERROR: WHOIS CONNECTION LIMIT");
@@ -302,7 +313,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     
     protected Subnet(String inetnum, String server) {
         // Associação da chave primária final.
-        this.inetnum = inetnum;
+        this.inetnum = normalizeCIDR(inetnum);
         // Associação do servdidor do resultado.
         this.server = server;
     }
@@ -324,15 +335,6 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > 3;
     }
-    
-//    /**
-//     * Verifica se o registro atual está quase expirando.
-//     * @return verdadeiro se o registro atual está quase expirando.
-//     */
-//    public boolean isRegistryAlmostExpired() {
-//        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
-//        return expiredTime > (2 * REFRESH_TIME / 3); // Dois terços antes da expiração.
-//    }
     
     /**
      * Verifica se o registro atual está com informação reduzida.
@@ -481,10 +483,10 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
-    public static boolean isValidCIDR(String ip) {
-        if (SubnetIPv4.isValidCIDRv4(ip)) {
+    public static boolean isValidCIDR(String cidr) {
+        if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return true;
-        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
             return true;
         } else {
             return false;
@@ -520,7 +522,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
-    private static synchronized TreeSet<Subnet> getSubnetSet() {
+    private static TreeSet<Subnet> getSubnetSet() {
         TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
         subnetSet.addAll(SubnetIPv4.getSubnetSet());
         subnetSet.addAll(SubnetIPv6.getSubnetSet());
