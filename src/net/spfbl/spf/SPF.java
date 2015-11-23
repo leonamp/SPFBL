@@ -6200,10 +6200,10 @@ public final class SPF implements Serializable {
                     }
                 }
             }
-            int total = binomial[0] + binomial[1];
-            if (total == 0) {
+            if (binomial[1] < 3) {
                 return 0.0f;
             } else {
+                int total = binomial[0] + binomial[1];
                 return (float) binomial[1] / (float) total;
             }
         }

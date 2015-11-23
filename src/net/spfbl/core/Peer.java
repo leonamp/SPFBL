@@ -506,40 +506,38 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public void sendToOthers(String token) {
+        long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
             String origin = null;
-            for (Peer peer : getSendSet()) {
-                long time = System.currentTimeMillis();
-                String address = peer.getAddress();
-                String result;
-                try {
+            String result = "SENT";
+            try {
+                for (Peer peer : getSendSet()) {
+                    String address = peer.getAddress();
                     int port = peer.getPort();
                     Core.sendCommandToPeer(token, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
                 }
-                Server.logPeerSend(time, origin, token, result);
+            } catch (Exception ex) {
+                result = ex.getMessage();
             }
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
     public static void sendToAll(String token) {
+        long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
             String origin = null;
-            for (Peer peer : getSendAllSet()) {
-                long time = System.currentTimeMillis();
-                String address = peer.getAddress();
-                String result;
-                try {
+            String result = "SENT";
+            try {
+                for (Peer peer : getSendAllSet()) {
+                    String address = peer.getAddress();
                     int port = peer.getPort();
                     Core.sendCommandToPeer(token, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
                 }
-                Server.logPeerSend(time, origin, token, result);
+            } catch (Exception ex) {
+                result = ex.getMessage();
             }
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
@@ -549,26 +547,27 @@ public final class Peer implements Serializable, Comparable<Peer> {
      * @param distribuiton 
      */
     public static void sendToAll(String token, Distribution distribuiton) {
+        long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
-            String origin = null;
-            for (Peer peer : getSendAllSet()) {
-                long time = System.currentTimeMillis();
-                String address = peer.getAddress();
-                int[] binomial;
-                if (distribuiton == null) {
-                    binomial = new int[2];
-                } else {
-                    binomial = distribuiton.getBinomial();
-                }
-                int ham = binomial[0];
-                int spam = binomial[1];
+            int[] binomial;
+            if (distribuiton == null) {
+                binomial = new int[2];
+            } else {
+                binomial = distribuiton.getBinomial();
+            }
+            int ham = binomial[0];
+            int spam = binomial[1];
+            if (spam % 3 == 0) {
+                String origin = null;
+                String result = "SENT";
                 String command = "REPUTATION " + token + " " + ham + " " + spam;
-                String result;
                 try {
-                    int port = peer.getPort();
-                    Core.sendCommandToPeer(command, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
+                    for (Peer peer : getSendAllSet()) {
+                        String address = peer.getAddress();
+                        int port = peer.getPort();
+                        Core.sendCommandToPeer(command, address, port);
+                    }
+                } catch (Exception ex) {
                     result = ex.getMessage();
                 }
                 Server.logPeerSend(time, origin, command, result);
@@ -599,47 +598,42 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public static boolean sendHeloToAll() {
+    public static void sendHeloToAll() {
+        long time = System.currentTimeMillis();
         String connection = Core.getPeerConnection();
-        if (connection == null) {
-            return false;
-        } else {
+        if (connection != null) {
             String origin = null;
+            String result = "SENT";
             String email = Core.getAdminEmail();
             String helo = "HELO " + connection + (email == null ? "" : " " + email);
-            for (Peer peer : getSendAllSet()) {
-                long time = System.currentTimeMillis();
-                String address = peer.getAddress();
-                String result;
-                try {
+            try {
+                for (Peer peer : getSendAllSet()) {
+                    String address = peer.getAddress();
                     int port = peer.getPort();
                     Core.sendCommandToPeer(helo, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
                 }
-                Server.logQuery(time, "PEERP", origin, helo, result);
+            } catch (Exception ex) {
+                result = ex.getMessage();
             }
-            return true;
+            Server.logQuery(time, "PEERP", origin, helo, result);
         }
     }
     
     public void sendToRepass(String token) {
+        long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
             String origin = null;
-            for (Peer peer : getRepassSet()) {
-                long time = System.currentTimeMillis();
-                String address = peer.getAddress();
-                String result;
-                try {
+            String result = "SENT";
+            try {
+                for (Peer peer : getRepassSet()) {
+                    String address = peer.getAddress();
                     int port = peer.getPort();
                     Core.sendCommandToPeer(token, address, port);
-                    result = address;
-                } catch (ProcessException ex) {
-                    result = ex.getMessage();
                 }
-                Server.logPeerSend(time, origin, token, result);
+            } catch (Exception ex) {
+                result = ex.getMessage();
             }
+            Server.logPeerSend(time, origin, token, result);
         }
     }
     
