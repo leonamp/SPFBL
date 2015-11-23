@@ -24,10 +24,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import net.spfbl.spf.PeerUDP;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -46,7 +47,7 @@ import net.spfbl.whois.SubnetIPv6;
 public class Core {
     
     private static final byte VERSION = 1;
-    private static final byte SUBVERSION = 1;
+    private static final byte SUBVERSION = 2;
     private static final byte RELEASE = 0;
     
     public static String getAplication() {
@@ -59,13 +60,21 @@ public class Core {
     
     private static PeerUDP peerUDP = null;
     
-    public static void sendTokenToPeer(
-            String token,
+    public static void sendCommandToPeer(
+            String command,
             String address,
             int port
             ) throws ProcessException {
         if (peerUDP != null) {
-            peerUDP.send(token, address, port);
+            peerUDP.send(command, address, port);
+        }
+    }
+    
+    public static boolean hasPeerConnection() {
+        if (peerUDP == null) {
+            return false;
+        } else {
+            return peerUDP.hasConnection();
         }
     }
     
@@ -91,8 +100,10 @@ public class Core {
     private static QuerySPF querySPF = null;
     
     public static void interruptTimeout() {
-        if (querySPF != null) {
+        if (administrationTCP != null) {
             administrationTCP.interruptTimeout();
+        }
+        if (querySPF != null) {
             querySPF.interruptTimeout();
         }
     }
@@ -115,6 +126,7 @@ public class Core {
                     Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     Core.setPortHTTP(properties.getProperty("http_port"));
                     Core.setMaxUDP(properties.getProperty("udp_max"));
+                    PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
                 } finally {
@@ -351,6 +363,7 @@ public class Core {
                 startConfiguration();
                 Server.logDebug("starting server...");
                 Server.loadCache();
+                SPF.dropExpiredComplain();
                 administrationTCP = new AdministrationTCP(PORT_ADMIN);
                 administrationTCP.start();
                 if (PORT_WHOIS > 0) {
@@ -370,11 +383,264 @@ public class Core {
                     complainHTTP.start();
                 }
                 Peer.sendHeloToAll();
-                SPF.startTimer();
+                Core.startTimer();
             }
         } catch (Exception ex) {
             Server.logError(ex);
             System.exit(1);
+        }
+    }
+    
+    /**
+     * Timer que controla os processos em background.
+     */
+    private static final Timer TIMER00 = new Timer("BCKGRND00");
+    private static final Timer TIMER01 = new Timer("BCKGRND01");
+    private static final Timer TIMER10 = new Timer("BCKGRND10");
+    private static final Timer TIMER30 = new Timer("BCKGRND30");
+    private static final Timer TIMER60 = new Timer("BCKGRND60");
+
+    public static void cancelTimer() {
+        TIMER00.cancel();
+        TIMER01.cancel();
+        TIMER10.cancel();
+        TIMER30.cancel();
+        TIMER60.cancel();
+    }
+    
+    private static class TimerExpiredComplain extends TimerTask {
+        public TimerExpiredComplain() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Verificar reclamações vencidas.
+            SPF.dropExpiredComplain();
+        }
+    }
+    
+    private static class TimerInterruptTimeout extends TimerTask {
+        public TimerInterruptTimeout() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Interromper conexões vencidas.
+            Core.interruptTimeout();
+        }
+    }
+    
+    private static class TimerRefreshSPF extends TimerTask {
+        public TimerRefreshSPF() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Atualiza registro SPF mais consultado.
+            SPF.refreshSPF();
+        }
+    }
+    
+    private static class TimerRefreshHELO extends TimerTask {
+        public TimerRefreshHELO() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Atualiza registro HELO mais consultado.
+            SPF.refreshHELO();
+        }
+    }
+    
+    private static class TimerRefreshWHOIS extends TimerTask {
+        public TimerRefreshWHOIS() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Atualiza registros WHOIS expirando.
+            Server.tryRefreshWHOIS();
+        }
+    }
+    
+    private static class TimerDropExpiredSPF extends TimerTask {
+        public TimerDropExpiredSPF() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Remoção de registros SPF expirados. 
+            SPF.dropExpiredSPF();
+        }
+    }
+    
+    private static class TimerSendHeloToAll extends TimerTask {
+        public TimerSendHeloToAll() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Envio de PING para os peers cadastrados.
+            Peer.sendHeloToAll();
+        }
+    }
+    
+    private static class TimerDropExpiredPeer extends TimerTask {
+        public TimerDropExpiredPeer() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Remoção de registros de reputação expirados. 
+            Peer.dropExpired();
+        }
+    }
+    
+    private static class TimerDropExpiredHELO extends TimerTask {
+        public TimerDropExpiredHELO() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Apagar todas os registros de DNS de HELO vencidos.
+            SPF.dropExpiredHELO();
+        }
+    }
+    
+    private static class TimerDropExpiredDistribution extends TimerTask {
+        public TimerDropExpiredDistribution() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Apagar todas as distribuições vencidas.
+            SPF.dropExpiredDistribution();
+        }
+    }
+    
+    private static class TimerDropExpiredDefer extends TimerTask {
+        public TimerDropExpiredDefer() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Apagar todas os registros de atrazo programado vencidos.
+            SPF.dropExpiredDefer();
+        }
+    }
+    
+    private static class TimerStoreCache extends TimerTask {
+        public TimerStoreCache() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Armazena todos os registros atualizados durante a consulta.
+            Server.storeCache();
+        }
+    }
+    
+    private static class TimerDeleteLogExpired extends TimerTask {
+        public TimerDeleteLogExpired() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Apaga todos os arquivos de LOG vencidos.
+            Server.deleteLogExpired();
+        }
+    }
+    
+    public static void startTimer() {
+        TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
+        TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
+        TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
+        TIMER01.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
+        TIMER10.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
+        TIMER30.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
+        TIMER30.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
+        TIMER60.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerStoreCache(), 3000000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
+    }
+    
+    public static String removerAcentuacao(String text) {
+        if (text == null) {
+            return null;
+        } else {
+            StringBuilder builder = new StringBuilder();
+            for (char character : text.toCharArray()) {
+                switch (character) {
+                    case 'Á':
+                    case 'À':
+                    case 'Ã':
+                    case 'Â':
+                        character = 'A';
+                        break;
+                    case 'É':
+                    case 'Ê':
+                        character = 'E';
+                        break;
+                    case 'Í':
+                        character = 'I';
+                        break;
+                    case 'Ó':
+                    case 'Õ':
+                    case 'Ô':
+                        character = 'O';
+                        break;
+                    case 'Ú':
+                        character = 'U';
+                        break;
+                    case 'Ç':
+                        character = 'C';
+                        break;
+                    case 'á':
+                    case 'à':
+                    case 'ã':
+                    case 'â':
+                    case 'ª':
+                        character = 'a';
+                        break;
+                    case 'é':
+                    case 'ê':
+                        character = 'e';
+                        break;
+                    case 'í':
+                        character = 'i';
+                        break;
+                    case 'ó':
+                    case 'õ':
+                    case 'ô':
+                    case 'º':
+                        character = 'o';
+                        break;
+                    case 'ú':
+                        character = 'u';
+                        break;
+                    case 'ç':
+                        character = 'c';
+                        break;
+                }
+                builder.append(character);
+            }
+            return builder.toString();
         }
     }
 }

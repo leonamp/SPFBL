@@ -53,6 +53,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -308,7 +309,7 @@ public abstract class Server extends Thread {
      * @param type tipo de registro de LOG.
      * @param message a mensagem do registro de LOG.
      */
-    private static void log(long time, String type, String message, String result) {
+    public static void log(long time, String type, String message, String result) {
         int latencia = (int) (System.currentTimeMillis() - time);
         if (latencia > 9999) {
             // Para manter a formatação correta no LOG,
@@ -485,13 +486,14 @@ public abstract class Server extends Thread {
      * @param tokenSet o conjunto de tokens.
      */
     public static void logTicket(long time, 
-            String ip, String sender, String helo,
+//            String ip, String sender, String helo,
             TreeSet<String> tokenSet, String ticket) {
-        if (sender == null) {
-            log(time, "TIKET", ip + " " + helo + " " + tokenSet, ticket);
-        } else {
-            log(time, "TIKET", ip + " " + sender + " " + helo + " " + tokenSet, ticket);
-        }
+//        if (sender == null) {
+//            log(time, "TIKET", ip + " " + helo + " " + tokenSet, ticket);
+//        } else {
+//            log(time, "TIKET", ip + " " + sender + " " + helo + " " + tokenSet, ticket);
+//        }
+        log(time, "TIKET", tokenSet.toString(), ticket);
     }
     
     public static void logPeerSend(long time,
@@ -712,6 +714,51 @@ public abstract class Server extends Thread {
             long time,
             String type,
             String client,
+            Set<String> tokenSet
+    ) {
+        String message;
+        if (tokenSet == null || tokenSet.isEmpty()) {
+            message = "";
+        } else {
+            message = null;
+            for (String token : tokenSet) {
+                if (message == null) {
+                    message = token;
+                } else {
+                    message += ' ' + token;
+                }
+            }
+        }
+        log(time, type, (client == null ? "" : client + ": ") + message, null);
+    }
+    
+    public static void logQuery(
+            long time,
+            String type,
+            String client,
+            String query,
+            Set<String> tokenSet
+    ) {
+        String result;
+        if (tokenSet == null || tokenSet.isEmpty()) {
+            result = "";
+        } else {
+            result = null;
+            for (String token : tokenSet) {
+                if (result == null) {
+                    result = token;
+                } else {
+                    result += ' ' + token;
+                }
+            }
+        }
+        logQuery(time, type, client, query, result);
+    }
+    
+    public static void logQuery(
+            long time,
+            String type,
+            String client,
             String query, String result) {
         log(time, type, (client == null ? "" : client + ": ") + query, result);
     }
@@ -749,7 +796,7 @@ public abstract class Server extends Thread {
         // Finaliza timer local.
         WHOIS_SEMAPHORE_TIMER.cancel();
         // Finaliza timer SPF.
-        SPF.cancel();
+        Core.cancelTimer();
         // Armazena os registros em disco.
         storeCache();
         return closed;
@@ -994,18 +1041,18 @@ public abstract class Server extends Thread {
         }
     }
     
-    public static synchronized void tryBackugroundRefresh() {
+    public static synchronized void tryRefreshWHOIS() {
         // Evita que muitos processos fiquem 
         // presos aguardando a liberação do método.
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
-            backgroundRefresh();
+            refreshWHOIS();
         }
     }
     
     /**
      * Atualiza os registros quase expirando.
      */
-    public static synchronized boolean backgroundRefresh() {
+    public static synchronized boolean refreshWHOIS() {
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             if (Domain.backgroundRefresh()) {
                 return true;
@@ -2169,13 +2216,13 @@ public abstract class Server extends Thread {
                     } else {
                         for (String tokenReputation : distributionMap.keySet()) {
                             Distribution distribution = distributionMap.get(tokenReputation);
-                            float probability = distribution.getMinSpamProbability();
+                            float probability = distribution.getSpamProbability(tokenReputation);
                             Status status = distribution.getStatus(tokenReputation);
-                            String frequency = distribution.getFrequencyLiteral();
+//                            String frequency = distribution.getFrequencyLiteral();
                             stringBuilder.append(tokenReputation);
                             stringBuilder.append(' ');
-                            stringBuilder.append(frequency);
-                            stringBuilder.append(' ');
+//                            stringBuilder.append(frequency);
+//                            stringBuilder.append(' ');
                             stringBuilder.append(status);
                             stringBuilder.append(' ');
                             stringBuilder.append(DECIMAL_FORMAT.format(probability));

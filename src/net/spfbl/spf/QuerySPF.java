@@ -119,6 +119,14 @@ public final class QuerySPF extends Server {
         }
         
         /**
+         * Método perigoso porém necessário para encontrar falhas.
+         */
+        public synchronized void kill() {
+            CONNECTION_COUNT--;
+            super.stop();
+        }
+        
+        /**
          * Fecha esta conexão liberando a thread.
          */
         private synchronized void close() {
@@ -438,14 +446,14 @@ public final class QuerySPF extends Server {
                                 } else {
                                     for (String tokenReputation : distributionMap.keySet()) {
                                         Distribution distribution = distributionMap.get(tokenReputation);
-                                        float probability = distribution.getMinSpamProbability();
+                                        float probability = distribution.getSpamProbability(tokenReputation);
                                         if (probability > 0.0f && distribution.hasFrequency()) {
                                             Status status = distribution.getStatus(tokenReputation);
-                                            String frequency = distribution.getFrequencyLiteral();
+//                                            String frequency = distribution.getFrequencyLiteral();
                                             stringBuilder.append(tokenReputation);
                                             stringBuilder.append(' ');
-                                            stringBuilder.append(frequency);
-                                            stringBuilder.append(' ');
+//                                            stringBuilder.append(frequency);
+//                                            stringBuilder.append(' ');
                                             stringBuilder.append(status);
                                             stringBuilder.append(' ');
                                             stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
@@ -559,6 +567,10 @@ public final class QuerySPF extends Server {
         return CONNECTION_POLL.poll();
     }
     
+    private synchronized Connection pollUsing() {
+        return CONNECTION_USE.poll();
+    }
+    
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
@@ -568,19 +580,22 @@ public final class QuerySPF extends Server {
         CONNECTION_POLL.offer(connection);
     }
     
-    public synchronized void interruptTimeout() {
-        Connection connection = CONNECTION_USE.poll();
+    private synchronized void offerUsing(Connection connection) {
+        CONNECTION_USE.offer(connection);
+    }
+    
+    public void interruptTimeout() {
+        Connection connection = pollUsing();
         if (connection != null) {
             if (connection.isDead()) {
                 Server.logDebug("connection " + connection.getName() + " is deadlocked.");
                 // Temporário até encontrar a deadlock.
-                CONNECTION_COUNT--;
-                connection.stop();
+                connection.kill();
             } else if (connection.isTimeout()) {
-                CONNECTION_USE.offer(connection);
+                offerUsing(connection);
                 connection.interrupt();
             } else {
-                CONNECTION_USE.offer(connection);
+                offerUsing(connection);
             }
         }
     }

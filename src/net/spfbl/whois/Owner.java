@@ -390,7 +390,7 @@ public class Owner implements Serializable, Comparable<Owner> {
 //     * @param owner o dono que deve ser removido.
 //     */
 //    private static synchronized void removeOwner(Owner owner) {
-//        if (MAP.remove(owner.getOwnerID()) != null) {
+//        if (MAP.drop(owner.getOwnerID()) != null) {
 //            // Atualiza flag de atualização.
 //            OWNER_CHANGED = true;
 //        }

@@ -84,14 +84,14 @@ public final class ComplainHTTP extends Server {
         public void handle(HttpExchange exchange) throws IOException {
             long time = System.currentTimeMillis();
             Thread.currentThread().setName("HTTPCMMND");
-            String requestMethod = exchange.getRequestMethod();
+            String request = exchange.getRequestMethod();
             URI uri = exchange.getRequestURI();
             String command = uri.toASCIIString();
             String origin = getOrigin(exchange);
             int code;
             String result;
             String type;
-            if (requestMethod.equals("GET")) {
+            if (request.equals("GET")) {
                 if (command.startsWith("/spam/")) {
                     type = "SPFSP";
                     try {
@@ -136,6 +136,7 @@ public final class ComplainHTTP extends Server {
                 code = 405;
                 result = "Method not allowed.\n";
             }
+            command = request + " " + command;
             response(code, result, exchange);
             Server.logQuery(
                     time, type,

@@ -14,10 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.spfbl.spf;
+package net.spfbl.core;
 
-import net.spfbl.core.ProcessException;
-import net.spfbl.core.Server;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -28,7 +26,6 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import net.spfbl.core.Peer;
 import net.spfbl.whois.Domain;
 
 /**
@@ -60,6 +57,10 @@ public final class PeerUDP extends Server {
         // Criando conexões.
         Server.logDebug("binding peer UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
+    }
+    
+    public boolean hasConnection() {
+        return HOSTNAME != null;
     }
     
     public String getConnection() {
@@ -172,20 +173,17 @@ public final class PeerUDP extends Server {
                                         } else {
                                             peer.setEmail(email);
                                             peer.addNotification();
-//                                            peer.updateLast();
                                             result = "CREATED";
                                         }
                                     } else if (peer.getAddress().equals(hostname)) {
                                         peer.setPort(port);
                                         peer.setEmail(email);
                                         peer.addNotification();
-//                                        peer.updateLast();
                                         result = "UPDATED";
                                     } else {
                                         peer.drop();
                                         peer = peer.clone(hostname);
                                         peer.addNotification();
-//                                        peer.updateLast();
                                         result = "UPDATED";
                                     }
                                 } else {
@@ -199,6 +197,33 @@ public final class PeerUDP extends Server {
                             result = "ERROR " + ex.getMessage();
                         } finally {
                             type = "PEERH";
+                        }
+                    } else if (token.startsWith("REPUTATION ")) {
+                        type = "PEERR";
+                        int index = token.indexOf(' ') + 1;
+                        String reputation = token.substring(index);
+                        StringTokenizer tokenizer = new StringTokenizer(reputation, " ");
+                        if (tokenizer.countTokens() == 3) {
+                            address = ipAddress.getHostAddress();
+                            try {
+                                String key = tokenizer.nextToken();
+                                String ham = tokenizer.nextToken();
+                                String spam = tokenizer.nextToken();
+                                Peer peer = Peer.get(ipAddress);
+                                if (peer == null) {
+                                    address = ipAddress.getHostAddress();
+                                    result = "UNKNOWN";
+                                } else {
+                                    address = peer.getAddress();
+                                    peer.addNotification();
+                                    result = peer.setReputation(key, ham, spam);
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getErrorMessage();
+                            }
+                        } else {
+                            address = ipAddress.getHostAddress();
+                            result = "INVALID";
                         }
                     } else {
                         Peer peer = Peer.get(ipAddress);
@@ -242,10 +267,10 @@ public final class PeerUDP extends Server {
     
     /**
      * Envia um pacote do resultado em UDP para o destino.
-     * @param result o resultado que deve ser enviado.
-     * @param ip o IP do destino.
+     * @param token o resultado que deve ser enviado.
+     * @param address o IP do destino.
      * @param port a porta de resposta do destino.
-     * @throws Exception se houver falha no envio.
+     * @throws ProcessException se houver falha no envio.
      */
     public void send(String token, String address, int port) throws ProcessException {
         try {
@@ -280,7 +305,25 @@ public final class PeerUDP extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static final int CONNECTION_LIMIT = 10;
+    private static byte CONNECTION_LIMIT = 16;
+    
+    public static void setConnectionLimit(String limit) {
+        if (limit != null && limit.length() > 0) {
+            try {
+                setConnectionLimit(Integer.parseInt(limit));
+            } catch (Exception ex) {
+                Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+            }
+        }
+    }
+    
+    public static void setConnectionLimit(int limit) {
+        if (limit < 1 || limit > Byte.MAX_VALUE) {
+            Server.logError("invalid DNSBL connection limit '" + limit + "'.");
+        } else {
+            CONNECTION_LIMIT = (byte) limit;
+        }
+    }
     
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();

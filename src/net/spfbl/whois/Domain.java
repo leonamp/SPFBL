@@ -34,6 +34,7 @@ import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.ServiceUnavailableException;
+import net.spfbl.core.Core;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -149,15 +150,15 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (!pontuacao) {
                 index++;
             }
-            return address.substring(index).toLowerCase();
+            return Core.removerAcentuacao(address.substring(index)).toLowerCase();
         } else if (pontuacao && !address.startsWith(".")) {
-            return "." + address.toLowerCase();
+            return "." + Core.removerAcentuacao(address).toLowerCase();
         } else if (pontuacao && address.startsWith(".")) {
-            return address.toLowerCase();
+            return Core.removerAcentuacao(address).toLowerCase();
         } else if (!pontuacao && !address.startsWith(".")) {
-            return address.toLowerCase();
+            return Core.removerAcentuacao(address).toLowerCase();
         } else{
-            return address.substring(1).toLowerCase();
+            return Core.removerAcentuacao(address.substring(1)).toLowerCase();
         }
     }
     
@@ -312,15 +313,15 @@ public class Domain implements Serializable, Comparable<Domain> {
                 if (!pontuacao) {
                     index++;
                 }
-                return address.substring(index).toLowerCase();
+                return Core.removerAcentuacao(address.substring(index)).toLowerCase();
             } else if (pontuacao && !address.startsWith(".")) {
-                return "." + address.toLowerCase();
+                return "." + Core.removerAcentuacao(address).toLowerCase();
             } else if (pontuacao && address.startsWith(".")) {
-                return address.toLowerCase();
+                return Core.removerAcentuacao(address).toLowerCase();
             } else if (!pontuacao && !address.startsWith(".")) {
-                return address.toLowerCase();
+                return Core.removerAcentuacao(address).toLowerCase();
             } else{
-                return address.substring(1).toLowerCase();
+                return Core.removerAcentuacao(address.substring(1)).toLowerCase();
             }
         }
     }
@@ -1030,6 +1031,15 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     private static final HashMap<String,Domain> MAP = new HashMap<String,Domain>();
     
+    public synchronized boolean drop() {
+        if (MAP.remove(getDomain()) != null) {
+            DOMAIN_CHANGED = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     /**
      * Remove registro de domínio do cache.
      * @param host o host cujo registro de domínio deve ser removido.
@@ -1085,6 +1095,13 @@ public class Domain implements Serializable, Comparable<Domain> {
             try {
                 // Atualizando campos do registro.
                 return domainMax.refresh();
+            } catch (ProcessException ex) {
+                if (ex.getErrorMessage().equals("WAITING")) {
+                    domainMax.drop();
+                } else {
+                    Server.logError(ex);
+                }
+                return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;

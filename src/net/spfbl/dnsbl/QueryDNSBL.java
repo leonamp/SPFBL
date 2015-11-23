@@ -368,7 +368,7 @@ public final class QueryDNSBL extends Server {
                                 // Consulta de teste para positivio.
                                 result = "127.0.0.2";
                                 information = server.getMessage();
-                            } else if (SPF.isBlacklisted(ip, false)) {
+                            } else if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
@@ -378,7 +378,7 @@ public final class QueryDNSBL extends Server {
                         } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                             // A consulta é um IPv6.
                             ip = SubnetIPv6.reverseToIPv6(reverse);
-                            if (SPF.isBlacklisted(ip, false)) {
+                            if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = SPF.getComplainTTL(ip);
@@ -487,7 +487,7 @@ public final class QueryDNSBL extends Server {
      */
     private int CONNECTION_COUNT = 0;
     
-    private static byte CONNECTION_LIMIT = 8;
+    private static byte CONNECTION_LIMIT = 16;
     
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
