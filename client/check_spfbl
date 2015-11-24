@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# This file is part of SPFBL.
+# and open the template in the editor.
+#
+# SPFBL is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SPFBL is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
+# https://github.com/leonamp/SPFBL
+#
+
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+if [ $# -lt "2" ]; then
+	printf "Faltando parametro(s).\nSintaxe: $0 host port\n"
+	exit $STATE_WARNING
+else
+	host=$1
+	port=$2
+	response=$(echo "VERSION" | nc -w 2 $host $port)
+
+	if [[ $response == "" ]]; then
+		printf "CRITICAL: TIMEOUT\n"
+		exit $STATE_CRITICAL
+	elif [[ $response == "SPFBL"* ]]; then
+		printf "OK: $response\n"
+		exit $STATE_OK
+	else
+		printf "UNKNOWN: $response\n"
+		exit $STATE_UNKNOWN
+	fi
+fi
