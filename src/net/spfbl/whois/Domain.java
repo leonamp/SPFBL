@@ -940,8 +940,13 @@ public class Domain implements Serializable, Comparable<Domain> {
         return MAP.put(key, domain);
     }
     
-    private static synchronized boolean addAll(Collection<String> set) {
-        return TLD_SET.addAll(set);
+    private static synchronized void addAll(Collection<String> set) {
+        for (String tld : set) {
+            if (!tld.startsWith(".")) {
+                tld = '.' + tld;
+            }
+            TLD_SET.add(tld);
+        }
     }
     
     /**

@@ -447,18 +447,13 @@ public final class QuerySPF extends Server {
                                     for (String tokenReputation : distributionMap.keySet()) {
                                         Distribution distribution = distributionMap.get(tokenReputation);
                                         float probability = distribution.getSpamProbability(tokenReputation);
-                                        if (probability > 0.0f && distribution.hasFrequency()) {
-                                            Status status = distribution.getStatus(tokenReputation);
-//                                            String frequency = distribution.getFrequencyLiteral();
-                                            stringBuilder.append(tokenReputation);
-                                            stringBuilder.append(' ');
-//                                            stringBuilder.append(frequency);
-//                                            stringBuilder.append(' ');
-                                            stringBuilder.append(status);
-                                            stringBuilder.append(' ');
-                                            stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
-                                            stringBuilder.append('\n');
-                                        }
+                                        Status status = distribution.getStatus(tokenReputation);
+                                        stringBuilder.append(tokenReputation);
+                                        stringBuilder.append(' ');
+                                        stringBuilder.append(status);
+                                        stringBuilder.append(' ');
+                                        stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
+                                        stringBuilder.append('\n');
                                     }
                                     result = stringBuilder.toString();
                                 }

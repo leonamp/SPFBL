@@ -1507,7 +1507,8 @@ public abstract class Server extends Thread {
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.addBlock(blockedToken)) {
+                                if (client == null && (blockedToken = SPF.addBlock(blockedToken)) != null) {
+                                    Peer.sendBlockToAll(blockedToken);
                                     result += "ADDED\n";
                                 } else if (client != null && SPF.addBlock(client, blockedToken)) {
                                     result += "ADDED\n";
@@ -2218,11 +2219,8 @@ public abstract class Server extends Thread {
                             Distribution distribution = distributionMap.get(tokenReputation);
                             float probability = distribution.getSpamProbability(tokenReputation);
                             Status status = distribution.getStatus(tokenReputation);
-//                            String frequency = distribution.getFrequencyLiteral();
                             stringBuilder.append(tokenReputation);
                             stringBuilder.append(' ');
-//                            stringBuilder.append(frequency);
-//                            stringBuilder.append(' ');
                             stringBuilder.append(status);
                             stringBuilder.append(' ');
                             stringBuilder.append(DECIMAL_FORMAT.format(probability));

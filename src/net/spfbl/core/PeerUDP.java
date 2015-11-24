@@ -225,6 +225,19 @@ public final class PeerUDP extends Server {
                             address = ipAddress.getHostAddress();
                             result = "INVALID";
                         }
+                    } else if (token.startsWith("BLOCK ")) {
+                        type = "PEERB";
+                        int index = token.indexOf(' ') + 1;
+                        String block = token.substring(index);
+                        Peer peer = Peer.get(ipAddress);
+                        if (peer == null) {
+                            address = ipAddress.getHostAddress();
+                            result = "UNKNOWN";
+                        } else {
+                            address = peer.getAddress();
+                            peer.addNotification();
+                            result = peer.processBlock(block);
+                        }
                     } else {
                         Peer peer = Peer.get(ipAddress);
                         if (peer == null) {

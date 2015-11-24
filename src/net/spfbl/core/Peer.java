@@ -541,6 +541,25 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public static void sendBlockToAll(String token) {
+        long time = System.currentTimeMillis();
+        if (Core.hasPeerConnection()) {
+            String origin = null;
+            String result = "SENT";
+            String command = "BLOCK " + token;
+            try {
+                for (Peer peer : getSendAllSet()) {
+                    String address = peer.getAddress();
+                    int port = peer.getPort();
+                    Core.sendCommandToPeer(command, address, port);
+                }
+            } catch (Exception ex) {
+                result = ex.getMessage();
+            }
+            Server.logPeerSend(time, origin, command, result);
+        }
+    }
+    
     /**
      * Método de transição.
      * @param token
@@ -701,6 +720,41 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
                 return "DROPED";
+            } else if (isReceiveRetain()) {
+                if (addRetain(token)) {
+                    return "RETAINED";
+                } else {
+                    return "DROPED";
+                }
+            } else if (SPF.addBlockExact(token)) {
+                if (isReceiveRepass()) {
+                    sendToOthers(token);
+                    return "REPASSED";
+                } else {
+                    sendToRepass(token);
+                    return "ADDED";
+                }
+            } else {
+                return "EXISTS";
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return ex.getMessage();
+        }
+    }
+    
+    public String processBlock(String token) {
+        try {
+            if ((token = SPF.normalizeTokenFull(token)) == null) {
+                return "INVALID";
+            } else if (SPF.isIgnore(token)) {
+                return "IGNORED";
+            } else if (isReceiveReject()) {
+                return "REJECTED";
+            } else if (isReceiveDrop()) {
+                return "DROPED";
+            } else if (SPF.containsBlock(token)) {
+                return "EXISTS";
             } else if (isReceiveRetain()) {
                 if (addRetain(token)) {
                     return "RETAINED";
