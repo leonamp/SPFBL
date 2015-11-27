@@ -50,12 +50,12 @@ public final class AdministrationTCP extends Server {
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("binding command TCP socket on port " + port + "...");
+        Server.logDebug("binding administration TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
     
     @Override
-    public void interrupt() {
+    public synchronized void interrupt() {
         try {
             SOCKET.close();
         } catch (NullPointerException ex) {
@@ -65,21 +65,29 @@ public final class AdministrationTCP extends Server {
         }
     }
     
+    public synchronized Socket getSocket() throws IOException {
+        return SOCKET = SERVER_SOCKET.accept();
+    }
+
+    public synchronized void clearSocket() {
+        SOCKET = null;
+    }
+    
     /**
      * Inicialização do serviço.
      */
     @Override
     public void run() {
         try {
-            Server.logDebug("listening commands on TCP port " + PORT + "...");
-            while (continueListenning()) {
+            Server.logDebug("listening admin commands on TCP port " + PORT + "...");
+            String command = null;
+            String result = null;
+            Socket socket;
+            while (continueListenning() && (socket = getSocket()) != null) {
                 try {
-                    String command = null;
-                    String result = null;
-                    SOCKET = SERVER_SOCKET.accept();
                     time = System.currentTimeMillis();
                     try {
-                        InputStream inputStream = SOCKET.getInputStream();
+                        InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         command = bufferedReader.readLine();
@@ -88,7 +96,7 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = AdministrationTCP.this.processCommand(command);
                             // Enviando resposta.
-                            OutputStream outputStream = SOCKET.getOutputStream();
+                            OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
                             // Mede o tempo de resposta para estatísticas.
                         }
@@ -98,9 +106,9 @@ public final class AdministrationTCP extends Server {
                         result = "INTERRUPTED\n";
                     } finally {
                         // Fecha conexão logo após resposta.
-                        SOCKET.close();
-                        InetAddress address = SOCKET.getInetAddress();
-                        SOCKET = null;
+                        socket.close();
+                        InetAddress address = socket.getInetAddress();
+                        clearSocket();
                         // Log da consulta com o respectivo resultado.
                         Server.logAdministration(
                                 time,
@@ -118,22 +126,24 @@ public final class AdministrationTCP extends Server {
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
-                    Server.logDebug("command TCP listening stoped.");
+                    Server.logDebug("administration TCP listening stoped.");
                 }
             }
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("command TCP server closed.");
+            Server.logDebug("administration TCP server closed.");
         }
     }
     
     private boolean isTimeout() {
         if (time == 0) {
             return false;
-        } else {
+        } else if (continueListenning()) {
             int interval = (int) (System.currentTimeMillis() - time) / 1000;
             return interval > 600;
+        } else {
+            return false;
         }
     }
     
@@ -144,8 +154,8 @@ public final class AdministrationTCP extends Server {
     }
     
     @Override
-    protected synchronized void close() throws Exception {
-        Server.logDebug("unbinding command TCP socket on port " + PORT + "...");
+    protected void close() throws Exception {
+        Server.logDebug("unbinding administration TCP socket on port " + PORT + "...");
         SERVER_SOCKET.close();
     }
 }

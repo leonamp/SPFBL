@@ -1009,10 +1009,10 @@ public class Domain implements Serializable, Comparable<Domain> {
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-        } catch (ServiceUnavailableException ex) {
-            Server.logCheckDNS(time, host, "UNAVAILABLE");
         } catch (CommunicationException ex) {
             Server.logCheckDNS(time, host, "TIMEOUT");
+        } catch (ServiceUnavailableException ex) {
+            Server.logCheckDNS(time, host, "SERVFAIL");
         } catch (Exception ex) {
             // Houve uma falha indefinida para encontrar os registros.
             Server.logError(ex);

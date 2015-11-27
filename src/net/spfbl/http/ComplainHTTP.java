@@ -136,8 +136,9 @@ public final class ComplainHTTP extends Server {
                 code = 405;
                 result = "Method not allowed.\n";
             }
-            command = request + " " + command;
             response(code, result, exchange);
+            command = request + " " + command;
+            result = code + " " + result;
             Server.logQuery(
                     time, type,
                     origin,
