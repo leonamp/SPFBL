@@ -11,7 +11,7 @@ import java.net.InetAddress;
  *
  * @author Leandro
  */
-public class ServerDNSBL implements Serializable {
+public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     
     private static final long serialVersionUID = 1L;
     
@@ -50,7 +50,17 @@ public class ServerDNSBL implements Serializable {
     }
     
     @Override
+    public int compareTo(ServerDNSBL other) {
+        if (other == null) {
+            return -1;
+        } else {
+            return this.hostname.compareTo(other.hostname);
+        }
+    }
+    
+    @Override
     public String toString() {
         return hostname;
     }
+
 }

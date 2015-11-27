@@ -132,7 +132,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.normalizeIPv6(ip);
         } else {
-            return ip;
+            return null;
         }
     }
     

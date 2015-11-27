@@ -121,8 +121,7 @@ public final class QuerySPF extends Server {
         /**
          * Método perigoso porém necessário para encontrar falhas.
          */
-        public synchronized void kill() {
-            CONNECTION_COUNT--;
+        public void kill() {
             super.stop();
         }
         
@@ -154,7 +153,7 @@ public final class QuerySPF extends Server {
             return SOCKET;
         }
         
-        public synchronized void clearSocket() throws IOException {
+        public synchronized void clearSocket() {
             SOCKET = null;
         }
         
@@ -435,33 +434,28 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "EMPTY\n";
                                 }
-                            } else if (line.equals("REPUTATION")) {
-                                // Comando para verificar a reputação dos tokens.
-                                query = line.trim();
-                                type = "REPTQ";
-                                StringBuilder stringBuilder = new StringBuilder();
-                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
-                                if (distributionMap.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String tokenReputation : distributionMap.keySet()) {
-                                        Distribution distribution = distributionMap.get(tokenReputation);
-                                        float probability = distribution.getSpamProbability(tokenReputation);
-                                        if (probability > 0.0f && distribution.hasFrequency()) {
-                                            Status status = distribution.getStatus(tokenReputation);
-//                                            String frequency = distribution.getFrequencyLiteral();
-                                            stringBuilder.append(tokenReputation);
-                                            stringBuilder.append(' ');
-//                                            stringBuilder.append(frequency);
-//                                            stringBuilder.append(' ');
-                                            stringBuilder.append(status);
-                                            stringBuilder.append(' ');
-                                            stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
-                                            stringBuilder.append('\n');
-                                        }
-                                    }
-                                    result = stringBuilder.toString();
-                                }
+//                            } else if (line.equals("REPUTATION")) {
+//                                // Comando para verificar a reputação dos tokens.
+//                                query = line.trim();
+//                                type = "REPTQ";
+//                                StringBuilder stringBuilder = new StringBuilder();
+//                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
+//                                if (distributionMap.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String tokenReputation : distributionMap.keySet()) {
+//                                        Distribution distribution = distributionMap.get(tokenReputation);
+//                                        float probability = distribution.getSpamProbability(tokenReputation);
+//                                        Status status = distribution.getStatus(tokenReputation);
+//                                        stringBuilder.append(tokenReputation);
+//                                        stringBuilder.append(' ');
+//                                        stringBuilder.append(status);
+//                                        stringBuilder.append(' ');
+//                                        stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
+//                                        stringBuilder.append('\n');
+//                                    }
+//                                    result = stringBuilder.toString();
+//                                }
                             } else {
                                 query = line.trim();
                                 result = SPF.processSPF(client, query);
@@ -507,12 +501,12 @@ public final class QuerySPF extends Server {
                                 query == null ? "DISCONNECTED" : query,
                                 result
                                 );
-                        time = 0;
                     }
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
                     try {
+                        time = 0;
                         // Oferece a conexão ociosa na última posição da lista.
                         offer(this);
                         CONNECION_SEMAPHORE.release();
@@ -584,6 +578,10 @@ public final class QuerySPF extends Server {
         CONNECTION_USE.offer(connection);
     }
     
+    private synchronized void subtractConnection() {
+        CONNECTION_COUNT--;
+    }
+    
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
@@ -591,6 +589,7 @@ public final class QuerySPF extends Server {
                 Server.logDebug("connection " + connection.getName() + " is deadlocked.");
                 // Temporário até encontrar a deadlock.
                 connection.kill();
+                subtractConnection();
             } else if (connection.isTimeout()) {
                 offerUsing(connection);
                 connection.interrupt();
@@ -655,20 +654,15 @@ public final class QuerySPF extends Server {
                     long time = System.currentTimeMillis();
                     Connection connection = pollConnection();
                     if (connection == null) {
-                        String result = "ERROR: TOO MANY CONNECTIONS\n";
-                        try {
-                            OutputStream outputStream = socket.getOutputStream();
-                            outputStream.write(result.getBytes("ISO-8859-1"));
-                        } finally {
-                            socket.close();
-                            Server.logQuery(
-                                time, "SPFBL",
-                                socket.getInetAddress(),
-                                null, result
-                                );
-                        }
+                        sendMessage(time, socket, "ERROR: TOO MANY CONNECTIONS\n");
                     } else {
-                        connection.process(socket, time);
+                        try {
+                            connection.process(socket, time);
+                        } catch (IllegalThreadStateException ex) {
+                            // Houve problema na liberação do processo.
+                            sendMessage(time, socket, "ERROR: FATAL\n");
+                            offer(connection);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -681,8 +675,25 @@ public final class QuerySPF extends Server {
         }
     }
     
+    private static void sendMessage(long time,
+            Socket socket, String message
+            ) throws IOException {
+        try {
+            OutputStream outputStream = socket.getOutputStream();
+            outputStream.write(message.getBytes("ISO-8859-1"));
+        } finally {
+            socket.close();
+            Server.logQuery(
+                time, "SPFBL",
+                socket.getInetAddress(),
+                null, message
+                );
+        }
+    }
+    
     @Override
     protected void close() throws Exception {
+        long start = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -693,9 +704,28 @@ public final class QuerySPF extends Server {
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
+            } finally {
+                int idle = (int) (System.currentTimeMillis() - start) / 1000;
+                if (idle > 10) {
+                    // Temporário até encontrar a deadlock.
+                    Server.logDebug("SPF socket is deadlocked.");
+                    kill();
+                }
             }
         }
         Server.logDebug("unbinding querie SPF socket on port " + PORT + "...");
         SERVER_SOCKET.close();
+    }
+    
+    /**
+     * Método perigoso porém necessário para encontrar falhas.
+     */
+    public void kill() {
+        Connection connection;
+        while ((connection = pollUsing()) != null) {
+            connection.kill();
+            subtractConnection();
+        }
+        super.stop();
     }
 }

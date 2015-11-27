@@ -53,11 +53,13 @@ import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
 import net.spfbl.core.Peer;
 import net.spfbl.core.Peer.Binomial;
+import net.spfbl.core.Reverse;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -371,6 +373,7 @@ public final class SPF implements Serializable {
     }
     
     private synchronized void updateLastRefresh() {
+        this.queries = 0;
         this.lastRefresh = System.currentTimeMillis();
     }
 
@@ -403,7 +406,6 @@ public final class SPF implements Serializable {
             this.explanation = null;
             this.error = false;
             CacheSPF.CHANGED = true;
-            this.queries = 0;
             this.nxdomain = 0;
             updateLastRefresh();
             Server.logLookupSPF(time, hostname, "NO REGISTRY");
@@ -508,7 +510,6 @@ public final class SPF implements Serializable {
             this.explanation = explanationLocal;
             this.error = errorQuery;
             CacheSPF.CHANGED = true;
-            this.queries = 0;
             this.nxdomain = 0;
             updateLastRefresh();
             Server.logLookupSPF(time, hostname, result);
@@ -1262,12 +1263,14 @@ public final class SPF implements Serializable {
                     Server.logMecanismA(time, expression, resultSet.toString());
                 } catch (CommunicationException ex) {
                     Server.logMecanismA(time, expression, "TIMEOUT");
+                } catch (ServiceUnavailableException ex) {
+                    Server.logMecanismA(time, expression, "SERVFAIL");
                 } catch (NameNotFoundException ex) {
                     Server.logMecanismA(time, expression, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
                     Server.logMecanismA(time, expression, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismA(time, expression, "ERROR " + ex.getMessage());
+                    Server.logMecanismA(time, expression, "ERROR " + ex.getClass() + " " + ex.getMessage());
                 }
                 if (!expression.contains("%")) {
                     loaded = true;
@@ -1424,12 +1427,14 @@ public final class SPF implements Serializable {
                     Server.logMecanismMX(time, expression, resultSet.toString());
                 } catch (CommunicationException ex) {
                     Server.logMecanismMX(time, expression, "TIMEOUT");
+                } catch (ServiceUnavailableException ex) {
+                    Server.logMecanismMX(time, expression, "SERVFAIL");
                 } catch (NameNotFoundException ex) {
                     Server.logMecanismMX(time, expression, "NOT FOUND");
                 } catch (InvalidAttributeIdentifierException ex) {
                     Server.logMecanismMX(time, expression, "NOT FOUND");
                 } catch (NamingException ex) {
-                    Server.logMecanismMX(time, expression, "ERROR " + ex.getMessage());
+                    Server.logMecanismMX(time, expression, "ERROR " + ex.getClass() + " " + ex.getMessage());
                 }
                 if (!getExpression().contains("%")) {
                     loaded = true;
@@ -1483,105 +1488,110 @@ public final class SPF implements Serializable {
             } else {
                 hostname = "." + hostname;
             }
-            for (String reverse : SPF.getReverse(ip)) {
-                if (reverse.endsWith(hostname)) {
-                    return true;
+            Reverse reverse = Reverse.get(ip);
+            if (reverse == null) {
+                return false;
+            } else {
+                for (String address : reverse.getAddressSet()) {
+                    if (address.endsWith(hostname)) {
+                        return true;
+                    }
                 }
+                return false;
             }
-            return false;
         }
     }
 
-    /**
-     * Retorna o conjunto de hostnames que representam o DNS reverso do IP
-     * informado. Apesar de geralmente haver apenas um reverso configurado, é
-     * possível que haja mais de um pois é possível que haja mais de um registro
-     * PTR e cada um deles apontando para o mesmo IP.
-     *
-     * @param ip o IP a ser verificado.
-     * @return o conjunto de reversos do IP informado.
-     */
-    private static TreeSet<String> getReverse(String ip) {
-        long time1 = System.currentTimeMillis();
-        String reverse = null;
-        TreeSet<String> reverseList = new TreeSet<String>();
-        try {
-            byte[] address1;
-            if (SubnetIPv4.isValidIPv4(ip)) {
-                reverse = "in-addr.arpa";
-                address1 = SubnetIPv4.split(ip);
-                for (byte octeto : address1) {
-                    reverse = ((int) octeto & 0xFF) + "." + reverse;
-                }
-            } else if (SubnetIPv6.isValidIPv6(ip)) {
-                reverse = "ip6.arpa";
-                address1 = SubnetIPv6.splitByte(ip);
-                for (byte octeto : address1) {
-                    String hexPart = Integer.toHexString((int) octeto & 0xFF);
-                    if (hexPart.length() == 1) {
-                        hexPart = "0" + hexPart;
-                    }
-                    for (char digit : hexPart.toCharArray()) {
-                        reverse = digit + "." + reverse;
-                    }
-                }
-            } else {
-                throw new ProcessException("ERROR: DNS REVERSE");
-            }
-            Attributes atributes = Server.getAttributesDNS(
-                    reverse, new String[]{"PTR"});
-            Attribute attributePTR = atributes.get("PTR");
-            for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
-                try {
-                    String host = (String) attributePTR.get(indexPTR);
-                    if (host.startsWith(".")) {
-                        host = host.substring(1);
-                    }
-                    if (host.endsWith(".")) {
-                        host = host.substring(0, host.length() - 1);
-                    }
-                    if (SubnetIPv4.isValidIPv4(ip)) {
-                        atributes = Server.getAttributesDNS(
-                                host, new String[]{"A"});
-                        Attribute attributeA = atributes.get("A");
-                        for (int indexA = 0; indexA < attributeA.size(); indexA++) {
-                            String ipA = (String) attributeA.get(indexA);
-                            byte[] address2 = SubnetIPv4.split(ipA);
-                            if (Arrays.equals(address1, address2)) {
-                                reverseList.add("." + host);
-                                break;
-                            }
-                        }
-                    } else if (SubnetIPv6.isValidIPv6(ip)) {
-                        atributes = Server.getAttributesDNS(
-                                host, new String[]{"AAAA"});
-                        Attribute attributeAAAA = atributes.get("AAAA");
-                        for (int indexAAAA = 0; indexAAAA < attributeAAAA.size(); indexAAAA++) {
-                            String ipAAAA = (String) attributeAAAA.get(indexAAAA);
-                            byte[] address2 = SubnetIPv6.splitByte(ipAAAA);
-                            if (Arrays.equals(address1, address2)) {
-                                reverseList.add("." + host);
-                                break;
-                            }
-                        }
-                    }
-                } catch (NamingException ex) {
-                    // Endereço não encontrado.
-                }
-            }
-            Server.logReverseDNS(time1, ip, reverseList.toString());
-        } catch (CommunicationException ex) {
-            Server.logReverseDNS(time1, ip, "TIMEOUT");
-        } catch (NameNotFoundException ex) {
-            Server.logReverseDNS(time1, ip, "NOT FOUND");
-        } catch (InvalidAttributeIdentifierException ex) {
-            Server.logReverseDNS(time1, ip, "NOT FOUND");
-        } catch (NamingException ex) {
-            Server.logReverseDNS(time1, ip, "ERROR " + ex.getMessage());
-        } finally {
-            return reverseList;
-        }
-    }
+//    /**
+//     * Retorna o conjunto de hostnames que representam o DNS reverso do IP
+//     * informado. Apesar de geralmente haver apenas um reverso configurado, é
+//     * possível que haja mais de um pois é possível que haja mais de um registro
+//     * PTR e cada um deles apontando para o mesmo IP.
+//     *
+//     * @param ip o IP a ser verificado.
+//     * @return o conjunto de reversos do IP informado.
+//     */
+//    private static TreeSet<String> getReverse(String ip) {
+//        long time1 = System.currentTimeMillis();
+//        String reverse = null;
+//        TreeSet<String> reverseList = new TreeSet<String>();
+//        try {
+//            byte[] address1;
+//            if (SubnetIPv4.isValidIPv4(ip)) {
+//                reverse = "in-addr.arpa";
+//                address1 = SubnetIPv4.split(ip);
+//                for (byte octeto : address1) {
+//                    reverse = ((int) octeto & 0xFF) + "." + reverse;
+//                }
+//            } else if (SubnetIPv6.isValidIPv6(ip)) {
+//                reverse = "ip6.arpa";
+//                address1 = SubnetIPv6.splitByte(ip);
+//                for (byte octeto : address1) {
+//                    String hexPart = Integer.toHexString((int) octeto & 0xFF);
+//                    if (hexPart.length() == 1) {
+//                        hexPart = "0" + hexPart;
+//                    }
+//                    for (char digit : hexPart.toCharArray()) {
+//                        reverse = digit + "." + reverse;
+//                    }
+//                }
+//            } else {
+//                throw new ProcessException("ERROR: DNS REVERSE");
+//            }
+//            Attributes atributes = Server.getAttributesDNS(
+//                    reverse, new String[]{"PTR"});
+//            Attribute attributePTR = atributes.get("PTR");
+//            for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
+//                try {
+//                    String host = (String) attributePTR.get(indexPTR);
+//                    if (host.startsWith(".")) {
+//                        host = host.substring(1);
+//                    }
+//                    if (host.endsWith(".")) {
+//                        host = host.substring(0, host.length() - 1);
+//                    }
+//                    if (SubnetIPv4.isValidIPv4(ip)) {
+//                        atributes = Server.getAttributesDNS(
+//                                host, new String[]{"A"});
+//                        Attribute attributeA = atributes.get("A");
+//                        for (int indexA = 0; indexA < attributeA.size(); indexA++) {
+//                            String ipA = (String) attributeA.get(indexA);
+//                            byte[] address2 = SubnetIPv4.split(ipA);
+//                            if (Arrays.equals(address1, address2)) {
+//                                reverseList.add("." + host);
+//                                break;
+//                            }
+//                        }
+//                    } else if (SubnetIPv6.isValidIPv6(ip)) {
+//                        atributes = Server.getAttributesDNS(
+//                                host, new String[]{"AAAA"});
+//                        Attribute attributeAAAA = atributes.get("AAAA");
+//                        for (int indexAAAA = 0; indexAAAA < attributeAAAA.size(); indexAAAA++) {
+//                            String ipAAAA = (String) attributeAAAA.get(indexAAAA);
+//                            byte[] address2 = SubnetIPv6.splitByte(ipAAAA);
+//                            if (Arrays.equals(address1, address2)) {
+//                                reverseList.add("." + host);
+//                                break;
+//                            }
+//                        }
+//                    }
+//                } catch (NamingException ex) {
+//                    // Endereço não encontrado.
+//                }
+//            }
+//            Server.logReverseDNS(time1, ip, reverseList.toString());
+//        } catch (CommunicationException ex) {
+//            Server.logReverseDNS(time1, ip, "TIMEOUT");
+//        } catch (NameNotFoundException ex) {
+//            Server.logReverseDNS(time1, ip, "NOT FOUND");
+//        } catch (InvalidAttributeIdentifierException ex) {
+//            Server.logReverseDNS(time1, ip, "NOT FOUND");
+//        } catch (NamingException ex) {
+//            Server.logReverseDNS(time1, ip, "ERROR " + ex.getMessage());
+//        } finally {
+//            return reverseList;
+//        }
+//    }
 
     /**
      * Mecanismo de processamento exists.
@@ -1614,6 +1624,9 @@ public final class SPF implements Serializable {
             } catch (CommunicationException ex) {
                 Server.logMecanismA(time, hostname, "TIMEOUT");
                 return false;
+            } catch (ServiceUnavailableException ex) {
+                Server.logMecanismA(time, hostname, "SERVFAIL");
+                return false;
             } catch (NameNotFoundException ex) {
                 Server.logMecanismA(time, hostname, "NOT FOUND");
                 return false;
@@ -1621,7 +1634,7 @@ public final class SPF implements Serializable {
                 Server.logMecanismA(time, hostname, "NOT FOUND");
                 return false;
             } catch (NamingException ex) {
-                Server.logMecanismA(time, hostname, "ERROR " + ex.getMessage());
+                Server.logMecanismA(time, hostname, "ERROR " + ex.getClass() + " " + ex.getMessage());
                 return false;
             }
         }
@@ -2035,7 +2048,7 @@ public final class SPF implements Serializable {
         }
         
         private static void dropExpired() {
-            String client = null;
+//            String client = null;
             long end = System.currentTimeMillis() - 604800000;
             TreeMap<Long,String> map = extractHeadMap(end);
             for (long time : map.keySet()) {
@@ -2052,8 +2065,8 @@ public final class SPF implements Serializable {
                         Peer.sendToAll(key, distribution);
                     }
                 }
-                time += 604800000;
-                Server.logQuery(time, "CLEAR", client, tokenSet);
+//                time += 604800000;
+//                Server.logQuery(time, "CLEAR", client, tokenSet);
             }
         }
 
@@ -3622,6 +3635,10 @@ public final class SPF implements Serializable {
             return null;
         }
     }
+    
+    public static String normalizeTokenFull(String token) throws ProcessException {
+        return normalizeToken(token, true, true, true, true);
+    }
 
     private static String normalizeToken(String token) throws ProcessException {
         return normalizeToken(token, true, true, true, false);
@@ -3774,13 +3791,13 @@ public final class SPF implements Serializable {
             return SET.subSet(begin, false, end, false);
         }
         
-        private static boolean add(String token) throws ProcessException {
+        private static String add(String token) throws ProcessException {
             if ((token = normalizeToken(token)) == null) {
                 throw new ProcessException("ERROR: TOKEN INVALID");
             } else if (addExact(token)) {
-                return true;
+                return token;
             } else {
-                return false;
+                return null;
             }
         }
 
@@ -4307,7 +4324,7 @@ public final class SPF implements Serializable {
         }
     }
 
-    public static boolean addBlock(String token) throws ProcessException {
+    public static String addBlock(String token) throws ProcessException {
         return CacheBlock.add(token);
     }
     
@@ -4373,8 +4390,9 @@ public final class SPF implements Serializable {
                 clearSet.add(key);
             }
         }
-        if (Peer.dropAllReputation(token)) {
-            clearSet.add(token);
+        
+        for (String key : Peer.clearAllReputation(token)) {
+            clearSet.add(key);
         }
         return clearSet;
     }
@@ -4870,7 +4888,6 @@ public final class SPF implements Serializable {
         CacheGuess.store();
         CacheHELO.store();
         CacheDefer.store();
-//        CachePeer.store();
     }
 
     /**
@@ -4888,7 +4905,6 @@ public final class SPF implements Serializable {
         CacheGuess.load();
         CacheHELO.load();
         CacheDefer.load();
-//        CachePeer.load();
     }
 
     /**
@@ -4973,7 +4989,8 @@ public final class SPF implements Serializable {
         private static final class HELO implements Serializable {
 
             private static final long serialVersionUID = 1L;
-            private Attributes attributes = null;
+            
+            private Attributes attributes = null; // Obsoleto
             private TreeSet<String> addressSet = null;
             private String address4 = null;
             private String address6 = null;
@@ -5038,6 +5055,8 @@ public final class SPF implements Serializable {
                     Server.logLookupHELO(time, hostname, addressSet.toString());
                 } catch (CommunicationException ex) {
                     Server.logLookupHELO(time, hostname, "TIMEOUT");
+                } catch (ServiceUnavailableException ex) {
+                    Server.logLookupHELO(time, hostname, "SERVFAIL");
                 } catch (NameNotFoundException ex) {
                     this.addressSet = null;
                     this.address4 = null;
@@ -5047,7 +5066,7 @@ public final class SPF implements Serializable {
                     this.addressSet = null;
                     this.address4 = null;
                     this.address6 = null;
-                    Server.logLookupHELO(time, hostname, "ERROR " + ex.getExplanation());
+                    Server.logLookupHELO(time, hostname, "ERROR " + ex.getClass() + " " + ex.getExplanation());
                 } finally {
                     this.attributes = null;
                     this.queryCount = 0;
@@ -5087,6 +5106,7 @@ public final class SPF implements Serializable {
                 return System.currentTimeMillis() - lastQuery > 1209600000;
             }
 
+            @Deprecated
             private synchronized void update() {
                 if (attributes != null) {
                     TreeSet<String> ipv4Set = new TreeSet<String>();
@@ -5476,7 +5496,7 @@ public final class SPF implements Serializable {
                 } else if (spf.isDefinitelyInexistent()) {
                     // O domínio foi dado como inexistente inúmeras vezes.
                     // Rejeitar e denunciar o host pois há abuso de tentativas.
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "sender has non-existent internet domain.\n\n";
@@ -5489,7 +5509,7 @@ public final class SPF implements Serializable {
                 String origem;
                 String fluxo;
                 if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
@@ -5527,24 +5547,24 @@ public final class SPF implements Serializable {
                 if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
                     String url = Core.getSpamURL();
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " "
                             + (url == null ? "" : url) + ticket + "\n\n";
                 } else if (CacheTrap.contains(client, recipient)) {
                     // Calcula frequencia de consultas.
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
                     // Calcula frequencia de consultas.
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
                 } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                     // Calcula frequencia de consultas.
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
@@ -5563,7 +5583,7 @@ public final class SPF implements Serializable {
                 } else {
                     // Calcula frequencia de consultas.
                     String url = Core.getSpamURL();
-                    String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                    String ticket = SPF.addQuery(tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " "
                             + (url == null ? "" : url) + ticket + "\n\n";
@@ -5736,7 +5756,7 @@ public final class SPF implements Serializable {
                             } else if (spf.isDefinitelyInexistent()) {
                                 // O domínio foi dado como inexistente inúmeras vezes.
                                 // Rejeitar e denunciar o host pois há abuso de tentativas.
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "NXDOMAIN\n";
                             } else if (spf.isInexistent()) {
@@ -5745,7 +5765,7 @@ public final class SPF implements Serializable {
                                 result = spf.getResult(ip, sender, helo, logList);
                             }
                             if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
@@ -5816,21 +5836,21 @@ public final class SPF implements Serializable {
                             } else if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL();
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 return result + " " + (url == null ? "" : url) + ticket + "\n";
                             } else if (CacheTrap.contains(client, recipient)) {
                                 // Calcula frequencia de consultas.
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
                             } else if (SPF.isBlocked(tokenSet)) {
                                  // Calcula frequencia de consultas.
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
                             } else if (CacheBlock.contains(client, ip, sender, helo, result, recipient)) {
                                 // Calcula frequencia de consultas.
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
@@ -5845,7 +5865,7 @@ public final class SPF implements Serializable {
                             } else {
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL();
-                                String ticket = SPF.addQuery(ip, sender, helo, tokenSet);
+                                String ticket = SPF.addQuery(tokenSet);
                                 return result + " " + (url == null ? "" : url) + ticket + "\n";
                             }
                         }
@@ -5925,8 +5945,8 @@ public final class SPF implements Serializable {
     }
 
     public static String addQuery(
-            String ip, String sender, String helo,
-            TreeSet<String> tokenSet) throws ProcessException {
+            TreeSet<String> tokenSet
+            ) throws ProcessException {
         long time = System.currentTimeMillis();
         for (String token : expandTokenSet(tokenSet)) {
             Distribution distribution = CacheDistribution.get(token, true);
@@ -5935,9 +5955,7 @@ public final class SPF implements Serializable {
             }
         }
         String ticket = SPF.createTicket(tokenSet);
-        Server.logTicket(time,
-//                ip, sender, helo,
-                tokenSet, ticket);
+//        Server.logTicket(time, tokenSet, ticket);
         return ticket;
     }
 
@@ -6201,10 +6219,24 @@ public final class SPF implements Serializable {
                 }
             }
             int total = binomial[0] + binomial[1];
+            float probability = (float) binomial[1] / (float) total;
             if (total == 0) {
                 return 0.0f;
+            } else if (probability > LIMIAR1 && binomial[1] < 3) {
+                // Quantidade pequena para dar precisão.
+                return LIMIAR1;
+            } else if (probability > LIMIAR2 && binomial[1] < 5) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio temporário é 
+                // necessário pelo meno cinco denuncias.
+                return LIMIAR2;
+            } else if (probability > LIMIAR3 && binomial[1] < 7) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio definitivo é 
+                // necessário pelo meno sete denuncias.
+                return LIMIAR3;
             } else {
-                return (float) binomial[1] / (float) total;
+                return probability;
             }
         }
 
@@ -6255,16 +6287,14 @@ public final class SPF implements Serializable {
         public Status getStatus(String token) {
             Status statusOld = status;
             float probability = getSpamProbability(token);
-            if (probability > LIMIAR3) {
+            if (probability == 0.0f) {
+                status = Status.WHITE;
+            } else if (probability > LIMIAR3) {
                 status = Subnet.isValidIP(token) ? Status.BLACK : Status.BLOCK;
             } else if (probability > LIMIAR2) {
                 status = Status.BLACK;
             } else if (probability > LIMIAR1) {
-                status = Status.GRAY;
-            } else if (probability == 0.0f) {
-                status = Status.WHITE;
-            } else if (statusOld == Status.GRAY && probability > LIMIAR1) {
-                status = Status.BLACK;
+                status = Subnet.isValidIP(token) ? Status.GRAY : Status.BLACK;
             } else if (statusOld == Status.BLACK && probability < LIMIAR1) {
                 status = Status.GRAY;
             }

@@ -500,12 +500,6 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
-##### Plugin de denúncia SPFBL no Roundcube
-
-O plugin de denúncia SPFBL via webmail do Roundcube pode ser encontrada no projeto independente do Ricardo Walter:
-
-![Roundcube-Plugin-markasjunk_spfbl](https://github.com/rikw22/Roundcube-Plugin-markasjunk_spfbl "Roundcube-Plugin-markasjunk_spfbl")
-
 ### Como iniciar o serviço SPFBL
 
 Para instalar o serviço, basta copiar os arquivos "./dist/SPFBL.jar" e "./run/spfbl.conf" do projeto em "/opt/spfbl/".

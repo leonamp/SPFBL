@@ -26,7 +26,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -301,6 +300,31 @@ public final class QueryDNSBL extends Server {
             }
         }
         
+        private boolean isDead() {
+            if (time == 0) {
+                return false;
+            } else {
+                int interval = (int) (System.currentTimeMillis() - time) / 1000;
+                return interval > 600;
+            }
+        }
+        
+        private boolean isTimeout() {
+            if (time == 0) {
+                return false;
+            } else {
+                int interval = (int) (System.currentTimeMillis() - time) / 1000;
+                return interval > 20;
+            }
+        }
+        
+        /**
+         * Método perigoso porém necessário para encontrar falhas.
+         */
+        public void kill() {
+            super.stop();
+        }
+        
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -310,18 +334,31 @@ public final class QueryDNSBL extends Server {
             notify();
         }
         
+        public synchronized void waitCall() throws InterruptedException {
+            wait();
+        }
+        
+        public synchronized DatagramPacket getPacket() {
+            return PACKET;
+        }
+        
+        public synchronized void clearPacket() {
+            PACKET = null;
+        }
+        
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public synchronized void run() {
-            while (continueListenning() && PACKET != null) {
+        public void run() {
+            DatagramPacket packet;
+            while (continueListenning() && (packet = getPacket()) != null) {
                 InetAddress ipAddress = null;
                 String query = null;
                 String type = null;
                 try {
-                    byte[] data = PACKET.getData();
+                    byte[] data = packet.getData();
                     // Processando consulta DNS.
                     Message message = new Message(data);
                     Header header = message.getHeader();
@@ -432,8 +469,8 @@ public final class QueryDNSBL extends Server {
                         result = ttl + " " + result;
                     }
                     // Enviando resposta.
-                    ipAddress = PACKET.getAddress();
-                    int portDestiny = PACKET.getPort();
+                    ipAddress = packet.getAddress();
+                    int portDestiny = packet.getPort();
                     byte[] sendData = message.toWire();
                     DatagramPacket sendPacket = new DatagramPacket(
                             sendData, sendData.length,
@@ -452,17 +489,23 @@ public final class QueryDNSBL extends Server {
                     }
                 } catch (SocketException ex) {
                     // Houve fechamento do socket.
-                    Server.logQueryDNSBL(time, ipAddress == null ? null : ipAddress.getHostAddress(), type + ' ' + query, "SOCKET CLOSED");
+                    Server.logQueryDNSBL(
+                            time,
+                            ipAddress == null ? null : ipAddress.getHostAddress(),
+                            type + ' ' + query,
+                            "SOCKET CLOSED"
+                            );
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
                     try {
-                        PACKET = null;
+                        time = 0;
+                        clearPacket();
                         // Oferece a conexão ociosa na última posição da lista.
                         offer(this);
                         CONNECION_SEMAPHORE.release();
                         // Aguarda nova chamada.
-                        wait();
+                        waitCall();
                     } catch (InterruptedException ex) {
                         Server.logError(ex);
                     }
@@ -476,6 +519,7 @@ public final class QueryDNSBL extends Server {
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
+    private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
     
     /**
      * Semáforo que controla o pool de conexões.
@@ -511,8 +555,42 @@ public final class QueryDNSBL extends Server {
         return CONNECTION_POLL.poll();
     }
     
+    private synchronized Connection pollUsing() {
+        return CONNECTION_USE.poll();
+    }
+    
+    private synchronized void use(Connection connection) {
+        CONNECTION_USE.offer(connection);
+    }
+    
     private synchronized void offer(Connection connection) {
+        CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
+    }
+    
+    private synchronized void offerUsing(Connection connection) {
+        CONNECTION_USE.offer(connection);
+    }
+    
+    private synchronized void subtractConnection() {
+        CONNECTION_COUNT--;
+    }
+    
+    public void interruptTimeout() {
+        Connection connection = pollUsing();
+        if (connection != null) {
+            if (connection.isDead()) {
+                Server.logDebug("connection " + connection.getName() + " is deadlocked.");
+                // Temporário até encontrar a deadlock.
+                connection.kill();
+                subtractConnection();
+            } else if (connection.isTimeout()) {
+                offerUsing(connection);
+                connection.interrupt();
+            } else {
+                offerUsing(connection);
+            }
+        }
     }
     
     /**
@@ -524,6 +602,8 @@ public final class QueryDNSBL extends Server {
             Connection connection = poll();
             if (connection == null) {
                 CONNECION_SEMAPHORE.release();
+            } else {
+                use(connection);
             }
             return connection;
         } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
@@ -580,6 +660,7 @@ public final class QueryDNSBL extends Server {
      */
     @Override
     protected void close() {
+        long start = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -590,9 +671,28 @@ public final class QueryDNSBL extends Server {
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
+            } finally {
+                int idle = (int) (System.currentTimeMillis() - start) / 1000;
+                if (idle > 10) {
+                    // Temporário até encontrar a deadlock.
+                    Server.logDebug("DNSBL socket is deadlocked.");
+                    kill();
+                }
             }
         }
         Server.logDebug("unbinding DSNBL socket on port " + PORT + "...");
         SERVER_SOCKET.close();
+    }
+    
+    /**
+     * Método perigoso porém necessário para encontrar falhas.
+     */
+    public void kill() {
+        Connection connection;
+        while ((connection = pollUsing()) != null) {
+            connection.kill();
+            subtractConnection();
+        }
+        super.stop();
     }
 }

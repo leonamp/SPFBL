@@ -117,6 +117,7 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         Peer.load();
+        Reverse.load();
         SPF.load();
         QueryDNSBL.load();
     }
@@ -135,6 +136,7 @@ public abstract class Server extends Thread {
         Handle.store();
         NameServer.store();
         Peer.store();
+        Reverse.store();
         SPF.store();
         QueryDNSBL.store();
     }
@@ -486,13 +488,7 @@ public abstract class Server extends Thread {
      * @param tokenSet o conjunto de tokens.
      */
     public static void logTicket(long time, 
-//            String ip, String sender, String helo,
             TreeSet<String> tokenSet, String ticket) {
-//        if (sender == null) {
-//            log(time, "TIKET", ip + " " + helo + " " + tokenSet, ticket);
-//        } else {
-//            log(time, "TIKET", ip + " " + sender + " " + helo + " " + tokenSet, ticket);
-//        }
         log(time, "TIKET", tokenSet.toString(), ticket);
     }
     
@@ -1507,7 +1503,8 @@ public abstract class Server extends Thread {
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.addBlock(blockedToken)) {
+                                if (client == null && (blockedToken = SPF.addBlock(blockedToken)) != null) {
+                                    Peer.sendBlockToAll(blockedToken);
                                     result += "ADDED\n";
                                 } else if (client != null && SPF.addBlock(client, blockedToken)) {
                                     result += "ADDED\n";
@@ -2217,16 +2214,15 @@ public abstract class Server extends Thread {
                         for (String tokenReputation : distributionMap.keySet()) {
                             Distribution distribution = distributionMap.get(tokenReputation);
                             float probability = distribution.getSpamProbability(tokenReputation);
-                            Status status = distribution.getStatus(tokenReputation);
-//                            String frequency = distribution.getFrequencyLiteral();
-                            stringBuilder.append(tokenReputation);
-                            stringBuilder.append(' ');
-//                            stringBuilder.append(frequency);
-//                            stringBuilder.append(' ');
-                            stringBuilder.append(status);
-                            stringBuilder.append(' ');
-                            stringBuilder.append(DECIMAL_FORMAT.format(probability));
-                            stringBuilder.append('\n');
+                            if (probability >= 0.01f) {
+                                Status status = distribution.getStatus(tokenReputation);
+                                stringBuilder.append(tokenReputation);
+                                stringBuilder.append(' ');
+                                stringBuilder.append(status);
+                                stringBuilder.append(' ');
+                                stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                                stringBuilder.append('\n');
+                            }
                         }
                         result = stringBuilder.toString();
                     }

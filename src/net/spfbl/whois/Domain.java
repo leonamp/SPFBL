@@ -26,9 +26,11 @@ import java.io.Serializable;
 import java.io.StringReader;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
@@ -907,8 +909,8 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    private static synchronized ArrayList<String> getSetTLD() {
-        ArrayList<String> set = new ArrayList<String>();
+    private static synchronized TreeSet<String> getSetTLD() {
+        TreeSet<String> set = new TreeSet<String>();
         set.addAll(TLD_SET);
         return set;
     }
@@ -918,7 +920,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             try {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/tld.set");
-                ArrayList<String> set = getSetTLD();
+                TreeSet<String> set = getSetTLD();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(set, outputStream);
@@ -938,8 +940,13 @@ public class Domain implements Serializable, Comparable<Domain> {
         return MAP.put(key, domain);
     }
     
-    private static synchronized boolean addAll(HashSet<String> set) {
-        return TLD_SET.addAll(set);
+    private static synchronized void addAll(Collection<String> set) {
+        for (String tld : set) {
+            if (!tld.startsWith(".")) {
+                tld = '.' + tld;
+            }
+            TLD_SET.add(tld);
+        }
     }
     
     /**
@@ -973,7 +980,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         file = new File("./data/tld.set");
         if (file.exists()) {
             try {
-                HashSet<String> set;
+                Collection<String> set;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     set = SerializationUtils.deserialize(fileInputStream);
@@ -1002,10 +1009,10 @@ public class Domain implements Serializable, Comparable<Domain> {
         } catch (NameNotFoundException ex) {
             Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-        } catch (ServiceUnavailableException ex) {
-            Server.logCheckDNS(time, host, "UNAVAILABLE");
         } catch (CommunicationException ex) {
             Server.logCheckDNS(time, host, "TIMEOUT");
+        } catch (ServiceUnavailableException ex) {
+            Server.logCheckDNS(time, host, "SERVFAIL");
         } catch (Exception ex) {
             // Houve uma falha indefinida para encontrar os registros.
             Server.logError(ex);

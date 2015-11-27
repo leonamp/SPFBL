@@ -47,8 +47,8 @@ import net.spfbl.whois.SubnetIPv6;
 public class Core {
     
     private static final byte VERSION = 1;
-    private static final byte SUBVERSION = 2;
-    private static final byte RELEASE = 1;
+    private static final byte SUBVERSION = 3;
+    private static final byte RELEASE = 0;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -58,15 +58,15 @@ public class Core {
         return VERSION + "." + SUBVERSION + "." + RELEASE;
     }
     
-    private static PeerUDP peerUDP = null;
-    
-    public static void sendCommandToPeer(
+    public static String sendCommandToPeer(
             String command,
             String address,
             int port
-            ) throws ProcessException {
-        if (peerUDP != null) {
-            peerUDP.send(command, address, port);
+            ) {
+        if (peerUDP == null) {
+            return "DISABLED";
+        } else {
+            return peerUDP.send(command, address, port);
         }
     }
     
@@ -98,6 +98,8 @@ public class Core {
     
     private static AdministrationTCP administrationTCP = null;
     private static QuerySPF querySPF = null;
+    private static QueryDNSBL queryDNSBL = null;
+    private static PeerUDP peerUDP = null;
     
     public static void interruptTimeout() {
         if (administrationTCP != null) {
@@ -105,6 +107,12 @@ public class Core {
         }
         if (querySPF != null) {
             querySPF.interruptTimeout();
+        }
+        if (queryDNSBL != null) {
+            queryDNSBL.interruptTimeout();
+        }
+        if (peerUDP != null) {
+            peerUDP.interruptTimeout();
         }
     }
     
@@ -376,7 +384,8 @@ public class Core {
                     peerUDP.start();
                 }
                 if (PORT_DNSBL > 0) {
-                    new QueryDNSBL(PORT_DNSBL).start();
+                    queryDNSBL = new QueryDNSBL(PORT_DNSBL);
+                    queryDNSBL.start();
                 }
                 if (PORT_HTTP > 0 ) {
                     complainHTTP = new ComplainHTTP(HOSTNAME, PORT_HTTP);
@@ -456,6 +465,18 @@ public class Core {
         }
     }
     
+    private static class TimerRefreshReverse extends TimerTask {
+        public TimerRefreshReverse() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Atualiza registro de IP reverso mais consultado.
+            Reverse.refreshLast();
+        }
+    }
+    
     private static class TimerRefreshWHOIS extends TimerTask {
         public TimerRefreshWHOIS() {
             super();
@@ -516,6 +537,18 @@ public class Core {
         }
     }
     
+    private static class TimerDropExpiredReverse extends TimerTask {
+        public TimerDropExpiredReverse() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Apagar todas os registros de IP reverso vencidos.
+            Reverse.dropExpired();
+        }
+    }
+    
     private static class TimerDropExpiredDistribution extends TimerTask {
         public TimerDropExpiredDistribution() {
             super();
@@ -569,11 +602,13 @@ public class Core {
         TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
         TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
         TIMER01.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
+        TIMER01.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
         TIMER10.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
         TIMER30.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
         TIMER30.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
         TIMER60.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
+        TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerStoreCache(), 3000000, 3600000); // Frequência de 1 hora.
