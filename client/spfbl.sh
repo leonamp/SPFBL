@@ -29,9 +29,10 @@
 IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
+DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.7"
+version="0.8"
 
 head()
 {
@@ -899,7 +900,8 @@ case $1 in
 				#
 				#    1. cidr: chave primária - endereço do host de acesso.
 				#    2. domain: organizador do cadastro
-				#    3. email: [opcional] e-mail do cliente
+				#	 3. option: opções de acesso -> NONE, SPFBL ou DNSBL
+				#    4. email: [opcional] e-mail do cliente
 				#
 				# Códigos de saída:
 				#
@@ -907,19 +909,19 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 
-				if [ $# -lt "4" ]; then
+				if [ $# -lt "5" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client add cidr domain [email]\n"
+					printf "Faltando parametro(s).\nSintaxe: $0 client add cidr domain option [email]\n"
 				else
 					cidr=$3
 					domain=$4
+					option=$5
+					email=""
 
-					if [ -z "$5" ]; then
-						response=$(echo "CLIENT ADD $cidr $domain" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					else
-						email=$5
-						response=$(echo "CLIENT ADD $cidr $domain $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					if [ -z "$6" ]; then
+						email=$6
 					fi
+					response=$(echo "CLIENT ADD $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -941,7 +943,8 @@ case $1 in
 				#
 				#    1. cidr: chave primária - endereço do host de acesso.
 				#    2. domain: organizador do cadastro
-				#    3. email: [opcional] e-mail do cliente
+				#	 3. option: opções de acesso -> NONE, SPFBL ou DNSBL
+				#    4. email: [opcional] e-mail do cliente
 				#
 				# Códigos de saída:
 				#
@@ -951,16 +954,17 @@ case $1 in
 
 				if [ $# -lt "4" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client set cidr domain [email]\n"
+					printf "Faltando parametro(s).\nSintaxe: $0 client set cidr domain option [email]\n"
 				else
 					cidr=$3
 					domain=$4
+					option=$5
 
-					if [ -z "$5" ]; then
-						response=$(echo "CLIENT SET $cidr $domain" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					if [ -z "$6" ]; then
+						response=$(echo "CLIENT SET $cidr $domain $option" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						email=$5
-						response=$(echo "CLIENT SET $cidr $domain $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						email=$6
+						response=$(echo "CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1044,7 +1048,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 client add cidr domain [email] \n    $0 client set cidr domain [email] \n    $0 client drop cidr\n    $0 client show\n"
+				printf "Syntax:\n    $0 client add cidr domain option [email] \n    $0 client set cidr domain option [email] \n    $0 client drop cidr\n    $0 client show\n"
 			;;
 		esac
 	;;
@@ -1749,7 +1753,7 @@ case $1 in
 				exit 5
 			fi
 
-                        if [[ -z $url ]]; then
+			if [[ -z $url ]]; then
 				if [[ -z $ticket ]]; then
 					echo "Ticket SPFBL inválido."
 					exit 6
@@ -1787,7 +1791,6 @@ case $1 in
 					echo "A reclamação SPFBL não foi enviada: $resposta"
 					exit 3
 				fi
-
 			fi
 		fi
 	;;
@@ -1813,8 +1816,8 @@ case $1 in
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
-                                # O parâmentro é uma URL de denúncia SPFBL.
-                                url=$2
+	            # O parâmentro é uma URL de denúncia SPFBL.
+	            url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
@@ -2101,9 +2104,41 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 trap add recipient\n    $0 trap drop recipient\n    $0 trap show\n"
+				printf "Syntax:\n    $0 trap add recipduient\n    $0 trap drop recipient\n    $0 trap show\n"
 			;;
 		esac
+	;;
+	'dump')
+		# Parâmetros de entrada: nenhum.
+		#
+		# Códigos de saída: nenhum.
+
+		echo "DUMP" | nc $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
+		if [ -f $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") ]; then
+			echo "Dump saved as $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")"
+		else
+			echo "File $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") not found."
+		fi
+	;;
+	'load')
+		# Parâmetros de entrada: nenhum.
+		#
+		# Códigos de saída: nenhum.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 load path\n"
+		else
+			file=$1
+			if [ -f $file ]; then
+				for line in `cat $file`; do
+					echo -n "Adding $line ... "
+					echo "$line" | nc $IP_SERVIDOR $PORTA_ADMIN
+				done
+			else
+				echo "File not found."
+			fi
+		fi
 	;;
 	*)
 		head
@@ -2129,10 +2164,12 @@ case $1 in
 		printf "    $0 retention { show [host] | release { sender | all } | reject { sender | all } }\n"
 		printf "    $0 provider { add sender | drop sender | show }\n"
 		printf "    $0 ignore { add sender | drop sender | show }\n"
-		printf "    $0 client { add cidr domain [email] | drop cidr | show }\n"
+		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"
 		printf "    $0 user { add email nome | drop email | show }\n"
 		printf "    $0 superblock { add sender | drop sender | show [all] }\n"
 		printf "    $0 superwhite { add sender | drop sender | show }\n"
+		printf "    $0 dump\n"
+		printf "    $0 load path\n"
 		printf "\n"
 	;;
 esac
