@@ -1525,7 +1525,7 @@ case $1 in
 		#    1: lista vazia.
 		#    2: timeout de conexão.
 
-		response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+		response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
@@ -1921,6 +1921,8 @@ case $1 in
 		#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
 		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
+		#    NXDOMAIN: o domínio do remetente é inexistente.
+		#    INVALID: o endereço do remetente é inválido.
 		#
 		# Códigos de saída:
 		#
