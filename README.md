@@ -573,7 +573,7 @@ O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completame
 
 Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
 ```
-echo "PEER ADD sub.domain2.tld:9877 <send> <receive>" | nc localhost 9875
+./spfbl.sh peer add sub.domain2.tld:9877 <send> <receive>
 sub.domain2.tld:9877 <send> <receive> 0 DEAD >100ms UNDEFINED
 ```
 
@@ -593,13 +593,13 @@ Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de
 
 Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não. A visualização da lista de peers pode ser feita executando o seguinte comando:
 ```
-echo "PEER SHOW" | nc localhost 9875
+./spfbl.sh peer show
 sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
 Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para &lt;send&gt; e &lt;receive&gt;:
 ```
-echo "PEER SET sub.domain.tld <send> <receive>" | nc localhost 9875
+./spfbl.sh peer set sub.domain.tld <send> <receive>
 sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 UPDATED SEND=<send>
 UPDATED RECEIVE=<receive>
@@ -607,7 +607,7 @@ UPDATED RECEIVE=<receive>
 
 Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
 ```
-echo "PEER SHOW" | nc localhost 9875
+./spfbl.sh peer show
 sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
@@ -617,11 +617,11 @@ Sempre que o status <receive> do peer for RETAIN, o SPFBL vai criar uma lista se
 
 Quando os peers tiverem identificadores retidos, a lista deles poderão ser vistas através deste comando:
 ```
-user:~# ./spfbl.sh "PEER RETENTION SHOW (ALL|<peer>)"
+user:~# ./spfbl.sh retention show (<peer>|all)
 ```
 Exemplo:
 ```
-user:~# ./spfbl.sh "PEER RETENTION SHOW ALL"
+user:~# ./spfbl.sh retention show all
 <peer1_hostame>:.br.netunoserver.net.br
 <peer1_hostame>:.carrosvermelhos.top
 <peer1_hostame>:.rdns-3.k7mail.com.br
@@ -643,11 +643,11 @@ user:~# ./spfbl.sh "PEER RETENTION SHOW ALL"
 
 Para liberar todas as retenções, fazendo com que o SPFBL considere todos para BLOCK, utilie este comando:
 ```
-user:~# ./spfbl.sh "PEER RETENTION REJECT (ALL|<identificador>)"
+user:~# ./spfbl.sh retention release (all|<identificador>)
 ```
 Exemplo:
 ```
-user:~# ./spfbl.sh "PEER RETENTION RELEASE ALL"
+user:~# ./spfbl.sh retention release all
 <peer1_hostame>:.br.netunoserver.net.br => ADDED
 <peer1_hostame>:.carrosvermelhos.top => EXISTS
 <peer1_hostame>:.rdns-3.k7mail.com.br => ADDED
@@ -669,7 +669,7 @@ user:~# ./spfbl.sh "PEER RETENTION RELEASE ALL"
 
 Para rejeitar os identificadores retidos, utilize este comando:
 ```
-user:~# ./spfbl.sh "PEER RETENTION REJECT (ALL|<identificador>)"
+user:~# ./spfbl.sh retention reject (ALL|<identificador>)
 ```
 
 ### Pools conhecidos em funcionamento
