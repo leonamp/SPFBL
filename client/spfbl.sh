@@ -918,9 +918,10 @@ case $1 in
 					option=$5
 					email=""
 
-					if [ -z "$6" ]; then
+					if [ -n "$6" ]; then
 						email=$6
 					fi
+					
 					response=$(echo "CLIENT ADD $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
@@ -959,13 +960,13 @@ case $1 in
 					cidr=$3
 					domain=$4
 					option=$5
+					email=""
 
-					if [ -z "$6" ]; then
-						response=$(echo "CLIENT SET $cidr $domain $option" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					else
+					if [ -n "$6" ]; then
 						email=$6
-						response=$(echo "CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
+					
+					response=$(echo "CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
