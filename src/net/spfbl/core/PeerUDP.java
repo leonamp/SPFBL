@@ -290,8 +290,9 @@ public final class PeerUDP extends Server {
                         }
                     }
                     // Log do bloqueio com o respectivo resultado.
-                    Server.logQuery(
+                    Server.log(
                             time,
+                            Core.Level.DEBUG,
                             type,
                             address,
                             token,
@@ -473,7 +474,16 @@ public final class PeerUDP extends Server {
                                 "TOO MANY CONNECTIONS"
                                 );
                     } else {
-                        connection.process(packet, time);
+                        try {
+                            connection.process(packet, time);
+                        } catch (IllegalThreadStateException ex) {
+                            // Houve problema na liberação do processo.
+                            InetAddress ipAddress = packet.getAddress();
+                            String result = "ERROR: FATAL\n";
+                            Server.logError(ex);
+                            Server.logQueryDNSBL(time, ipAddress, null, result);
+                            offer(connection);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().

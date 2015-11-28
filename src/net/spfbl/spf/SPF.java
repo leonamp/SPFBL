@@ -2066,7 +2066,7 @@ public final class SPF implements Serializable {
                     }
                 }
 //                time += 604800000;
-//                Server.logQuery(time, "CLEAR", client, tokenSet);
+//                Server.log(time, "CLEAR", client, tokenSet);
             }
         }
 
@@ -2118,7 +2118,7 @@ public final class SPF implements Serializable {
                         return null;
                     }
                 }
-                Server.logQuery(time, "CMPLN", origin, ticket, blackSet);
+                Server.log(time, Core.Level.DEBUG, "CMPLN", origin, ticket, blackSet);
                 return blackSet;
             }
         }
@@ -2298,7 +2298,7 @@ public final class SPF implements Serializable {
                         && distribution.isExpired14()) {
                     distribution = drop(token);
                     if (distribution != null) {
-                        Server.log(time, "REPTN", token, "EXPIRED");
+                        Server.log(time, Core.Level.DEBUG, "REPTN", token, "EXPIRED");
                     }
                 }
             }
@@ -5455,15 +5455,15 @@ public final class SPF implements Serializable {
         if (!Domain.isEmail(recipient)) {
             recipient = null;
         }
-        if (sender != null && !Domain.isEmail(sender)) {
-            return "action=REJECT [RBL] "
-                    + sender + " is not a valid e-mail address.\n\n";
-        } else if (sender != null && Domain.isReserved(sender)) {
-            return "action=REJECT [RBL] "
-                    + sender + " has a reserved domain.\n\n";
-        } else if (!Subnet.isValidIP(ip)) {
+        if (!Subnet.isValidIP(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
+//        } else if (sender != null && !Domain.isEmail(sender)) {
+//            return "action=REJECT [RBL] "
+//                    + sender + " is not a valid e-mail address.\n\n";
+//        } else if (sender != null && Domain.isReserved(sender)) {
+//            return "action=REJECT [RBL] "
+//                    + sender + " has a reserved domain.\n\n";
         } else {
             try {
                 TreeSet<String> tokenSet = new TreeSet<String>();
@@ -5487,6 +5487,17 @@ public final class SPF implements Serializable {
                         // IPv6 for único para o HELO.
                         tokenSet.add(ipv6);
                     }
+                }
+                if (sender != null && !Domain.isEmail(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=REJECT [RBL] "
+                            + sender + " is not a valid e-mail address.\n\n";
+                } else if (sender != null && Domain.isReserved(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=REJECT [RBL] "
+                            + sender + " has a reserved domain.\n\n";
                 }
                 String result;
                 LinkedList<String> logList = new LinkedList<String>();
@@ -5711,10 +5722,10 @@ public final class SPF implements Serializable {
                         }
                         if (!Subnet.isValidIP(ip)) {
                             return "INVALID\n";
-                        } else if (sender != null && !Domain.isEmail(sender)) {
-                            return "INVALID\n";
-                        } else if (sender != null && Domain.isReserved(sender)) {
-                            return "INVALID\n";
+//                        } else if (sender != null && !Domain.isEmail(sender)) {
+//                            return "INVALID\n";
+//                        } else if (sender != null && Domain.isReserved(sender)) {
+//                            return "INVALID\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
@@ -5737,6 +5748,17 @@ public final class SPF implements Serializable {
                                     // IPv6 for único para o HELO.
                                     tokenSet.add(ipv6);
                                 }
+                            }
+                            if (sender != null && !Domain.isEmail(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                // Endereço inválido do remetente.
+                                return "INVALID\n";
+                            } else if (sender != null && Domain.isReserved(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                // Endereço inválido do remetente.
+                                return "INVALID\n";
                             }
                             LinkedList<String> logList = null;
                             if (sender != null && firstToken.equals("CHECK")) {

@@ -366,7 +366,7 @@ public final class QueryDNSBL extends Server {
                     Name name = question.getName();
                     type = Type.string(question.getType());
                     query = name.toString();
-                    String result = "UNDEFINED";
+                    String result = "NXDOMAIN";
                     long ttl = 3600; // Uma hora.
                     String information = null;
                     String ip = "";
@@ -641,7 +641,16 @@ public final class QueryDNSBL extends Server {
                         String result = "TOO MANY CONNECTIONS\n";
                         Server.logQueryDNSBL(time, ipAddress, null, result);
                     } else {
-                        connection.process(packet, time);
+                        try {
+                            connection.process(packet, time);
+                        } catch (IllegalThreadStateException ex) {
+                            // Houve problema na liberação do processo.
+                            InetAddress ipAddress = packet.getAddress();
+                            String result = "ERROR: FATAL\n";
+                            Server.logError(ex);
+                            Server.logQueryDNSBL(time, ipAddress, null, result);
+                            offer(connection);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().

@@ -660,6 +660,7 @@ public final class QuerySPF extends Server {
                             connection.process(socket, time);
                         } catch (IllegalThreadStateException ex) {
                             // Houve problema na liberação do processo.
+                            Server.logError(ex);
                             sendMessage(time, socket, "ERROR: FATAL\n");
                             offer(connection);
                         }
