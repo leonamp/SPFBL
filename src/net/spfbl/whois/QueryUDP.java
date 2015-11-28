@@ -211,7 +211,7 @@ public final class QueryUDP extends Server {
     @Override
     public synchronized void run() {
         try {
-            Server.logDebug("listening queries on UDP port " + PORT + "...");
+            Server.logInfo("listening queries on UDP port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -236,7 +236,7 @@ public final class QueryUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie UDP server closed.");
+            Server.logInfo("querie UDP server closed.");
         }
     }
     

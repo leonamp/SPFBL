@@ -4227,37 +4227,42 @@ public final class SPF implements Serializable {
         private static String findHost(String client,
                 String host, String qualifier,
                 String recipient, String recipientDomain) {
-            do {
-                int index = host.indexOf('.') + 1;
-                host = host.substring(index);
-                String token = '.' + host;
-                if (containsExact(token)) {
-                    return token;
-                } else if (containsExact(token + '>' + recipient)) {
-                    return token + '>' + recipient;
-                } else if (containsExact(token + '>' + recipientDomain)) {
-                    return token + '>' + recipientDomain;
-                } else if (containsExact(token + ';' + qualifier)) {
-                    return token + ';' + qualifier;
-                } else if (containsExact(token + ';' + qualifier + '>' + recipient)) {
-                    return token + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
-                    return token + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + token)) {
-                    return token;
-                } else if (containsExact(client + ':' + token + '>' + recipient)) {
-                    return token + '>' + recipient;
-                } else if (containsExact(client + ':' + token + '>' + recipientDomain)) {
-                    return token + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + token + ';' + qualifier)) {
-                    return token + ';' + qualifier;
-                } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
-                    return token + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
-                    return token + ';' + qualifier + '>' + recipientDomain;
-                }
-            } while (host.contains("."));
-            return null;
+            host = Domain.extractHost(host, true);
+            if (host == null) {
+                return null;
+            } else {
+                do {
+                    int index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token = '.' + host;
+                    if (containsExact(token)) {
+                        return token;
+                    } else if (containsExact(token + '>' + recipient)) {
+                        return token + '>' + recipient;
+                    } else if (containsExact(token + '>' + recipientDomain)) {
+                        return token + '>' + recipientDomain;
+                    } else if (containsExact(token + ';' + qualifier)) {
+                        return token + ';' + qualifier;
+                    } else if (containsExact(token + ';' + qualifier + '>' + recipient)) {
+                        return token + ';' + qualifier + '>' + recipient;
+                    } else if (containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
+                        return token + ';' + qualifier + '>' + recipientDomain;
+                    } else if (containsExact(client + ':' + token)) {
+                        return token;
+                    } else if (containsExact(client + ':' + token + '>' + recipient)) {
+                        return token + '>' + recipient;
+                    } else if (containsExact(client + ':' + token + '>' + recipientDomain)) {
+                        return token + '>' + recipientDomain;
+                    } else if (containsExact(client + ':' + token + ';' + qualifier)) {
+                        return token + ';' + qualifier;
+                    } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
+                        return token + ';' + qualifier + '>' + recipient;
+                    } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
+                        return token + ';' + qualifier + '>' + recipientDomain;
+                    }
+                } while (host.contains("."));
+                return null;
+            }
         }
 
         private static void store() {
@@ -5826,7 +5831,7 @@ public final class SPF implements Serializable {
                                         result += "   " + log + "\n";
                                     }
                                 }
-                                String block = CacheBlock.find(client, ip, sender, helo, query, recipient);
+                                String block = CacheBlock.find(client, ip, sender, helo, result, recipient);
                                 if (block != null) {
                                     result += "\nFirst BLOCK match: " + block + "\n";
                                 }

@@ -647,7 +647,7 @@ public final class QuerySPF extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening queries on SPF port " + PORT + "...");
+            Server.logInfo("listening queries on SPF port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
@@ -672,7 +672,7 @@ public final class QuerySPF extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie SPFBL server closed.");
+            Server.logInfo("querie SPFBL server closed.");
         }
     }
     

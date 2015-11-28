@@ -220,7 +220,7 @@ public final class QueryTCP extends Server {
     @Override
     public synchronized void run() {
         try {
-            Server.logDebug("listening queries on TCP port " + PORT + "...");
+            Server.logInfo("listening queries on TCP port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
@@ -245,7 +245,7 @@ public final class QueryTCP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie TCP server closed.");
+            Server.logInfo("querie TCP server closed.");
         }
     }
     

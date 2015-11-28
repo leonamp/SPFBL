@@ -456,7 +456,7 @@ public final class PeerUDP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening P2P port " + PORT + "...");
+            Server.logInfo("listening P2P port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -492,7 +492,7 @@ public final class PeerUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie P2P server closed.");
+            Server.logInfo("querie P2P server closed.");
         }
     }
     

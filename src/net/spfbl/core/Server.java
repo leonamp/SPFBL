@@ -452,6 +452,14 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as mensagens para informação.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logInfo(String message) {
+        log(System.currentTimeMillis(), Core.Level.INFO, "INFOR", message, (String) null);
+    }
+    
+    /**
      * Registra as mensagens para depuração.
      * @param message a mensagem a ser registrada.
      */
@@ -789,7 +797,7 @@ public abstract class Server extends Thread {
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
-        Server.logDebug("shutting down server...");
+        Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {

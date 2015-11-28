@@ -48,7 +48,7 @@ public class Core {
     
     private static final byte VERSION = 1;
     private static final byte SUBVERSION = 3;
-    private static final byte RELEASE = 1;
+    private static final byte RELEASE = 2;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -404,7 +404,7 @@ public class Core {
                 JUnique.sendMessage(appId, "register");
             } else {
                 startConfiguration();
-                Server.logDebug("starting server...");
+                Server.logInfo("starting server...");
                 Server.loadCache();
                 SPF.dropExpiredComplain();
                 administrationTCP = new AdministrationTCP(PORT_ADMIN);

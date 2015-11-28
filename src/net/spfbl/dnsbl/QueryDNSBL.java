@@ -627,7 +627,7 @@ public final class QueryDNSBL extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening DNSBL on UDP port " + PORT + "...");
+            Server.logInfo("listening DNSBL on UDP port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -659,7 +659,7 @@ public final class QueryDNSBL extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie DNSBL server closed.");
+            Server.logInfo("querie DNSBL server closed.");
         }
     }
     
