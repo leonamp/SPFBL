@@ -483,7 +483,7 @@ public final class PeerUDP extends Server {
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
-                } else if (connection.isAlive()) {
+                } else {
                     connection.close();
                 }
             } catch (Exception ex) {
