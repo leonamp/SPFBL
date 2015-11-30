@@ -17,6 +17,7 @@ if [ "$1" == "--uninstall" ]; then
     echo "----------------------------"
     echo "Setting down SPFBL Server..."
     echo "----------------------------"
+    echo "SHUTDOWN" | nc 127.0.0.1 9875
     rm -rf /opt/spfbl
     rm -rf /etc/spfbl
     rm -rf /usr/src/SPFBL
@@ -61,7 +62,7 @@ else
     if [ ! -d /etc/spfbl ]; then
         echo -n "Creating /etc/spfbl .. "
         mkdir -p /etc/spfbl
-        mv SPFBL/client/*.sh /etc/spfbl/
+        cp SPFBL/client/*.sh /etc/spfbl/
         ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
         [ -d /etc/spfbl ] && success || failure
         echo
@@ -71,13 +72,14 @@ else
     if [ ! -d /opt/spfbl ]; then
         echo -n "Creating /opt/spfbl .. "
         mkdir -p /opt/spfbl/bin
-        mv SPFBL/run/spfbl-init.sh /opt/spfbl/bin/
+        cp SPFBL/run/spfbl-init.sh /opt/spfbl/bin/
         # Store SPFBL core to /opt
-        mv SPFBL/dist/* /opt/spfbl/
-        mv SPFBL/lib /opt/spfbl/
-        mv SPFBL/data /opt/spfbl/
-        mv SPFBL/doc /opt/spfbl/
-        mv SPFBL/README.md /opt/spfbl/doc/
+        cp SPFBL/dist/* /opt/spfbl/
+        cp SPFBL/run/spfbl.conf /opt/spfbl/
+        cp SPFBL/lib /opt/spfbl/
+        cp SPFBL/data /opt/spfbl/
+        cp SPFBL/doc /opt/spfbl/
+        cp SPFBL/README.md /opt/spfbl/doc/
         [ -d /opt/spfbl ] && success || failure
         echo
     fi
@@ -93,7 +95,7 @@ else
     # Enable SPFBL autostart
     if [ -f /etc/redhat-release ]; then
         echo -n "Installing spfbl into /etc/init.d .. "
-        mv SPFBL/run/spfbl-init-centos /etc/init.d/spfbl
+        cp SPFBL/run/spfbl-init-centos /etc/init.d/spfbl
         chkconfig --add spfbl
         chkconfig spfbl on
         [ -f /etc/init.d/spfbl ] && success || failure
@@ -104,7 +106,7 @@ else
     
     # Make log rotation
     echo -n "Installing spfbl into /etc/logrotate.d .. "
-    mv SPFBL/run/spfbl-rotate /etc/logrotate.d/spfbl
+    cp SPFBL/run/spfbl-rotate /etc/logrotate.d/spfbl
     [ -f /etc/logrotate.d/spfbl ] && success || failure
     echo
     
