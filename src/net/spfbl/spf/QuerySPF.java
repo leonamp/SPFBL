@@ -270,6 +270,32 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "EMPTY\n";
                                 }
+                            } else if (line.startsWith("BLOCK FIND ")) {
+                                query = line.substring(6).trim();
+                                type = "BLOCK";
+                                // Mecanismo de remoção de bloqueio de remetente.
+                                line = line.substring(11);
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                while (tokenizer.hasMoreElements()) {
+                                    try {
+                                        String token = tokenizer.nextToken();
+                                        String block = SPF.findBlock(client, token);
+                                        if (result == null) {
+                                            result = (block == null ? "NONE" : block) + "\n";
+                                        } else {
+                                            result += (block == null ? "NONE" : block) + "\n";
+                                        }
+                                    } catch (Exception ex) {
+                                        if (result == null) {
+                                            result = ex.getMessage() + "\n";
+                                        } else {
+                                            result += ex.getMessage() + "\n";
+                                        }
+                                    }
+                                }
+                                if (result == null) {
+                                    result = "ERROR: COMMAND";
+                                }
                             } else if (line.startsWith("TRAP ADD ")) {
                                 query = line.substring(5).trim();
                                 type = "STRAP";

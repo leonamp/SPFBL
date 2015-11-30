@@ -874,7 +874,7 @@ public final class SPF implements Serializable {
                         }
                     }
                 } else if (mechanism instanceof MechanismPTR) {
-                    if (deep == 0 && mechanism.match(ip, sender, helo)) {
+                    if (mechanism.match(ip, sender, helo)) {
                         // Mecanismo PTR só será processado
                         // no primeiro nível da árvore.
                         Qualifier qualifier = mechanism.getQualifier();
@@ -3917,6 +3917,169 @@ public final class SPF implements Serializable {
             return blockSet;
         }
         
+        private static String find(String client, String token) {
+            TreeSet<String> whoisSet = new TreeSet<String>();
+            TreeSet<String> regexSet = new TreeSet<String>();
+            if (token == null) {
+                return null;
+            } else if (Domain.isEmail(token)) {
+                String sender = token.toLowerCase();
+                int index1 = sender.indexOf('@');
+                int index2 = sender.lastIndexOf('@');
+                String part = sender.substring(0, index1 + 1);
+                String senderDomain = sender.substring(index2);
+                if (containsExact(sender)) {
+                    return sender;
+                } else if (containsExact(client + ':' + sender)) {
+                    return sender;
+                } else if (containsExact(part)) {
+                    return part;
+                } else if (containsExact(client + ':' + part)) {
+                    return part;
+                } else if (containsExact(senderDomain)) {
+                    return senderDomain;
+                } else if (containsExact(client + ':' + senderDomain)) {
+                    return senderDomain;
+                } else {
+                    int index3 = senderDomain.length();
+                    while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
+                        String subdomain = senderDomain.substring(0, index3 + 1);
+                        if (containsExact(subdomain)) {
+                            return subdomain;
+                        } else if (containsExact(client + ':' + subdomain)) {
+                            return subdomain;
+                        }
+                    }
+                    String host = '.' + senderDomain.substring(1);
+                    do {
+                        int index = host.indexOf('.') + 1;
+                        host = host.substring(index);
+                        token = '.' + host;
+                        if (containsExact(token)) {
+                            return token;
+                        } else if (containsExact(client + ':' + token)) {
+                            return token;
+                        }
+                    } while (host.contains("."));
+                    int index4 = sender.length();
+                    while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
+                        String subsender = sender.substring(0, index4 + 1);
+                        if (containsExact(subsender)) {
+                            return subsender;
+                        } else if (containsExact(client + ':' + subsender)) {
+                            return subsender;
+                        }
+                    }
+                }
+                if (senderDomain.endsWith(".br")) {
+                    whoisSet.add(senderDomain);
+                }
+                regexSet.add(sender);
+                regexSet.add(senderDomain);
+            } else if (Subnet.isValidIP(token)) {
+                String ip = Subnet.normalizeIP(token);
+                if (containsExact(ip)) {
+                    return ip;
+                } else if (containsExact(client + ':' + ip)) {
+                    return ip;
+                }
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("CIDR=", "CIDR>"));
+                subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                for (String cidr : subSet) {
+                    int index = cidr.indexOf('=');
+                    cidr = cidr.substring(index + 1);
+                    if (Subnet.containsIP(cidr, ip)) {
+                        return cidr;
+                    }
+                }
+                whoisSet.add(ip);
+                regexSet.add(ip);
+            } else if (Domain.isHostname(token)) {
+                String host = Domain.normalizeHostname(token, true);
+                do {
+                    int index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token2 = '.' + host;
+                    if (containsExact(token2)) {
+                        return token2;
+                    } else if (containsExact(client + ':' + token2)) {
+                        return token2;
+                    }
+                } while (host.contains("."));
+                if (host.endsWith(".br")) {
+                    whoisSet.add(host);
+                }
+                regexSet.add(host);
+            } else {
+                regexSet.add(token);
+            }
+            // Verifica um critério do REGEX.
+            if (!regexSet.isEmpty()) {
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("REGEX=", "REGEX>"));
+                subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                for (String regex : subSet) {
+                    int index = regex.indexOf('=');
+                    regex = regex.substring(index + 1);
+                    for (String token2 : regexSet) {
+                        if (matches(regex, token2)) {
+                            return regex;
+                        }
+                    }
+                }
+            }
+            // Verifica critérios do WHOIS.
+            if (!whoisSet.isEmpty()) {
+                TreeSet<String> subSet = new TreeSet<String>();
+                subSet.addAll(subSet("WHOIS/", "WHOIS<"));
+                subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                for (String whois : subSet) {
+                    int indexKey = whois.indexOf('/');
+                    char signal = '=';
+                    int indexValue = whois.indexOf(signal);
+                    if (indexValue == -1) {
+                        signal = '<';
+                        indexValue = whois.indexOf(signal);
+                        if (indexValue == -1) {
+                            signal = '>';
+                            indexValue = whois.indexOf(signal);
+                        }
+                    }
+                    if (indexValue != -1) {
+                        String key = whois.substring(indexKey + 1, indexValue);
+                        String criterion = whois.substring(indexValue + 1);
+                        for (String token2 : whoisSet) {
+                            String value = null;
+                            if (Subnet.isValidIP(token2)) {
+                                value = Subnet.getValue(token2, key);
+                            } else if (!token2.startsWith(".") && Domain.containsDomain(token2)) {
+                                value = Domain.getValue(token2, key);
+                            } else if (!token2.startsWith(".") && Domain.containsDomain(token2.substring(1))) {
+                                value = Domain.getValue(token2, key);
+                            }
+                            if (value != null) {
+                                if (signal == '=') {
+                                    if (criterion.equals(value)) {
+                                        return whois;
+                                    }
+                                } else if (value.length() > 0) {
+                                    int criterionInt = parseIntWHOIS(criterion);
+                                    int valueInt = parseIntWHOIS(value);
+                                    if (signal == '<' && valueInt < criterionInt) {
+                                        return whois;
+                                    } else if (signal == '>' && valueInt > criterionInt) {
+                                        return whois;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+        
         private static boolean contains(String client,
                 String ip, String sender, String helo,
                 String qualifier, String recipient) {
@@ -4149,9 +4312,9 @@ public final class SPF implements Serializable {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("REGEX=", "REGEX>"));
                 subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
-                for (String whois : subSet) {
-                    int index = whois.indexOf('=');
-                    String regex = whois.substring(index + 1);
+                for (String regex : subSet) {
+                    int index = regex.indexOf('=');
+                    regex = regex.substring(index + 1);
                     for (String token : regexSet) {
                         if (matches(regex, token)) {
                             return regex;
@@ -4372,6 +4535,10 @@ public final class SPF implements Serializable {
     
     public static boolean containsBlock(String token) {
         return CacheBlock.containsExact(token);
+    }
+    
+    public static String findBlock(String client, String token) {
+        return CacheBlock.find(client, token);
     }
 
     public static TreeSet<String> getBlockSet() throws ProcessException {
@@ -6046,13 +6213,17 @@ public final class SPF implements Serializable {
     }
     
     public static boolean isFlood(String token) {
-        Distribution distribution = CacheDistribution.get(token, false);
-        if (distribution == null) {
-            // Distribuição não encontrada.
-            // Considerar que não é rajada.
+        if (CacheIgnore.contains(token)) {
             return false;
         } else {
-            return distribution.isFlood(token);
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                // Distribuição não encontrada.
+                // Considerar que não é rajada.
+                return false;
+            } else {
+                return distribution.isFlood(token);
+            }
         }
     }
 
