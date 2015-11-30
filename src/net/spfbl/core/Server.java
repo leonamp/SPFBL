@@ -290,7 +290,7 @@ public abstract class Server extends Thread {
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
     public static final int DAY_TIME = HOUR_TIME * 24;
-    
+        
     /**
      * Registra uma linha de LOG
      * 
@@ -311,34 +311,36 @@ public abstract class Server extends Thread {
      * @param type tipo de registro de LOG.
      * @param message a mensagem do registro de LOG.
      */
-    public static void log(long time, String type, String message, String result) {
-        int latencia = (int) (System.currentTimeMillis() - time);
-        if (latencia > 9999) {
-            // Para manter a formatação correta no LOG,
-            // Registrar apenas latências até 9999, que tem 4 digitos.
-            latencia = 9999;
-        } else if (latencia < 0) {
-            latencia = 0;
-        }
-        if (message != null) {
-            message = message.replace("\r", "\\r");
-            message = message.replace("\n", "\\n");
-        }
-        if (result != null) {
-            result = result.replace("\r", "\\r");
-            result = result.replace("\n", "\\n");
-        }
-        Date date = new Date(time);
-        String text = FORMAT_DATE_LOG.format(date)
-                + " " + LATENCIA_FORMAT.format(latencia)
-                + " " + Thread.currentThread().getName()
-                + " " + type + " " + message
-                + (result == null ? "" : " => " + result);
-        PrintWriter writer = getLogWriter(date);
-        if (writer == null) {
-            System.out.println(text);
-        } else {
-            writer.println(text);
+    public static void log(long time, Core.Level level, String type, String message, String result) {
+        if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
+            int latencia = (int) (System.currentTimeMillis() - time);
+            if (latencia > 9999) {
+                // Para manter a formatação correta no LOG,
+                // Registrar apenas latências até 9999, que tem 4 digitos.
+                latencia = 9999;
+            } else if (latencia < 0) {
+                latencia = 0;
+            }
+            if (message != null) {
+                message = message.replace("\r", "\\r");
+                message = message.replace("\n", "\\n");
+            }
+            if (result != null) {
+                result = result.replace("\r", "\\r");
+                result = result.replace("\n", "\\n");
+            }
+            Date date = new Date(time);
+            String text = FORMAT_DATE_LOG.format(date)
+                    + " " + LATENCIA_FORMAT.format(latencia)
+                    + " " + Thread.currentThread().getName()
+                    + " " + type + " " + message
+                    + (result == null ? "" : " => " + result);
+            PrintWriter writer = getLogWriter(date);
+            if (writer == null) {
+                System.out.println(text);
+            } else {
+                writer.println(text);
+            }
         }
     }
     
@@ -435,19 +437,26 @@ public abstract class Server extends Thread {
      */
     private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
     
-    private static void log(long time,
+    private static void log(
+            long time,
+            Core.Level level,
             String type,
-//            String message,
             Throwable ex) {
         if (ex != null) {
-//            log(time, type, message, (String) null);
-//        } else {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream printStream = new PrintStream(baos);
             ex.printStackTrace(printStream);
             printStream.close();
-            log(time, type, baos.toString(), (String) null);
+            log(time, level, type, baos.toString(), (String) null);
         }
+    }
+    
+    /**
+     * Registra as mensagens para informação.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logInfo(String message) {
+        log(System.currentTimeMillis(), Core.Level.INFO, "INFOR", message, (String) null);
     }
     
     /**
@@ -455,15 +464,24 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logDebug(String message) {
-        log(System.currentTimeMillis(), "DEBUG", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG", message, (String) null);
     }
+    
+    /**
+     * Registra as mensagens para depuração de código.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logTrace(String message) {
+        log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", message, (String) null);
+    }
+    
     
     /**
      * Registra as gravações de cache em disco.
      * @param file o arquivo armazenado.
      */
     public static void logStore(long time, File file) {
-        log(time, "STORE", file.getName(), (String) null);
+        log(time, Core.Level.INFO, "STORE", file.getName(), (String) null);
     }
     
     /**
@@ -471,7 +489,7 @@ public abstract class Server extends Thread {
      * @param file o arquivo carregado.
      */
     public static void logLoad(long time, File file) {
-        log(time, "LOADC", file.getName(), (String) null);
+        log(time, Core.Level.INFO, "LOADC", file.getName(), (String) null);
     }
     
     /**
@@ -480,7 +498,7 @@ public abstract class Server extends Thread {
      */
     public static void logCheckDNS(
             long time, String host, String result) {
-        log(time, "DNSCK", host, result);
+        log(time, Core.Level.DEBUG, "DNSCK", host, result);
     }
     
     /**
@@ -489,12 +507,12 @@ public abstract class Server extends Thread {
      */
     public static void logTicket(long time, 
             TreeSet<String> tokenSet, String ticket) {
-        log(time, "TIKET", tokenSet.toString(), ticket);
+        log(time, Core.Level.DEBUG, "TIKET", tokenSet.toString(), ticket);
     }
     
     public static void logPeerSend(long time,
             String address, String token, String result) {
-        logQuery(time, "PEERS", address, token, result);
+        log(time, Core.Level.DEBUG, "PEERS", address, token, result);
     }
     
     /**
@@ -502,7 +520,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupDNS(long time, 
             String type, String host, String result) {
-        log(time, "DNSLK", type + " " + host, result);
+        log(time, Core.Level.DEBUG, "DNSLK", type + " " + host, result);
     }
     
     /**
@@ -510,7 +528,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupHELO(long time, 
             String host, String result) {
-        log(time, "HELOL", host, result);
+        log(time, Core.Level.DEBUG, "HELOL", host, result);
     }
     
     /**
@@ -518,7 +536,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismA(long time, 
             String host, String result) {
-        log(time, "SPFMA", host, result);
+        log(time, Core.Level.DEBUG, "SPFMA", host, result);
     }
     
     /**
@@ -526,7 +544,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismExists(long time, 
             String host, String result) {
-        log(time, "SPFEX", host, result);
+        log(time, Core.Level.DEBUG, "SPFEX", host, result);
     }
     
     /**
@@ -534,7 +552,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismMX(long time, 
             String host, String result) {
-        log(time, "SPFMX", host, result);
+        log(time, Core.Level.DEBUG, "SPFMX", host, result);
     }
     
     /**
@@ -542,7 +560,7 @@ public abstract class Server extends Thread {
      */
     public static void logMatchHELO(long time, 
             String query, String result) {
-        log(time, "HELOM", query, result);
+        log(time, Core.Level.DEBUG, "HELOM", query, result);
     }
     
     /**
@@ -550,7 +568,7 @@ public abstract class Server extends Thread {
      */
     public static void logDefer(long time, 
             String id, String result) {
-        log(time, "DEFER", id, result);
+        log(time, Core.Level.DEBUG, "DEFER", id, result);
     }
     
     /**
@@ -558,7 +576,7 @@ public abstract class Server extends Thread {
      */
     public static void logReverseDNS(long time, 
             String ip, String result) {
-        log(time, "DNSRV", ip, result);
+        log(time, Core.Level.DEBUG, "DNSRV", ip, result);
     }
     
     /**
@@ -566,7 +584,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logError(String message) {
-        log(System.currentTimeMillis(), "ERROR", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", message, (String) null);
     }
     
     /**
@@ -577,9 +595,9 @@ public abstract class Server extends Thread {
     public static void logError(Throwable ex) {
         if (ex instanceof ProcessException) {
             ProcessException pex = (ProcessException) ex;
-            log(System.currentTimeMillis(), "ERROR", pex.getErrorMessage(), (String) null);
+            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
         } else if (ex instanceof Exception) {
-            log(System.currentTimeMillis(), "ERROR", ex);
+            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
         }
     }
     
@@ -592,7 +610,7 @@ public abstract class Server extends Thread {
      */
     public static void logLookupSPF(
             long time, String hostname, String result) {
-        log(time, "SPFLK", hostname, result);
+        log(time, Core.Level.DEBUG, "SPFLK", hostname, result);
     }
     
     /**
@@ -620,7 +638,7 @@ public abstract class Server extends Thread {
      */
     public static void logWhois(long time,
             String server, String query, String result) {
-        log(time, "WHOIS", server + " " + query, result);
+        log(time, Core.Level.DEBUG, "WHOIS", server + " " + query, result);
     }
     
     private static long lastClientsFileModified = 0;
@@ -700,9 +718,9 @@ public abstract class Server extends Thread {
             String query, String result) {
         String origin = Client.getOrigin(ipAddress);
         if (query == null) {
-            log(time, type, origin + ":", result);
+            log(time, Core.Level.INFO, type, origin + ":", result);
         } else {
-            log(time, type, origin + ": " + query, result);
+            log(time, Core.Level.INFO, type, origin + ": " + query, result);
         }
     }
     
@@ -725,11 +743,12 @@ public abstract class Server extends Thread {
                 }
             }
         }
-        log(time, type, (client == null ? "" : client + ": ") + message, null);
+        log(time, Core.Level.INFO, type, (client == null ? "" : client + ": ") + message, null);
     }
     
-    public static void logQuery(
+    public static void log(
             long time,
+            Core.Level level,
             String type,
             String client,
             String query,
@@ -748,7 +767,16 @@ public abstract class Server extends Thread {
                 }
             }
         }
-        logQuery(time, type, client, query, result);
+        log(time, level, type, client, query, result);
+    }
+    
+    public static void log(
+            long time,
+            Core.Level level,
+            String type,
+            String client,
+            String query, String result) {
+        log(time, level, type, (client == null ? "" : client + ": ") + query, result);
     }
     
     public static void logQuery(
@@ -756,7 +784,7 @@ public abstract class Server extends Thread {
             String type,
             String client,
             String query, String result) {
-        log(time, type, (client == null ? "" : client + ": ") + query, result);
+        log(time, Core.Level.INFO, type, (client == null ? "" : client + ": ") + query, result);
     }
     
     /**
@@ -769,7 +797,7 @@ public abstract class Server extends Thread {
     public static void logAdministration(long time,
             InetAddress ipAddress, String command, String result) {
         String origin = Client.getOrigin(ipAddress);
-        log(time, "ADMIN", origin + ": " + command, result);
+        log(time, Core.Level.INFO, "ADMIN", origin + ": " + command, result);
     }
     
     /**
@@ -778,7 +806,7 @@ public abstract class Server extends Thread {
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
-        Server.logDebug("shutting down server...");
+        Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {
@@ -1173,8 +1201,6 @@ public abstract class Server extends Thread {
                         builder.append("DNSBL ADD ");
                         builder.append(server.getHostName());
                         builder.append(' ');
-                        builder.append(server.getHostAddress());
-                        builder.append(' ');
                         builder.append(server.getMessage());
                         builder.append('\n');
                     }
@@ -1244,6 +1270,23 @@ public abstract class Server extends Thread {
                     }
                     builder.append("STORE\n");
                     result = builder.toString();
+                } else if (token.equals("LOG") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("LEVEL") && tokenizer.countTokens() == 1) {
+                        token = tokenizer.nextToken();
+                        try {
+                            Core.Level level = Core.Level.valueOf(token);
+                            if (Core.setLevelLOG(level)) {
+                                result += "CHANGED\n";
+                            } else {
+                                result += "SAME\n";
+                            }
+                        } catch (Exception ex) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
                     if (shutdown()) {
@@ -1307,42 +1350,30 @@ public abstract class Server extends Thread {
                     }
                 } else if (token.equals("DNSBL") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.countTokens() >= 3) {
-                        try {
-                            String hostname = tokenizer.nextToken();
-                            String address = tokenizer.nextToken();
-                            InetAddress inetAddress = InetAddress.getByName(address);
-                            String message = tokenizer.nextToken();
-                            while (tokenizer.hasMoreTokens()) {
-                                message += ' ' + tokenizer.nextToken();
-                            }
-                            if (QueryDNSBL.add(hostname, inetAddress, message)) {
-                                result = "ADDED\n";
-                            } else {
-                                result = "ALREADY EXISTS\n";
-                            }
-                            QueryDNSBL.store();
-                        } catch (UnknownHostException ex) {
-                            result = "INVALID ADDRESS\n";
+                    if (token.equals("ADD") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
                         }
-                    } else if (token.equals("SET") && tokenizer.countTokens() >= 3) {
-                        try {
-                            String hostname = tokenizer.nextToken();
-                            String address = tokenizer.nextToken();
-                            InetAddress inetAddress = InetAddress.getByName(address);
-                            String message = tokenizer.nextToken();
-                            while (tokenizer.hasMoreTokens()) {
-                                message += ' ' + tokenizer.nextToken();
-                            }
-                            if (QueryDNSBL.set(hostname, inetAddress, message)) {
-                                result = "UPDATED\n";
-                            } else {
-                                result = "NOT FOUND\n";
-                            }
-                            QueryDNSBL.store();
-                        } catch (UnknownHostException ex) {
-                            result = "INVALID ADDRESS\n";
+                        if (QueryDNSBL.add(hostname, message)) {
+                            result = "ADDED\n";
+                        } else {
+                            result = "ALREADY EXISTS\n";
                         }
+                        QueryDNSBL.store();
+                    } else if (token.equals("SET") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
+                        }
+                        if (QueryDNSBL.set(hostname, message)) {
+                            result = "UPDATED\n";
+                        } else {
+                            result = "NOT FOUND\n";
+                        }
+                        QueryDNSBL.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
@@ -1367,7 +1398,7 @@ public abstract class Server extends Thread {
                         } else {
                             for (String key : map.keySet()) {
                                 ServerDNSBL server = map.get(key);
-                                result += server + " " + server.getHostAddress() + " " + server.getMessage() + "\n";
+                                result += server + " " + server.getMessage() + "\n";
                             }
                         }
                     } else {

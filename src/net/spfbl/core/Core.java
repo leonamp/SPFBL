@@ -48,7 +48,7 @@ public class Core {
     
     private static final byte VERSION = 1;
     private static final byte SUBVERSION = 3;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 3;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -56,6 +56,19 @@ public class Core {
     
     public static String getVersion() {
         return VERSION + "." + SUBVERSION + "." + RELEASE;
+    }
+    
+    /**
+     * O nível do LOG.
+     */
+    public static Level LOG_LEVEL = Level.INFO;
+    
+    public enum Level {
+        ERROR,
+        WARN,
+        INFO,
+        DEBUG,
+        TRACE
     }
     
     public static String sendCommandToPeer(
@@ -134,6 +147,7 @@ public class Core {
                     Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     Core.setPortHTTP(properties.getProperty("http_port"));
                     Core.setMaxUDP(properties.getProperty("udp_max"));
+                    Core.setLevelLOG(properties.getProperty("log_level"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
@@ -340,6 +354,27 @@ public class Core {
         }
     }
     
+    public static void setLevelLOG(String level) {
+        if (level != null && level.length() > 0) {
+            try {
+                Core.LOG_LEVEL = Core.Level.valueOf(level);
+            } catch (Exception ex) {
+                Server.logError("invalid LOG level '" + level + "'.");
+            }
+        }
+    }
+    
+    public static boolean setLevelLOG(Level level) {
+        if (level == null) {
+            return false;
+        } else if (level == Core.LOG_LEVEL) {
+            return false;
+        } else {
+            Core.LOG_LEVEL = level;
+            return true;
+        }
+    }
+    
     private static class ApplicationMessageHandler implements MessageHandler {
         @Override
         public synchronized String handle(String message) {
@@ -369,7 +404,7 @@ public class Core {
                 JUnique.sendMessage(appId, "register");
             } else {
                 startConfiguration();
-                Server.logDebug("starting server...");
+                Server.logInfo("starting server...");
                 Server.loadCache();
                 SPF.dropExpiredComplain();
                 administrationTCP = new AdministrationTCP(PORT_ADMIN);

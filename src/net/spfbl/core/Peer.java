@@ -221,6 +221,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return reputationMap2.get(key);
     }
     
+    public synchronized TreeSet<String> getReputationKeySet() {
+        TreeSet<String> keySet = new TreeSet<String>();
+        keySet.addAll(reputationMap2.keySet());
+        return keySet;
+    }
+    
     public synchronized TreeMap<String,Binomial> getReputationMap() {
         TreeMap<String,Binomial> returnSet = new TreeMap<String,Binomial>();
         returnSet.putAll(reputationMap2);
@@ -264,6 +270,14 @@ public final class Peer implements Serializable, Comparable<Peer> {
             }
         }
         return returnSet;
+    }
+    
+    public static TreeSet<String> getReputationKeyAllSet() {
+        TreeSet<String> keySet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            keySet.addAll(peer.getReputationKeySet());
+        }
+        return keySet;
     }
     
     public static TreeSet<String> rejectAll() {
@@ -633,7 +647,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String address = getAddress();
             int port = getPort();
             String result = Core.sendCommandToPeer(helo, address, port);
-            Server.logQuery(time, "PEERP", origin, helo, result);
+            Server.log(time, Core.Level.DEBUG, "PEERP", origin, helo, result);
             return true;
         }
     }
@@ -655,7 +669,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } catch (Exception ex) {
                 result = ex.getMessage();
             }
-            Server.logQuery(time, "PEERP", origin, helo, result);
+            Server.log(time, Core.Level.DEBUG, "PEERP", origin, helo, result);
         }
     }
     
@@ -1064,7 +1078,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             long time = System.currentTimeMillis();
             if (peer.isExpired7()) {
                 if (peer.drop()) {
-                    Server.logQuery(time, "PEERH", origin, peer.getAddress(), "EXPIRED");
+                    Server.log(time, Core.Level.DEBUG, "PEERH", origin, peer.getAddress(), "EXPIRED");
                 }
             } else {
                 TreeMap<String,Binomial> reputationMap = peer.getReputationMap();
@@ -1074,7 +1088,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     if (binomial.isExpired3()) {
                         binomial = peer.dropReputation(key);
                         if (binomial != null) {
-                            Server.logQuery(time, "PEERR", peer.getAddress(), key, "EXPIRED");
+                            Server.log(time, Core.Level.DEBUG, "PEERR", peer.getAddress(), key, "EXPIRED");
                         }
                     }
                 }

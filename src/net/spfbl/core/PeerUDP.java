@@ -50,12 +50,12 @@ public final class PeerUDP extends Server {
      */
     public PeerUDP(String hostname, int port, int size) throws SocketException {
         super("SERVERP2P");
+        setPriority(Thread.MIN_PRIORITY);
+        Server.logDebug("binding P2P socket on port " + port + "...");
         HOSTNAME = hostname;
         PORT = port;
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
-        setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
-        Server.logDebug("binding P2P socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
     }
     
@@ -93,6 +93,9 @@ public final class PeerUDP extends Server {
          * O poll de pacotes de consulta a serem processados.
          */
         private DatagramPacket PACKET = null;
+        
+        private final Semaphore SEMAPHORE = new Semaphore(0);
+        
         private long time = 0;
         
         public Connection() {
@@ -105,25 +108,10 @@ public final class PeerUDP extends Server {
          * Processa um pacote de consulta.
          * @param packet o pacote de consulta a ser processado.
          */
-        private synchronized void process(DatagramPacket packet, long time) {
+        private void process(DatagramPacket packet, long time) {
             this.PACKET = packet;
             this.time = time;
-            if (isAlive()) {
-                // Libera o próximo processamento.
-                notify();
-            } else {
-                // Inicia a thread pela primmeira vez.
-                start();
-            }
-        }
-        
-        private boolean isDead() {
-            if (time == 0) {
-                return false;
-            } else {
-                int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 600;
-            }
+            SEMAPHORE.release();
         }
         
         private boolean isTimeout() {
@@ -136,30 +124,29 @@ public final class PeerUDP extends Server {
         }
         
         /**
-         * Método perigoso porém necessário para encontrar falhas.
-         */
-        public void kill() {
-            super.stop();
-        }
-        
-        /**
          * Fecha esta conexão liberando a thread.
          */
-        private synchronized void close() {
+        private void close() {
             Server.logDebug("closing " + getName() + "...");
             PACKET = null;
-            notify();
+            SEMAPHORE.release();
         }
         
-        public synchronized void waitCall() throws InterruptedException {
-            wait();
+        public DatagramPacket getPacket() {
+            if (PeerUDP.this.continueListenning()) {
+                try {
+                    SEMAPHORE.acquire();
+                    return PACKET;
+                } catch (InterruptedException ex) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
         }
         
-        public synchronized DatagramPacket getPacket() {
-            return PACKET;
-        }
-        
-        public synchronized void clearPacket() {
+        public void clearPacket() {
+            time = 0;
             PACKET = null;
         }
         
@@ -170,7 +157,7 @@ public final class PeerUDP extends Server {
         @Override
         public void run() {
             DatagramPacket packet;
-            while (continueListenning() && (packet = getPacket()) != null) {
+            while ((packet = getPacket()) != null) {
                 try {
                     String address;
                     String result;
@@ -290,8 +277,9 @@ public final class PeerUDP extends Server {
                         }
                     }
                     // Log do bloqueio com o respectivo resultado.
-                    Server.logQuery(
+                    Server.log(
                             time,
+                            Core.Level.DEBUG,
                             type,
                             address,
                             token,
@@ -300,17 +288,10 @@ public final class PeerUDP extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    try {
-                        time = 0;
-                        clearPacket();
-                        // Oferece a conexão ociosa na última posição da lista.
-                        offer(this);
-                        CONNECION_SEMAPHORE.release();
-                        // Aguarda nova chamada.
-                        waitCall();
-                    } catch (InterruptedException ex) {
-                        Server.logError(ex);
-                    }
+                    clearPacket();
+                    // Oferece a conexão ociosa na última posição da lista.
+                    offer(this);
+                    CONNECION_SEMAPHORE.release();
                 }
             }
             CONNECTION_COUNT--;
@@ -403,12 +384,7 @@ public final class PeerUDP extends Server {
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
-            if (connection.isDead()) {
-                Server.logDebug("connection " + connection.getName() + " is deadlocked.");
-                // Temporário até encontrar a deadlock.
-                connection.kill();
-                CONNECTION_COUNT--;
-            } else if (connection.isTimeout()) {
+            if (connection.isTimeout()) {
                 offerUsing(connection);
                 connection.interrupt();
             } else {
@@ -436,6 +412,7 @@ public final class PeerUDP extends Server {
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("creating P2PUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
+                connection.start();
                 use(connection);
                 CONNECTION_COUNT++;
                 return connection;
@@ -455,7 +432,7 @@ public final class PeerUDP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening P2P port " + PORT + "...");
+            Server.logInfo("listening P2P port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -473,7 +450,16 @@ public final class PeerUDP extends Server {
                                 "TOO MANY CONNECTIONS"
                                 );
                     } else {
-                        connection.process(packet, time);
+                        try {
+                            connection.process(packet, time);
+                        } catch (IllegalThreadStateException ex) {
+                            // Houve problema na liberação do processo.
+                            InetAddress ipAddress = packet.getAddress();
+                            String result = "ERROR: FATAL\n";
+                            Server.logError(ex);
+                            Server.logQueryDNSBL(time, ipAddress, null, result);
+                            offer(connection);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().
@@ -482,7 +468,7 @@ public final class PeerUDP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie P2P server closed.");
+            Server.logInfo("querie P2P server closed.");
         }
     }
     
@@ -492,7 +478,6 @@ public final class PeerUDP extends Server {
      */
     @Override
     protected void close() {
-        long start = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -503,28 +488,9 @@ public final class PeerUDP extends Server {
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
-            } finally {
-                int idle = (int) (System.currentTimeMillis() - start) / 1000;
-                if (idle > 10) {
-                    // Temporário até encontrar a deadlock.
-                    Server.logDebug("P2P socket is deadlocked.");
-                    kill();
-                }
             }
         }
         Server.logDebug("unbinding P2P socket on port " + PORT + "...");
         SERVER_SOCKET.close();
-    }
-    
-    /**
-     * Método perigoso porém necessário para encontrar falhas.
-     */
-    public void kill() {
-        Connection connection;
-        while ((connection = pollUsing()) != null) {
-            connection.kill();
-            CONNECTION_COUNT--;
-        }
-        super.stop();
     }
 }

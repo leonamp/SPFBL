@@ -165,13 +165,13 @@ public final class ComplainHTTP extends Server {
     @Override
     public void run() {
         SERVER.start();
-        Server.logDebug("listening complain on HTTP port " + PORT + "...");
+        Server.logInfo("listening complain on HTTP port " + PORT + ".");
     }
     
     @Override
     protected void close() throws Exception {
         Server.logDebug("unbinding complain HTTP on port " + PORT + "...");
         SERVER.stop(1);
-        Server.logDebug("complain HTTP server closed.");
+        Server.logInfo("complain HTTP server closed.");
     }
 }

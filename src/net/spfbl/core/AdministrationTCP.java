@@ -79,7 +79,7 @@ public final class AdministrationTCP extends Server {
     @Override
     public void run() {
         try {
-            Server.logDebug("listening admin commands on TCP port " + PORT + "...");
+            Server.logInfo("listening admin commands on TCP port " + PORT + ".");
             String command = null;
             String result = null;
             Socket socket;
@@ -132,7 +132,7 @@ public final class AdministrationTCP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("administration TCP server closed.");
+            Server.logInfo("administration TCP server closed.");
         }
     }
     

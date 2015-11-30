@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -70,6 +71,8 @@ public final class QueryTCP extends Server {
          */
         private Socket SOCKET = null;
         
+        private final Semaphore SEMAPHORE = new Semaphore(0);
+        
         private long time = 0;
         
         
@@ -83,25 +86,37 @@ public final class QueryTCP extends Server {
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
          */
-        private synchronized void process(Socket socket, long time) {
+        private void process(Socket socket, long time) {
             this.SOCKET = socket;
             this.time = time;
-            if (isAlive()) {
-                // Libera o próximo processamento.
-                notify();
-            } else {
-                // Inicia a thread pela primmeira vez.
-                start();
-            }
+            this.SEMAPHORE.release();
         }
         
         /**
          * Fecha esta conexão liberando a thread.
          */
-        private synchronized void close() {
+        private void close() {
             Server.logDebug("closing " + getName() + "...");
             SOCKET = null;
-            notify();
+            SEMAPHORE.release();
+        }
+        
+        public Socket getSocket() {
+            if (QueryTCP.this.continueListenning()) {
+                try {
+                    SEMAPHORE.acquire();
+                    return SOCKET;
+                } catch (InterruptedException ex) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+        
+        public void clearPacket() {
+            time = 0;
+            SOCKET = null;
         }
         
         /**
@@ -109,13 +124,14 @@ public final class QueryTCP extends Server {
          * Aproveita a thead para realizar procedimentos em background.
          */
         @Override
-        public synchronized void run() {
-            while (continueListenning() && SOCKET != null) {
+        public void run() {
+            Socket socket;
+            while ((socket = getSocket()) != null) {
                 try {
                     String query = null;
                     String result = "";
                     try {
-                        InputStream inputStream = SOCKET.getInputStream();
+                        InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         query = bufferedReader.readLine();
@@ -138,13 +154,12 @@ public final class QueryTCP extends Server {
                             result = QueryTCP.this.processWHOIS(query);
                         }
                         // Enviando resposta.
-                        OutputStream outputStream = SOCKET.getOutputStream();
+                        OutputStream outputStream = socket.getOutputStream();
                         outputStream.write(result.getBytes("ISO-8859-1"));
                     } finally {
                         // Fecha conexão logo após resposta.
-                        SOCKET.close();
+                        socket.close();
                         InetAddress address = SOCKET.getInetAddress();
-                        SOCKET = null;
                         // Log da consulta com o respectivo resultado.
                         Server.logQuery(
                                 time,
@@ -155,15 +170,10 @@ public final class QueryTCP extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    try {
-                        // Oferece a conexão ociosa na última posição da lista.
-                        offer(this);
-                        CONNECION_SEMAPHORE.release();
-                        // Aguarda nova chamada.
-                        wait();
-                    } catch (InterruptedException ex) {
-                        Server.logError(ex);
-                    }
+                    clearPacket();
+                    // Oferece a conexão ociosa na última posição da lista.
+                    offer(this);
+                    CONNECION_SEMAPHORE.release();
                 }
             }
             CONNECTION_COUNT--;
@@ -209,6 +219,7 @@ public final class QueryTCP extends Server {
             // O servidor aumenta a capacidade conforme a demanda.
             Server.logDebug("creating WHSTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
+            connection.start();
             CONNECTION_COUNT++;
             return connection;
         }
@@ -218,9 +229,9 @@ public final class QueryTCP extends Server {
      * Inicialização do serviço.
      */
     @Override
-    public synchronized void run() {
+    public void run() {
         try {
-            Server.logDebug("listening queries on TCP port " + PORT + "...");
+            Server.logInfo("listening queries on TCP port " + PORT + ".");
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
@@ -245,7 +256,7 @@ public final class QueryTCP extends Server {
         } catch (Exception ex) {
             Server.logError(ex);
         } finally {
-            Server.logDebug("querie TCP server closed.");
+            Server.logInfo("querie TCP server closed.");
         }
     }
     

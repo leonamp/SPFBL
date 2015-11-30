@@ -16,17 +16,12 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     private static final long serialVersionUID = 1L;
     
     private final String hostname;
-    private InetAddress address;
+    private final InetAddress address = null; // Obsoleto.
     private String message;
     
-    public ServerDNSBL(String hostname, InetAddress address, String message) {
+    public ServerDNSBL(String hostname, String message) {
         this.hostname = hostname;
-        this.address = address;
         this.message = message;
-    }
-    
-    public void setInetAddress(InetAddress address) {
-        this.address = address;
     }
     
     public void setMessage(String message) {
@@ -35,14 +30,6 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     
     public String getHostName() {
         return hostname;
-    }
-
-    public InetAddress getInetAddress() {
-        return address;
-    }
-    
-    public String getHostAddress() {
-        return address.getHostAddress();
     }
     
     public String getMessage() {
