@@ -18,8 +18,6 @@ package net.spfbl.spf;
 
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
-import net.spfbl.spf.SPF.Distribution;
-import net.spfbl.spf.SPF.Status;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,7 +29,6 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
-import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.core.Client;
@@ -76,6 +73,8 @@ public final class QuerySPF extends Server {
          */
         private Socket SOCKET = null;
         
+        private final Semaphore SEMAPHORE = new Semaphore(0);
+        
         private long time = 0;
        
         
@@ -88,25 +87,10 @@ public final class QuerySPF extends Server {
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
          */
-        private synchronized void process(Socket socket, long time) {
+        private void process(Socket socket, long time) {
             this.SOCKET = socket;
             this.time = time;
-            if (isAlive()) {
-                // Libera o próximo processamento.
-                notify();
-            } else {
-                // Inicia a thread pela primmeira vez.
-                start();
-            }
-        }
-        
-        private boolean isDead() {
-            if (time == 0) {
-                return false;
-            } else {
-                int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 600;
-            }
+            SEMAPHORE.release();
         }
         
         private boolean isTimeout() {
@@ -119,23 +103,16 @@ public final class QuerySPF extends Server {
         }
         
         /**
-         * Método perigoso porém necessário para encontrar falhas.
-         */
-        public void kill() {
-            super.stop();
-        }
-        
-        /**
          * Fecha esta conexão liberando a thread.
          */
-        private synchronized void close() {
+        private void close() {
             Server.logDebug("closing " + getName() + "...");
             SOCKET = null;
-            notify();
+            SEMAPHORE.release();
         }
         
         @Override
-        public synchronized void interrupt() {
+        public void interrupt() {
             try {
                 SOCKET.close();
             } catch (NullPointerException ex) {
@@ -145,15 +122,21 @@ public final class QuerySPF extends Server {
             }
         }
         
-        public synchronized void waitCall() throws InterruptedException {
-            wait();
+        public Socket getSocket() {
+            if (QuerySPF.this.continueListenning()) {
+                try {
+                    SEMAPHORE.acquire();
+                    return SOCKET;
+                } catch (InterruptedException ex) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
         }
         
-        public synchronized Socket getSocket() {
-            return SOCKET;
-        }
-        
-        public synchronized void clearSocket() {
+        public void clearSocket() {
+            time = 0;
             SOCKET = null;
         }
         
@@ -164,13 +147,12 @@ public final class QuerySPF extends Server {
         @Override
         public void run() {
             Socket socket;
-            while (continueListenning() && (socket = getSocket()) != null) {
+            while ((socket = getSocket()) != null) {
                 try {
                     String type = "SPFBL";
                     String query = null;
                     String result = null;
                     try {
-//                        String client = Server.getLogClient(SOCKET.getInetAddress());
                         InetAddress ipAddress = socket.getInetAddress();
                         String client = Client.getIdentification(ipAddress);
                         InputStream inputStream = socket.getInputStream();
@@ -434,28 +416,6 @@ public final class QuerySPF extends Server {
                                 if (result == null) {
                                     result = "EMPTY\n";
                                 }
-//                            } else if (line.equals("REPUTATION")) {
-//                                // Comando para verificar a reputação dos tokens.
-//                                query = line.trim();
-//                                type = "REPTQ";
-//                                StringBuilder stringBuilder = new StringBuilder();
-//                                TreeMap<String,Distribution> distributionMap = SPF.getDistributionMap();
-//                                if (distributionMap.isEmpty()) {
-//                                    result = "EMPTY\n";
-//                                } else {
-//                                    for (String tokenReputation : distributionMap.keySet()) {
-//                                        Distribution distribution = distributionMap.get(tokenReputation);
-//                                        float probability = distribution.getSpamProbability(tokenReputation);
-//                                        Status status = distribution.getStatus(tokenReputation);
-//                                        stringBuilder.append(tokenReputation);
-//                                        stringBuilder.append(' ');
-//                                        stringBuilder.append(status);
-//                                        stringBuilder.append(' ');
-//                                        stringBuilder.append(Server.DECIMAL_FORMAT.format(probability));
-//                                        stringBuilder.append('\n');
-//                                    }
-//                                    result = stringBuilder.toString();
-//                                }
                             } else {
                                 query = line.trim();
                                 result = SPF.processSPF(client, query);
@@ -479,7 +439,6 @@ public final class QuerySPF extends Server {
                         // Fecha conexão logo após resposta.
                         socket.close();
                         InetAddress address = socket.getInetAddress();
-                        clearSocket();
                         // Log da consulta com o respectivo resultado.
                         String origin;
                         Client client = Client.get(address);
@@ -505,16 +464,10 @@ public final class QuerySPF extends Server {
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
-                    try {
-                        time = 0;
-                        // Oferece a conexão ociosa na última posição da lista.
-                        offer(this);
-                        CONNECION_SEMAPHORE.release();
-                        // Aguarda nova chamada.
-                        waitCall();
-                    } catch (InterruptedException ex) {
-                        Server.logError(ex);
-                    }
+                    clearSocket();
+                    // Oferece a conexão ociosa na última posição da lista.
+                    offer(this);
+                    CONNECION_SEMAPHORE.release();
                 }
             }
             CONNECTION_COUNT--;
@@ -578,19 +531,10 @@ public final class QuerySPF extends Server {
         CONNECTION_USE.offer(connection);
     }
     
-    private synchronized void subtractConnection() {
-        CONNECTION_COUNT--;
-    }
-    
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
-            if (connection.isDead()) {
-                Server.logDebug("connection " + connection.getName() + " is deadlocked.");
-                // Temporário até encontrar a deadlock.
-                connection.kill();
-                subtractConnection();
-            } else if (connection.isTimeout()) {
+            if (connection.isTimeout()) {
                 offerUsing(connection);
                 connection.interrupt();
             } else {
@@ -619,6 +563,7 @@ public final class QuerySPF extends Server {
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("creating SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
+                connection.start();
                 use(connection);
                 CONNECTION_COUNT++;
                 return connection;
@@ -694,7 +639,6 @@ public final class QuerySPF extends Server {
     
     @Override
     protected void close() throws Exception {
-        long start = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -705,28 +649,9 @@ public final class QuerySPF extends Server {
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
-            } finally {
-                int idle = (int) (System.currentTimeMillis() - start) / 1000;
-                if (idle > 10) {
-                    // Temporário até encontrar a deadlock.
-                    Server.logDebug("SPF socket is deadlocked.");
-                    kill();
-                }
             }
         }
         Server.logDebug("unbinding querie SPF socket on port " + PORT + "...");
         SERVER_SOCKET.close();
-    }
-    
-    /**
-     * Método perigoso porém necessário para encontrar falhas.
-     */
-    public void kill() {
-        Connection connection;
-        while ((connection = pollUsing()) != null) {
-            connection.kill();
-            subtractConnection();
-        }
-        super.stop();
     }
 }

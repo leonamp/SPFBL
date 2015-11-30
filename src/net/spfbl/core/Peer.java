@@ -221,6 +221,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return reputationMap2.get(key);
     }
     
+    public synchronized TreeSet<String> getReputationKeySet() {
+        TreeSet<String> keySet = new TreeSet<String>();
+        keySet.addAll(reputationMap2.keySet());
+        return keySet;
+    }
+    
     public synchronized TreeMap<String,Binomial> getReputationMap() {
         TreeMap<String,Binomial> returnSet = new TreeMap<String,Binomial>();
         returnSet.putAll(reputationMap2);
@@ -264,6 +270,14 @@ public final class Peer implements Serializable, Comparable<Peer> {
             }
         }
         return returnSet;
+    }
+    
+    public static TreeSet<String> getReputationKeyAllSet() {
+        TreeSet<String> keySet = new TreeSet<String>();
+        for (Peer peer : Peer.getSet()) {
+            keySet.addAll(peer.getReputationKeySet());
+        }
+        return keySet;
     }
     
     public static TreeSet<String> rejectAll() {

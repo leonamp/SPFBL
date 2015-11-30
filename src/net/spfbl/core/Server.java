@@ -468,6 +468,15 @@ public abstract class Server extends Thread {
     }
     
     /**
+     * Registra as mensagens para depuração de código.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logTrace(String message) {
+        log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", message, (String) null);
+    }
+    
+    
+    /**
      * Registra as gravações de cache em disco.
      * @param file o arquivo armazenado.
      */
@@ -1192,8 +1201,6 @@ public abstract class Server extends Thread {
                         builder.append("DNSBL ADD ");
                         builder.append(server.getHostName());
                         builder.append(' ');
-                        builder.append(server.getHostAddress());
-                        builder.append(' ');
                         builder.append(server.getMessage());
                         builder.append('\n');
                     }
@@ -1343,42 +1350,30 @@ public abstract class Server extends Thread {
                     }
                 } else if (token.equals("DNSBL") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.countTokens() >= 3) {
-                        try {
-                            String hostname = tokenizer.nextToken();
-                            String address = tokenizer.nextToken();
-                            InetAddress inetAddress = InetAddress.getByName(address);
-                            String message = tokenizer.nextToken();
-                            while (tokenizer.hasMoreTokens()) {
-                                message += ' ' + tokenizer.nextToken();
-                            }
-                            if (QueryDNSBL.add(hostname, inetAddress, message)) {
-                                result = "ADDED\n";
-                            } else {
-                                result = "ALREADY EXISTS\n";
-                            }
-                            QueryDNSBL.store();
-                        } catch (UnknownHostException ex) {
-                            result = "INVALID ADDRESS\n";
+                    if (token.equals("ADD") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
                         }
-                    } else if (token.equals("SET") && tokenizer.countTokens() >= 3) {
-                        try {
-                            String hostname = tokenizer.nextToken();
-                            String address = tokenizer.nextToken();
-                            InetAddress inetAddress = InetAddress.getByName(address);
-                            String message = tokenizer.nextToken();
-                            while (tokenizer.hasMoreTokens()) {
-                                message += ' ' + tokenizer.nextToken();
-                            }
-                            if (QueryDNSBL.set(hostname, inetAddress, message)) {
-                                result = "UPDATED\n";
-                            } else {
-                                result = "NOT FOUND\n";
-                            }
-                            QueryDNSBL.store();
-                        } catch (UnknownHostException ex) {
-                            result = "INVALID ADDRESS\n";
+                        if (QueryDNSBL.add(hostname, message)) {
+                            result = "ADDED\n";
+                        } else {
+                            result = "ALREADY EXISTS\n";
                         }
+                        QueryDNSBL.store();
+                    } else if (token.equals("SET") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
+                        }
+                        if (QueryDNSBL.set(hostname, message)) {
+                            result = "UPDATED\n";
+                        } else {
+                            result = "NOT FOUND\n";
+                        }
+                        QueryDNSBL.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
@@ -1403,7 +1398,7 @@ public abstract class Server extends Thread {
                         } else {
                             for (String key : map.keySet()) {
                                 ServerDNSBL server = map.get(key);
-                                result += server + " " + server.getHostAddress() + " " + server.getMessage() + "\n";
+                                result += server + " " + server.getMessage() + "\n";
                             }
                         }
                     } else {
