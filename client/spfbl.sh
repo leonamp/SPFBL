@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 22/11/2015 23:51
+# Última alteração: 01/12/2015 10:15
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -32,7 +32,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.8"
+version="0.9"
 
 head()
 {
@@ -548,6 +548,38 @@ case $1 in
 					if [[ $response == "TIMEOUT" ]]; then
 						exit 2
 					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'find')
+				# Parâmetros de entrada:
+				#    1: <token>: um e-mail, host ou IP.
+				#
+				# Códigos de saída:
+				#
+				#    0: sem registro.
+				#    1: registro encontrado.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 block find token\n"
+				else
+ 					token=$3
+					response=$(echo "BLOCK FIND $token" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "NONE" ]]; then
 						exit 0
 					else
 						exit 1
