@@ -119,6 +119,7 @@ public abstract class Server extends Thread {
         Peer.load();
         Reverse.load();
         SPF.load();
+        Defer.load();
         QueryDNSBL.load();
     }
     
@@ -138,6 +139,7 @@ public abstract class Server extends Thread {
         Peer.store();
         Reverse.store();
         SPF.store();
+        Defer.store();
         QueryDNSBL.store();
     }
     

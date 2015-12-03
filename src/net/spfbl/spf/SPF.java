@@ -57,6 +57,7 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
+import net.spfbl.core.Defer;
 import net.spfbl.core.Peer;
 import net.spfbl.core.Peer.Binomial;
 import net.spfbl.core.Reverse;
@@ -2320,21 +2321,27 @@ public final class SPF implements Serializable {
             if (Subnet.isValidIP(value)) {
                 String ip = Subnet.normalizeIP(value);
                 distribution = getExact(ip);
-                map.put(ip, distribution);
+                if (distribution != null) {
+                    map.put(ip, distribution);
+                }
             } else if (Subnet.isValidCIDR(value)) {
                 String cidr = Subnet.normalizeCIDR(value);
                 subMap = getSubMap("0", ":");
                 for (String ip : subMap.keySet()) {
                     if (Subnet.containsIP(cidr, ip)) {
                         distribution = getExact(ip);
-                        map.put(ip, distribution);
+                        if (distribution != null) {
+                            map.put(ip, distribution);
+                        }
                     }
                 }
                 subMap = getSubMap("a", "g");
                 for (String ip : subMap.keySet()) {
                     if (SubnetIPv6.containsIP(cidr, ip)) {
                         distribution = getExact(ip);
-                        map.put(ip, distribution);
+                        if (distribution != null) {
+                            map.put(ip, distribution);
+                        }
                     }
                 }
             } else if (value.startsWith(".")) {
@@ -2343,7 +2350,9 @@ public final class SPF implements Serializable {
                 for (String key : subMap.keySet()) {
                     if (key.endsWith(hostname)) {
                         distribution = getExact(key);
-                        map.put(key, distribution);
+                        if (distribution != null) {
+                            map.put(key, distribution);
+                        }
                     }
                 }
                 subMap = getSubMap("@", "A");
@@ -2351,12 +2360,16 @@ public final class SPF implements Serializable {
                     String hostKey = '.' + mx.substring(1);
                     if (hostKey.endsWith(hostname)) {
                         distribution = getExact(mx);
-                        map.put(mx, distribution);
+                        if (distribution != null) {
+                            map.put(mx, distribution);
+                        }
                     }
                 }
             } else {
                 distribution = getExact(value);
-                map.put(value, distribution);
+                if (distribution != null) {
+                    map.put(value, distribution);
+                }
             }
             return map;
         }
@@ -4567,7 +4580,6 @@ public final class SPF implements Serializable {
                 clearSet.add(key);
             }
         }
-        
         for (String key : Peer.clearAllReputation(token)) {
             clearSet.add(key);
         }
@@ -5064,7 +5076,7 @@ public final class SPF implements Serializable {
         CacheBlock.store();
         CacheGuess.store();
         CacheHELO.store();
-        CacheDefer.store();
+//        CacheDefer.store();
     }
 
     /**
@@ -5081,7 +5093,7 @@ public final class SPF implements Serializable {
         CacheBlock.load();
         CacheGuess.load();
         CacheHELO.load();
-        CacheDefer.load();
+//        CacheDefer.load();
     }
 
     /**
@@ -5457,167 +5469,167 @@ public final class SPF implements Serializable {
         CacheHELO.dropExpired();
     }
 
-    /**
-     * Classe que representa um atrazo programado.
-     */
-    private static class CacheDefer {
-
-        /**
-         * Mapa de atrazos programados.
-         */
-        private static final HashMap<String,Long> MAP = new HashMap<String,Long>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static synchronized Long dropExact(String token) {
-            Long ret = MAP.remove(token);
-            if (ret != null) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-
-        private static synchronized Long putExact(String key, Long value) {
-            Long ret = MAP.put(key, value);
-            if (!value.equals(ret)) {
-                CHANGED = true;
-            }
-            return ret;
-        }
-        
-        private static synchronized TreeSet<String> keySet() {
-            TreeSet<String> keySet = new TreeSet<String>();
-            keySet.addAll(MAP.keySet());
-            return keySet;
-        }
-        
-        private static synchronized HashMap<String,Long> getMap() {
-            HashMap<String,Long> map = new HashMap<String,Long>();
-            map.putAll(MAP);
-            return map;
-        }
-
-        private static boolean containsExact(String address) {
-            return MAP.containsKey(address);
-        }
-        
-        private static Long getExact(String host) {
-            return MAP.get(host);
-        }
-        
-        private static synchronized boolean isChanged() {
-            return CHANGED;
-        }
-        
-        private static synchronized void setStored() {
-            CHANGED = false;
-        }
-        
-        private static synchronized void setLoaded() {
-            CHANGED = false;
-        }
-
-        public static void dropExpired() {
-            long expire = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000); // Expira em cinco dias
-            for (String id : keySet()) {
-                Long start = getExact(id);
-                if (start != null && start < expire) {
-                    drop(id);
-                }
-            }
-        }
-
-        public static boolean defer(String id, int minutes) {
-            if (id == null) {
-                return false;
-            } else {
-                id = id.trim().toLowerCase();
-                long now = System.currentTimeMillis();
-                Long start = getExact(id);
-                if (start == null) {
-                    start = now;
-                    put(id, start);
-                    return true;
-                } else if (start < (now - minutes * 60 * 1000)) {
-                    end(id);
-                    return false;
-                } else {
-                    return true;
-                }
-            }
-        }
-
-        private static void end(String id) {
-            long now = System.currentTimeMillis();
-            if (dropExact(id) != null) {
-                Server.logDefer(now, id, "END");
-            }
-        }
-
-        private static void drop(String id) {
-            long now = System.currentTimeMillis();
-            if (dropExact(id) != null) {
-                Server.logDefer(now, id, "EXPIRED");
-            }
-        }
-
-        private static void put(String id, long start) {
-            long now = System.currentTimeMillis();
-            if (putExact(id, start) == null) {
-                Server.logDefer(now, id, "START");
-            }
-        }
-
-        private static void store() {
-            if (isChanged()) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/defer.map");
-                    HashMap<String,Long> map = getMap();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(map, outputStream);
-                        setStored();
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/defer.map");
-            if (file.exists()) {
-                try {
-                    HashMap<String,Long> map;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        map = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    for (String key : map.keySet()) {
-                        Long value = map.get(key);
-                        putExact(key, value);
-                    }
-                    setLoaded();
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-    
-    public static void dropExpiredDefer() {
-        CacheDefer.dropExpired();
-    }
+//    /**
+//     * Classe que representa um atrazo programado.
+//     */
+//    private static class CacheDefer {
+//
+//        /**
+//         * Mapa de atrazos programados.
+//         */
+//        private static final HashMap<String,Long> MAP = new HashMap<String,Long>();
+//        /**
+//         * Flag que indica se o cache foi modificado.
+//         */
+//        private static boolean CHANGED = false;
+//        
+//        private static synchronized Long dropExact(String token) {
+//            Long ret = MAP.remove(token);
+//            if (ret != null) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//
+//        private static synchronized Long putExact(String key, Long value) {
+//            Long ret = MAP.put(key, value);
+//            if (!value.equals(ret)) {
+//                CHANGED = true;
+//            }
+//            return ret;
+//        }
+//        
+//        private static synchronized TreeSet<String> keySet() {
+//            TreeSet<String> keySet = new TreeSet<String>();
+//            keySet.addAll(MAP.keySet());
+//            return keySet;
+//        }
+//        
+//        private static synchronized HashMap<String,Long> getMap() {
+//            HashMap<String,Long> map = new HashMap<String,Long>();
+//            map.putAll(MAP);
+//            return map;
+//        }
+//
+//        private static boolean containsExact(String address) {
+//            return MAP.containsKey(address);
+//        }
+//        
+//        private static Long getExact(String host) {
+//            return MAP.get(host);
+//        }
+//        
+//        private static synchronized boolean isChanged() {
+//            return CHANGED;
+//        }
+//        
+//        private static synchronized void setStored() {
+//            CHANGED = false;
+//        }
+//        
+//        private static synchronized void setLoaded() {
+//            CHANGED = false;
+//        }
+//
+//        public static void dropExpired() {
+//            long expire = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000); // Expira em cinco dias
+//            for (String id : keySet()) {
+//                Long start = getExact(id);
+//                if (start != null && start < expire) {
+//                    drop(id);
+//                }
+//            }
+//        }
+//
+//        public static boolean defer(String id, int minutes) {
+//            if (id == null) {
+//                return false;
+//            } else {
+//                id = id.trim().toLowerCase();
+//                long now = System.currentTimeMillis();
+//                Long start = getExact(id);
+//                if (start == null) {
+//                    start = now;
+//                    put(id, start);
+//                    return true;
+//                } else if (start < (now - minutes * 60 * 1000)) {
+//                    end(id);
+//                    return false;
+//                } else {
+//                    return true;
+//                }
+//            }
+//        }
+//
+//        private static void end(String id) {
+//            long now = System.currentTimeMillis();
+//            if (dropExact(id) != null) {
+//                Server.logDefer(now, id, "END");
+//            }
+//        }
+//
+//        private static void drop(String id) {
+//            long now = System.currentTimeMillis();
+//            if (dropExact(id) != null) {
+//                Server.logDefer(now, id, "EXPIRED");
+//            }
+//        }
+//
+//        private static void put(String id, long start) {
+//            long now = System.currentTimeMillis();
+//            if (putExact(id, start) == null) {
+//                Server.logDefer(now, id, "START");
+//            }
+//        }
+//
+//        private static void store() {
+//            if (isChanged()) {
+//                try {
+//                    long time = System.currentTimeMillis();
+//                    File file = new File("./data/defer.map");
+//                    HashMap<String,Long> map = getMap();
+//                    FileOutputStream outputStream = new FileOutputStream(file);
+//                    try {
+//                        SerializationUtils.serialize(map, outputStream);
+//                        setStored();
+//                    } finally {
+//                        outputStream.close();
+//                    }
+//                    Server.logStore(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//
+//        private static void load() {
+//            long time = System.currentTimeMillis();
+//            File file = new File("./data/defer.map");
+//            if (file.exists()) {
+//                try {
+//                    HashMap<String,Long> map;
+//                    FileInputStream fileInputStream = new FileInputStream(file);
+//                    try {
+//                        map = SerializationUtils.deserialize(fileInputStream);
+//                    } finally {
+//                        fileInputStream.close();
+//                    }
+//                    for (String key : map.keySet()) {
+//                        Long value = map.get(key);
+//                        putExact(key, value);
+//                    }
+//                    setLoaded();
+//                    Server.logLoad(time, file);
+//                } catch (Exception ex) {
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//    }
+//    
+//    public static void dropExpiredDefer() {
+//        CacheDefer.dropExpired();
+//    }
 
     protected static String processPostfixSPF(
             String client, String ip, String sender, String helo,
@@ -5726,10 +5738,10 @@ public final class SPF implements Serializable {
                     fluxo = origem + ">" + recipient;
                 } else if (CacheHELO.match(ip, helo)) {
                     String dominio = Domain.extractDomain(helo, true);
-                    origem = sender + ">" + dominio.substring(1);
+                    origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
                     fluxo = origem + ">" + recipient;
                 } else {
-                    origem = sender + ">" + ip;
+                    origem = (sender == null ? "" : sender + '>') + ip;
                     fluxo = origem + ">" + recipient;
                 }
                 if (CacheWhite.contains(client, ip, sender, helo, result, recipient)) {
@@ -5744,6 +5756,14 @@ public final class SPF implements Serializable {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
+                } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
+                    // A origem abusou do atraso, portanto será rejeitada.
+                    Server.logDefer(0, fluxo, "FLOOD");
+                    Defer.end(fluxo);
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=REJECT [RBL] "
+                            + "you are permanently blocked in this server.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
@@ -5756,20 +5776,26 @@ public final class SPF implements Serializable {
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] "
                             + "you are permanently blocked in this server.\n\n";
-                } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
+                } else if (SPF.isBlacklisted(tokenSet)
+                        && Defer.defer(fluxo, Core.getDeferTimeBLACK())) {
                     // Pelo menos um identificador está listado e com atrazo programado de um dia.
                     return "action=DEFER [RBL] "
                             + "you are temporarily blocked on this server.\n\n";
-                } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
+                } else if (SPF.isGreylisted(tokenSet)
+                        && Defer.defer(fluxo, Core.getDeferTimeGRAY())
+                        ) {
                     // Pelo menos um identificador está em greylisting com atrazo programado de 10min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-                } else if (SPF.isFlood(tokenSet) && CacheDefer.defer(origem, 1)) {
+                } else if (SPF.isFlood(tokenSet) && Defer.defer(origem, 1)) {
                     // Pelo menos um identificador está com frequência superior ao permitido.
                     Server.logTrace("FLOOD " + tokenSet);
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
-                } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
+                } else if (result.equals("SOFTFAIL")
+                        && !CacheProvider.containsHELO(ip, helo)
+                        && Defer.defer(fluxo, Core.getDeferTimeSOFTFAIL())
+                        ) {
                     // SOFTFAIL com atrazo programado de 1min.
                     return "action=DEFER [RBL] "
                             + "you are greylisted on this server.\n\n";
@@ -5993,10 +6019,10 @@ public final class SPF implements Serializable {
                                 fluxo = origem + ">" + recipient;
                             } else if (CacheHELO.match(ip, helo)) {
                                 String dominio = Domain.extractDomain(helo, true);
-                                origem = sender + ">" + dominio.substring(1);
+                                origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
                                 fluxo = origem + ">" + recipient;
                             } else {
-                                origem = sender + ">" + ip;
+                                origem = (sender == null ? "" : sender + '>') + ip;
                                 fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
@@ -6019,19 +6045,15 @@ public final class SPF implements Serializable {
                                 for (String token : tokenSet) {
                                     float probability;
                                     Status status;
-//                                    String frequency;
                                     if (distributionMap.containsKey(token)) {
                                         Distribution distribution = distributionMap.get(token);
                                         probability = distribution.getSpamProbability(token);
                                         status = distribution.getStatus(token);
-//                                        frequency = distribution.getFrequencyLiteral();
                                     } else {
                                         probability = 0.0f;
                                         status = SPF.Status.WHITE;
-//                                        frequency = "UNDEFINED";
                                     }
                                     result += "   " + token
-//                                            + " " + frequency
                                             + " " + status.name() + " "
                                             + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
@@ -6047,6 +6069,13 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
+                            } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
+                                // A origem abusou do atraso, portanto será rejeitada.
+                                Server.logDefer(0, fluxo, "FLOOD");
+                                Defer.end(fluxo);
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                return "BLOCKED\n";
                             } else if (SPF.isBlocked(tokenSet)) {
                                  // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
@@ -6057,17 +6086,23 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
-                            } else if (SPF.isBlacklisted(tokenSet) && CacheDefer.defer(fluxo, 1435)) {
+                            } else if (SPF.isBlacklisted(tokenSet)
+                                    && Defer.defer(fluxo, Core.getDeferTimeBLACK())
+                                    ) {
                                 // Pelo menos um identificador do conjunto está em lista negra com atrazo de 1 dia.
                                 return "LISTED\n";
-                            } else if (SPF.isGreylisted(tokenSet) && CacheDefer.defer(fluxo, 25)) {
+                            } else if (SPF.isGreylisted(tokenSet)
+                                    && Defer.defer(fluxo, Core.getDeferTimeGRAY())
+                                    ) {
                                 // Pelo menos um identificador do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
-                            } else if (SPF.isFlood(tokenSet) && CacheDefer.defer(origem, 1)) {
+                            } else if (SPF.isFlood(tokenSet) && Defer.defer(origem, 1)) {
                                 // Pelo menos um identificador está com frequência superior ao permitido.
                                 Server.logTrace("FLOOD " + tokenSet);
                                 return "GREYLIST\n";
-                            } else if (result.equals("SOFTFAIL") && !CacheProvider.containsHELO(ip, helo) && CacheDefer.defer(fluxo, 1)) {
+                            } else if (result.equals("SOFTFAIL")
+                                    && !CacheProvider.containsHELO(ip, helo)
+                                    && Defer.defer(fluxo, Core.getDeferTimeSOFTFAIL())) {
                                 // SOFTFAIL com atrazo de 1min.
                                 return "GREYLIST\n";
                             } else {
@@ -6359,12 +6394,34 @@ public final class SPF implements Serializable {
         public boolean hasLastQuery() {
             return lastQuery > 0;
         }
+        
+        public int getIdleTimeMillis() {
+            if (lastQuery == 0) {
+                return 0;
+            } else {
+                return (int) (System.currentTimeMillis() - lastQuery);
+            }
+        }
 
         public String getFrequencyLiteral() {
             if (hasFrequency()) {
-                return frequency.toStringInt() + "s";
+            int frequencyInt = frequency.getMaximumInt();
+                int idleTimeInt = getIdleTimeMillis();
+                if (idleTimeInt > frequencyInt * 7) {
+                    return "DEAD";
+                } else if (idleTimeInt > frequencyInt * 5) {
+                    return "IDLE";
+                } else if (frequencyInt >= 3600000) {
+                    return "~" + frequencyInt / 3600000 + "h";
+                } else if (frequencyInt >= 60000) {
+                    return "~" + frequencyInt / 60000 + "min";
+                } else if (frequencyInt >= 1000) {
+                    return "~" + frequencyInt / 1000 + "s";
+                } else {
+                    return "~" + frequencyInt + "ms";
+                }
             } else {
-                return "UNDEFINED";
+                return "DEAD";
             }
         }
 
@@ -6475,11 +6532,11 @@ public final class SPF implements Serializable {
             if (frequency == null) {
                 return false;
             } else if (Subnet.isValidIP(token)) {
-                return frequency < 1.0f;
+                return frequency < Core.getFloodTimeIP();
             } else if (Domain.isEmail(token)) {
-                return frequency < 60.0f;
+                return frequency < Core.getFloodTimeSender();
             } else {
-                return frequency < 10.0f;
+                return frequency < Core.getFloodTimeHELO();
             }
         }
 

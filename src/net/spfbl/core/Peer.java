@@ -931,9 +931,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > frequencyInt * 5) {
+            if (idleTimeInt > frequencyInt * 7) {
                 return "DEAD";
-            } else if (idleTimeInt > frequencyInt * 3) {
+            } else if (idleTimeInt > frequencyInt * 5) {
                 return "IDLE";
             } else if (frequencyInt < limit) {
                 return "<" + limit + "ms";
