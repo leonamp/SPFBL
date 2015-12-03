@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.core;
 
@@ -47,8 +47,8 @@ import net.spfbl.whois.SubnetIPv6;
 public class Core {
     
     private static final byte VERSION = 1;
-    private static final byte SUBVERSION = 3;
-    private static final byte RELEASE = 6;
+    private static final byte SUBVERSION = 4;
+    private static final byte RELEASE = 0;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -147,6 +147,13 @@ public class Core {
                     Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     Core.setPortHTTP(properties.getProperty("http_port"));
                     Core.setMaxUDP(properties.getProperty("udp_max"));
+                    Core.setFloodTimeIP(properties.getProperty("flood_time_ip"));
+                    Core.setFloodTimeHELO(properties.getProperty("flood_time_helo"));
+                    Core.setFloodTimeSender(properties.getProperty("flood_time_sender"));
+                    Core.setFloodMaxRetry(properties.getProperty("flood_max_retry"));
+                    Core.setDeferTimeSOFTFAIL(properties.getProperty("defer_time_softfail"));
+                    Core.setDeferTimeGRAY(properties.getProperty("defer_time_gray"));
+                    Core.setDeferTimeBLACK(properties.getProperty("defer_time_gray"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
@@ -375,6 +382,102 @@ public class Core {
         }
     }
     
+    private static float FLOOD_TIME_IP = 1.0f;
+    
+    public static float getFloodTimeIP() {
+        return FLOOD_TIME_IP;
+    }
+    
+    public static void setFloodTimeIP(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setFloodTimeIP(Float.parseFloat(time));
+            } catch (Exception ex) {
+                Server.logError("invalid FLOOD IP time '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setFloodTimeIP(float time) {
+        if (time < 0.0f || time > Byte.MAX_VALUE) {
+            Server.logError("invalid FLOOD IP time '" + time + "s'.");
+        } else {
+            Core.FLOOD_TIME_IP = time;
+        }
+    }
+    
+    private static float FLOOD_TIME_HELO = 10.0f;
+    
+    public static float getFloodTimeHELO() {
+        return FLOOD_TIME_HELO;
+    }
+    
+    public static void setFloodTimeHELO(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setFloodTimeHELO(Float.parseFloat(time));
+            } catch (Exception ex) {
+                Server.logError("invalid FLOOD HELO time '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setFloodTimeHELO(float time) {
+        if (time < 0.0f || time > Byte.MAX_VALUE) {
+            Server.logError("invalid FLOOD HELO time '" + time + "s'.");
+        } else {
+            Core.FLOOD_TIME_HELO = time;
+        }
+    }
+    
+    private static float FLOOD_TIME_SENDER = 30.0f;
+    
+    public static float getFloodTimeSender() {
+        return FLOOD_TIME_SENDER;
+    }
+    
+    public static void setFloodTimeSender(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setFloodTimeSender(Float.parseFloat(time));
+            } catch (Exception ex) {
+                Server.logError("invalid FLOOD SENDER time '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setFloodTimeSender(float time) {
+        if (time < 0.0f || time > Byte.MAX_VALUE) {
+            Server.logError("invalid FLOOD SENDER time '" + time + "s'.");
+        } else {
+            Core.FLOOD_TIME_SENDER = time;
+        }
+    }
+    
+    private static byte FLOOD_MAX_RETRY = 16;
+    
+    public static float getFloodMaxRetry() {
+        return FLOOD_MAX_RETRY;
+    }
+    
+    public static void setFloodMaxRetry(String max) {
+        if (max != null && max.length() > 0) {
+            try {
+                setFloodMaxRetry(Integer.parseInt(max));
+            } catch (Exception ex) {
+                Server.logError("invalid FLOOD max retry '" + max + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setFloodMaxRetry(int max) {
+        if (max < 1 || max > Byte.MAX_VALUE) {
+            Server.logError("invalid FLOOD max retry '" + max + "'.");
+        } else {
+            Core.FLOOD_MAX_RETRY = (byte) max;
+        }
+    }
+    
     private static class ApplicationMessageHandler implements MessageHandler {
         @Override
         public synchronized String handle(String message) {
@@ -382,6 +485,78 @@ public class Core {
                 Server.logDebug("another instance of this application tried to start.");
             }
             return null;
+        }
+    }
+    
+    private static byte DEFER_TIME_SOFTFAIL = 1;
+    
+    public static byte getDeferTimeSOFTFAIL() {
+        return DEFER_TIME_SOFTFAIL;
+    }
+    
+    public static void setDeferTimeSOFTFAIL(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setDeferTimeSOFTFAIL(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid DEFER time for SOFTFAIL '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setDeferTimeSOFTFAIL(int time) {
+        if (time < 0 || time > Byte.MAX_VALUE) {
+            Server.logError("invalid DEFER time for SOFTFAIL '" + time + "'.");
+        } else {
+            Core.DEFER_TIME_SOFTFAIL = (byte) time;
+        }
+    }
+    
+    private static byte DEFER_TIME_GRAY = 25;
+    
+    public static byte getDeferTimeGRAY() {
+        return DEFER_TIME_GRAY;
+    }
+    
+    public static void setDeferTimeGRAY(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setDeferTimeGRAY(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid DEFER time for GRAY '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setDeferTimeGRAY(int time) {
+        if (time < 0 || time > Byte.MAX_VALUE) {
+            Server.logError("invalid DEFER time for GRAY '" + time + "'.");
+        } else {
+            Core.DEFER_TIME_GRAY = (byte) time;
+        }
+    }
+    
+    private static byte DEFER_TIME_BLACK = 25;
+    
+    public static byte getDeferTimeBLACK() {
+        return DEFER_TIME_BLACK;
+    }
+    
+    public static void setDeferTimeBLACK(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setDeferTimeBLACK(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid DEFER time for BLACK '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setDeferTimeBLACK(int time) {
+        if (time < 0 || time > Byte.MAX_VALUE) {
+            Server.logError("invalid DEFER time for BLACK '" + time + "'.");
+        } else {
+            Core.DEFER_TIME_BLACK = (byte) time;
         }
     }
 
@@ -604,7 +779,7 @@ public class Core {
         @Override
         public void run() {
             // Apagar todas os registros de atrazo programado vencidos.
-            SPF.dropExpiredDefer();
+            Defer.dropExpired();
         }
     }
     

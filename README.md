@@ -424,6 +424,16 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
+Para mandar o Exim bloquear o campo From da mensagem, basta adicionar esta configuração na seção "acl_check_data":
+```
+  # Deny if From is blocked in SPFBL.
+  deny
+    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{true}{false}}
+    condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_From:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
+    message = you are permanently blocked on this server.
+    log_message = SPFBL check blocked. From:${address:$h_From:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
+```
+
 Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automaticamente utilizando a seguinte configuração na seção "acl_check_data":
 ```
   # Deny if the message contains malware
