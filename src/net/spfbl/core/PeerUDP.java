@@ -215,8 +215,6 @@ public final class PeerUDP extends Server {
                                     result = "NOT MATCH";
                                 }
                             }
-                        } catch (UnknownHostException ex) {
-                            result = "UNKNOWN";
                         } catch (Exception ex) {
                             Server.logError(ex);
                             result = "ERROR " + ex.getMessage();
@@ -230,21 +228,17 @@ public final class PeerUDP extends Server {
                         StringTokenizer tokenizer = new StringTokenizer(reputation, " ");
                         if (tokenizer.countTokens() == 3) {
                             address = ipAddress.getHostAddress();
-                            try {
-                                String key = tokenizer.nextToken();
-                                String ham = tokenizer.nextToken();
-                                String spam = tokenizer.nextToken();
-                                Peer peer = Peer.get(ipAddress);
-                                if (peer == null) {
-                                    address = ipAddress.getHostAddress();
-                                    result = "UNKNOWN";
-                                } else {
-                                    address = peer.getAddress();
-                                    peer.addNotification();
-                                    result = peer.setReputation(key, ham, spam);
-                                }
-                            } catch (ProcessException ex) {
-                                result = ex.getErrorMessage();
+                            String key = tokenizer.nextToken();
+                            String ham = tokenizer.nextToken();
+                            String spam = tokenizer.nextToken();
+                            Peer peer = Peer.get(ipAddress);
+                            if (peer == null) {
+                                address = ipAddress.getHostAddress();
+                                result = "UNKNOWN";
+                            } else {
+                                address = peer.getAddress();
+                                peer.addNotification();
+                                result = peer.setReputation(key, ham, spam);
                             }
                         } else {
                             address = ipAddress.getHostAddress();

@@ -48,7 +48,7 @@ public class Core {
     
     private static final byte VERSION = 1;
     private static final byte SUBVERSION = 4;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -151,9 +151,11 @@ public class Core {
                     Core.setFloodTimeHELO(properties.getProperty("flood_time_helo"));
                     Core.setFloodTimeSender(properties.getProperty("flood_time_sender"));
                     Core.setFloodMaxRetry(properties.getProperty("flood_max_retry"));
+                    Core.setDeferTimeFLOOD(properties.getProperty("defer_time_flood"));
                     Core.setDeferTimeSOFTFAIL(properties.getProperty("defer_time_softfail"));
                     Core.setDeferTimeGRAY(properties.getProperty("defer_time_gray"));
                     Core.setDeferTimeBLACK(properties.getProperty("defer_time_gray"));
+                    Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
@@ -471,7 +473,7 @@ public class Core {
     }
     
     public static synchronized void setFloodMaxRetry(int max) {
-        if (max < 1 || max > Byte.MAX_VALUE) {
+        if (max < 0 || max > Byte.MAX_VALUE) {
             Server.logError("invalid FLOOD max retry '" + max + "'.");
         } else {
             Core.FLOOD_MAX_RETRY = (byte) max;
@@ -485,6 +487,30 @@ public class Core {
                 Server.logDebug("another instance of this application tried to start.");
             }
             return null;
+        }
+    }
+    
+    private static byte DEFER_TIME_FLOOD = 1;
+    
+    public static byte getDeferTimeFLOOD() {
+        return DEFER_TIME_FLOOD;
+    }
+    
+    public static void setDeferTimeFLOOD(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setDeferTimeFLOOD(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid DEFER time for FLOOD '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setDeferTimeFLOOD(int time) {
+        if (time < 0 || time > Byte.MAX_VALUE) {
+            Server.logError("invalid DEFER time for FLOOD '" + time + "'.");
+        } else {
+            Core.DEFER_TIME_FLOOD = (byte) time;
         }
     }
     
@@ -560,6 +586,25 @@ public class Core {
         }
     }
 
+    private static boolean REVERSE_REQUIRED = false;
+    
+    public static boolean isReverseRequired() {
+        return REVERSE_REQUIRED;
+    }
+    
+    public static void setReverseRequired(String required) {
+        if (required != null && required.length() > 0) {
+            try {
+                setReverseRequired(Boolean.parseBoolean(required));
+            } catch (Exception ex) {
+                Server.logError("invalid required reverse flag '" + required + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setReverseRequired(boolean required) {
+        Core.REVERSE_REQUIRED = required;
+    }
     /**
      * @param args the command line arguments
      */

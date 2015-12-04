@@ -121,7 +121,9 @@ public class Defer implements Serializable, Comparable<Defer> {
     }
 
     public static boolean defer(String id, int minutes) {
-        if (id == null || minutes == 0) {
+        if (id == null) {
+            return false;
+        } else if (minutes == 0) {
             return false;
         } else {
             id = id.trim().toLowerCase();

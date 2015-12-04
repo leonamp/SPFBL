@@ -22,6 +22,7 @@ import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.NoSuchElementException;
 import java.util.TreeSet;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
@@ -130,10 +131,24 @@ public final class Reverse implements Serializable {
             resultSet.addAll(addressSet);
             return resultSet;
         }
-    } 
+    }
     
     private synchronized int getQueryCount() {
         return queryCount;
+    }
+    
+    private synchronized String getAddressOnly() {
+        try {
+            if (addressSet == null) {
+                return null;
+            } else if (addressSet.size() == 1) {
+                return addressSet.first();
+            } else {
+                return null;
+            }
+        } catch (NoSuchElementException ex) {
+            return null;
+        }
     }
     
     private Reverse(String ip) {
@@ -178,47 +193,10 @@ public final class Reverse implements Serializable {
                     Attribute attributePTR = atributes.get("PTR");
                     if (attributePTR != null) {
                         for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
-                            try {
-                                String host = (String) attributePTR.get(indexPTR);
-                                if (host.startsWith(".")) {
-                                    host = host.substring(1);
-                                }
-                                if (host.endsWith(".")) {
-                                    host = host.substring(0, host.length() - 1);
-                                }
-                                if (SubnetIPv4.isValidIPv4(ip)) {
-                                    atributes = Server.getAttributesDNS(
-                                            host, new String[]{"A"});
-                                    Attribute attributeA = atributes.get("A");
-                                    if (attributeA != null) {
-                                        for (int indexA = 0; indexA < attributeA.size(); indexA++) {
-                                            String ipA = (String) attributeA.get(indexA);
-                                            byte[] address2 = SubnetIPv4.split(ipA);
-                                            if (Arrays.equals(address1, address2)) {
-                                                host = Domain.normalizeHostname(host, true);
-                                                reverseSet.add(host);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                } else if (SubnetIPv6.isValidIPv6(ip)) {
-                                    atributes = Server.getAttributesDNS(
-                                            host, new String[]{"AAAA"});
-                                    Attribute attributeAAAA = atributes.get("AAAA");
-                                    if (attributeAAAA != null) {
-                                        for (int indexAAAA = 0; indexAAAA < attributeAAAA.size(); indexAAAA++) {
-                                            String ipAAAA = (String) attributeAAAA.get(indexAAAA);
-                                            byte[] address2 = SubnetIPv6.splitByte(ipAAAA);
-                                            if (Arrays.equals(address1, address2)) {
-                                                host = Domain.normalizeHostname(host, true);
-                                                reverseSet.add(host);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (NamingException ex) {
-                                // Endereço não encontrado.
+                            String host = (String) attributePTR.get(indexPTR);
+                            host = Domain.normalizeHostname(host, true);
+                            if (host != null) {
+                                reverseSet.add(host);
                             }
                         }
                     }
@@ -248,6 +226,15 @@ public final class Reverse implements Serializable {
 
     public synchronized boolean isExpired14() {
         return System.currentTimeMillis() - lastQuery > 1209600000;
+    }
+    
+    public static String getHostname(String ip) {
+        Reverse reverse = Reverse.get(ip);
+        if (reverse == null) {
+            return null;
+        } else {
+            return reverse.getAddressOnly();
+        }
     }
     
     public static Reverse get(String ip) {

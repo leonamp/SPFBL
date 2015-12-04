@@ -117,15 +117,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return address;
     }
     
-    public InetAddress getInetAddress() throws ProcessException {
-        try {
-            return InetAddress.getByName(address);
-        } catch (UnknownHostException ex) {
-            throw new ProcessException("UNKNOWN" , ex);
-        }
+    public InetAddress getInetAddress() throws UnknownHostException {
+        return InetAddress.getByName(address);
     }
     
-    public String getIP() throws ProcessException {
+    public String getIP() throws UnknownHostException {
         InetAddress inetAddress = getInetAddress();
         String ip = inetAddress.getHostAddress();
         return Subnet.normalizeIP(ip);
@@ -501,12 +497,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public static Peer get(InetAddress inetAddress) throws ProcessException {
+    public static Peer get(InetAddress inetAddress) {
         String ip = inetAddress.getHostAddress();
         ip = Subnet.normalizeIP(ip);
         for (Peer peer : getSet()) {
-            if (ip.equals(peer.getIP())) {
-                return peer;
+            try {
+                if (ip.equals(peer.getIP())) {
+                    return peer;
+                }
+            } catch (UnknownHostException ex) {
+                Server.logError(ex);
             }
         }
         return null;
