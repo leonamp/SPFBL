@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.HashMap;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
@@ -48,7 +49,7 @@ public class Core {
     
     private static final byte VERSION = 1;
     private static final byte SUBVERSION = 4;
-    private static final byte RELEASE = 1;
+    private static final byte RELEASE = 2;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -109,6 +110,54 @@ public class Core {
         }
     }
     
+    public static String getSpamURL(String recipient) {
+        if (complainHTTP == null) {
+            return null;
+        } else if (recipient == null) {
+            return complainHTTP.getSpamURL();
+        } else {
+            int index = recipient.lastIndexOf('@');
+            String domain = recipient.substring(index + 1).toLowerCase();
+            return complainHTTP.getSpamURL(domain);
+        }
+    }
+    
+    public static String dropURL(String domain) {
+        if (complainHTTP == null) {
+            return null;
+        } else {
+            return complainHTTP.drop(domain);
+        }
+    }
+    
+    public static boolean addURL(String domain, String url) {
+        if (complainHTTP == null) {
+            return false;
+        } else {
+            return complainHTTP.put(domain, url);
+        }
+    }
+    
+    public static void loadURL() {
+        if (complainHTTP != null) {
+            complainHTTP.load();
+        }
+    }
+    
+    public static void storeURL() {
+        if (complainHTTP != null) {
+            complainHTTP.store();
+        }
+    }
+    
+    public static HashMap<String,String> getMapURL() {
+        if (complainHTTP == null) {
+            return new HashMap<String,String>();
+        } else {
+            return complainHTTP.getMap();
+        }
+    }
+    
     private static AdministrationTCP administrationTCP = null;
     private static QuerySPF querySPF = null;
     private static QueryDNSBL queryDNSBL = null;
@@ -129,7 +178,7 @@ public class Core {
         }
     }
     
-    private static void startConfiguration() {
+    public static boolean loadConfiguration() {
         File confFile = new File("spfbl.conf");
         if (confFile.exists()) {
             try {
@@ -160,12 +209,16 @@ public class Core {
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
+                    return true;
                 } finally {
                     confIS.close();
                 }
             } catch (IOException ex) {
                 Server.logError(ex);
+                return false;
             }
+        } else {
+            return false;
         }
     }
     
@@ -623,7 +676,7 @@ public class Core {
             if (alreadyRunning) {
                 JUnique.sendMessage(appId, "register");
             } else {
-                startConfiguration();
+                loadConfiguration();
                 Server.logInfo("starting server...");
                 Server.loadCache();
                 SPF.dropExpiredComplain();
@@ -644,6 +697,7 @@ public class Core {
                 }
                 if (PORT_HTTP > 0 ) {
                     complainHTTP = new ComplainHTTP(HOSTNAME, PORT_HTTP);
+                    complainHTTP.load();
                     complainHTTP.start();
                 }
                 Peer.sendHeloToAll();

@@ -153,6 +153,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 index++;
             }
             return Core.removerAcentuacao(address.substring(index)).toLowerCase();
+        } else if (!Domain.isHostname(address)) {
+            return null;
         } else if (pontuacao && !address.startsWith(".")) {
             return "." + Core.removerAcentuacao(address).toLowerCase();
         } else if (pontuacao && address.startsWith(".")) {
@@ -183,8 +185,9 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
-        address = "." + extractHost(address, false);
-        if (isReserved(address)) {
+        if ((address = extractHost(address, true)) == null) {
+            return null;
+        } else if (isReserved(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
