@@ -1792,7 +1792,13 @@ public final class SPF implements Serializable {
             } else {
                 SPF spf = getExact(host);
                 if (spf == null) {
-                    return false;
+                    if (load) {
+                        spf = new SPF(host);
+                        add(spf);
+                        return true;
+                    } else {
+                        return false;
+                    }
                 } else {
                     spf.refresh(load, false);
                     return true;
@@ -1924,26 +1930,6 @@ public final class SPF implements Serializable {
     public static void refreshHELO() {
         CacheHELO.refresh();
     }
-    
-    
-//    private static final Semaphore REFRESH_SEMAPHORE = new Semaphore(1);
-
-//    /**
-//     * Atualiza registros SPF somente se nenhum outro processo estiver
-//     * atualizando.
-//     */
-//    public static void tryRefresh() {
-//        // Evita que muitos processos fiquem
-//        // presos aguardando a liberação do método.
-//        if (REFRESH_SEMAPHORE.tryAcquire()) {
-//            try {
-//                CacheSPF.refresh();
-//                CacheHELO.refresh();
-//            } finally {
-//                REFRESH_SEMAPHORE.release();
-//            }
-//        }
-//    }
     
     /**
      * Classe que representa o cache de registros de denúncia.
