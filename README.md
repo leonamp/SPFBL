@@ -520,6 +520,12 @@ sudo java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
 
+Nós disponibilizamos aqui uma lista de bloqueios atualizada pela rede SPFBL via P2P para um inicio de instalação:
+
+<https://github.com/leonamp/SPFBL/raw/master/doc/block.txt>
+
+Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inser a lista no SPFBL através de script próprio.
+
 ### Como parar o serviço SPFBL
 
 Este este comando pode ser usado para parar o SPFBL:

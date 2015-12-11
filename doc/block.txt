@@ -8,6 +8,7 @@
 .1000mail.com.br
 .1000sites.com.br
 .1001descontos.com
+.1001promocoes.tmp.br
 .100gota.com.br
 .101mktserver.com.br
 .101ofertaspravc.com.br
@@ -200,6 +201,7 @@
 .acessonahora.com.br
 .acessoquatro.com.br
 .acomiptele.com.br
+.acontadeagua.com.br
 .acspmta.com.br
 .actavis.com.br
 .activefox.com.br
@@ -228,6 +230,7 @@
 .adv0915br.com.br
 .advogadoexplica.com.br
 .adwork.com.br
+.aespodonto.com.br
 .aestradaficouvelga.info
 .afcomercial.com.br
 .afdecoracoes.com.br
@@ -299,6 +302,7 @@
 .ageos.com.br
 .agepress.com
 .agesamba.com.br
+.agfananeri.com.br
 .aglorepresentacoes.com.br
 .agoramk.com.br
 .agoramkt.com.br
@@ -405,6 +409,7 @@
 .ananindeuas.com.br
 .andddes.com.br
 .andersonjesuino.com.br
+.andreias.com.br
 .androidmail.com.br
 .anhanguerapost.com.br
 .animafesta.com.br
@@ -586,6 +591,7 @@
 .bebeia.com.br
 .bebeprovence.com.br
 .bebeya.com.br
+.bebidaonline.com.br
 .beesoftmkt.com.br
 .beezo.net.br
 .beezoom.net.br
@@ -611,6 +617,7 @@
 .bestsw.com.br
 .betadigital.net.br
 .betamidia.net.br
+.betanias.com.br
 .betaprodutos.com.br
 .bett.pro.br
 .betweenshop.com.br
@@ -644,6 +651,8 @@
 .blackarts.com.br
 .blackground.com.br
 .blacknews.com.br
+.blackofertas.com.br
+.blackpromocoes.com.br
 .blastmaster.com.br
 .blocodeanotacoes.com.br
 .blogdoauau.com.br
@@ -741,6 +750,7 @@
 .brianfschmitz.com
 .brightjet.com.br
 .brincodeperola.com.br
+.brindestip.com.br
 .brmta.com.br
 .brnoc72.com.br
 .brnor.com.br
@@ -789,6 +799,7 @@
 .cabore.com.br
 .cabore.net.br
 .cacagv.com.br
+.cachoeiradepremios.com.br
 .cadari.com.br
 .cadastroantecipado.com.br
 .cadernodeformulas.com.br
@@ -805,6 +816,7 @@
 .caminhaodasorte.com.br
 .caminhaoturbinado.com.br
 .caminhoespromocoes.com.br
+.camisetasmail.com.br
 .campaignsender.com.br
 .campanha.net.br
 .campanhaplanosdesaude.info
@@ -836,6 +848,7 @@
 .carrosemotosmaisbaratos.com.br
 .carta-media.com.br
 .cartacerta2015.com.br
+.cartaodevisitabarueri.com.br
 .cartaodigital5.com.br
 .cartaonline01.com.br
 .cartaweb2016.com.br
@@ -883,6 +896,10 @@
 .celtahosting.com.br
 .cenisavendas.com.br
 .centaurusserver.com.br
+.central1.com.br
+.central1linuxbra.com.br
+.central1linuxbra2.com.br
+.central1win.com.br
 .central2015.com.br
 .central365.com.br
 .centralar.com.br
@@ -892,6 +909,7 @@
 .centralerp.com.br
 .centralgrafica.com.br
 .centralizajvc.com.br
+.centralmarketing.com.br
 .centralphone.net.br
 .centro-planos.com.br
 .centrynews.com.br
@@ -911,6 +929,7 @@
 .cgtalk.com.br
 .ch4ng.com.br
 .chanandchan.com
+.chancedigital.com.br
 .chancedoano.com.br
 .chancess.com.br
 .chapecarros.com.br
@@ -1066,6 +1085,7 @@
 .comprefacilonline.com.br
 .comprefora.com.br
 .compreja.net.br
+.compreja.srv.br
 .compremelhorpelanet.com.br
 .compreporemail.com.br
 .compreradiomotorola.com.br
@@ -1203,6 +1223,7 @@
 .corretagens.org
 .corretorabrseguros.com.br
 .corretoradesaudevisao.com.br
+.corretoraidealsaude.com.br
 .corretoramelhorsaude.com.br
 .corretoramix.com.br
 .corretorasaudeamil.com.br
@@ -1335,12 +1356,14 @@
 .daldeganoliveira.com.br
 .dametrics.com
 .dancadachuvasp.com.br
+.danisparmta.com.br
 .darconet.com.br
 .darkarts.com.br
 .darktech.org
 .darweb.com
 .dasilvamcosta.com
 .databeta.net.br
+.dataflix.com.br
 .datastore032.com.br
 .datasurserviciotecnico.com
 .dattaweb.com
@@ -1370,6 +1393,7 @@
 .dentmail.com.br
 .deolhonoclick.com.br
 .dermadoctor.com.br
+.desaude.net.br
 .desaudeonline.com.br
 .desbravo.com.br
 .descontaododia.com.br
@@ -1529,6 +1553,7 @@
 .disparoseguro22.com.br
 .disparoseguro23.com.br
 .disparoseguro4.com.br
+.distribuidorariopretana.com.br
 .dituria.sk
 .diveneziabr.com.br
 .diversaonaweb.com
@@ -1641,6 +1666,7 @@
 .e-lotomania.com.br
 .e-mailsvalidos.com.br
 .e-mandare.net.br
+.e-masterlaser.com.br
 .e-megasena.com.br
 .e-meunegocio.com.br
 .e-mobilybaby.com.br
@@ -1716,6 +1742,7 @@
 .edegratis.com.br
 .edescontosnews.com.br
 .edge04.com.br
+.editorai.com.br
 .editorfiscal.com.br
 .editorfiscalmail.com.br
 .educa2016.com.br
@@ -1737,6 +1764,7 @@
 .electrolux.net
 .elementar.com.br
 .eletrocomputer.info
+.eletromail.com.br
 .eletronaval.com.br
 .eliteriosaude.com.br
 .elitesistema.com.br
@@ -1746,12 +1774,14 @@
 .elosul.com.br
 .eloweb-101.com.br
 .elq-trv.haspf.com
+.elviscezar.com.br
 .emagrecerhojemesmo.com.br
 .email-hp.com.br
 .email-pontofrio.com.br
 .email-view.com.br
 .emailabril.com.br
 .emailage.com
+.emailclubedoricardo.com.br
 .emailcontado.com.br
 .emailhonesto.com.br
 .emailmarketingcertificado.com.br
@@ -1860,6 +1890,7 @@
 .equipevendas.info
 .eret.com.br
 .ervasdositio.com.br
+.erxb.com.br
 .escarlatevt.com.br
 .escola10web.com.br
 .escolaimportar.com.br
@@ -1870,7 +1901,9 @@
 .eshop-net.com.br
 .eshop-on.com.br
 .esofthosting.com
+.espadadesaojorge.com.br
 .esparaxis.com.br
+.especiaisleads.com.br
 .especialleads.com.br
 .especialmes1.com.br
 .especialmes2.com.br
@@ -1977,6 +2010,7 @@
 .expvtinboxhub.net
 .expvtinboxlife.net
 .expvtinboxonline.net
+.exteriormmt.com.br
 .extra.com.br
 .extrahost.info
 .extratordeemail.com.br
@@ -2085,6 +2119,7 @@
 .flymarket.com.br
 .fmbpronexxt.com.br
 .fmcbrasil.com
+.fmmsmtp.com.br
 .fnac.com.br
 .fnbox.com
 .folha2.com.br
@@ -2139,6 +2174,7 @@
 .gaiadigital.net.br
 .galafassi.org
 .galeriadevendas.com.br
+.gam.com.br
 .gamailmkt.com.br
 .gameflix.com.br
 .ganhenalotofacil.com.br
@@ -2157,6 +2193,7 @@
 .gdmxchange.com
 .gdroid.com.br
 .geebr.com.br
+.gemeosvt.com
 .geniotur.com.br
 .gentetelecom.com
 .gepbr.com.br
@@ -2171,6 +2208,7 @@
 .ghrsaude.com.br
 .gianegeovani.com.br
 .giftmail.net.br
+.gildagaliter.com.br
 .gixsass.com.br
 .glabox.com.br
 .glamour.com.br
@@ -2313,6 +2351,7 @@
 .havenportal.com
 .hdlead.com.br
 .hdlojas.com.br
+.hdomg.com.br
 .hdsaude.com.br
 .hdserver.info
 .hdvida.com.br
@@ -2366,6 +2405,7 @@
 .hostingbko.com.br
 .hostmaking.info
 .hostreg.com.br
+.hostsrv.com.br
 .hostweb2015.com
 .hostwindsdns.com
 .hot1web.com.br
@@ -2396,6 +2436,7 @@
 .hr-media.com.br
 .hrradinhos.com.br
 .htmlstore.com.br
+.htxrepresentacoes.com.br
 .htzmta.com.br
 .hubspot.com
 .hucloud.com.br
@@ -2443,6 +2484,7 @@
 .idleplay.net
 .ieforte.com.br
 .iemmsender.com
+.iesde.com.br
 .iexpress.com.br
 .ifoto.com.br
 .ifregues.com.br
@@ -2457,6 +2499,7 @@
 .img.com.br
 .imgpmenews.info
 .imoveisemdestaques.com.br
+.imoveisisac.com.br
 .imoveisweb011.com.br
 .impakto.com.br
 .imparpublicidade.com.br
@@ -2474,6 +2517,7 @@
 .industweb.com.br
 .inegociosweb.com.br
 .inetg.bg
+.infinitoassessoria.com.br
 .infnet.com.br
 .info-cliente.com
 .info.oxfordeconomics.com
@@ -2485,6 +2529,7 @@
 .infomailnews.com.br
 .infomask.com.br
 .infomobn.com.br
+.infonovidades.com.br
 .infoorlando.com.br
 .infoparks.com.br
 .infopescaenautica.com.br
@@ -2500,6 +2545,7 @@
 .informacaosaude.info
 .informacaosaude.net
 .informacoesemail.com.br
+.informagroup.com.br
 .informativoamil.com.br
 .informativoamil1.com.br
 .informativoamil10.com.br
@@ -2567,6 +2613,7 @@
 .internetmkt.com.br
 .intersenaloterias.com.br
 .interserver.info
+.intersmart.com.br
 .investsp.com.br
 .inxserver.com
 .inxserver.de
@@ -2596,6 +2643,7 @@
 .ispsaude.com.br
 .isrvenvia.com
 .itecseguranca.com.br
+.iusacell.net
 .ivanildonoticia.com
 .ivanrocha.com.br
 .ivendasonline.com.br
@@ -2606,6 +2654,7 @@
 .jakalt.cf
 .jeovida.com.br
 .jerry-online.com.br
+.jessicas.com.br
 .jetfaxx.com.br
 .jetfaxxr.com.br
 .jetlasernews.com.br
@@ -2706,6 +2755,7 @@
 .lagospark.com.br
 .laizy.com.br
 .landingpagebrasil.com.br
+.lanjing-lijia.com
 .lanodaamazonia.com.br
 .lapisweb.com.br
 .laranjaweb.com.br
@@ -2733,10 +2783,12 @@
 .leadsclub.com.br
 .leadseguro.com.br
 .leadseguros.net.br
+.leadsespeciais.com.br
 .leadsmulti.com.br
 .leadsnow.co
 .leadsp.com.br
 .leadssd.com.br
+.leadsturbo.com.br
 .leadsul.net.br
 .leadtop.com.br
 .leadvip.com.br
@@ -2835,6 +2887,7 @@
 .livreconcorrencia.net.br
 .livrodosrecordes.com.br
 .livroscomdescontos.com
+.ljlj.cc
 .lloterias.com.br
 .lmlmgv.com.br
 .loadstech.com.br
@@ -2926,6 +2979,7 @@
 .maildigital.com.br
 .maileasy.com.br
 .mailee.me
+.mailenvio.info
 .mailer.pro.br
 .mailersend.com
 .mailerweb.com.br
@@ -2960,6 +3014,7 @@
 .mailseguro.com.br
 .mailsender.com.br
 .mailsender.net.br
+.mailshopfacil.com.br
 .mailto.com.br
 .mailtools.com.br
 .mailtrust.com.br
@@ -2968,6 +3023,7 @@
 .mairysarmanho.com
 .maisconfiavel.com.br
 .maisequilibrio.com.br
+.maisgestaopublica.com.br
 .maisnutritivo.com.br
 .maisperformace.com.br
 .maisquedescontos.com.br
@@ -3073,6 +3129,7 @@
 .meganetcompras.com.br
 .megaofertadainternet.com.br
 .megaproduto.com.br
+.megaraweb.com.br
 .megasenabrasil.com
 .megasenafacil.com.br
 .megavales.com.br
@@ -3159,6 +3216,7 @@
 .midiaperf.net.br
 .midiasorte.com.br
 .midiatreinamento.com.br
+.migalhas.com.br
 .milanpav.com.br
 .milhoesdeemails.com.br
 .milleviniofertas.com.br
@@ -3217,6 +3275,7 @@
 .mktlojaelectrolux.com.br
 .mktnaweb.com
 .mktomail.com
+.mktprogram.com.br
 .mktqualidadedevida.com.br
 .mktroute.com
 .mktseguro.com.br
@@ -3278,6 +3337,7 @@
 .moraldafamilia.com.br
 .motelurbano.com.br
 .motorola-mail.com
+.motoschoolpost.com.br
 .mouralead.com.br
 .mplinkweb.info
 .mpst.net.br
@@ -3313,6 +3373,7 @@
 .mundo2fun.com.br
 .mundodel.com.br
 .mundodoluxo.com.br
+.mundoeletero.com.br
 .mundoestetica.com.br
 .mundofavorito.com.br
 .mundoholografico.com.br
@@ -3469,6 +3530,7 @@
 .noventae9.com.br
 .novidades-dia.com.br
 .novidadescamicado.com.br
+.novidadesdevendas.com.br
 .novidadeseofertas.com.br
 .novidadesexclusivas.com
 .novidadesonline.com.br
@@ -3490,6 +3552,7 @@
 .nuvemdasorte.com.br
 .nuvevents.com.br
 .o-cartaweb.com.br
+.oabinara.com.br
 .oabrs.org.br
 .obabox.com.br
 .oberon.net.br
@@ -3620,6 +3683,7 @@
 .osuperdesconto.com.br
 .otenet.gr
 .otestimulo.com.br
+.otimacasa.com
 .otimoproduto.com.br
 .otimopromo.com.br
 .ottobocknews.com.br
@@ -3627,6 +3691,7 @@
 .outstop.com.br
 .outx.lol
 .overhand.com.br
+.overlar.com.br
 .overlead.com.br
 .ovh
 .pacificosulvendaonline.com.br
@@ -3705,6 +3770,7 @@
 .phrcampserv.com.br
 .piccadilly.com.br
 .picinformatica.com.br
+.pifpaf.com.br
 .pimovel.com.br
 .pini.com.br
 .piniweb.com
@@ -3763,6 +3829,7 @@
 .podemandartudo.com.br
 .podenavegar.com.br
 .podeparcelar.com.br
+.poderosamk.com.br
 .podersaudavel.com.br
 .podesergrande.ml
 .pokerviagens.com.br
@@ -3774,6 +3841,7 @@
 .polipromo.com.br
 .poliself.com.br
 .pome.com.br
+.pompilio.com.br
 .pontofrio.com.br
 .pontofrioatacado.com.br
 .pontomidia.net.br
@@ -3807,6 +3875,7 @@
 .portfolioveiculos.com.br
 .porto.com
 .portugueis.com.br
+.poscliquepost.com.br
 .posgraduacaoa.com.br
 .positivobr.com.br
 .positivopost.com.br
@@ -3930,12 +3999,14 @@
 .promop.com.br
 .promoseofertas.com.br
 .promotioncenter.net.br
+.promovantagem.com.br
 .prontoatendimento.com.br
 .propagandasempre.com.br
 .proparcerias.com.br
 .propertyonesg.com
 .propostaservico.com.br
 .prosperidadenaweb.com.br
+.prospinpost.com.br
 .proteusmidcamp.com.br
 .prout.be
 .provedorsul.com.br
@@ -4003,6 +4074,7 @@
 .querobazar.com.br
 .queroboasaude.com.br
 .queroclarotv.com.br
+.querocontato.com.br
 .querocotacao.com.br
 .querolife.com.br
 .queromeuplanodesaude.com.br
@@ -4018,6 +4090,7 @@
 .ranking.com.br
 .rankingbrasil.com.br
 .rapi10.com.br
+.rapidnuv.com.br
 .rapinas.com.br
 .rapinforma.com.br
 .raptor2.com.br
@@ -4078,16 +4151,20 @@
 .rgbdb.com.br
 .rgbea.com.br
 .rgbentrega.net.br
+.rgbgb.com.br
 .rgbhb.com.br
+.rgbja.com.br
 .rgblc.com.br
 .rgbnc.com.br
 .rgbqa.com.br
 .rgbqc.com.br
+.rgbrb.com.br
 .rgbsc.com.br
 .rgbtb.com.br
 .rgbtc.com.br
 .rgbua.com.br
 .rgbuc.com.br
+.rgbxc.com.br
 .rh1brasil.com.br
 .rh3brasil.com.br
 .rh4brasil.com.br
@@ -4098,6 +4175,9 @@
 .riade-mg.com.br
 .ricardoeletro.com.br
 .richards.com.br
+.rimaeight.com.br
+.rimaone.com.br
+.rimathree.com.br
 .rinonewss.com.br
 .rinostore.com.br
 .riodejaneiro2.com.br
@@ -4191,12 +4271,14 @@
 .scertplano.com
 .schani.com.br
 .schmittcontabilidade.com.br
+.scnbrasil.com.br
 .scoreday.com.br
 .scorreiodeentrega.com
 .scotconsultoria.com.br
 .sdtcvert.com.br
 .sealonia.com
 .searchprice.com.br
+.secmesp.org.br
 .securitty.com.br
 .sedux.com.br
 .sefaznet.com.br
@@ -4233,6 +4315,7 @@
 .semanashow16.com.br
 .semanashow2.com.br
 .semanashow3.com.br
+.semanashow4.com.br
 .semanashow5.com.br
 .semanashow6.com.br
 .semanashow7.com.br
@@ -4388,6 +4471,7 @@
 .sistemaximo.com.br
 .sitecomdesconto.com.br
 .sitedomelhordesconto.com.br
+.sitehospedagemdesite.com.br
 .siteimediato.com.br
 .siteone.com.br
 .siteprotect.com
@@ -4419,8 +4503,10 @@
 .smtpgm.com
 .smtplw-01.com
 .smtplw-03.com
+.smtplw-04.com
 .smtplw-05.com
 .smtplw-06.com
+.smtplw-08.com
 .smtplw-09.com
 .smtplw-11.com
 .smtplw-12.com
@@ -4449,6 +4535,7 @@
 .sofralda.com.br
 .softlayer.com
 .softmail.com.br
+.softmixer.info
 .sokol.com.ua
 .soldlives.com.br
 .solerwesk.com.br
@@ -4574,7 +4661,6 @@
 .stillusmail.com.br
 .stilosensual.com.br
 .stmailer.com
-.stoppay.net
 .storeweb161.com.br
 .stormideas.com.br
 .stormideas.net.br
@@ -4696,10 +4782,12 @@
 .teamspiritstaging.co.uk
 .teasermail.com.br
 .tecdec.com.br
+.techem.com.br
 .techempresas.com.br
 .technologybridge.com
 .techsyn.com.br
 .techsysmail.com.br
+.tecnicavalentin.com.br
 .tecnologiadisparo.com.br
 .tecnologiaemail.com.br
 .tecnologiamarketing.com.br
@@ -4890,6 +4978,7 @@
 .umx.com.br
 .und-r3.net
 .und-tp8.net
+.uniaovirtual.com.br
 .unicorpbrasil.com.br
 .unidadedf.com.br
 .unidademg.com.br
@@ -4903,6 +4992,7 @@
 .unity-media.net
 .universidadediferente.com.br
 .universo-online.net
+.universomail.com.br
 .unleap.com.br
 .unodonto.com.br
 .unofestas.com.br
@@ -4932,6 +5022,7 @@
 .usinadeenvio.com
 .usx.com.br
 .uttc.com.br
+.utx.com.br
 .uvarosa.com.br
 .v-folheto.com.br
 .vai01.com.br
@@ -4983,6 +5074,7 @@
 .viagemsemtransito.com.br
 .viajanet.com.br
 .viajantehu.com.br
+.viannaconsultores1.com.br
 .vianortehost.com
 .victorynews.info
 .victoryves.com.br
@@ -5076,6 +5168,7 @@
 .vps01.com.br
 .vpscloud.com.br
 .vrmailer3.com
+.vrpost.com.br
 .vsenderpost.com
 .vtinforma.com.br
 .vtr.net
@@ -5097,6 +5190,7 @@
 .wbrasil10.com.br
 .wdcnet.com.br
 .web2br.com.br
+.web4emails.com.br
 .webconceito.adm.br
 .webcursos.info
 .webdesignbh.com.br
@@ -5278,12 +5372,33 @@
 @yahoo.fr;NEUTRAL
 @ygm.com;NEUTRAL
 @zoho.com;SOFTFAIL
+CIDR=1.55.128.0/20
+CIDR=1.55.64.0/20
 CIDR=107.2.0.0/15
 CIDR=107.4.0.0/15
 CIDR=109.148.0.0/14
+CIDR=109.48.0.0/15
+CIDR=109.96.0.0/13
+CIDR=113.23.48.0/20
+CIDR=116.118.0.0/18
+CIDR=116.207.0.0/16
+CIDR=117.203.0.0/16
+CIDR=117.204.0.0/14
+CIDR=117.212.0.0/14
+CIDR=117.6.0.0/16
+CIDR=118.26.128.0/20
+CIDR=122.32.0.0/12
+CIDR=123.18.0.0/16
+CIDR=123.23.0.0/16
+CIDR=125.176.0.0/12
 CIDR=131.255.140.0/22
 CIDR=131.255.143.224/27
 CIDR=138.117.196.0/22
+CIDR=14.171.0.0/16
+CIDR=146.255.64.0/22
+CIDR=146.255.68.0/24
+CIDR=151.66.0.0/16
+CIDR=161.10.0.0/16
 CIDR=174.48.0.0/12
 CIDR=177.136.14.0/24
 CIDR=177.136.16.0/21
@@ -5335,12 +5450,23 @@ CIDR=177.92.3.0/29
 CIDR=177.92.3.248/29
 CIDR=177.93.105.192/26
 CIDR=177.99.170.96/29
+CIDR=178.252.146.0/23
+CIDR=178.252.148.0/22
+CIDR=178.252.152.0/21
 CIDR=179.109.208.0/20
 CIDR=179.109.224.0/19
 CIDR=179.185.82.16/29
 CIDR=179.188.248.0/22
 CIDR=179.188.252.0/22
 CIDR=179.189.232.48/29
+CIDR=181.66.0.0/15
+CIDR=182.181.0.0/16
+CIDR=183.0.0.0/10
+CIDR=186.1.113.0/25
+CIDR=186.112.0.0/14
+CIDR=186.116.0.0/14
+CIDR=186.120.80.0/22
+CIDR=186.182.0.0/16
 CIDR=186.193.224.112/28
 CIDR=186.193.224.224/28
 CIDR=186.193.224.240/28
@@ -5419,12 +5545,17 @@ CIDR=189.77.250.128/25
 CIDR=189.77.251.0/25
 CIDR=189.77.251.128/25
 CIDR=189.89.193.0/28
+CIDR=190.233.128.0/18
+CIDR=190.40.226.0/25
+CIDR=190.40.8.0/25
+CIDR=190.41.180.0/25
 CIDR=190.87.0.0/16
 CIDR=191.240.154.232/29
 CIDR=191.250.25.8/29
 CIDR=191.33.178.80/29
 CIDR=191.6.133.0/30
 CIDR=191.6.133.64/30
+CIDR=197.117.0.0/16
 CIDR=200.143.48.0/25
 CIDR=200.143.48.128/25
 CIDR=200.150.79.24/29
@@ -5472,7 +5603,9 @@ CIDR=201.157.253.128/25
 CIDR=201.157.254.0/25
 CIDR=201.157.254.128/25
 CIDR=201.157.255.0/25
+CIDR=201.163.0.0/16
 CIDR=201.221.144.0/20
+CIDR=201.228.128.0/17
 CIDR=201.250.0.0/17
 CIDR=201.56.232.0/28
 CIDR=201.56.232.160/28
@@ -5483,7 +5616,10 @@ CIDR=201.77.250.0/24
 CIDR=201.85.130.0/28
 CIDR=201.91.20.88/29
 CIDR=201.91.91.96/29
+CIDR=207.228.64.0/18
 CIDR=208.67.1.0/24
+CIDR=218.109.63.0/24
+CIDR=221.192.0.0/14
 CIDR=24.0.0.0/12
 CIDR=24.118.0.0/16
 CIDR=24.125.0.0/16
@@ -5500,7 +5636,25 @@ CIDR=24.34.0.0/16
 CIDR=24.60.0.0/14
 CIDR=24.91.0.0/16
 CIDR=24.98.0.0/15
+CIDR=27.16.0.0/12
+CIDR=27.76.0.0/15
+CIDR=31.213.0.0/16
+CIDR=32.0.0.0/9
+CIDR=32.128.0.0/10
+CIDR=32.192.0.0/12
+CIDR=36.79.48.0/20
+CIDR=37.47.0.0/17
+CIDR=41.224.128.0/17
+CIDR=41.82.128.0/18
+CIDR=42.112.80.0/20
+CIDR=42.117.192.0/20
+CIDR=46.100.0.0/18
+CIDR=46.176.0.0/16
+CIDR=5.160.160.0/20
+CIDR=5.172.232.0/21
 CIDR=50.128.0.0/10
+CIDR=61.3.0.0/16
+CIDR=62.19.0.0/16
 CIDR=65.34.128.0/17
 CIDR=65.96.0.0/16
 CIDR=66.176.0.0/15
@@ -5544,7 +5698,49 @@ CIDR=76.112.0.0/12
 CIDR=76.16.0.0/12
 CIDR=76.97.0.0/16
 CIDR=76.98.0.0/15
+CIDR=77.125.128.0/19
+CIDR=77.125.64.0/19
+CIDR=77.240.80.0/21
+CIDR=80.12.39.0/24
+CIDR=81.109.196.0/24
+CIDR=81.193.0.0/18
+CIDR=81.193.64.0/19
+CIDR=81.193.96.0/21
+CIDR=82.44.76.0/23
+CIDR=82.47.210.0/23
 CIDR=84.15.0.0/16
+CIDR=84.228.0.0/16
+CIDR=86.174.0.0/16
+CIDR=86.178.0.0/15
+CIDR=86.180.0.0/14
+CIDR=88.88.0.0/14
+CIDR=89.106.110.0/23
+CIDR=89.106.112.0/21
+CIDR=89.106.120.0/22
+CIDR=89.106.124.0/23
+CIDR=89.106.126.0/24
+CIDR=89.122.0.0/16
+CIDR=89.205.36.0/24
+CIDR=89.33.72.0/21
+CIDR=90.154.192.0/19
+CIDR=90.160.0.0/12
+CIDR=90.162.0.0/16
+CIDR=90.169.128.0/19
+CIDR=90.169.32.0/19
+CIDR=90.169.64.0/18
+CIDR=90.192.0.0/13
+CIDR=90.222.0.0/16
+CIDR=92.56.0.0/16
+CIDR=92.83.216.0/21
+CIDR=93.105.52.0/22
+CIDR=93.150.0.0/15
+CIDR=93.37.32.0/20
+CIDR=94.76.0.0/21
+CIDR=95.43.0.0/18
+CIDR=95.43.112.0/21
+CIDR=95.43.64.0/19
+CIDR=95.43.96.0/20
+CIDR=95.76.96.0/23
 CIDR=98.192.0.0/13
 CIDR=98.200.0.0/14
 CIDR=98.204.0.0/16
@@ -5555,6 +5751,8 @@ CIDR=98.240.0.0/16
 CIDR=98.242.0.0/15
 CIDR=98.244.0.0/14
 CIDR=98.248.0.0/13
+DNSBL=pbl.spamhaus.org;127.0.0.10
+DNSBL=pbl.spamhaus.org;127.0.0.11
 REGEX=(\.|@)[0-9]+publicidade\.com\.br$
 REGEX=(\.|@)ag[0-9]+\.com\.br$
 REGEX=(\.|@)agencia[0-9]+\.com\.br$
@@ -5658,9 +5856,15 @@ REGEX=(\.|@)topofertas[0-9]+\.com\.br$
 REGEX=(\.|@)uhmailsrvc[0-9]+\.com$
 REGEX=(\.|@)vamos[0-9]+\.com\.br$
 REGEX=(\.|@)vps[0-9]+\.com\.br$
-REGEX=.+\bdsl\b.+
+REGEX=.*\bcustomer\b.+
 REGEX=.+\badsl\b.+
+REGEX=.+\bcabe\b.+
+REGEX=.+\bcust\b.+
+REGEX=.+\bdsl\b.+
+REGEX=.+\bdyn\b.+
 REGEX=.+\bdynamic\b.+
+REGEX=.+\bis-a-.+
+REGEX=.+\breverse\b.+
 WHOIS/aut-num=AS263079
 WHOIS/aut-num=AS263590
 WHOIS/aut-num=AS264488
@@ -5714,6 +5918,7 @@ WHOIS/owner-c=COCCO34
 WHOIS/owner-c=CORSA3
 WHOIS/owner-c=CRBNA21
 WHOIS/owner-c=CRM15
+WHOIS/owner-c=CSILM3
 WHOIS/owner-c=CTI7
 WHOIS/owner-c=CTMVI2
 WHOIS/owner-c=DAS76
@@ -5826,6 +6031,7 @@ WHOIS/owner-c=MYRAT5
 WHOIS/owner-c=NLC17
 WHOIS/owner-c=NMS16
 WHOIS/owner-c=OCD9
+WHOIS/owner-c=ORDSO
 WHOIS/owner-c=PASIL601
 WHOIS/owner-c=PCAGU3
 WHOIS/owner-c=PCN60
@@ -6049,6 +6255,7 @@ WHOIS/ownerid=014.230.796/0001-83
 WHOIS/ownerid=014.269.549/0001-90
 WHOIS/ownerid=014.370.342/0001-08
 WHOIS/ownerid=014.540.654/0001-12
+WHOIS/ownerid=014.620.380/0001-71
 WHOIS/ownerid=015.029.076-40
 WHOIS/ownerid=015.166.746/0001-47
 WHOIS/ownerid=015.533.812/0001-70
@@ -6224,6 +6431,7 @@ WHOIS/ownerid=249.173.538-58
 WHOIS/ownerid=259.032.158-90
 WHOIS/ownerid=259.768.808-94
 WHOIS/ownerid=261.813.198-32
+WHOIS/ownerid=263.573.216-72
 WHOIS/ownerid=264.864.258-73
 WHOIS/ownerid=264.911.218-28
 WHOIS/ownerid=265.821.328-06
@@ -6325,6 +6533,7 @@ WHOIS/ownerid=973.450.917-91
 WHOIS/ownerid=977.439.256-68
 WHOIS/ownerid=989.266.839-15
 ashley.websolutionservice@hotmail.com
+contatosmwwum4k74p@bol.com.br
 davi.jose@embrapa.br
 dinesh.onlinemarketingconsultant@hotmail.com
 empreendedorespara3@bol.com.br
