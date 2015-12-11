@@ -10,6 +10,7 @@ start() {
 }
 
 stop() {
+    echo "STORE" | nc 127.0.0.1 9875
     echo "SHUTDOWN" | nc 127.0.0.1 9875
 }
 
