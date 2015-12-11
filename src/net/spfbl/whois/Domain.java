@@ -311,6 +311,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (address == null) {
             return null;
         } else {
+            address = address.replace(" ", "");
             if (address.endsWith(".")) {
                 address = address.substring(0, address.length()-1);
             }
@@ -714,6 +715,14 @@ public class Domain implements Serializable, Comparable<Domain> {
             return billing_c;
         } else if (key.equals("created")) {
             if (created == null) {
+                return null;
+            } else if (created.getYear() > new Date().getYear()) {
+                // Correção temporária devido a uma 
+                // falha em capturar o valor do WHOIS.
+                return null;
+            } else if (created.getYear() < 1990) {
+                // Correção temporária devido a uma 
+                // falha em capturar o valor do WHOIS.
                 return null;
             } else {
                 return DATE_FORMATTER.format(created);

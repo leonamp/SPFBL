@@ -24,6 +24,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
@@ -157,52 +159,126 @@ public final class Reverse implements Serializable {
         this.lastQuery = System.currentTimeMillis();
     }
     
+    public static boolean isListed(String ip, String dnsbl, String value) {
+        String host = Reverse.getHostReverse(ip, dnsbl);
+        if (host == null) {
+            return false;
+        } else {
+            try {
+                if (SubnetIPv4.isValidIPv4(value)) {
+                    return getIPv4Set(host).contains(value);
+                } else if (SubnetIPv6.isValidIPv6(value)) {
+                    return getIPv6Set(host).contains(value);
+                } else {
+                    return false;
+                }
+            } catch (NamingException ex) {
+                return false;
+            }
+        }
+    }
+    
+    public static String getHostReverse(String ip, String domain) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            String reverse = domain;
+            byte[] address = SubnetIPv4.split(ip);
+            for (byte octeto : address) {
+                reverse = ((int) octeto & 0xFF) + "." + reverse;
+            }
+            return reverse;
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            String reverse = domain;
+            byte[] address = SubnetIPv6.splitByte(ip);
+            for (byte octeto : address) {
+                String hexPart = Integer.toHexString((int) octeto & 0xFF);
+                if (hexPart.length() == 1) {
+                    hexPart = "0" + hexPart;
+                }
+                for (char digit : hexPart.toCharArray()) {
+                    reverse = digit + "." + reverse;
+                }
+            }
+            return reverse;
+        } else {
+            return null;
+        }
+    }
+    
+    private static TreeSet<String> getPointerSet(String host) throws NamingException {
+        TreeSet<String> reverseSet = new TreeSet<String>();
+        Attributes atributes = Server.getAttributesDNS(
+                host, new String[]{"PTR"}
+        );
+        if (atributes != null) {
+            Attribute attribute = atributes.get("PTR");
+            if (attribute != null) {
+                for (int index = 0; index < attribute.size(); index++) {
+                    host = (String) attribute.get(index);
+                    host = Domain.normalizeHostname(host, true);
+                    if (host != null) {
+                        reverseSet.add(host);
+                    }
+                }
+            }
+        }
+        return reverseSet;
+    }
+    
+    private static TreeSet<String> getIPv4Set(String host) throws NamingException {
+        TreeSet<String> ipSet = new TreeSet<String>();
+        Attributes atributes = Server.getAttributesDNS(
+                host, new String[]{"A"}
+        );
+        if (atributes != null) {
+            Attribute attribute = atributes.get("A");
+            if (attribute != null) {
+                for (int index = 0; index < attribute.size(); index++) {
+                    String ip = (String) attribute.get(index);
+                    if (SubnetIPv4.isValidIPv4(ip)) {
+                        ip = SubnetIPv4.normalizeIPv4(ip);
+                        ipSet.add(ip);
+                    }
+                }
+            }
+        }
+        return ipSet;
+    }
+    
+    private static TreeSet<String> getIPv6Set(String host) throws NamingException {
+        TreeSet<String> ipSet = new TreeSet<String>();
+        Attributes atributes = Server.getAttributesDNS(
+                host, new String[]{"AAAA"}
+        );
+        if (atributes != null) {
+            Attribute attribute = atributes.get("AAAA");
+            if (attribute != null) {
+                for (int index = 0; index < attribute.size(); index++) {
+                    String ip = (String) attribute.get(index);
+                    if (SubnetIPv6.isValidIPv6(ip)) {
+                        ip = SubnetIPv6.normalizeIPv6(ip);
+                        ipSet.add(ip);
+                    }
+                }
+            }
+        }
+        return ipSet;
+    }
+    
     public synchronized void refresh() {
         long time = System.currentTimeMillis();
         try {
-            byte[] address1;
             String reverse;
-            TreeSet<String> reverseSet = new TreeSet<String>();
             if (SubnetIPv4.isValidIPv4(ip)) {
-                reverse = "in-addr.arpa";
-                address1 = SubnetIPv4.split(ip);
-                for (byte octeto : address1) {
-                    reverse = ((int) octeto & 0xFF) + "." + reverse;
-                }
+                reverse = getHostReverse(ip, "in-addr.arpa");
             } else if (SubnetIPv6.isValidIPv6(ip)) {
-                reverse = "ip6.arpa";
-                address1 = SubnetIPv6.splitByte(ip);
-                for (byte octeto : address1) {
-                    String hexPart = Integer.toHexString((int) octeto & 0xFF);
-                    if (hexPart.length() == 1) {
-                        hexPart = "0" + hexPart;
-                    }
-                    for (char digit : hexPart.toCharArray()) {
-                        reverse = digit + "." + reverse;
-                    }
-                }
+                reverse = getHostReverse(ip, "ip6.arpa");
             } else {
-                address1 = null;
                 reverse = null;
             }
-            if (address1 != null && reverse != null) {
-                Attributes atributes = Server.getAttributesDNS(
-                        reverse, new String[]{"PTR"}
-                );
-                if (atributes != null) {
-                    Attribute attributePTR = atributes.get("PTR");
-                    if (attributePTR != null) {
-                        for (int indexPTR = 0; indexPTR < attributePTR.size(); indexPTR++) {
-                            String host = (String) attributePTR.get(indexPTR);
-                            host = Domain.normalizeHostname(host, true);
-                            if (host != null) {
-                                reverseSet.add(host);
-                            }
-                        }
-                    }
-                }
-                this.addressSet = reverseSet;
-                Server.logReverseDNS(time, ip, reverseSet.toString());
+            if (reverse != null) {
+                TreeSet<String> ptrSet = getPointerSet(reverse);
+                this.addressSet = ptrSet;
+                Server.logReverseDNS(time, ip, ptrSet.toString());
             }
         } catch (CommunicationException ex) {
             Server.logReverseDNS(time, ip, "TIMEOUT");
