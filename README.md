@@ -677,6 +677,10 @@ Abertos:
 * MX-Protection: gian@spfbl.net
 * Papuda: smux@spfbl.net
 
+### Noticias sobre o SPFBL
+
+<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a>
+
 ### Forum de discussão SPFBL
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
