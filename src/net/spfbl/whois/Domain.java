@@ -153,6 +153,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 index++;
             }
             return Core.removerAcentuacao(address.substring(index)).toLowerCase();
+        } else if (!Domain.isHostname(address)) {
+            return null;
         } else if (pontuacao && !address.startsWith(".")) {
             return "." + Core.removerAcentuacao(address).toLowerCase();
         } else if (pontuacao && address.startsWith(".")) {
@@ -183,8 +185,9 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public static String extractDomain(String address,
             boolean pontuacao) throws ProcessException {
-        address = "." + extractHost(address, false);
-        if (isReserved(address)) {
+        if ((address = extractHost(address, true)) == null) {
+            return null;
+        } else if (isReserved(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
@@ -264,8 +267,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 address = address.toLowerCase();
                 return Pattern.matches(
                         "^([a-zA-Z0-9._%+=-]+@)?"
-                        + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-                        + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+                        + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
                         + "$", address
                         );
 
@@ -289,8 +292,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 address = address.toLowerCase();
                 return Pattern.matches(
                         "^\\.?"
-                        + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-                        + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+                        + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
                         + "\\.?$", address
                         );
 
@@ -308,6 +311,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (address == null) {
             return null;
         } else {
+            address = address.replace(" ", "");
             if (address.endsWith(".")) {
                 address = address.substring(0, address.length()-1);
             }
@@ -711,6 +715,14 @@ public class Domain implements Serializable, Comparable<Domain> {
             return billing_c;
         } else if (key.equals("created")) {
             if (created == null) {
+                return null;
+            } else if (created.getYear() > new Date().getYear()) {
+                // Correção temporária devido a uma 
+                // falha em capturar o valor do WHOIS.
+                return null;
+            } else if (created.getYear() < 1990) {
+                // Correção temporária devido a uma 
+                // falha em capturar o valor do WHOIS.
                 return null;
             } else {
                 return DATE_FORMATTER.format(created);

@@ -58,6 +58,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private final HashMap<String,Binomial> reputationMap = null;
     private TreeMap<String,Binomial> reputationMap2 = new TreeMap<String,Binomial>();
     
+    private Peer(Peer other) {
+        this.address = other.address;
+        this.port = other.port;
+        this.send = other.send;
+        this.receive = other.receive;
+        this.email = other.email;
+        this.limit = other.limit;
+        this.frequency = other.frequency.cloneDistribution();
+        this.last = other.last;
+        this.reputationMap2.putAll(other.reputationMap2);
+    }
+    
     /**
      * Retém os bloqueios que necessitam de confirmação.
      */
@@ -506,7 +518,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     return peer;
                 }
             } catch (UnknownHostException ex) {
-                Server.logError(ex);
+                Server.logDebug("peer '" + peer.getAddress() + "' has unknown host.");
             }
         }
         return null;
@@ -514,7 +526,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public static synchronized HashMap<String,Peer> getMap() {
         HashMap<String,Peer> map = new HashMap<String,Peer>();
-        map.putAll(MAP);
+        for (Peer peer : MAP.values()) {
+            Peer clone = new Peer(peer);
+            map.put(clone.getAddress(), clone);
+        }
         return map;
     }
     
@@ -899,6 +914,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                             }
                             if (peer.reputationMap != null) {
                                 peer.reputationMap2.putAll(peer.reputationMap);
+                                peer.reputationMap.clear();
                             }
                             MAP.put(address, peer);
                         }
@@ -931,12 +947,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > frequencyInt * 7) {
+            if (frequencyInt < limit) {
+                return "<" + limit + "ms";
+            } else if (idleTimeInt > frequencyInt * 7) {
                 return "DEAD";
             } else if (idleTimeInt > frequencyInt * 5) {
                 return "IDLE";
-            } else if (frequencyInt < limit) {
-                return "<" + limit + "ms";
             } else if (frequencyInt >= 3600000) {
                 return "~" + frequencyInt / 3600000 + "h";
             } else if (frequencyInt >= 60000) {

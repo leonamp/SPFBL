@@ -19,16 +19,24 @@ package net.spfbl.http;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import net.spfbl.core.Server;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URL;
+import java.util.HashMap;
 import java.util.TreeSet;
 import net.spfbl.core.Client;
 import net.spfbl.core.ProcessException;
 import net.spfbl.spf.SPF;
+import net.spfbl.whois.Domain;
+import org.apache.commons.lang3.SerializationUtils;
 
 /**
  * Servidor de consulta em SPF.
@@ -42,6 +50,81 @@ public final class ComplainHTTP extends Server {
     private final String HOSTNAME;
     private final int PORT;
     private final HttpServer SERVER;
+    
+    private final HashMap<String,String> MAP = new HashMap<String,String>();
+    
+    public synchronized HashMap<String,String> getMap() {
+        HashMap<String,String> map = new HashMap<String,String>();
+        map.putAll(MAP);
+        return map;
+    }
+    
+    public synchronized String drop(String domain) {
+        return MAP.remove(domain);
+    }
+    
+    public synchronized boolean put(String domain, String url) {
+        try {
+            domain = Domain.normalizeHostname(domain, false);
+            if (domain == null) {
+                return false;
+            } else if (url == null || url.equals("NONE")) {
+                MAP.put(domain, null);
+                return true;
+            } else {
+                new URL(url);
+                if (url.endsWith("/spam/")) {
+                    MAP.put(domain, url);
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        } catch (MalformedURLException ex) {
+            return false;
+        }
+        
+    }
+    
+    public synchronized void store() {
+        try {
+            long time = System.currentTimeMillis();
+            File file = new File("./data/url.map");
+            if (MAP.isEmpty()) {
+                file.delete();
+            } else {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                try {
+                    SerializationUtils.serialize(MAP, outputStream);
+                } finally {
+                    outputStream.close();
+                }
+                Server.logStore(time, file);
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        }
+    }
+    
+    public synchronized void load() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/url.map");
+        if (file.exists()) {
+            try {
+                HashMap<String,String> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                MAP.putAll(map);
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
     
     /**
      * Configuração e intanciamento do servidor.
@@ -62,6 +145,16 @@ public final class ComplainHTTP extends Server {
     
     public String getSpamURL() {
         if (HOSTNAME == null) {
+            return null;
+        } else {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/spam/";
+        }
+    }
+    
+    public synchronized String getSpamURL(String domain) {
+        if (MAP.containsKey(domain)) {
+            return MAP.get(domain);
+        } else if (HOSTNAME == null) {
             return null;
         } else {
             return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/spam/";

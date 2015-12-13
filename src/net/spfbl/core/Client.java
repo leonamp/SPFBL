@@ -395,12 +395,12 @@ public class Client implements Serializable, Comparable<Client> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > frequencyInt * 7) {
+            if (frequencyInt < limit) {
+                return "<" + limit + "ms";
+            } else if (idleTimeInt > frequencyInt * 7) {
                 return "DEAD";
             } else if (idleTimeInt > frequencyInt * 5) {
                 return "IDLE";
-            } else if (frequencyInt < limit) {
-                return "<" + limit + "ms";
             } else if (frequencyInt >= 3600000) {
                 return "~" + frequencyInt / 3600000 + "h";
             } else if (frequencyInt >= 60000) {

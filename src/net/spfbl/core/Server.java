@@ -1289,6 +1289,44 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
+                } else if (token.equals("RELOAD") && !tokenizer.hasMoreTokens()) {
+                    if (Core.loadConfiguration()) {
+                        result = "RELOADED\n";
+                    } else {
+                        result = "FAILED\n";
+                    }
+                } else if (token.equals("URL") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.countTokens() == 2) {
+                        String domain = tokenizer.nextToken();
+                        String url = tokenizer.nextToken();
+                        if (Core.addURL(domain, url)) {
+                            result = "ADDED\n";
+                            Core.storeURL();
+                        } else {
+                            result = "INVALID\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.countTokens() == 1) {
+                        String domain = tokenizer.nextToken();
+                        String url = Core.dropURL(domain);
+                        if (url == null) {
+                            result = "NOT FOUND\n";
+                        } else {
+                            result = "DROPED " + url + "\n";
+                            Core.storeURL();
+                        }
+                    } else if (token.equals("SHOW") && tokenizer.countTokens() == 0) {
+                        HashMap<String,String> map = Core.getMapURL();
+                        for (String domain : map.keySet()) {
+                            String url = map.get(domain);
+                            result += domain + " " + (url == null ? "NONE" : url) + "\n";
+                        }
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
                     if (shutdown()) {

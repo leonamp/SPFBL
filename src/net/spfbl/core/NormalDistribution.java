@@ -32,6 +32,13 @@ public class NormalDistribution implements Serializable {
     
     private static final int POPULATION = 32;
     
+    public NormalDistribution cloneDistribution() {
+        NormalDistribution clone = new NormalDistribution();
+        clone.xiSum = this.xiSum;
+        clone.xi2Sum = this.xi2Sum;
+        return clone;
+    }
+    
     /**
      * Inicia uma distribuição normal com população cheia com média zero.
      */
