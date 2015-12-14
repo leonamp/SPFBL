@@ -144,12 +144,15 @@ Os elementos que podem ser adicionados nesta lista são:
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]\(=\|&lt;\|&gt;\)&lt;value&gt;
+* DNSBL=&lt;server&gt;;&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
 No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representan a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
 
 Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
+
+Para bloqueio por DNSBL, infomar o servidor em &lt;server&gt; e o valor positivo do mesmo em &lt;value&gt;, como exemplo padrão para &lt;value&gt; 127.0.0.2.
 
 ##### Spamtrap
 
@@ -206,13 +209,13 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld[&gt;&lt;recipient&gt;]
-* .domain.ltd[&gt;&lt;recipient&gt;]
-* .sub.domain.tld[&gt;&lt;recipient&gt;]
-* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* .tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* .domain.ltd;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* .sub.domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* @domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* @sub.domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* sender@;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* sender@domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
 * IP[&gt;&lt;recipient&gt;]
 * CNPJ[&gt;&lt;recipient&gt;]
 * CPF[&gt;&lt;recipient&gt;]
@@ -524,7 +527,7 @@ Nós disponibilizamos aqui uma lista de bloqueios atualizada pela rede SPFBL via
 
 <https://github.com/leonamp/SPFBL/raw/master/doc/block.txt>
 
-Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inser a lista no SPFBL através de script próprio.
+Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inserir a lista no SPFBL através de script próprio.
 
 ### Como parar o serviço SPFBL
 
