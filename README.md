@@ -34,7 +34,7 @@ Reclamação SPFBL enviada com sucesso.
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até cinco dias após o recebimento.
 
-Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
+Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados, o volume diário de recebimento e o MTA utilizado pelos seus terminais MX para liberação do firewall.
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
@@ -209,19 +209,21 @@ DROPED
 ```
 
 Os elementos que podem ser adicionados nesta lista são:
-* .tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* .domain.ltd;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* .sub.domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* @domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* @sub.domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* sender@;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
-* sender@domain.tld;&lt;qualifier&gt;[&gt;&lt;recipient&gt;]
+* .tld[&gt;&lt;recipient&gt;]
+* .domain.ltd[&gt;&lt;recipient&gt;]
+* .sub.domain.tld[&gt;&lt;recipient&gt;]
+* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
+* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
 * IP[&gt;&lt;recipient&gt;]
 * CNPJ[&gt;&lt;recipient&gt;]
 * CPF[&gt;&lt;recipient&gt;]
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
+
+Internamente esta lista aceita somente identificação de remetentes com qualificador. Portanto se nenhum qualificador for definido, a lista acatará o qualificador padrão PASS.
 
 Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
 
@@ -427,14 +429,20 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
-Para mandar o Exim bloquear o campo From da mensagem, basta adicionar esta configuração na seção "acl_check_data":
+Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar esta configuração na seção "acl_check_data":
 ```
-  # Deny if From is blocked in SPFBL.
+  # Deny if From or Reply-To is blocked in SPFBL.
   deny
-    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{true}{false}}
+    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
     condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_From:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
     message = you are permanently blocked on this server.
     log_message = SPFBL check blocked. From:${address:$h_From:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
+  deny
+    condition = ${if match {${address:$h_Reply-To:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
+    condition = ${if eq {${address:$h_From:}}{${address:$h_Reply-To:}}{false}{true}}
+    condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_Reply-To:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
+    message = you are permanently blocked on this server.
+    log_message = SPFBL check blocked. Reply-To:${address:$h_Reply-To:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
 ```
 
 Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automaticamente utilizando a seguinte configuração na seção "acl_check_data":
