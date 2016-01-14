@@ -48,6 +48,7 @@ import org.xbill.DNS.SOARecord;
 import org.xbill.DNS.Section;
 import org.xbill.DNS.TXTRecord;
 import org.xbill.DNS.Type;
+import org.xbill.DNS.WireParseException;
 
 /**
  * Servidor de consulta DNSBL.
@@ -350,13 +351,14 @@ public final class QueryDNSBL extends Server {
                     Name name = question.getName();
                     type = Type.string(question.getType());
                     query = name.toString();
-                    String result = "NXDOMAIN";
+                    String result;
                     long ttl = 3600; // Uma hora.
                     String information = null;
                     String ip = "";
                     ServerDNSBL server = null;
-                    if (Domain.isHostname(query)) {
-                        query = Domain.extractHost(query, true);
+                    if ((query = Domain.extractHost(query, false)) == null) {
+                        result = "NXDOMAIN";
+                    } else {
                         int index = query.length() - 1;
                         query = query.substring(0, index);
                         String hostname = null;
@@ -379,9 +381,9 @@ public final class QueryDNSBL extends Server {
                         } else if (reverse.length() == 0) {
                             // O reverso é inválido.
                             result = "NXDOMAIN";
-                        } else if (SubnetIPv4.isValidIPv4(reverse.substring(1))) {
+                        } else if (SubnetIPv4.isValidIPv4(reverse)) {
                             // A consulta é um IPv4.
-                            ip = SubnetIPv4.reverseToIPv4(reverse.substring(1));
+                            ip = SubnetIPv4.reverseToIPv4(reverse);
                             if (ip.equals("127.0.0.1")) {
                                 // Consulta de teste para negativo.
                                 result = "NXDOMAIN";
@@ -472,6 +474,8 @@ public final class QueryDNSBL extends Server {
                             type + ' ' + query,
                             "SOCKET CLOSED"
                             );
+                } catch (WireParseException ex) {
+                    // Erro na consulta.
                 } catch (Exception ex) {
                     Server.logError(ex);
                 } finally {
@@ -596,22 +600,24 @@ public final class QueryDNSBL extends Server {
                     DatagramPacket packet = new DatagramPacket(
                             receiveData, receiveData.length);
                     SERVER_SOCKET.receive(packet);
-                    long time = System.currentTimeMillis();
-                    Connection connection = pollConnection();
-                    if (connection == null) {
-                        InetAddress ipAddress = packet.getAddress();
-                        String result = "TOO MANY CONNECTIONS\n";
-                        Server.logQueryDNSBL(time, ipAddress, null, result);
-                    } else {
-                        try {
-                            connection.process(packet, time);
-                        } catch (IllegalThreadStateException ex) {
-                            // Houve problema na liberação do processo.
+                    if (continueListenning()) {
+                        long time = System.currentTimeMillis();
+                        Connection connection = pollConnection();
+                        if (connection == null) {
                             InetAddress ipAddress = packet.getAddress();
-                            String result = "ERROR: FATAL\n";
-                            Server.logError(ex);
+                            String result = "TOO MANY CONNECTIONS\n";
                             Server.logQueryDNSBL(time, ipAddress, null, result);
-                            offer(connection);
+                        } else {
+                            try {
+                                connection.process(packet, time);
+                            } catch (IllegalThreadStateException ex) {
+                                // Houve problema na liberação do processo.
+                                InetAddress ipAddress = packet.getAddress();
+                                String result = "ERROR: FATAL\n";
+                                Server.logError(ex);
+                                Server.logQueryDNSBL(time, ipAddress, null, result);
+                                offer(connection);
+                            }
                         }
                     }
                 } catch (SocketException ex) {

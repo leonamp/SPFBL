@@ -339,8 +339,9 @@ public final class SubnetIPv6 extends Subnet {
         reverse = reverse.trim();
         reverse = reverse.toLowerCase();
         return Pattern.matches("^"
-                + "(\\.[a-f0-9]{1,4}){32}"
-                + "$", reverse);
+                + "(\\.?[a-f0-9]{1,4})"
+                + "(\\.[a-f0-9]{1,4}){31}"
+                + "$\\.?", reverse);
     }
     
     public static String reverseToIPv6(String reverse) {

@@ -622,30 +622,32 @@ public final class Peer implements Serializable, Comparable<Peer> {
      * @param distribuiton 
      */
     public static void sendToAll(String token, Distribution distribuiton) {
-        long time = System.currentTimeMillis();
-        if (Core.hasPeerConnection()) {
-            int[] binomial;
-            if (distribuiton == null) {
-                binomial = new int[2];
-            } else {
-                binomial = distribuiton.getBinomial();
-            }
-            int ham = binomial[0];
-            int spam = binomial[1];
-            if (spam % 3 == 0) {
-                String origin = null;
-                String result = "SENT";
-                String command = "REPUTATION " + token + " " + ham + " " + spam;
-                try {
-                    for (Peer peer : getReputationSet()) {
-                        String address = peer.getAddress();
-                        int port = peer.getPort();
-                        Core.sendCommandToPeer(command, address, port);
-                    }
-                } catch (Exception ex) {
-                    result = ex.getMessage();
+        if (isValid(token)) {
+            long time = System.currentTimeMillis();
+            if (Core.hasPeerConnection()) {
+                int[] binomial;
+                if (distribuiton == null) {
+                    binomial = new int[2];
+                } else {
+                    binomial = distribuiton.getBinomial();
                 }
-                Server.logPeerSend(time, origin, command, result);
+                int ham = binomial[0];
+                int spam = binomial[1];
+                if (spam % 3 == 0) {
+                    String origin = null;
+                    String result = "SENT";
+                    String command = "REPUTATION " + token + " " + ham + " " + spam;
+                    try {
+                        for (Peer peer : getReputationSet()) {
+                            String address = peer.getAddress();
+                            int port = peer.getPort();
+                            Core.sendCommandToPeer(command, address, port);
+                        }
+                    } catch (Exception ex) {
+                        result = ex.getMessage();
+                    }
+                    Server.logPeerSend(time, origin, command, result);
+                }
             }
         }
     }
@@ -947,23 +949,28 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (frequencyInt < limit) {
-                return "<" + limit + "ms";
-            } else if (idleTimeInt > frequencyInt * 7) {
+            if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                 return "DEAD";
-            } else if (idleTimeInt > frequencyInt * 5) {
-                return "IDLE";
-            } else if (frequencyInt >= 3600000) {
-                return "~" + frequencyInt / 3600000 + "h";
-            } else if (frequencyInt >= 60000) {
-                return "~" + frequencyInt / 60000 + "min";
-            } else if (frequencyInt >= 1000) {
-                return "~" + frequencyInt / 1000 + "s";
             } else {
-                return "~" + frequencyInt + "ms";
+                char sinal = '~';
+                if (frequencyInt < limit) {
+                    frequencyInt = limit;
+                    sinal = '<';
+                } else if (idleTimeInt > frequencyInt * 3) {
+                    sinal = '>';
+                }
+                if (frequencyInt >= 3600000) {
+                    return sinal + frequencyInt / 3600000 + "h";
+                } else if (frequencyInt >= 60000) {
+                    return sinal + frequencyInt / 60000 + "min";
+                } else if (frequencyInt >= 1000) {
+                    return sinal + frequencyInt / 1000 + "s";
+                } else {
+                    return sinal + frequencyInt + "ms";
+                }
             }
         } else {
-            return "DEAD";
+            return "NEW";
         }
     }
     

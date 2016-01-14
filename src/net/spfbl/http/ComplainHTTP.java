@@ -16,26 +16,35 @@
  */
 package net.spfbl.http;
 
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import net.spfbl.core.Server;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.core.Client;
-import net.spfbl.core.ProcessException;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
+import net.spfbl.whois.Subnet;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -172,33 +181,155 @@ public final class ComplainHTTP extends Server {
         }
     }
     
+    @SuppressWarnings("unchecked")
+    private static TreeSet<String> getIdentifierSet(HttpExchange exchange) throws IOException {
+        InputStreamReader isr = new InputStreamReader(exchange.getRequestBody(), "UTF-8");
+        BufferedReader br = new BufferedReader(isr);
+        String query = br.readLine();
+        return getIdentifierSet(query);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TreeSet<String> getIdentifierSet(String query) throws UnsupportedEncodingException {
+        if (query == null) {
+            return null;
+        } else {
+            TreeSet<String> identifierSet = new TreeSet<String>();
+            String pairs[] = query.split("[&]");
+            for (String pair : pairs) {
+                String param[] = pair.split("[=]");
+                String key = null;
+                String value = null;
+                if (param.length > 0) {
+                    key = URLDecoder.decode(param[0], System.getProperty("file.encoding"));
+                }
+                if (param.length > 1) {
+                    value = URLDecoder.decode(param[1], System.getProperty("file.encoding"));
+                }
+                if ("identifier".equals(key)) {
+                    identifierSet.add(value);
+                }
+            }
+            return identifierSet;
+        }
+    }
+    
     private static class ComplainHandler implements HttpHandler {
         @Override
-        public void handle(HttpExchange exchange) throws IOException {
+        public void handle(HttpExchange exchange) {
             long time = System.currentTimeMillis();
             Thread.currentThread().setName("HTTPCMMND");
             String request = exchange.getRequestMethod();
             URI uri = exchange.getRequestURI();
-            String command = uri.toASCIIString();
+            String command = uri.toString();
             String origin = getOrigin(exchange);
             int code;
             String result;
             String type;
-            if (request.equals("GET")) {
+            if (request.equals("POST")) {
+                if (command.startsWith("/spam/")) {
+                    try {
+                        int index = command.indexOf('/', 1) + 1;
+                        String ticket = command.substring(index);
+                        String recipient = SPF.getRecipient(ticket);
+                        TreeSet<String> identifierSet = getIdentifierSet(exchange);
+                        if (identifierSet == null || recipient == null) {
+                            type = "HTTPC";
+                            code = 403;
+                            result = "Forbidden\n";
+                        } else {
+                            TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+                            for (String identifier : identifierSet) {
+                                if (tokenSet.contains(identifier)) {
+                                    long time2 = System.currentTimeMillis();
+                                    String block = identifier + '>' + recipient;
+                                    if (SPF.addBlockExact(block)) {
+                                        Server.logQuery(
+                                                time2, "BLOCK",
+                                                origin,
+                                                "BLOCK ADD " + block,
+                                                "ADDED"
+                                                );
+                                    }
+                                }
+                            }
+                            type = "HTTPC";
+                            code = 200;
+                            result = "Bloqueados: " + identifierSet + " >" + recipient + "\n";
+                        }
+                    } catch (Exception ex) {
+                        type = "HTTPC";
+                        code = 500;
+                        result = ex.getMessage() + "\n";
+                    }
+                } else {
+                    type = "HTTPC";
+                    code = 403;
+                    result = "Forbidden\n";
+                }
+            } else if (request.equals("GET") || request.equals("PUT")) {
                 if (command.startsWith("/spam/")) {
                     type = "SPFSP";
                     try {
                         int index = command.indexOf('/', 1) + 1;
                         String ticket = command.substring(index);
-                        TreeSet<String> tokenSet = SPF.addComplain(origin, ticket);
-                        if (tokenSet == null) {
+                        TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
+                        if (complainSet == null) {
                             code = 404;
-                            result = "DUPLICATE COMPLAIN\n";
+                            if (request.equals("PUT")) {
+                                // Plain text response.
+                                result = "DUPLICATE COMPLAIN\n";
+                            } else {
+                                result = "DUPLICATE COMPLAIN\n";
+                            }
                         } else {
                             code = 200;
-                            result = "OK " + tokenSet + "\n";
+                            String recipient = SPF.getRecipient(ticket);
+                            if (request.equals("PUT")) {
+                                // Plain text response.
+                                result = "OK " + complainSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            } else {
+                                // HTML response with block feature.
+                                StringBuilder builder = new StringBuilder();
+                                builder.append("<html>\n");
+                                builder.append("  <head>\n");
+                                builder.append("    <meta charset=\"UTF-8\">\n");
+                                builder.append("    <title>Página de denuncia SPFBL</title>\n");
+//                                builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+                                builder.append("  </head>\n");
+                                builder.append("  <body>\n");
+                                builder.append("    A mensagem foi denunciada com sucesso no serviço SPFBL.<br>\n");
+                                builder.append("    <br>\n");
+                                if (recipient != null) {
+                                    TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+                                    if (!tokenSet.isEmpty()) {
+                                        builder.append("    <form method=\"POST\">\n");
+                                        builder.append("      Se você deseja não receber mais mensagens desta origem no futuro,<br>\n");
+                                        builder.append("      selecione os identificadores que devem ser bloqueados definitivamente:<br>\n");
+                                        for (String identifier : SPF.getTokenSet(ticket)) {
+                                            builder.append("      <input type=\"checkbox\" name=\"identifier\" value=\"");
+                                            builder.append(identifier);
+                                            if (Subnet.isValidIP(identifier)) {
+                                                builder.append("\">");
+                                            } else if (complainSet.contains(identifier)) {
+                                                builder.append("\" checked>");
+                                            } else {
+                                                builder.append("\">");
+                                            }
+                                            builder.append(identifier);
+                                            builder.append("<br>\n");
+                                        }
+                                        //                                builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"${sitekey}\"></div>\n");
+                                        builder.append("      <input type=\"submit\" value=\"Bloquear\">\n");
+                                        builder.append("    </form>\n");
+                                    }
+                                }
+                                builder.append("  </body>\n");
+                                builder.append("</html>\n");
+                                result = builder.toString();
+                            }
                         }
-                    } catch (ProcessException ex) {
+                    } catch (Exception ex) {
                         code = 500;
                         result = ex.getMessage() + "\n";
                     }
@@ -210,12 +341,25 @@ public final class ComplainHTTP extends Server {
                         TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
                         if (tokenSet == null) {
                             code = 404;
-                            result = "ALREADY REMOVED\n";
+                            if (request.equals("PUT")) {
+                                // Plain text response.
+                                result = "ALREADY REMOVED\n";
+                            } else {
+                                // HTML response with whitelist feature.
+                                result = "ALREADY REMOVED\n";
+                            }
                         } else {
                             code = 200;
-                            result = "OK " + tokenSet + "\n";
+                            String recipient = SPF.getRecipient(ticket);
+                            if (request.equals("PUT")) {
+                                // Plain text response.
+                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            } else {
+                                // HTML response with whitelist feature.
+                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            }
                         }
-                    } catch (ProcessException ex) {
+                    } catch (Exception ex) {
                         code = 500;
                         result = ex.getMessage() + "\n";
                     }
@@ -229,24 +373,28 @@ public final class ComplainHTTP extends Server {
                 code = 405;
                 result = "Method not allowed.\n";
             }
-            response(code, result, exchange);
-            command = request + " " + command;
-            result = code + " " + result;
-            Server.logQuery(
-                    time, type,
-                    origin,
-                    command,
-                    result
-                    );
+            try {
+                response(code, result, exchange);
+                command = request + " " + command;
+                result = code + " " + result;
+                Server.logQuery(
+                        time, type,
+                        origin,
+                        command,
+                        result);
+            } catch (IOException ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static void response(int code, String response,
             HttpExchange exchange) throws IOException {
-        exchange.sendResponseHeaders(code, response.length());
+        byte[] byteArray = response.getBytes("UTF-8");
+        exchange.sendResponseHeaders(code, byteArray.length);
         OutputStream os = exchange.getResponseBody();
         try {
-            os.write(response.getBytes("UTF-8"));
+            os.write(byteArray);
         } finally {
             os.close();
         }
