@@ -172,7 +172,17 @@ public final class Reverse implements Serializable {
                 } else {
                     return false;
                 }
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNSBL service '" + dnsbl + "' unreachable.");
+                return false;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNSBL service '" + dnsbl + "' unavailable.");
+                return false;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return false;
             } catch (NamingException ex) {
+                Server.logError(ex);
                 return false;
             }
         }

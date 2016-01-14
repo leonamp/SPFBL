@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 01/12/2015 10:15
+# Última alteração: 05/01/2016 14:35
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -32,7 +32,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.9"
+version="0.10"
 
 head()
 {
@@ -1810,7 +1810,7 @@ case $1 in
 				fi
 			else
 				# Registra reclamação SPFBL via HTTP.
-                                resposta=$(curl -s -m 3 $url)
+                                resposta=$(curl -X PUT -s -m 3 $url)
 				if [[ $? == "28" ]]; then
 					echo "A reclamação SPFBL não foi enviada por timeout."
 					exit 4
@@ -1908,7 +1908,7 @@ case $1 in
 				spamURL=/spam/
                                 hamURL=/ham/
 				url=${url/$spamURL/$hamURL}
-                                resposta=$(curl -s -m 3 $url)
+                                resposta=$(curl -X PUT -s -m 3 $url)
 				if [[ $? == "28" ]]; then
 					echo "A revogação SPFBL não foi enviada por timeout."
 					exit 4

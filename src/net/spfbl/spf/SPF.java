@@ -1953,7 +1953,9 @@ public final class SPF implements Serializable {
                 StringTokenizer tokenizer = new StringTokenizer(tokens, " ");
                 while (tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
-                    tokenSet.add(token);
+                    if (isValid(token)) {
+                        tokenSet.add(token);
+                    }
                 }
                 for (String key : expandTokenSet(tokenSet)) {
                     Distribution distribution = CacheDistribution.get(key, false);
@@ -1963,6 +1965,67 @@ public final class SPF implements Serializable {
                 }
 //                time += 604800000;
 //                Server.log(time, "CLEAR", client, tokenSet);
+            }
+        }
+        
+        private static boolean isValid(String token) {
+            if (token == null || token.length() == 0) {
+                return false;
+            } else if (Subnet.isValidIP(token)) {
+                return true;
+            } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
+                return true;
+            } else if (token.contains("@") && Domain.isEmail(token)) {
+                return true;
+            } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static String getRecipient(String ticket) throws ProcessException {
+            if (ticket == null) {
+                return null;
+            } else {
+                String registry = Server.decrypt(ticket);
+                int index = registry.indexOf(' ');
+                Date date = getTicketDate(registry.substring(0, index));
+                if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                    // Ticket vencido com mais de 5 dias.
+                    throw new ProcessException("TICKET EXPIRED");
+                } else {
+                    registry = registry.substring(index + 1);
+                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
+                            return token.substring(1);
+                        }
+                    }
+                    return null;
+                }
+            }
+        }
+        
+        public static TreeSet<String> getTokenSet(String ticket) throws ProcessException {
+            String registry = Server.decrypt(ticket);
+            int index = registry.indexOf(' ');
+            Date date = getTicketDate(registry.substring(0, index));
+            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                // Ticket vencido com mais de 5 dias.
+                throw new ProcessException("TICKET EXPIRED");
+            } else {
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                registry = registry.substring(index + 1);
+                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    if (isValid(token)) {
+                        tokenSet.add(token);
+                    }
+                }
+                return tokenSet;
             }
         }
 
@@ -1990,13 +2053,18 @@ public final class SPF implements Serializable {
                     registry = registry.substring(index + 1);
                     StringTokenizer tokenizer = new StringTokenizer(registry, " ");
                     StringBuilder builder = new StringBuilder();
+                    String recipient = null;
                     while (tokenizer.hasMoreTokens()) {
                         String token = tokenizer.nextToken();
-                        tokenSet.add(token);
-                        if (builder.length() > 0) {
-                            builder.append(' ');
+                        if (isValid(token)) {
+                            tokenSet.add(token);
+                            if (builder.length() > 0) {
+                                builder.append(' ');
+                            }
+                            builder.append(token);
+                        } else if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
+                            recipient = token.substring(1);
                         }
-                        builder.append(token);
                     }
                     if (putExact(date.getTime(), builder.toString())) {
                         for (String key : expandTokenSet(tokenSet)) {
@@ -2013,9 +2081,9 @@ public final class SPF implements Serializable {
                         // Ticket já denunciado.
                         return null;
                     }
+                    Server.log(time, Core.Level.DEBUG, "CMPLN", origin, ticket, blackSet, recipient);
+                    return blackSet;
                 }
-                Server.log(time, Core.Level.DEBUG, "CMPLN", origin, ticket, blackSet);
-                return blackSet;
             }
         }
 
@@ -2040,7 +2108,9 @@ public final class SPF implements Serializable {
                     StringTokenizer tokenizer = new StringTokenizer(registry, " ");
                     while (tokenizer.hasMoreTokens()) {
                         String token = tokenizer.nextToken();
-                        tokenSet.add(token);
+                        if (isValid(token)) {
+                            tokenSet.add(token);
+                        }
                     }
                     for (String key : expandTokenSet(tokenSet)) {
                         Distribution distribution = CacheDistribution.get(key, false);
@@ -2062,9 +2132,18 @@ public final class SPF implements Serializable {
         CacheComplain.dropExpired();
     }
     
+    public static String getRecipient(String ticket) throws ProcessException {
+        return CacheComplain.getRecipient(ticket);
+    }
+    
     public static TreeSet<String> addComplain(String origin,
                 String ticket) throws ProcessException {
         return CacheComplain.addComplain(origin, ticket);
+    }
+    
+    public static TreeSet<String> getTokenSet(
+            String ticket) throws ProcessException {
+        return CacheComplain.getTokenSet(ticket);
     }
     
     public static TreeSet<String> deleteComplain(String origin,
@@ -2850,85 +2929,89 @@ public final class SPF implements Serializable {
                 String senderDomain = sender.substring(index2);
                 if (containsExact(sender)) {
                     return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(sender + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(sender + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(sender + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + sender)) {
                     return true;
-                } else if (containsExact(client + ':' + sender + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + sender + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + sender + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + sender + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + sender + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(part)) {
                     return true;
-                } else if (containsExact(part + '>' + recipient)) {
+                } else if (recipient != null && containsExact(part + '>' + recipient)) {
                     return true;
-                } else if (containsExact(part + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(part + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(part + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(part + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + part)) {
                     return true;
-                } else if (containsExact(client + ':' + part + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + part + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + part + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + part + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + part + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(senderDomain)) {
                     return true;
-                } else if (containsExact(senderDomain + '>' + recipient)) {
+                } else if (recipient != null && containsExact(senderDomain + '>' + recipient)) {
                     return true;
-                } else if (containsExact(senderDomain + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(senderDomain + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(senderDomain + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(senderDomain + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + senderDomain)) {
                     return true;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + senderDomain + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + senderDomain + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
                     return true;
-                } else if (containsExact("@;" + qualifier +  ">" + recipient)) {
+                } else if (recipient != null && containsExact("@;" + qualifier +  ">" + recipient)) {
                     return true;
-                } else if (containsExact("@;" + qualifier +  ">" + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact("@;" + qualifier +  ">" + recipientDomain)) {
                     return true;
-                } else if (containsExact(client + ":@>" + recipient)) {
+                } else if (recipient != null && containsExact(client + ":@>" + recipient)) {
                     return true;
-                } else if (containsExact(client + ":@>" + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ":@>" + recipientDomain)) {
+                    return true;
+                } else if (recipient != null && containsExact(client + ":@;" + qualifier +  ">" + recipient)) {
+                    return true;
+                } else if (recipientDomain != null && containsExact(client + ":@;" + qualifier +  ">" + recipientDomain)) {
                     return true;
                 } else {
                     int index3 = senderDomain.length();
@@ -2936,27 +3019,27 @@ public final class SPF implements Serializable {
                         String subdomain = senderDomain.substring(0, index3 + 1);
                         if (containsExact(subdomain)) {
                             return true;
-                        } else if (containsExact(subdomain + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(subdomain + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(subdomain + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(subdomain + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(subdomain + ';' + qualifier)) {
                             return true;
-                        } else if (containsExact(subdomain + ';' + qualifier + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(subdomain + ';' + qualifier + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(client + ':' + subdomain)) {
                             return true;
-                        } else if (containsExact(client + ':' + subdomain + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(client + ':' + subdomain + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(client + ':' + subdomain + ';' + qualifier)) {
                             return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
                             return true;
                         }
                     }
@@ -2965,27 +3048,27 @@ public final class SPF implements Serializable {
                         String subsender = sender.substring(0, index4 + 1);
                         if (containsExact(subsender)) {
                             return true;
-                        } else if (containsExact(subsender + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(subsender + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(subsender + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(subsender + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(subsender + ';' + qualifier)) {
                             return true;
-                        } else if (containsExact(subsender + ';' + qualifier + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(subsender + ';' + qualifier + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(client + ':' + subsender)) {
                             return true;
-                        } else if (containsExact(client + ':' + subsender + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(client + ':' + subsender + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(client + ':' + subsender + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(client + ':' + subsender + '>' + recipientDomain)) {
                             return true;
                         } else if (containsExact(client + ':' + subsender + ';' + qualifier)) {
                             return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
+                        } else if (recipient != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
                             return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
+                        } else if (recipientDomain != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
                             return true;
                         }
                     }
@@ -3010,27 +3093,27 @@ public final class SPF implements Serializable {
                 ip = Subnet.normalizeIP(ip);
                 if (containsExact(ip)) {
                     return true;
-                } else if (containsExact(ip + '>' + recipient)) {
+                } else if (recipient != null && containsExact(ip + '>' + recipient)) {
                     return true;
-                } else if (containsExact(ip + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(ip + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(ip + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(ip + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(ip + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(ip + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(ip + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + ip)) {
                     return true;
-                } else if (containsExact(client + ':' + ip + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + ip + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + ip + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + ip + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + ip + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 }
                 whoisSet.add(ip);
@@ -3127,27 +3210,27 @@ public final class SPF implements Serializable {
                 String token = '.' + host;
                 if (containsExact(token)) {
                     return true;
-                } else if (containsExact(token + '>' + recipient)) {
+                } else if (recipient != null && containsExact(token + '>' + recipient)) {
                     return true;
-                } else if (containsExact(token + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(token + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(token + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(token + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(token + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + token)) {
                     return true;
-                } else if (containsExact(client + ':' + token + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + token + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + token + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + token + '>' + recipientDomain)) {
                     return true;
                 } else if (containsExact(client + ':' + token + ';' + qualifier)) {
                     return true;
-                } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
+                } else if (recipient != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
                     return true;
-                } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (recipientDomain != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
                     return true;
                 }
             } while (host.contains("."));
@@ -3202,11 +3285,15 @@ public final class SPF implements Serializable {
                             identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                         } else if (Owner.isOwnerID(identifier)) {
                             identifier = "WHOIS/ownerid=" + identifier;
-                        }
-                        if (client == null) {
-                            addExact(identifier);
                         } else {
-                            addExact(client + ':' + identifier);
+                            identifier = normalizeTokenWhite(identifier);
+                        }
+                        if (identifier != null) {
+                            if (client == null) {
+                                addExact(identifier);
+                            } else if (Domain.isEmail(client)) {
+                                addExact(client + ':' + identifier);
+                            }
                         }
                     }
                     CHANGED = false;
@@ -3578,7 +3665,33 @@ public final class SPF implements Serializable {
     }
     
     private static String normalizeTokenWhite(String token) throws ProcessException {
-        return normalizeToken(token, true, true, true, false, true);
+        token = normalizeToken(token, true, true, true, false, true);
+        if (token == null) {
+            return null;
+        } else if (token.contains(";PASS")) {
+            return token;
+        } else if (token.contains(";FAIL")) {
+            return token;
+        } else if (token.contains(";SOFTFAIL")) {
+            return token;
+        } else if (token.contains(";NEUTRAL")) {
+            return token;
+        } else if (token.contains(";NONE")) {
+            return token;
+        } else if (isWHOIS(token)) {
+            return token;
+        } else if (isREGEX(token)) {
+            return token;
+        } else if (isDNSBL(token)) {
+            return token;
+        } else if (isCIDR(token)) {
+            return token;
+        } else if (token.contains(">")) {
+            int index = token.indexOf('>');
+            return token.substring(0, index) + ";PASS" + token.substring(index);
+        } else {
+            return token + ";PASS";
+        }
     }
 
     private static String normalizeTokenCIDR(String token) throws ProcessException {
@@ -3687,7 +3800,9 @@ public final class SPF implements Serializable {
         private static boolean CHANGED = false;
         
         private static synchronized boolean dropExact(String token) {
-            if (SET.remove(token)) {
+            if (token == null) {
+                return false;
+            } else if (SET.remove(token)) {
                 CHANGED = true;
                 return true;
             } else {
@@ -3893,15 +4008,15 @@ public final class SPF implements Serializable {
                 String senderDomain = sender.substring(index2);
                 if (containsExact(sender)) {
                     return sender;
-                } else if (containsExact(client + ':' + sender)) {
+                } else if (client != null && containsExact(client + ':' + sender)) {
                     return sender;
                 } else if (containsExact(part)) {
                     return part;
-                } else if (containsExact(client + ':' + part)) {
+                } else if (client != null && containsExact(client + ':' + part)) {
                     return part;
                 } else if (containsExact(senderDomain)) {
                     return senderDomain;
-                } else if (containsExact(client + ':' + senderDomain)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain)) {
                     return senderDomain;
                 } else {
                     int index3 = senderDomain.length();
@@ -3909,7 +4024,7 @@ public final class SPF implements Serializable {
                         String subdomain = senderDomain.substring(0, index3 + 1);
                         if (containsExact(subdomain)) {
                             return subdomain;
-                        } else if (containsExact(client + ':' + subdomain)) {
+                        } else if (client != null && containsExact(client + ':' + subdomain)) {
                             return subdomain;
                         }
                     }
@@ -3920,7 +4035,7 @@ public final class SPF implements Serializable {
                         token = '.' + host;
                         if (containsExact(token)) {
                             return token;
-                        } else if (containsExact(client + ':' + token)) {
+                        } else if (client != null && containsExact(client + ':' + token)) {
                             return token;
                         }
                     } while (host.contains("."));
@@ -3929,7 +4044,7 @@ public final class SPF implements Serializable {
                         String subsender = sender.substring(0, index4 + 1);
                         if (containsExact(subsender)) {
                             return subsender;
-                        } else if (containsExact(client + ':' + subsender)) {
+                        } else if (client != null && containsExact(client + ':' + subsender)) {
                             return subsender;
                         }
                     }
@@ -3943,41 +4058,43 @@ public final class SPF implements Serializable {
                 String ip = Subnet.normalizeIP(token);
                 if (containsExact(ip)) {
                     return ip;
-                } else if (containsExact(client + ':' + ip)) {
+                } else if (client != null && containsExact(client + ':' + ip)) {
                     return ip;
                 }
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("CIDR=", "CIDR>"));
-                subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                }
                 for (String cidr : subSet) {
                     int index = cidr.indexOf('=');
                     cidr = cidr.substring(index + 1);
                     if (Subnet.containsIP(cidr, ip)) {
-                        return cidr;
+                        return "CIDR=" + cidr;
+                    }
+                }
+                Reverse reverse = Reverse.get(ip);
+                if (reverse != null) {
+                    for (String host : reverse.getAddressSet()) {
+                        String block = find(client, host);
+                        if (block != null) {
+                            return block;
+                        }
                     }
                 }
                 TreeSet<String> dnsblSet = new TreeSet<String>();
                 dnsblSet.addAll(subSet("DNSBL=", "DNSBL>"));
-                dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
+                if (client != null) {
+                    dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
+                }
                 for (String dnsbl : dnsblSet) {
                     int index1 = dnsbl.indexOf(':');
                     int index2 = dnsbl.indexOf('=', index1);
                     int index3 = dnsbl.indexOf(';', index2);
-//                    String user = index1 == -1 ? null : dnsbl.substring(0, index1);
                     String server = dnsbl.substring(index2 + 1, index3);
                     String value = dnsbl.substring(index3 + 1);
                     if (Reverse.isListed(ip, server, value)) {
                         Server.logDebug("the address " + ip + " is listed in " + server + ".");
-//                        String inetnum = Subnet.getInetnum(ip);
-//                        if (inetnum != null) {
-//                            String token2 = (user == null ? "" : user + ':') + "CIDR=" + inetnum;
-//                            if (CacheBlock.addExact(token2)) {
-//                                Server.logDebug("new BLOCK '" + token2 + "' added by '" + dnsbl + "'.");
-////                                if (user == null) {
-////                                    Peer.sendBlockToAll(token2);
-////                                }
-//                            }
-//                        }
                         return dnsbl;
                     }
                 }
@@ -3991,7 +4108,7 @@ public final class SPF implements Serializable {
                     String token2 = '.' + host;
                     if (containsExact(token2)) {
                         return token2;
-                    } else if (containsExact(client + ':' + token2)) {
+                    } else if (client != null && containsExact(client + ':' + token2)) {
                         return token2;
                     }
                 } while (host.contains("."));
@@ -4006,7 +4123,9 @@ public final class SPF implements Serializable {
             if (!regexSet.isEmpty()) {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("REGEX=", "REGEX>"));
-                subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                }
                 for (String regexOriginal : subSet.descendingSet()) {
                     int index1 = regexOriginal.indexOf(':');
                     int index2 = regexOriginal.indexOf('=');
@@ -4040,7 +4159,9 @@ public final class SPF implements Serializable {
             if (!whoisSet.isEmpty()) {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("WHOIS/", "WHOIS<"));
-                subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                }
                 for (String whois : subSet.descendingSet()) {
                     int indexKey = whois.indexOf('/');
                     char signal = '=';
@@ -4116,6 +4237,17 @@ public final class SPF implements Serializable {
             return find(client, ip, sender, helo,
                     qualifier, recipient) != null;
         }
+        
+        private static void clear(String client,
+                String ip, String sender, String helo,
+                String qualifier, String recipient) {
+            if (qualifier.equals("PASS")) {
+                String block;
+                while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
+                    Server.logDebug("false positive BLOCK '" + block + "' detected.");
+                }
+            }
+        }
 
         private static String find(String client,
                 String ip, String sender, String helo,
@@ -4151,17 +4283,17 @@ public final class SPF implements Serializable {
                     return sender + ';' + qualifier + '>' + recipient;
                 } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
                     return sender + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + sender)) {
+                } else if (client != null && containsExact(client + ':' + sender)) {
                     return sender;
-                } else if (containsExact(client + ':' + sender + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + sender + '>' + recipient)) {
                     return sender + '>' + recipient;
-                } else if (containsExact(client + ':' + sender + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + sender + '>' + recipientDomain)) {
                     return sender + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier)) {
+                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier)) {
                     return sender + ';' + qualifier;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
                     return sender + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
                     return sender + ';' + qualifier + '>' + recipientDomain;
                 } else if (containsExact(part)) {
                     return part;
@@ -4175,17 +4307,17 @@ public final class SPF implements Serializable {
                     return part + ';' + qualifier + '>' + recipient;
                 } else if (containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
                     return part + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + part)) {
+                } else if (client != null && containsExact(client + ':' + part)) {
                     return part;
-                } else if (containsExact(client + ':' + part + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + part + '>' + recipient)) {
                     return part + '>' + recipient;
-                } else if (containsExact(client + ':' + part + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + part + '>' + recipientDomain)) {
                     return part + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + part + ';' + qualifier)) {
+                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier)) {
                     return part + ';' + qualifier;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
                     return part + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
                     return part + ';' + qualifier + '>' + recipientDomain;
                 } else if (containsExact(senderDomain)) {
                     return senderDomain;
@@ -4199,17 +4331,17 @@ public final class SPF implements Serializable {
                     return senderDomain + ';' + qualifier + '>' + recipient;
                 } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return senderDomain + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + senderDomain)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain)) {
                     return senderDomain;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain + '>' + recipient)) {
                     return senderDomain + '>' + recipient;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
                     return senderDomain + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier)) {
                     return senderDomain + ';' + qualifier;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
                     return  senderDomain + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
                     return senderDomain + ';' + qualifier + '>' + recipientDomain;
                 } else {
                     String host = findHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain);
@@ -4231,17 +4363,17 @@ public final class SPF implements Serializable {
                                 return subdomain + ';' + qualifier + '>' + recipient;
                             } else if (containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
                                 return subdomain + ';' + qualifier + '>' + recipientDomain;
-                            } else if (containsExact(client + ':' + subdomain)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain)) {
                                 return subdomain;
-                            } else if (containsExact(client + ':' + subdomain + '>' + recipient)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain + '>' + recipient)) {
                                 return subdomain + '>' + recipient;
-                            } else if (containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
                                 return subdomain + '>' + recipientDomain;
-                            } else if (containsExact(client + ':' + subdomain + ';' + qualifier)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier)) {
                                 return subdomain + ';' + qualifier;
-                            } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
                                 return subdomain + ';' + qualifier + '>' + recipient;
-                            } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
+                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
                                 return subdomain + ';' + qualifier + '>' + recipientDomain;
                             }
                         }
@@ -4260,17 +4392,17 @@ public final class SPF implements Serializable {
                                 return subsender + ';' + qualifier + '>' + recipient;
                             } else if (containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
                                 return subsender + ';' + qualifier + '>' + recipientDomain;
-                            } else if (containsExact(client + ':' + subsender)) {
+                            } else if (client != null && containsExact(client + ':' + subsender)) {
                                 return subsender;
-                            } else if (containsExact(client + ':' + subsender + '>' + recipient)) {
+                            } else if (client != null && containsExact(client + ':' + subsender + '>' + recipient)) {
                                 return subsender + '>' + recipient;
-                            } else if (containsExact(client + ':' + subsender + '>' + recipientDomain)) {
+                            } else if (client != null && containsExact(client + ':' + subsender + '>' + recipientDomain)) {
                                 return subsender + '>' + recipientDomain;
-                            } else if (containsExact(client + ':' + subsender + ';' + qualifier)) {
+                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier)) {
                                 return subsender + ';' + qualifier;
-                            } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
+                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
                                 return subsender + ';' + qualifier + '>' + recipient;
-                            } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
+                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
                                 return subsender + ';' + qualifier + '>' + recipientDomain;
                             }
                         }
@@ -4308,17 +4440,17 @@ public final class SPF implements Serializable {
                     return ip + ';' + qualifier + '>' + recipient;
                 } else if (containsExact(ip + ';' + qualifier + '>' + recipientDomain)) {
                     return ip + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + ip)) {
+                } else if (client != null && containsExact(client + ':' + ip)) {
                     return ip;
-                } else if (containsExact(client + ':' + ip + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + ip + '>' + recipient)) {
                     return ip + '>' + recipient;
-                } else if (containsExact(client + ':' + ip + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + ip + '>' + recipientDomain)) {
                     return ip + '>' + recipientDomain;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier)) {
+                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier)) {
                     return ip + ';' + qualifier;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
+                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
                     return ip + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
+                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
                     return ip + ';' + qualifier + '>' + recipientDomain;
                 }
                 whoisSet.add(ip);
@@ -4328,12 +4460,14 @@ public final class SPF implements Serializable {
             if (ip != null) {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("CIDR=", "CIDR>"));
-                subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
+                }
                 for (String cidr : subSet) {
                     int index = cidr.indexOf('=');
                     cidr = cidr.substring(index + 1);
                     if (Subnet.containsIP(cidr, ip)) {
-                        return cidr;
+                        return "CIDR=" + cidr;
                     }
                 }
             }
@@ -4341,7 +4475,9 @@ public final class SPF implements Serializable {
             if (!regexSet.isEmpty()) {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("REGEX=", "REGEX>"));
-                subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
+                }
                 for (String regexOriginal : subSet.descendingSet()) {
                     int index1 = regexOriginal.indexOf(':');
                     int index2 = regexOriginal.indexOf('=');
@@ -4371,30 +4507,30 @@ public final class SPF implements Serializable {
                     }
                 }
             }
+            Reverse reverse = Reverse.get(ip);
+            if (reverse != null) {
+                for (String host : reverse.getAddressSet()) {
+                    String block = find(client, host);
+                    if (block != null) {
+                        return block;
+                    }
+                }
+            }
             // Verifica o DNSBL.
             if (ip != null) {
                 TreeSet<String> dnsblSet = new TreeSet<String>();
                 dnsblSet.addAll(subSet("DNSBL=", "DNSBL>"));
-                dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
+                if (client != null) {
+                    dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
+                }
                 for (String dnsbl : dnsblSet) {
                     int index1 = dnsbl.indexOf(':');
                     int index2 = dnsbl.indexOf('=', index1);
                     int index3 = dnsbl.indexOf(';', index2);
-//                    String user = index1 == -1 ? null : dnsbl.substring(0, index1);
                     String server = dnsbl.substring(index2 + 1, index3);
                     String value = dnsbl.substring(index3 + 1);
                     if (Reverse.isListed(ip, server, value)) {
                         Server.logDebug("IP " + ip + " is listed in " + server + ".");
-//                        String inetnum = Subnet.getInetnum(ip);
-//                        if (inetnum != null) {
-//                            String token = (user == null ? "" : user + ':') + "CIDR=" + inetnum;
-//                            if (CacheBlock.addExact(token)) {
-//                                Server.logDebug("new BLOCK '" + token + "' added by '" + dnsbl + "'.");
-////                                if (user == null) {
-////                                    Peer.sendBlockToAll(token);
-////                                }
-//                            }
-//                        }
                         return dnsbl;
                     }
                 }
@@ -4403,7 +4539,9 @@ public final class SPF implements Serializable {
             if (!whoisSet.isEmpty()) {
                 TreeSet<String> subSet = new TreeSet<String>();
                 subSet.addAll(subSet("WHOIS/", "WHOIS<"));
-                subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                if (client != null) {
+                    subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
+                }
                 for (String whois : subSet) {
                     int indexKey = whois.indexOf('/');
                     char signal = '=';
@@ -4515,17 +4653,17 @@ public final class SPF implements Serializable {
                         return token + ';' + qualifier + '>' + recipient;
                     } else if (containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
                         return token + ';' + qualifier + '>' + recipientDomain;
-                    } else if (containsExact(client + ':' + token)) {
+                    } else if (client != null && containsExact(client + ':' + token)) {
                         return token;
-                    } else if (containsExact(client + ':' + token + '>' + recipient)) {
+                    } else if (client != null && containsExact(client + ':' + token + '>' + recipient)) {
                         return token + '>' + recipient;
-                    } else if (containsExact(client + ':' + token + '>' + recipientDomain)) {
+                    } else if (client != null && containsExact(client + ':' + token + '>' + recipientDomain)) {
                         return token + '>' + recipientDomain;
-                    } else if (containsExact(client + ':' + token + ';' + qualifier)) {
+                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier)) {
                         return token + ';' + qualifier;
-                    } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
+                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
                         return token + ';' + qualifier + '>' + recipient;
-                    } else if (containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
+                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
                         return token + ';' + qualifier + '>' + recipientDomain;
                     }
                 } while (host.contains("."));
@@ -4581,11 +4719,15 @@ public final class SPF implements Serializable {
                             identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                         } else if (Owner.isOwnerID(identifier)) {
                             identifier = "WHOIS/ownerid=" + identifier;
-                        }
-                        if (client == null) {
-                            addExact(identifier);
                         } else {
-                            addExact(client + ':' + identifier);
+                            identifier = normalizeTokenBlock(identifier);
+                        }
+                        if (identifier != null) {
+                            if (client == null) {
+                                addExact(identifier);
+                            } else if (Domain.isEmail(client)) {
+                                addExact(client + ':' + identifier);
+                            }
                         }
                     }
                     for (String token : set) {
@@ -4680,9 +4822,11 @@ public final class SPF implements Serializable {
         TreeMap<String,Distribution> distribuitonMap = CacheDistribution.getAll(token);
         for (String key : distribuitonMap.keySet()) {
             Distribution distribution = distribuitonMap.get(key);
-            if (distribution != null && distribution.clear()) {
+            if (distribution != null) {
                 clearSet.add(key);
-                Peer.sendToAll(key, distribution);
+                if (distribution.clear()) {
+                    Peer.sendToAll(key, distribution);
+                }
             }
             if (CacheBlock.dropExact(key)) {
                 clearSet.add(key);
@@ -5155,10 +5299,6 @@ public final class SPF implements Serializable {
         CacheGuess.store();
     }
 
-//    public static void storePeer() {
-//        CachePeer.store();
-//    }
-
     public static void storeTrap() {
         CacheTrap.store();
     }
@@ -5592,9 +5732,7 @@ public final class SPF implements Serializable {
         } else {
             sender = sender.toLowerCase();
         }
-        if (!Domain.isEmail(recipient)) {
-            recipient = null;
-        }
+        
         if (!Subnet.isValidIP(ip)) {
             return "action=REJECT [RBL] "
                     + ip + " is not a valid IP.\n\n";
@@ -5603,6 +5741,13 @@ public final class SPF implements Serializable {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 ip = Subnet.normalizeIP(ip);
                 tokenSet.add(Subnet.normalizeIP(ip));
+                if (Domain.isEmail(recipient)) {
+                    // Se houver um remetente válido,
+                    // Adicionar no ticket para controle externo.
+                    tokenSet.add('>' + recipient);
+                } else {
+                    recipient = null;
+                }
                 // Passar a acompanhar todos os 
                 // HELO quando apontados para o IP para 
                 // uma nova forma de interpretar dados.
@@ -5631,12 +5776,7 @@ public final class SPF implements Serializable {
                         tokenSet.add(ipv6);
                     }
                 }
-                if (hostname == null && Core.isReverseRequired()) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + ip + " has no reverse.\n\n";
-                } else if (sender == null && !CacheHELO.match(ip, hostname)) {
+                if (sender == null && !CacheHELO.match(ip, hostname)) {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=REJECT [RBL] invalid hostname.\n\n";
@@ -5709,6 +5849,10 @@ public final class SPF implements Serializable {
                     fluxo = origem + ">" + recipient;
                 }
                 if (CacheWhite.contains(client, ip, sender, hostname, result, recipient)) {
+                    if (CacheWhite.contains(client, ip, sender, hostname, result, null)) {
+                        // Limpa da lista BLOCK um possível falso positivo.
+                        CacheBlock.clear(null, ip, sender, hostname, result, null);
+                    }
                     // Calcula frequencia de consultas.
                     String url = Core.getSpamURL(recipient);
                     String ticket = SPF.addQuery(tokenSet);
@@ -5720,9 +5864,14 @@ public final class SPF implements Serializable {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
                     return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
+                } else if (hostname == null && Core.isReverseRequired()) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=REJECT [RBL] "
+                            + ip + " has no reverse.\n\n";
                 } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                     // A origem abusou do atraso, portanto será rejeitada.
-                    Server.logDefer(0, fluxo, "FLOOD");
+                    Server.logDefer(0, fluxo, "DEFER FLOOD");
                     Defer.end(fluxo);
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
@@ -5819,7 +5968,8 @@ public final class SPF implements Serializable {
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
                     } else {
-                        result = "OK " + tokenSet + "\n";
+                        String recipient = SPF.getRecipient(ticket);
+                        result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
                     }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
@@ -5827,7 +5977,8 @@ public final class SPF implements Serializable {
                     if (tokenSet == null) {
                         result = "ALREADY REMOVED\n";
                     } else {
-                        result = "OK " + tokenSet + "\n";
+                        String recipient = SPF.getRecipient(ticket);
+                        result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
                     }
                 } else if (firstToken.equals("REFRESH") && tokenizer.countTokens() == 1) {
                     String address = tokenizer.nextToken();
@@ -5907,6 +6058,13 @@ public final class SPF implements Serializable {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
                             tokenSet.add(ip);
+                            if (Domain.isEmail(recipient)) {
+                                // Se houver um remetente válido,
+                                // Adicionar no ticket para controle.
+                                tokenSet.add('>' + recipient);
+                            } else {
+                                recipient = null;
+                            }
                             // Passar a acompanhar todos os 
                             // HELO quando apontados para o IP para 
                             // uma nova forma de interpretar dados.
@@ -5935,12 +6093,7 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ipv6);
                                 }
                             }
-                            if (hostname == null && Core.isReverseRequired()) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Require a valid HELO or reverse.
-                                return "INVALID\n";
-                            } else if (sender == null && !CacheHELO.match(ip, hostname)) {
+                            if (sender == null && !CacheHELO.match(ip, hostname)) {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 // HELO inválido sem remetente.
@@ -6049,6 +6202,10 @@ public final class SPF implements Serializable {
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
                             } else if (CacheWhite.contains(client, ip, sender, hostname, result, recipient)) {
+                                if (CacheWhite.contains(client, ip, sender, hostname, result, null)) {
+                                    // Limpa da lista BLOCK um possível falso positivo.
+                                    CacheBlock.clear(null, ip, sender, hostname, result, null);
+                                }
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL(recipient);
                                 String ticket = SPF.addQuery(tokenSet);
@@ -6058,9 +6215,14 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "SPAMTRAP\n";
+                            } else if (hostname == null && Core.isReverseRequired()) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                // Require a valid HELO or reverse.
+                                return "INVALID\n";
                             } else if (recipient != null && Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                                 // A origem abusou do atraso, portanto será rejeitada.
-                                Server.logDefer(0, fluxo, "FLOOD");
+                                Server.logDefer(0, fluxo, "DEFER FLOOD");
                                 Defer.end(fluxo);
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
@@ -6188,11 +6350,13 @@ public final class SPF implements Serializable {
     public static String addQuery(
             TreeSet<String> tokenSet
             ) throws ProcessException {
-        long time = System.currentTimeMillis();
+//        long time = System.currentTimeMillis();
         for (String token : expandTokenSet(tokenSet)) {
-            Distribution distribution = CacheDistribution.get(token, true);
-            if (distribution != null) {
-                distribution.addQuery();
+            if (CacheComplain.isValid(token)) {
+                Distribution distribution = CacheDistribution.get(token, true);
+                if (distribution != null) {
+                    distribution.addQuery();
+                }
             }
         }
         String ticket = SPF.createTicket(tokenSet);
@@ -6213,42 +6377,54 @@ public final class SPF implements Serializable {
     }
 
     public static boolean isBlacklisted(String token) {
-        Distribution distribution = CacheDistribution.get(token, true);
-//        if (distribution == null) {
-//            // Distribuição não encontrada.
-//            // Considerar que não está listado.
-//            return false;
-//        } else {
-            return distribution.isBlacklisted(token);
-//        }
+        if (CacheComplain.isValid(token)) {
+            Distribution distribution = CacheDistribution.get(token, true);
+    //        if (distribution == null) {
+    //            // Distribuição não encontrada.
+    //            // Considerar que não está listado.
+    //            return false;
+    //        } else {
+                return distribution.isBlacklisted(token);
+    //        }
+        } else {
+            return false;
+        }
     }
 
     public static boolean isGreylisted(String token) {
-        Distribution distribution = CacheDistribution.get(token, false);
-        if (distribution == null) {
-            // Distribuição não encontrada.
-            // Considerar que não está listado.
-            return false;
+        if (CacheComplain.isValid(token)) {
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                // Distribuição não encontrada.
+                // Considerar que não está listado.
+                return false;
+            } else {
+                return distribution.isGreylisted(token);
+            }
         } else {
-            return distribution.isGreylisted(token);
+            return false;
         }
     }
 
     public static boolean isBlocked(String token) {
-        Distribution distribution = CacheDistribution.get(token, true);
-//        if (distribution == null) {
-//            // Distribuição não encontrada.
-//            // Considerar que não está listado.
-//            return false;
-//        } else {
-            return distribution.isBlocked(token);
-//        }
+        if (CacheComplain.isValid(token)) {
+            Distribution distribution = CacheDistribution.get(token, true);
+    //        if (distribution == null) {
+    //            // Distribuição não encontrada.
+    //            // Considerar que não está listado.
+    //            return false;
+    //        } else {
+                return distribution.isBlocked(token);
+    //        }
+        } else {
+            return false;
+        }
     }
     
     public static boolean isFlood(String token) {
         if (CacheIgnore.contains(token)) {
             return false;
-        } else {
+        } else if (CacheComplain.isValid(token)) {
             Distribution distribution = CacheDistribution.get(token, false);
             if (distribution == null) {
                 // Distribuição não encontrada.
@@ -6257,6 +6433,8 @@ public final class SPF implements Serializable {
             } else {
                 return distribution.isFlood(token);
             }
+        } else {
+            return false;
         }
     }
 
@@ -6405,21 +6583,25 @@ public final class SPF implements Serializable {
             if (hasFrequency()) {
                 int frequencyInt = frequency.getMaximumInt();
                 int idleTimeInt = getIdleTimeMillis();
-                if (idleTimeInt > frequencyInt * 7) {
+                if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                     return "DEAD";
-                } else if (idleTimeInt > frequencyInt * 5) {
-                    return "IDLE";
-                } else if (frequencyInt >= 3600000) {
-                    return "~" + frequencyInt / 3600000 + "h";
-                } else if (frequencyInt >= 60000) {
-                    return "~" + frequencyInt / 60000 + "min";
-                } else if (frequencyInt >= 1000) {
-                    return "~" + frequencyInt / 1000 + "s";
                 } else {
-                    return "~" + frequencyInt + "ms";
+                    char sinal = '~';
+                    if (idleTimeInt > frequencyInt * 3) {
+                        sinal = '>';
+                    }
+                    if (frequencyInt >= 3600000) {
+                        return sinal + frequencyInt / 3600000 + "h";
+                    } else if (frequencyInt >= 60000) {
+                        return sinal + frequencyInt / 60000 + "min";
+                    } else if (frequencyInt >= 1000) {
+                        return sinal + frequencyInt / 1000 + "s";
+                    } else {
+                        return sinal + frequencyInt + "ms";
+                    }
                 }
             } else {
-                return "DEAD";
+                return "NEW";
             }
         }
 

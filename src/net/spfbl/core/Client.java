@@ -222,7 +222,7 @@ public class Client implements Serializable, Comparable<Client> {
             String ip = address.getHostAddress();
             Client client = Client.get(address);
             if (client == null) {
-                return ip + " " + Server.getLogClientOld(address);
+                return ip + " UNKNOWN";
             } else if (client.hasEmail()) {
                 return ip + " " + client.getDomain() + " " + client.getEmail();
             } else {
@@ -237,7 +237,7 @@ public class Client implements Serializable, Comparable<Client> {
         } else {
             Client client = Client.get(address);
             if (client == null) {
-                return Server.getLogClientOld(address);
+                return "UNKNOWN";
             } else if (client.hasEmail()) {
                 return client.getEmail();
             } else {
@@ -395,23 +395,28 @@ public class Client implements Serializable, Comparable<Client> {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
             int idleTimeInt = getIdleTimeMillis();
-            if (frequencyInt < limit) {
-                return "<" + limit + "ms";
-            } else if (idleTimeInt > frequencyInt * 7) {
+            if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                 return "DEAD";
-            } else if (idleTimeInt > frequencyInt * 5) {
-                return "IDLE";
-            } else if (frequencyInt >= 3600000) {
-                return "~" + frequencyInt / 3600000 + "h";
-            } else if (frequencyInt >= 60000) {
-                return "~" + frequencyInt / 60000 + "min";
-            } else if (frequencyInt >= 1000) {
-                return "~" + frequencyInt / 1000 + "s";
             } else {
-                return "~" + frequencyInt + "ms";
+                char sinal = '~';
+                if (frequencyInt < limit) {
+                    frequencyInt = limit;
+                    sinal = '<';
+                } else if (idleTimeInt > frequencyInt * 3) {
+                    sinal = '>';
+                }
+                if (frequencyInt >= 3600000) {
+                    return sinal + frequencyInt / 3600000 + "h";
+                } else if (frequencyInt >= 60000) {
+                    return sinal + frequencyInt / 60000 + "min";
+                } else if (frequencyInt >= 1000) {
+                    return sinal + frequencyInt / 1000 + "s";
+                } else {
+                    return sinal + frequencyInt + "ms";
+                }
             }
         } else {
-            return "DEAD";
+            return "NEW";
         }
     }
     

@@ -575,8 +575,8 @@ public final class QuerySPF extends Server {
      */
     private Connection pollConnection() {
         try {
-            // Espera aceitável para conexão de 10ms.
             if (CONNECION_SEMAPHORE.tryAcquire(10, TimeUnit.MILLISECONDS)) {
+                // Espera aceitável para conexão de 10ms.
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
@@ -622,19 +622,23 @@ public final class QuerySPF extends Server {
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
-                    long time = System.currentTimeMillis();
-                    Connection connection = pollConnection();
-                    if (connection == null) {
-                        sendMessage(time, socket, "ERROR: TOO MANY CONNECTIONS\n");
-                    } else {
-                        try {
-                            connection.process(socket, time);
-                        } catch (IllegalThreadStateException ex) {
-                            // Houve problema na liberação do processo.
-                            Server.logError(ex);
-                            sendMessage(time, socket, "ERROR: FATAL\n");
-                            offer(connection);
+                    if (continueListenning()) {
+                        long time = System.currentTimeMillis();
+                        Connection connection = pollConnection();
+                        if (connection == null) {
+                            sendMessage(time, socket, "ERROR: TOO MANY CONNECTIONS\n");
+                        } else {
+                            try {
+                                connection.process(socket, time);
+                            } catch (IllegalThreadStateException ex) {
+                                // Houve problema na liberação do processo.
+                                Server.logError(ex);
+                                sendMessage(time, socket, "ERROR: FATAL\n");
+                                offer(connection);
+                            }
                         }
+                    } else {
+                        socket.close();
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().

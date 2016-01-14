@@ -229,16 +229,18 @@ public final class QueryUDP extends Server {
                     DatagramPacket packet = new DatagramPacket(
                             receiveData, receiveData.length);
                     SERVER_SOCKET.receive(packet);
-                    long time = System.currentTimeMillis();
-                    Connection connection = pollConnection();
-                    if (connection == null) {
-                        InetAddress ipAddress = packet.getAddress();
-                        int portDestiny = packet.getPort();
-                        String result = "ERROR: TOO MANY CONNECTIONS\n";
-                        send(result, ipAddress, portDestiny);
-                        System.out.print(result);
-                    } else {
-                        connection.process(packet, time);
+                    if (continueListenning()) {
+                        long time = System.currentTimeMillis();
+                        Connection connection = pollConnection();
+                        if (connection == null) {
+                            InetAddress ipAddress = packet.getAddress();
+                            int portDestiny = packet.getPort();
+                            String result = "ERROR: TOO MANY CONNECTIONS\n";
+                            send(result, ipAddress, portDestiny);
+                            System.out.print(result);
+                        } else {
+                            connection.process(packet, time);
+                        }
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().

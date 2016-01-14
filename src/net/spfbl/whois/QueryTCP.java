@@ -208,7 +208,9 @@ public final class QueryTCP extends Server {
      * @return uma conexão ociosa ou nulo se exceder o tempo.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
+        if (!continueListenning()) {
+            return null;
+        } else if (CONNECION_SEMAPHORE.tryAcquire()) {
             Connection connection = poll();
             if (connection == null) {
                 CONNECION_SEMAPHORE.release();
@@ -235,19 +237,23 @@ public final class QueryTCP extends Server {
             while (continueListenning()) {
                 try {
                     Socket socket = SERVER_SOCKET.accept();
-                    long time = System.currentTimeMillis();
-                    Connection connection = pollConnection();
-                    if (connection == null) {
-                        String result = "ERROR: TOO MANY CONNECTIONS\n";
-                        try {
-                            OutputStream outputStream = socket.getOutputStream();
-                            outputStream.write(result.getBytes("ISO-8859-1"));
-                        } finally {
-                            socket.close();
-                            System.out.print(result);
+                    if (continueListenning()) {
+                        long time = System.currentTimeMillis();
+                        Connection connection = pollConnection();
+                        if (connection == null) {
+                            String result = "ERROR: TOO MANY CONNECTIONS\n";
+                            try {
+                                OutputStream outputStream = socket.getOutputStream();
+                                outputStream.write(result.getBytes("ISO-8859-1"));
+                            } finally {
+                                socket.close();
+                                System.out.print(result);
+                            }
+                        } else {
+                            connection.process(socket, time);
                         }
                     } else {
-                        connection.process(socket, time);
+                        socket.close();
                     }
                 } catch (SocketException ex) {
                     // Conexão fechada externamente pelo método close().

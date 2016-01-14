@@ -34,7 +34,7 @@ Reclamação SPFBL enviada com sucesso.
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até cinco dias após o recebimento.
 
-Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados pelos seus terminais de consulta para liberação do firewall.
+Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados, o volume diário de recebimento e o MTA utilizado pelos seus terminais MX para liberação do firewall.
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
@@ -144,12 +144,15 @@ Os elementos que podem ser adicionados nesta lista são:
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]\(=\|&lt;\|&gt;\)&lt;value&gt;
+* DNSBL=&lt;server&gt;;&lt;value&gt;
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
 No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representan a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
 
 Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
+
+Para bloqueio por DNSBL, infomar o servidor em &lt;server&gt; e o valor positivo do mesmo em &lt;value&gt;, como exemplo padrão para &lt;value&gt; 127.0.0.2.
 
 ##### Spamtrap
 
@@ -219,6 +222,8 @@ Os elementos que podem ser adicionados nesta lista são:
 * CIDR=&lt;cidr&gt;
 * REGEX=&lt;java regex&gt;
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
+
+Internamente esta lista aceita somente identificação de remetentes com qualificador. Portanto se nenhum qualificador for definido, a lista acatará o qualificador padrão PASS.
 
 Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
 
@@ -424,14 +429,20 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
-Para mandar o Exim bloquear o campo From da mensagem, basta adicionar esta configuração na seção "acl_check_data":
+Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar esta configuração na seção "acl_check_data":
 ```
-  # Deny if From is blocked in SPFBL.
+  # Deny if From or Reply-To is blocked in SPFBL.
   deny
-    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+(biz|com|edu|gov|info|int|jus|mil|net|org|pro|[[:alpha:]]\{2\})\$}{true}{false}}
+    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
     condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_From:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
     message = you are permanently blocked on this server.
     log_message = SPFBL check blocked. From:${address:$h_From:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
+  deny
+    condition = ${if match {${address:$h_Reply-To:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
+    condition = ${if eq {${address:$h_From:}}{${address:$h_Reply-To:}}{false}{true}}
+    condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_Reply-To:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
+    message = you are permanently blocked on this server.
+    log_message = SPFBL check blocked. Reply-To:${address:$h_Reply-To:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
 ```
 
 Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automaticamente utilizando a seguinte configuração na seção "acl_check_data":
@@ -524,7 +535,7 @@ Nós disponibilizamos aqui uma lista de bloqueios atualizada pela rede SPFBL via
 
 <https://github.com/leonamp/SPFBL/raw/master/doc/block.txt>
 
-Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inser a lista no SPFBL através de script próprio.
+Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inserir a lista no SPFBL através de script próprio.
 
 ### Como parar o serviço SPFBL
 

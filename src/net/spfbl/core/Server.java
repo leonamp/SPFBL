@@ -643,67 +643,6 @@ public abstract class Server extends Thread {
         log(time, Core.Level.DEBUG, "WHOIS", server + " " + query, result);
     }
     
-    private static long lastClientsFileModified = 0;
-    private static final TreeMap<String,String> subnetClientsMap = new TreeMap<String,String>();
-    
-    @Deprecated
-    public static synchronized String getLogClientOld(InetAddress address) {
-        if (address == null) {
-            return "UNKNOWN";
-        } else {
-            File clientsFile = new File("./data/clients.txt");
-            if (!clientsFile.exists()) {
-                subnetClientsMap.clear();
-            } else if (clientsFile.lastModified() > lastClientsFileModified) {
-                try {
-                    subnetClientsMap.clear();
-                    BufferedReader reader = new BufferedReader(new FileReader(clientsFile));
-                    try {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-                            if (tokenizer.countTokens() == 3) {
-                                String cidr = tokenizer.nextToken();
-                                String email = tokenizer.nextToken();
-                                subnetClientsMap.put(cidr, email);
-                            }
-                        }
-                        lastClientsFileModified = clientsFile.lastModified();
-                    } finally {
-                        reader.close();
-                    }
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-            String ip = address.getHostAddress();
-            try {
-                for (String cidr : subnetClientsMap.keySet()) {
-                    if (SubnetIPv4.isValidCIDRv4(cidr) && SubnetIPv4.isValidIPv4(ip)) {
-                        cidr = SubnetIPv4.normalizeCIDR(cidr);
-                        int mask = SubnetIPv4.getMaskNet(cidr);
-                        int address1 = SubnetIPv4.getAddressNet(cidr) & mask;
-                        int address2 = SubnetIPv4.getAddressIP(ip) & mask;
-                        if (address1 == address2) {
-                            return subnetClientsMap.get(cidr);
-                        }
-                    } else if (SubnetIPv6.isValidIPv6(cidr) && SubnetIPv6.isValidIPv6(ip)) {
-                        int index = cidr.indexOf('/');
-                        short[] mask = SubnetIPv6.getMaskIPv6(cidr.substring(index));
-                        short[] address1 = SubnetIPv6.split(cidr.substring(0, index), mask);
-                        short[] address2 = SubnetIPv6.split(ip, mask);
-                        if (Arrays.equals(address1, address2)) {
-                            return subnetClientsMap.get(cidr);
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-            return ip;
-        }
-    }
-    
     /**
      * Registra as mensagens de consulta.
      * Uma iniciativa para formalização das mensagens de log.
@@ -754,7 +693,8 @@ public abstract class Server extends Thread {
             String type,
             String client,
             String query,
-            Set<String> tokenSet
+            Set<String> tokenSet,
+            String recipient
     ) {
         String result;
         if (tokenSet == null || tokenSet.isEmpty()) {
@@ -767,6 +707,9 @@ public abstract class Server extends Thread {
                 } else {
                     result += ' ' + token;
                 }
+            }
+            if (recipient != null) {
+                result += " >" + recipient;
             }
         }
         log(time, level, type, client, query, result);

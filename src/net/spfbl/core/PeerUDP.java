@@ -433,26 +433,28 @@ public final class PeerUDP extends Server {
                     DatagramPacket packet = new DatagramPacket(
                             receiveData, receiveData.length);
                     SERVER_SOCKET.receive(packet);
-                    long time = System.currentTimeMillis();
-                    Connection connection = pollConnection();
-                    if (connection == null) {
-                        Server.logQuery(
-                                time,
-                                "PEERB",
-                                packet.getAddress(),
-                                null,
-                                "TOO MANY CONNECTIONS"
-                                );
-                    } else {
-                        try {
-                            connection.process(packet, time);
-                        } catch (IllegalThreadStateException ex) {
-                            // Houve problema na liberação do processo.
-                            InetAddress ipAddress = packet.getAddress();
-                            String result = "ERROR: FATAL\n";
-                            Server.logError(ex);
-                            Server.logQueryDNSBL(time, ipAddress, null, result);
-                            offer(connection);
+                    if (continueListenning()) {
+                        long time = System.currentTimeMillis();
+                        Connection connection = pollConnection();
+                        if (connection == null) {
+                            Server.logQuery(
+                                    time,
+                                    "PEERB",
+                                    packet.getAddress(),
+                                    null,
+                                    "TOO MANY CONNECTIONS"
+                                    );
+                        } else {
+                            try {
+                                connection.process(packet, time);
+                            } catch (IllegalThreadStateException ex) {
+                                // Houve problema na liberação do processo.
+                                InetAddress ipAddress = packet.getAddress();
+                                String result = "ERROR: FATAL\n";
+                                Server.logError(ex);
+                                Server.logQueryDNSBL(time, ipAddress, null, result);
+                                offer(connection);
+                            }
                         }
                     }
                 } catch (SocketException ex) {
