@@ -24,19 +24,19 @@ if [ "$1" == "--uninstall" ]; then
     [ ! -d /opt/spfbl ] && success || failure
     echo -n "Removing /etc/spfbl"
     rm -rf /etc/spfbl
-    [ ! -d /opt/spfbl ] && success || failure
+    [ ! -d /etc/spfbl ] && success || failure
     echo -n "Removing /usr/src/SPFBL"
     rm -rf /usr/src/SPFBL
-    [ ! -d /opt/spfbl ] && success || failure
+    [ ! -d /usr/src/SPFBL ] && success || failure
     echo -n "Removing /etc/logrotate.d/spfbl"
     rm -rf /etc/logrotate.d/spfbl
-    [ ! -d /opt/spfbl ] && success || failure
+    [ ! -f /etc/logrotate.d/spfbl ] && success || failure
     echo -n "Removing /var/log/spfbl"
     rm -rf /var/log/spfbl
-    [ ! -d /opt/spfbl ] && success || failure
+    [ ! -d /var/log/spfbl ] && success || failure
     echo -n "Removing /etc/init.d/spfbl"
     rm -rf /etc/init.d/spfbl
-    [ ! -d /opt/spfbl ] && success || failure
+    [ ! -f /etc/init.d/spfbl ] && success || failure
 else
     echo "----------------------------"
     echo "Setting up SPFBL Server..."
