@@ -406,6 +406,11 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = [SPFBL] invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
+    message = [RBL] you are temporarily blocked on this server. see $acl_c_spfblticket
+    log_message = [SPFBL] listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
+  defer
     message = [RBL] you are temporarily blocked on this server.
     log_message = [SPFBL] listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
@@ -483,6 +488,11 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     message = [SPF] IP or sender is invalid.
     log_message = [SPFBL] invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
+  defer
+    message = [RBL] you are temporarily blocked on this server. see $acl_c_spfblticket
+    log_message = [SPFBL] listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
   defer
     message = [RBL] you are temporarily blocked on this server.
     log_message = [SPFBL] listed.

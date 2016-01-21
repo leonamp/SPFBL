@@ -15,7 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
-# Última alteração: 21/10/2015 10:00
+# Última alteração: 21/01/2016 13:38
 
 use strict;
 use warnings;
@@ -66,9 +66,14 @@ while ( my $line = <STDIN> ) {
     STDOUT->autoflush(1);
 
     # parse the result
-    if ( $result =~ /^LISTED/ ) {
+    if ( $result =~ /^LISTED / ) {
         STDOUT->print(
-            "action=DEFER [RBL] you are temporarily blocked on this server.\n\n"
+            "action=REJECT [RBL] you are temporarily blocked on this server. see $result\n\n"
+        );
+    }
+    elsif ( $result =~ /^LISTED/ ) {
+        STDOUT->print(
+            "action=REJECT [RBL] you are temporarily blocked on this server.\n\n"
         );
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {

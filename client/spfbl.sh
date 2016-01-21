@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 05/01/2016 14:35
+# Última alteração: 21/01/2016 12:17
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -32,7 +32,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="0.10"
+version="1.00"
 
 head()
 {
@@ -2007,7 +2007,7 @@ case $1 in
 				exit 11
 			elif [[ $qualifier == "BLOCKED" ]]; then
 				exit 10
-			elif [[ $qualifier == "LISTED" ]]; then
+			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
 			elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
 				exit 6
