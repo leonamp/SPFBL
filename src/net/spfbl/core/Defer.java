@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.TreeSet;
 import org.apache.commons.lang3.SerializationUtils;
@@ -35,6 +36,7 @@ public class Defer implements Serializable, Comparable<Defer> {
     
     private final long start; // A data de criação do atraso.
     private int count = 0; // Quantas vezes houve um atraso.
+    private boolean release = false;
     
     private Defer() {
         this.start = System.currentTimeMillis();
@@ -82,7 +84,7 @@ public class Defer implements Serializable, Comparable<Defer> {
         return map;
     }
 
-    private static boolean containsExact(String key) {
+    public static synchronized boolean containsExact(String key) {
         return MAP.containsKey(key);
     }
 
@@ -119,6 +121,39 @@ public class Defer implements Serializable, Comparable<Defer> {
     private synchronized int getCount() {
         return count;
     }
+    
+    public synchronized boolean release() {
+        if (release) {
+            return false;
+        } else {
+            CHANGED = true;
+            return release = true;
+        }
+    }
+    
+    public Date getStartDate() {
+        return new Date(start);
+    }
+    
+    public static Defer getDefer(Date start, String id) {
+        Defer defer = Defer.getExact(id);
+        if (defer == null) {
+            return null;
+        } else if (defer.start == start.getTime()) {
+            return defer;
+        } else {
+            return null;
+        }
+    }
+    
+    public static Defer getDefer(String id) {
+        Defer defer = Defer.getExact(id);
+        if (defer == null) {
+            return null;
+        } else {
+            return defer;
+        }
+    }
 
     public static boolean defer(String id, int minutes) {
         if (id == null) {
@@ -133,6 +168,9 @@ public class Defer implements Serializable, Comparable<Defer> {
                 defer = add(id);
                 defer.addCount();
                 return true;
+            } else if (defer.release) {
+                end(id);
+                return false;
             } else if (defer.start < (now - minutes * 60 * 1000)) {
                 end(id);
                 return false;
@@ -152,6 +190,19 @@ public class Defer implements Serializable, Comparable<Defer> {
         }
     }
 
+    public static boolean release(String id) {
+        long now = System.currentTimeMillis();
+        Defer defer = getExact(id);
+        if (defer == null) {
+            return false;
+        } else if (defer.release()) {
+            Server.logDefer(now, id, "RELEASE");
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     public static void end(String id) {
         long now = System.currentTimeMillis();
         if (dropExact(id) != null) {
@@ -172,6 +223,10 @@ public class Defer implements Serializable, Comparable<Defer> {
             Server.logDefer(defer.start, id, "START");
         }
         return defer;
+    }
+    
+    public boolean isReleased() {
+        return release;
     }
 
     public static void store() {

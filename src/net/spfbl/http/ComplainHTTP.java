@@ -35,16 +35,19 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
-import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.core.Client;
+import net.spfbl.core.Core;
+import net.spfbl.core.Defer;
+import net.spfbl.core.ProcessException;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
+import net.tanesha.recaptcha.ReCaptcha;
+import net.tanesha.recaptcha.ReCaptchaFactory;
+import net.tanesha.recaptcha.ReCaptchaResponse;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -160,6 +163,14 @@ public final class ComplainHTTP extends Server {
         }
     }
     
+    public String getReleaseURL() {
+        if (HOSTNAME == null) {
+            return null;
+        } else {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/release/";
+        }
+    }
+    
     public synchronized String getSpamURL(String domain) {
         if (MAP.containsKey(domain)) {
             return MAP.get(domain);
@@ -181,20 +192,27 @@ public final class ComplainHTTP extends Server {
         }
     }
     
+    private static String getRemoteAddress(HttpExchange exchange) {
+        InetSocketAddress socketAddress = exchange.getRemoteAddress();
+        InetAddress address = socketAddress.getAddress();
+        return address.getHostAddress();
+    }
+    
     @SuppressWarnings("unchecked")
-    private static TreeSet<String> getIdentifierSet(HttpExchange exchange) throws IOException {
+    private static HashMap<String,Object> getParameterMap(HttpExchange exchange) throws IOException {
         InputStreamReader isr = new InputStreamReader(exchange.getRequestBody(), "UTF-8");
         BufferedReader br = new BufferedReader(isr);
         String query = br.readLine();
-        return getIdentifierSet(query);
+        return getParameterMap(query);
     }
 
     @SuppressWarnings("unchecked")
-    private static TreeSet<String> getIdentifierSet(String query) throws UnsupportedEncodingException {
+    private static HashMap<String,Object> getParameterMap(String query) throws UnsupportedEncodingException {
         if (query == null) {
             return null;
         } else {
             TreeSet<String> identifierSet = new TreeSet<String>();
+            HashMap<String,Object> map = new HashMap<String,Object>();
             String pairs[] = query.split("[&]");
             for (String pair : pairs) {
                 String param[] = pair.split("[=]");
@@ -208,172 +226,322 @@ public final class ComplainHTTP extends Server {
                 }
                 if ("identifier".equals(key)) {
                     identifierSet.add(value);
+                } else {
+                    map.put(key, value);
                 }
             }
-            return identifierSet;
+            if (!identifierSet.isEmpty()) {
+                map.put("identifier", identifierSet);
+            }
+            return map;
         }
     }
     
     private static class ComplainHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) {
-            long time = System.currentTimeMillis();
-            Thread.currentThread().setName("HTTPCMMND");
-            String request = exchange.getRequestMethod();
-            URI uri = exchange.getRequestURI();
-            String command = uri.toString();
-            String origin = getOrigin(exchange);
-            int code;
-            String result;
-            String type;
-            if (request.equals("POST")) {
-                if (command.startsWith("/spam/")) {
-                    try {
-                        int index = command.indexOf('/', 1) + 1;
-                        String ticket = command.substring(index);
-                        String recipient = SPF.getRecipient(ticket);
-                        TreeSet<String> identifierSet = getIdentifierSet(exchange);
-                        if (identifierSet == null || recipient == null) {
-                            type = "HTTPC";
-                            code = 403;
-                            result = "Forbidden\n";
-                        } else {
-                            TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
-                            for (String identifier : identifierSet) {
-                                if (tokenSet.contains(identifier)) {
-                                    long time2 = System.currentTimeMillis();
-                                    String block = identifier + '>' + recipient;
-                                    if (SPF.addBlockExact(block)) {
-                                        Server.logQuery(
-                                                time2, "BLOCK",
-                                                origin,
-                                                "BLOCK ADD " + block,
-                                                "ADDED"
-                                                );
-                                    }
-                                }
-                            }
-                            type = "HTTPC";
-                            code = 200;
-                            result = "Bloqueados: " + identifierSet + " >" + recipient + "\n";
-                        }
-                    } catch (Exception ex) {
-                        type = "HTTPC";
-                        code = 500;
-                        result = ex.getMessage() + "\n";
-                    }
-                } else {
-                    type = "HTTPC";
-                    code = 403;
-                    result = "Forbidden\n";
-                }
-            } else if (request.equals("GET") || request.equals("PUT")) {
-                if (command.startsWith("/spam/")) {
-                    type = "SPFSP";
-                    try {
-                        int index = command.indexOf('/', 1) + 1;
-                        String ticket = command.substring(index);
-                        TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
-                        if (complainSet == null) {
-                            code = 404;
-                            if (request.equals("PUT")) {
-                                // Plain text response.
-                                result = "DUPLICATE COMPLAIN\n";
-                            } else {
-                                result = "DUPLICATE COMPLAIN\n";
-                            }
-                        } else {
-                            code = 200;
-                            String recipient = SPF.getRecipient(ticket);
-                            if (request.equals("PUT")) {
-                                // Plain text response.
-                                result = "OK " + complainSet + (recipient == null ? "" : " >" + recipient) + "\n";
-                            } else {
-                                // HTML response with block feature.
-                                StringBuilder builder = new StringBuilder();
-                                builder.append("<html>\n");
-                                builder.append("  <head>\n");
-                                builder.append("    <meta charset=\"UTF-8\">\n");
-                                builder.append("    <title>Página de denuncia SPFBL</title>\n");
-//                                builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-                                builder.append("  </head>\n");
-                                builder.append("  <body>\n");
-                                builder.append("    A mensagem foi denunciada com sucesso no serviço SPFBL.<br>\n");
-                                builder.append("    <br>\n");
-                                if (recipient != null) {
-                                    TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
-                                    if (!tokenSet.isEmpty()) {
-                                        builder.append("    <form method=\"POST\">\n");
-                                        builder.append("      Se você deseja não receber mais mensagens desta origem no futuro,<br>\n");
-                                        builder.append("      selecione os identificadores que devem ser bloqueados definitivamente:<br>\n");
-                                        for (String identifier : SPF.getTokenSet(ticket)) {
-                                            builder.append("      <input type=\"checkbox\" name=\"identifier\" value=\"");
-                                            builder.append(identifier);
-                                            if (Subnet.isValidIP(identifier)) {
-                                                builder.append("\">");
-                                            } else if (complainSet.contains(identifier)) {
-                                                builder.append("\" checked>");
-                                            } else {
-                                                builder.append("\">");
-                                            }
-                                            builder.append(identifier);
-                                            builder.append("<br>\n");
-                                        }
-                                        //                                builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"${sitekey}\"></div>\n");
-                                        builder.append("      <input type=\"submit\" value=\"Bloquear\">\n");
-                                        builder.append("    </form>\n");
-                                    }
-                                }
-                                builder.append("  </body>\n");
-                                builder.append("</html>\n");
-                                result = builder.toString();
-                            }
-                        }
-                    } catch (Exception ex) {
-                        code = 500;
-                        result = ex.getMessage() + "\n";
-                    }
-                } else if (command.startsWith("/ham/")) {
-                    type = "SPFHM";
-                    try {
-                        int index = command.indexOf('/', 1) + 1;
-                        String ticket = command.substring(index);
-                        TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
-                        if (tokenSet == null) {
-                            code = 404;
-                            if (request.equals("PUT")) {
-                                // Plain text response.
-                                result = "ALREADY REMOVED\n";
-                            } else {
-                                // HTML response with whitelist feature.
-                                result = "ALREADY REMOVED\n";
-                            }
-                        } else {
-                            code = 200;
-                            String recipient = SPF.getRecipient(ticket);
-                            if (request.equals("PUT")) {
-                                // Plain text response.
-                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
-                            } else {
-                                // HTML response with whitelist feature.
-                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
-                            }
-                        }
-                    } catch (Exception ex) {
-                        code = 500;
-                        result = ex.getMessage() + "\n";
-                    }
-                } else {
-                    type = "HTTPC";
-                    code = 403;
-                    result = "Forbidden\n";
-                }
-            } else {
-                type = "HTTPC";
-                code = 405;
-                result = "Method not allowed.\n";
-            }
             try {
+                long time = System.currentTimeMillis();
+                Thread.currentThread().setName("HTTPCMMND");
+                String request = exchange.getRequestMethod();
+                URI uri = exchange.getRequestURI();
+                String command = uri.toString();
+                String origin = getOrigin(exchange);
+                int code;
+                String result;
+                String type;
+                if (request.equals("POST")) {
+                    if (command.startsWith("/spam/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            String recipient = SPF.getRecipient(ticket);
+                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                            if (parameterMap.containsKey("identifier")) {
+                                boolean valid = true;
+                                TreeSet<String> identifierSet = (TreeSet<String>) parameterMap.get("identifier");
+                                if (Core.hasRecaptchaKeys()) {
+                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+                                            && parameterMap.containsKey("recaptcha_response_field")
+                                            ) {
+                                        // reCAPCHA convencional.
+                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                        String remoteAddress = getRemoteAddress(exchange);
+                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                        valid = response.isValid();
+                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                        // TODO: novo reCAPCHA.
+                                        valid = false;
+                                    } else {
+                                        // reCAPCHA necessário.
+                                        valid = false;
+                                    }
+                                }
+                                TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+                                if (valid) {
+                                    for (String identifier : identifierSet) {
+                                        if (tokenSet.contains(identifier)) {
+                                            long time2 = System.currentTimeMillis();
+                                            String block = identifier + '>' + recipient;
+                                            if (SPF.addBlockExact(block)) {
+                                                Server.logQuery(
+                                                        time2, "BLOCK",
+                                                        origin,
+                                                        "BLOCK ADD " + block,
+                                                        "ADDED"
+                                                        );
+                                            }
+                                        }
+                                    }
+                                    type = "HTTPC";
+                                    code = 200;
+                                    result = "Bloqueados: " + tokenSet + " >" + recipient + "\n";
+                                } else {
+                                    type = "HTTPC";
+                                    code = 200;
+                                    String message = "O desafio do reCAPTCHA não foi resolvido.";
+                                    result = getComplainHMTL(tokenSet, identifierSet, message, true);
+                                }
+                            } else {
+                                type = "HTTPC";
+                                code = 500;
+                                result = "Identificadores indefinidos.\n";
+                            }
+                        } catch (Exception ex) {
+                            type = "HTTPC";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else if (command.startsWith("/release/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            String registry = Server.decrypt(ticket);
+                            index = registry.indexOf(' ');
+                            Date date = Server.parseTicketDate(registry.substring(0, index));
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "DEFER";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de liberação do SPFBL",
+                                        "Este ticket de liberação está vencido."
+                                        );
+                            } else {
+                                boolean valid = true;
+                                if (Core.hasRecaptchaKeys()) {
+                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+                                            && parameterMap.containsKey("recaptcha_response_field")
+                                            ) {
+                                        // reCAPCHA convencional.
+                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                        String remoteAddress = getRemoteAddress(exchange);
+                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                        valid = response.isValid();
+                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                        // TODO: novo reCAPCHA.
+                                        valid = false;
+                                    } else {
+                                        // reCAPCHA necessário.
+                                        valid = false;
+                                    }
+                                }
+                                if (valid) {
+                                    String id = registry.substring(index + 1);
+                                    String title = "Página de liberação do SPFBL";
+                                    String message;
+                                    if (Defer.release(id)) {
+                                        message = "Sua mensagem foi liberada com sucesso.";
+                                    } else {
+                                        message = "Sua mensagem já havia sido liberada.";
+                                    }
+                                    type = "DEFER";
+                                    code = 200;
+                                    result = getMessageHMTL(title, message);
+                                } else {
+                                    type = "DEFER";
+                                    code = 200;
+                                    result = getReleaseHMTL(
+                                            "O desafio reCAPTCHA não foi resolvido. "
+                                            + "Tente novamente."
+                                            );
+                                }
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFSP";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else {
+                        type = "HTTPC";
+                        code = 403;
+                        result = "Forbidden\n";
+                    }
+                } else if (request.equals("GET")) {
+                    if (command.startsWith("/spam/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            String recipient = SPF.getRecipient(ticket);
+                            boolean whiteBlockForm = recipient != null;
+                            TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
+                            TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+                            TreeSet<String> selectionSet = new TreeSet<String>();
+                            String message;
+                            if (complainSet == null) {
+                                complainSet = SPF.getComplain(ticket);
+                                message = "A mensagem já havia sido denunciada antes.";
+                            } else {
+                                message = "A mensagem foi denunciada com sucesso.";
+                            }
+                            for (String token : complainSet) {
+                                if (!Subnet.isValidIP(token)) {
+                                    selectionSet.add(token);
+                                }
+                            }
+                            type = "SPFSP";
+                            code = 200;
+                            result = getComplainHMTL(tokenSet, selectionSet, message, whiteBlockForm);
+                        } catch (Exception ex) {
+                            type = "SPFSP";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else if (command.startsWith("/ham/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
+                            if (tokenSet == null) {
+                                type = "SPFHM";
+                                code = 404;
+                                result = "ALREADY REMOVED\n";
+                            } else {
+                                type = "SPFHM";
+                                code = 200;
+                                String recipient = SPF.getRecipient(ticket);
+                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFHM";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else if (command.startsWith("/release/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            String registry = Server.decrypt(ticket);
+                            index = registry.indexOf(' ');
+                            Date date = Server.parseTicketDate(registry.substring(0, index));
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "DEFER";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de liberação do SPFBL",
+                                        "Este ticket de liberação está vencido."
+                                        );
+                            } else {
+                                String id = registry.substring(index + 1);
+                                Defer defer = Defer.getDefer(date, id);
+                                if (defer == null) {
+                                    type = "DEFER";
+                                    code = 500;
+                                    result = getMessageHMTL(
+                                            "Página de liberação do SPFBL",
+                                            "Este ticket de liberação não existe ou já foi liberado antes."
+                                            );
+                                } else if (defer.isReleased()) {
+                                    type = "DEFER";
+                                    code = 200;
+                                    result = getMessageHMTL(
+                                            "Página de liberação do SPFBL",
+                                            "Sua mensagem já havia sido liberada."
+                                            );
+                                } else {
+                                    type = "DEFER";
+                                    code = 200;
+                                    result = getReleaseHMTL(
+                                            "Para liberar o recebimento da mensagem, "
+                                            + "resolva o desafio reCAPTCHA abaixo."
+                                            );
+                                }
+                            }
+                        } catch (Exception ex) {
+                            type = "DEFER";
+                            code = 500;
+                            result = getMessageHMTL(
+                                    "Página de liberação do SPFBL",
+                                    "Ocorreu um erro no processamento desta solicitação: "
+                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage()
+                                    );
+                        }
+                    } else {
+                        type = "HTTPC";
+                        code = 403;
+                        result = "Forbidden\n";
+                    }
+                } else if (request.equals("PUT")) {
+                    if (command.startsWith("/spam/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
+                            if (complainSet == null) {
+                                type = "SPFSP";
+                                code = 404;
+                                result = "DUPLICATE COMPLAIN\n";
+                            } else {
+                                type = "SPFSP";
+                                code = 200;
+                                String recipient = SPF.getRecipient(ticket);
+                                result = "OK " + complainSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFSP";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else if (command.startsWith("/ham/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
+                            if (tokenSet == null) {
+                                type = "SPFHM";
+                                code = 404;
+                                result = "ALREADY REMOVED\n";
+                            } else {
+                                type = "SPFHM";
+                                code = 200;
+                                String recipient = SPF.getRecipient(ticket);
+                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFHM";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else {
+                        type = "HTTPC";
+                        code = 403;
+                        result = "Forbidden\n";
+                    }
+                } else {
+                    type = "HTTPC";
+                    code = 405;
+                    result = "Method not allowed.\n";
+                }
                 response(code, result, exchange);
                 command = request + " " + command;
                 result = code + " " + result;
@@ -381,10 +549,141 @@ public final class ComplainHTTP extends Server {
                         time, type,
                         origin,
                         command,
-                        result);
-            } catch (IOException ex) {
+                        result
+                        );
+            } catch (Exception ex) {
                 Server.logError(ex);
+            } finally {
+                exchange.close();
             }
+        }
+    }
+    
+    private static String getReleaseHMTL(String message) throws ProcessException {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<html>\n");
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <title>Página de liberação SPFBL</title>\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+        builder.append("  <body>\n");
+        builder.append("    <form method=\"POST\">\n");
+        builder.append("       O recebimento da sua mensagem está sendo atrasado por suspeita de SPAM.<br>\n");
+        builder.append("       ");
+//        builder.append("       Para liberar o recebimento da mensagem, resolva o desafio reCAPTCHA abaixo.<br>\n");
+        builder.append(message);
+        builder.append("<br>\n");
+        if (Core.hasRecaptchaKeys()) {
+            String recaptchaKeySite = Core.getRecaptchaKeySite();
+            String recaptchaKeySecret = Core.getRecaptchaKeySecret();
+            ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
+            builder.append(captcha.createRecaptchaHtml(null, null));
+            // novo reCAPCHA
+//            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
+//            builder.append(recaptchaKeySite);
+//            builder.append("\"></div>\n");
+        }
+        builder.append("       <input type=\"submit\" value=\"Liberar\">\n");
+//        if (Core.hasAdminEmail()) {
+//            builder.append("       Se deseja automatizar este procedimento,<br>\n");
+//            builder.append("       entre em contato com <a href=\"");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("\">");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("</a>.<br>\n");
+//        }
+        builder.append("    </form>\n");
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
+    
+    private static String getMessageHMTL(String title, String message) throws ProcessException {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<html>\n");
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <title>");
+        builder.append(title);
+        builder.append("</title>\n");
+        builder.append("  </head>\n");
+        builder.append("  <body>\n");
+        builder.append("    ");
+        builder.append(message);
+        builder.append("<br>\n");
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
+    
+    private static String getComplainHMTL(
+            TreeSet<String> tokenSet,
+            TreeSet<String> selectionSet,
+            String message,
+            boolean whiteBlockForm
+            ) throws ProcessException {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<html>\n");
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <title>Página de denuncia SPFBL</title>\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+        builder.append("  <body>\n");
+        builder.append("    ");
+        builder.append(message);
+        builder.append("<br>\n");
+        builder.append("    <br>\n");
+        if (whiteBlockForm) {
+            writeBlockFormHTML(builder, tokenSet, selectionSet);
+        }
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
+    
+    private static void writeBlockFormHTML(
+            StringBuilder builder,
+            TreeSet<String> tokenSet,
+            TreeSet<String> selectionSet
+            ) throws ProcessException {
+        if (!tokenSet.isEmpty()) {
+            builder.append("    <form method=\"POST\">\n");
+            builder.append("      Se você deseja não receber mais mensagens desta origem no futuro,<br>\n");
+            builder.append("      selecione os identificadores que devem ser bloqueados definitivamente:<br>\n");
+            for (String identifier : tokenSet) {
+                builder.append("      <input type=\"checkbox\" name=\"identifier\" value=\"");
+                builder.append(identifier);
+                if (selectionSet.contains(identifier)) {
+                    builder.append("\" checked>");
+                } else {
+                    builder.append("\">");
+                }
+                builder.append(identifier);
+                builder.append("<br>\n");
+            }
+            if (Core.hasRecaptchaKeys()) {
+                builder.append("      Para que sua solicitação seja aceita,<br>\n");
+                builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                String recaptchaKeySite = Core.getRecaptchaKeySite();
+                String recaptchaKeySecret = Core.getRecaptchaKeySecret();
+                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
+                builder.append("      ");
+                builder.append(captcha.createRecaptchaHtml(null, null).replace("\r", ""));
+                // novo reCAPCHA
+    //            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
+    //            builder.append(recaptchaKeySite);
+    //            builder.append("\"></div>\n");
+            }
+            builder.append("      <input type=\"submit\" value=\"Bloquear\">\n");
+            builder.append("    </form>\n");
         }
     }
     

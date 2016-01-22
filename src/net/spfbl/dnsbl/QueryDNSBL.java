@@ -353,19 +353,20 @@ public final class QueryDNSBL extends Server {
                     query = name.toString();
                     String result;
                     long ttl = 3600; // Uma hora.
+                    String host = Domain.extractHost(query, false);
                     String information = null;
                     String ip = "";
                     ServerDNSBL server = null;
-                    if ((query = Domain.extractHost(query, false)) == null) {
+                    if (host == null) {
                         result = "NXDOMAIN";
                     } else {
-                        int index = query.length() - 1;
-                        query = query.substring(0, index);
+                        int index = host.length() - 1;
+                        host = host.substring(0, index);
                         String hostname = null;
                         String reverse = "";
-                        while ((index = query.lastIndexOf('.', index)) != -1) {
-                            reverse = query.substring(0, index);
-                            hostname = query.substring(index);
+                        while ((index = host.lastIndexOf('.', index)) != -1) {
+                            reverse = host.substring(0, index);
+                            hostname = host.substring(index);
                             if ((server = getExact(hostname)) == null) {
                                 index--;
                             } else {
@@ -375,7 +376,7 @@ public final class QueryDNSBL extends Server {
                         if (server == null) {
                             // Não existe servidor DNSBL cadastrado.
                             result = "NXDOMAIN";
-                        } else if (query.equals(hostname)) {
+                        } else if (host.equals(hostname)) {
                             // Consulta do próprio hostname do servidor.
                             result = "NXDOMAIN";
                         } else if (reverse.length() == 0) {

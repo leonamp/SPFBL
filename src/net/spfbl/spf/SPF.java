@@ -2086,6 +2086,32 @@ public final class SPF implements Serializable {
                 }
             }
         }
+        
+        public static TreeSet<String> getComplain(
+                String ticket) throws ProcessException {
+            if (ticket == null) {
+                return null;
+            } else {
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                TreeSet<String> blackSet = new TreeSet<String>();
+                String registry = Server.decrypt(ticket);
+                int index = registry.indexOf(' ');
+                registry = registry.substring(index + 1);
+                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    if (isValid(token)) {
+                        tokenSet.add(token);
+                    }
+                }
+                for (String key : expandTokenSet(tokenSet)) {
+                    if (!CacheIgnore.contains(key)) {
+                        blackSet.add(key);
+                    }
+                }
+                return blackSet;
+            }
+        }
 
         /**
          * Remove uma nova reclamação de SPAM.
@@ -2139,6 +2165,11 @@ public final class SPF implements Serializable {
     public static TreeSet<String> addComplain(String origin,
                 String ticket) throws ProcessException {
         return CacheComplain.addComplain(origin, ticket);
+    }
+    
+    public static TreeSet<String> getComplain(
+            String ticket) throws ProcessException {
+        return CacheComplain.getComplain(ticket);
     }
     
     public static TreeSet<String> getTokenSet(
@@ -5871,7 +5902,8 @@ public final class SPF implements Serializable {
                             + ip + " has no reverse.\n\n";
                 } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                     // A origem abusou do atraso, portanto será rejeitada.
-                    Server.logDefer(0, fluxo, "DEFER FLOOD");
+                    long time = System.currentTimeMillis();
+                    Server.logDefer(time, fluxo, "DEFER FLOOD");
                     Defer.end(fluxo);
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
@@ -5896,8 +5928,15 @@ public final class SPF implements Serializable {
                 } else if (SPF.isBlacklisted(tokenSet)
                         && Defer.defer(fluxo, Core.getDeferTimeBLACK())) {
                     // Pelo menos um identificador está listado e com atrazo programado de um dia.
-                    return "action=DEFER [RBL] "
-                            + "you are temporarily blocked on this server.\n\n";
+                    String url = Core.getReleaseURL(fluxo);
+                    if (url == null) {
+                        return "action=DEFER [RBL] "
+                                + "you are temporarily blocked on this server.\n\n";
+                    } else {
+                        return "action=DEFER [RBL] "
+                                + "you are temporarily blocked on this server. "
+                                + "See " + url + "\n\n";
+                    }
                 } else if (SPF.isGreylisted(tokenSet)
                         && Defer.defer(fluxo, Core.getDeferTimeGRAY())
                         ) {
@@ -6158,7 +6197,7 @@ public final class SPF implements Serializable {
                                 hostname = helo;
                             } else {
                                 String dominio = Domain.extractDomain(hostname, true);
-                                origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
+                                origem = (sender == null ? "" : sender + '>') + (dominio == null ? hostname : dominio.substring(1));
                                 fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
@@ -6222,7 +6261,8 @@ public final class SPF implements Serializable {
                                 return "INVALID\n";
                             } else if (recipient != null && Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                                 // A origem abusou do atraso, portanto será rejeitada.
-                                Server.logDefer(0, fluxo, "DEFER FLOOD");
+                                long time = System.currentTimeMillis();
+                                Server.logDefer(time, fluxo, "DEFER FLOOD");
                                 Defer.end(fluxo);
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
@@ -6245,7 +6285,12 @@ public final class SPF implements Serializable {
                                     && Defer.defer(fluxo, Core.getDeferTimeBLACK())
                                     ) {
                                 // Pelo menos um identificador do conjunto está em lista negra com atrazo de 1 dia.
-                                return "LISTED\n";
+                                String url = Core.getReleaseURL(fluxo);
+                                if (url == null) {
+                                    return "LISTED\n";
+                                } else {
+                                    return "LISTED " + url + "\n";
+                                }
                             } else if (SPF.isGreylisted(tokenSet)
                                     && Defer.defer(fluxo, Core.getDeferTimeGRAY())
                                     ) {

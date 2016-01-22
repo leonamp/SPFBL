@@ -102,6 +102,20 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      */
     private static final HashMap<String,NameServer> NS_MAP = new HashMap<String,NameServer>();
     
+    private static synchronized NameServer getMap(String nserver) {
+        return NS_MAP.get(nserver);
+    }
+    
+    private static synchronized NameServer putMap(String nserver, NameServer ns) {
+        return NS_MAP.put(nserver, ns);
+    }
+    
+    private static synchronized HashMap<String,NameServer> getMap() {
+        HashMap<String,NameServer> map = new HashMap<String, NameServer>();
+        map.putAll(NS_MAP);
+        return map;
+    }
+    
     /**
      * Flag que indica se o cache foi modificado.
      */
@@ -114,26 +128,26 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      */
     public static NameServer getNameServer(String nserver) {
         nserver = nserver.trim(); // Implementar validação.
-        if (NS_MAP.containsKey(nserver)) {
-            return NS_MAP.get(nserver);
-        } else {
-            NameServer ns = new NameServer(nserver);
-            NS_MAP.put(nserver, ns);
-            return ns;
+        NameServer ns = getMap(nserver);
+        if (ns == null) {
+            ns = new NameServer(nserver);
+            putMap(nserver, ns);
         }
+        return ns;
     }
     
     /**
      * Armazenamento de cache em disco.
      */
-    public static synchronized void store() {
+    public static void store() {
         if (NS_CHANGED) {
             try {
                 long time = System.currentTimeMillis();
+                HashMap<String,NameServer> map = getMap();
                 File file = new File("./data/ns.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
-                    SerializationUtils.serialize(NS_MAP, outputStream);
+                    SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     NS_CHANGED = false;
                 } finally {
@@ -149,12 +163,12 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      /**
      * Carregamento de cache do disco.
      */
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/ns.map");
         if (file.exists()) {
             try {
-                HashMap<String, NameServer> map;
+                HashMap<String,NameServer> map;
                 FileInputStream fileInputStream = new FileInputStream(file);
                 try {
                     map = SerializationUtils.deserialize(fileInputStream);
@@ -165,7 +179,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
                     Object value = map.get(key);
                     if (value instanceof NameServer) {
                         NameServer ns = (NameServer) value;
-                        NS_MAP.put(key, ns);
+                        putMap(key, ns);
                     }
                 }
                 Server.logLoad(time, file);

@@ -49,7 +49,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -107,6 +107,25 @@ public class Core {
             return null;
         } else {
             return complainHTTP.getSpamURL();
+        }
+    }
+    
+    public static String getReleaseURL(String id) throws ProcessException {
+        if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Defer defer = Defer.getDefer(id);
+            String url = complainHTTP.getReleaseURL();
+            if (defer == null) {
+                return null;
+            } else if (url == null) {
+                return null;
+            } else {
+                String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
+                return url + Server.encrypt(ticket);
+            }
+        } else {
+            return null;
         }
     }
     
@@ -206,6 +225,8 @@ public class Core {
                     Core.setDeferTimeBLACK(properties.getProperty("defer_time_gray"));
                     Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
+                    Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
+                    Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
@@ -220,6 +241,10 @@ public class Core {
         } else {
             return false;
         }
+    }
+    
+    public static boolean hasAdminEmail() {
+        return ADMIN_EMAIL != null;
     }
     
     public static String getAdminEmail() {
@@ -658,6 +683,34 @@ public class Core {
     public static synchronized void setReverseRequired(boolean required) {
         Core.REVERSE_REQUIRED = required;
     }
+    
+    private static String RECAPTCHA_KEY_SITE = null;
+    private static String RECAPTCHA_KEY_SECRET = null;
+    
+    public static boolean hasRecaptchaKeys() {
+        return RECAPTCHA_KEY_SITE != null && RECAPTCHA_KEY_SECRET != null;
+    }
+    
+    public static String getRecaptchaKeySite() {
+        return RECAPTCHA_KEY_SITE;
+    }
+    
+    public static void setRecaptchaKeySite(String key) {
+        if (key != null && key.length() > 0) {
+            RECAPTCHA_KEY_SITE = key;
+        }
+    }
+    
+    public static String getRecaptchaKeySecret() {
+        return RECAPTCHA_KEY_SECRET;
+    }
+    
+    public static void setRecaptchaKeySecret(String key) {
+        if (key != null && key.length() > 0) {
+            RECAPTCHA_KEY_SECRET = key;
+        }
+    }
+    
     /**
      * @param args the command line arguments
      */
