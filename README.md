@@ -264,7 +264,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
-* LISTED: atrasa o recebimento da mensagem e informa à origem a listagem temporária em blacklist.
+* LISTED [&lt;ticket&gt;]: atrasa o recebimento da mensagem, informa à origem a listagem temporária em blacklist e envia e-mail com URL de liberação quando for o caso.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
@@ -277,7 +277,7 @@ O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: W
 
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/doc/flagFSM.png "flagFSM.png")
 
-Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
+Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED. O LISTED pode vir acompanhado de uma URL de liberação. Se for o caso, o MTA deve ser capaz de extrair a URL e enviar um e-mail de retorno com o link ao remetente informando o atraso e a possibilidade de liberação através do link.
 
 Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio permanente, retornando BLOCKED. Esta transição é utilizada para disseminar a lista de bloqueio entre pools via P2P. Deve haver concenso total dentro do mesmo pool para passar a diante o bloqueio para outros pools associados.
 
