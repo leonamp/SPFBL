@@ -65,7 +65,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
         this.receive = other.receive;
         this.email = other.email;
         this.limit = other.limit;
-        this.frequency = other.frequency.cloneDistribution();
+        if (other.frequency == null) {
+            this.frequency = null;
+        } else {
+            this.frequency = other.frequency.cloneDistribution();
+        }
         this.last = other.last;
         this.reputationMap2.putAll(other.reputationMap2);
     }

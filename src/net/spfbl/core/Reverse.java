@@ -23,6 +23,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -157,6 +158,48 @@ public final class Reverse implements Serializable {
         this.ip = Subnet.normalizeIP(ip);
         refresh();
         this.lastQuery = System.currentTimeMillis();
+    }
+    
+    public static String getListed(String ip, String server, Set<String> valueSet) {
+        String host = Reverse.getHostReverse(ip, server);
+        if (host == null) {
+            return null;
+        } else {
+            try {
+                TreeSet<String> IPv4Set = null;
+                TreeSet<String> IPv6Set = null;
+                for (String value : valueSet) {
+                    if (SubnetIPv4.isValidIPv4(value)) {
+                        if (IPv4Set == null) {
+                            IPv4Set = getIPv4Set(host);
+                        }
+                        if (IPv4Set.contains(value)) {
+                            return value;
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(value)) {
+                        if (IPv6Set == null) {
+                            IPv6Set = getIPv6Set(host);
+                        }
+                        if (IPv6Set.contains(value)) {
+                            return value;
+                        }
+                    }
+                }
+                return null;
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNSBL service '" + server + "' unreachable.");
+                return null;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNSBL service '" + server + "' unavailable.");
+                return null;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return null;
+            } catch (NamingException ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
     }
     
     public static boolean isListed(String ip, String dnsbl, String value) {

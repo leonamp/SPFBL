@@ -1,16 +1,16 @@
 /*
  * This file is part of SPFBL.
- * 
+ *
  * SPFBL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * SPFBL is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -36,16 +36,16 @@ import net.spfbl.core.Core;
 
 /**
  * Servidor de consulta em SPF.
- * 
+ *
  * Este serviço responde a consulta e finaliza a conexão logo em seguida.
- * 
+ *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class QuerySPF extends Server {
 
     private final int PORT;
     private final ServerSocket SERVER_SOCKET;
-    
+
     /**
      * Configuração e intanciamento do servidor.
      * @param port a porta SPF a ser vinculada.
@@ -59,30 +59,30 @@ public final class QuerySPF extends Server {
         Server.logDebug("binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
-    
+
     private int CONNECTION_ID = 1;
-    
+
     /**
      * Representa uma conexão ativa.
      * Serve para processar todas as requisições.
      */
     private class Connection extends Thread {
-        
+
         /**
          * O poll de sockets de consulta a serem processados.
          */
         private Socket SOCKET = null;
-        
+
         private final Semaphore SEMAPHORE = new Semaphore(0);
-        
+
         private long time = 0;
-       
-        
+
+
         public Connection() {
             super("SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             setPriority(Thread.MAX_PRIORITY);
         }
-        
+
         /**
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
@@ -92,7 +92,7 @@ public final class QuerySPF extends Server {
             this.time = time;
             SEMAPHORE.release();
         }
-        
+
         private boolean isTimeout() {
             if (time == 0) {
                 return false;
@@ -101,7 +101,7 @@ public final class QuerySPF extends Server {
                 return interval > 20;
             }
         }
-        
+
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -110,7 +110,7 @@ public final class QuerySPF extends Server {
             SOCKET = null;
             SEMAPHORE.release();
         }
-        
+
         @Override
         public void interrupt() {
             try {
@@ -121,7 +121,7 @@ public final class QuerySPF extends Server {
                 Server.logError(ex);
             }
         }
-        
+
         public Socket getSocket() {
             if (QuerySPF.this.continueListenning()) {
                 try {
@@ -134,12 +134,12 @@ public final class QuerySPF extends Server {
                 return null;
             }
         }
-        
+
         public void clearSocket() {
             time = 0;
             SOCKET = null;
         }
-        
+
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
@@ -499,25 +499,25 @@ public final class QuerySPF extends Server {
             CONNECTION_COUNT--;
         }
     }
-    
+
     /**
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
     private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
-    
+
     /**
      * Semáforo que controla o pool de conexões.
      */
     private final Semaphore CONNECION_SEMAPHORE = new Semaphore(0);
-    
+
     /**
      * Quantidade total de conexões intanciadas.
      */
     private int CONNECTION_COUNT = 0;
-    
+
     private static byte CONNECTION_LIMIT = 16;
-    
+
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
             try {
@@ -527,7 +527,7 @@ public final class QuerySPF extends Server {
             }
         }
     }
-    
+
     public static void setConnectionLimit(int limit) {
         if (limit < 1 || limit > Byte.MAX_VALUE) {
             Server.logError("invalid SPFBL connection limit '" + limit + "'.");
@@ -535,28 +535,28 @@ public final class QuerySPF extends Server {
             CONNECTION_LIMIT = (byte) limit;
         }
     }
-    
+
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
-    
+
     private synchronized Connection pollUsing() {
         return CONNECTION_USE.poll();
     }
-    
+
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
     }
-    
+
     private synchronized void offerUsing(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
@@ -568,7 +568,7 @@ public final class QuerySPF extends Server {
             }
         }
     }
-    
+
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
@@ -595,7 +595,7 @@ public final class QuerySPF extends Server {
                 return connection;
             } else {
                 // Se a quantidade de conexões atingir o limite,
-                // Aguardar a próxima liberação de conexão 
+                // Aguardar a próxima liberação de conexão
                 // independente de quanto tempo levar.
                 CONNECION_SEMAPHORE.acquire();
                 Connection connection = poll();
@@ -611,7 +611,7 @@ public final class QuerySPF extends Server {
             return null;
         }
     }
-    
+
     /**
      * Inicialização do serviço.
      */
@@ -650,7 +650,7 @@ public final class QuerySPF extends Server {
             Server.logInfo("querie SPFBL server closed.");
         }
     }
-    
+
     private static void sendMessage(long time,
             Socket socket, String message
             ) throws IOException {
@@ -666,7 +666,7 @@ public final class QuerySPF extends Server {
                 );
         }
     }
-    
+
     @Override
     protected void close() throws Exception {
         while (CONNECTION_COUNT > 0) {

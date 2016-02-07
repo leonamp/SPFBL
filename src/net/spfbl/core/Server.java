@@ -119,6 +119,7 @@ public abstract class Server extends Thread {
         Peer.load();
         Reverse.load();
         SPF.load();
+        NoReply.load();
         Defer.load();
         QueryDNSBL.load();
     }
@@ -139,6 +140,7 @@ public abstract class Server extends Thread {
         Peer.store();
         Reverse.store();
         SPF.store();
+        NoReply.store();
         Defer.store();
         QueryDNSBL.store();
     }
@@ -316,10 +318,10 @@ public abstract class Server extends Thread {
     public static void log(long time, Core.Level level, String type, String message, String result) {
         if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
             int latencia = (int) (System.currentTimeMillis() - time);
-            if (latencia > 9999) {
+            if (latencia > 99999) {
                 // Para manter a formatação correta no LOG,
-                // Registrar apenas latências até 9999, que tem 4 digitos.
-                latencia = 9999;
+                // Registrar apenas latências até 99999, que tem 5 digitos.
+                latencia = 99999;
             } else if (latencia < 0) {
                 latencia = 0;
             }
@@ -437,7 +439,7 @@ public abstract class Server extends Thread {
      * e para encontrar com mais facilidade códigos
      * do programa que não estão bem escritos.
      */
-    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
+    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("00000");
     
     private static void log(
             long time,
@@ -451,6 +453,10 @@ public abstract class Server extends Thread {
             printStream.close();
             log(time, level, type, baos.toString(), (String) null);
         }
+    }
+    
+    public static void logBlockTrace(long time, String message) {
+        log(time, Core.Level.TRACE, "BLOCK", message, (String) null);
     }
     
     /**
@@ -947,15 +953,20 @@ public abstract class Server extends Thread {
     
     static {
         try {
-            Hashtable env = new Hashtable();
-            env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
-            env.put("com.sun.jndi.dns.timeout.initial", "3000");
-            env.put("com.sun.jndi.dns.timeout.retries", "1");
-            INITIAL_DIR_CONTEXT = new InitialDirContext(env);
+            initDNS();
         } catch (Exception ex) {
             Server.logError(ex);
             System.exit(1);
         }
+    }
+    
+    @SuppressWarnings("unchecked")
+    public static void initDNS() throws NamingException {
+        Hashtable env = new Hashtable();
+        env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
+        env.put("com.sun.jndi.dns.timeout.initial", "3000");
+        env.put("com.sun.jndi.dns.timeout.retries", "1");
+        INITIAL_DIR_CONTEXT = new InitialDirContext(env);
     }
     
     /**
@@ -1215,6 +1226,20 @@ public abstract class Server extends Thread {
                     }
                     builder.append("STORE\n");
                     result = builder.toString();
+                } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Subnet.isValidCIDR(token)) {
+                            String cidr = token;
+                            if (SPF.dropBlock(cidr)) {
+                                result += "DROPED " + cidr + "\n";
+                                result += splitCIDR(cidr);
+                            } else {
+                                result = "NOT FOUND\n";
+                            }
+                            SPF.storeBlock();
+                        } else {
+                            result = "ERROR: COMMAND\n";
+                        }
                 } else if (token.equals("LOG") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("LEVEL") && tokenizer.countTokens() == 1) {
@@ -1789,6 +1814,75 @@ public abstract class Server extends Thread {
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
+                } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (Subnet.isValidCIDR(token)) {
+                        String cidr = token;
+                        if (SPF.dropBlock(cidr)) {
+                            result += "DROPED " + cidr + "\n";
+                            result += splitCIDR(cidr);
+                        } else {
+                            result = "NOT FOUND\n";
+                        }
+                        SPF.storeBlock();
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
+                } else if (token.equals("NOREPLY") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                token = tokenizer.nextToken();
+                                if (NoReply.add(token)) {
+                                    result += "ADDED\n";
+                                } else {
+                                    result += "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        NoReply.store();
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            TreeSet<String> noreplaySet = NoReply.dropAll();
+                            if (noreplaySet.isEmpty()) {
+                                result = "EMPTY\n";
+                            } else {
+                                for (String noreplay : noreplaySet) {
+                                    result += "DROPED " + noreplay + "\n";
+                                }
+                            }
+                        } else {
+                            try {
+                                if (NoReply.drop(token)) {
+                                    result = "DROPED\n";
+                                } else {
+                                    result = "NOT FOUND\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "ERROR: COMMAND\n";
+                        }
+                        NoReply.store();
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        for (String sender : NoReply.getSet()) {
+                            result += sender + "\n";
+                        }
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("CLIENT") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -2307,5 +2401,46 @@ public abstract class Server extends Thread {
             Server.logError(ex);
             return "ERROR: FATAL\n";
         }
+    }
+    
+    private static String splitCIDR(String cidr) {
+        String result = "";
+        String first = Subnet.getFirstIP(cidr);
+        String last = Subnet.getLastIP(cidr);
+        byte mask = Subnet.getMask(cidr);
+        byte max;
+        if (SubnetIPv4.isValidIPv4(first)) {
+            max = 32;
+        } else {
+            max = 64;
+        }
+        if (mask < max) {
+            mask++;
+            String cidr1 = first + "/" + mask;
+            String cidr2 = last + "/" + mask;
+            cidr1 = Subnet.normalizeCIDR(cidr1);
+            cidr2 = Subnet.normalizeCIDR(cidr2);
+            try {
+                if (SPF.addBlock(cidr1) == null) {
+                    result += "EXISTS " + cidr1 + "\n";
+                } else {
+                    result += "ADDED " + cidr1 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr1);
+            }
+            try {
+                if (SPF.addBlock(cidr2) == null) {
+                    result += "EXISTS " + cidr2 + "\n";
+                } else {
+                    result += "ADDED " + cidr2 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr2);
+            }
+        } else {
+            result += "UNSPLITTABLE " + cidr + "\n";
+        }
+        return result;
     }
 }

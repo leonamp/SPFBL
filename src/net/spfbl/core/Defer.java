@@ -169,7 +169,6 @@ public class Defer implements Serializable, Comparable<Defer> {
                 defer.addCount();
                 return true;
             } else if (defer.release) {
-                end(id);
                 return false;
             } else if (defer.start < (now - minutes * 60 * 1000)) {
                 end(id);

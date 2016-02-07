@@ -114,6 +114,32 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public static String getLastIP(String cidr) {
+        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+            return SubnetIPv4.getLastIPv4(cidr);
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.getLastIPv6(cidr);
+        } else {
+            return null;
+        }
+    }
+    
+    public static byte getMask(String cidr) {
+        if (cidr == null) {
+            return 0;
+        } else if (cidr.contains("/")) {
+            try {
+                int index = cidr.lastIndexOf('/') + 1;
+                String number = cidr.substring(index);
+                return Byte.parseByte(number);
+            } catch (NumberFormatException ex) {
+                return 0;
+            }
+        } else {
+            return 0;
+        }
+    }
+    
     public static String normalizeCIDR(String cidr) {
         if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
@@ -141,6 +167,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             return SubnetIPv4.expandIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.expandIPv6(ip);
+        } else {
+            return ip;
+        }
+    }
+    
+    public static String expandCIDR(String ip) {
+        if (SubnetIPv4.isValidCIDRv4(ip)) {
+            return SubnetIPv4.expandCIDRv4(ip);
+        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
+            return SubnetIPv6.expandCIDRv6(ip);
         } else {
             return ip;
         }

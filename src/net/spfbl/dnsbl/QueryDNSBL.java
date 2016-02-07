@@ -1,16 +1,16 @@
 /*
  * This file is part of SPFBL.
- * 
+ *
  * SPFBL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * SPFBL is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -52,26 +52,26 @@ import org.xbill.DNS.WireParseException;
 
 /**
  * Servidor de consulta DNSBL.
- * 
+ *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class QueryDNSBL extends Server {
 
     private final int PORT;
     private final DatagramSocket SERVER_SOCKET;
-    
+
     /**
      * Mapa para cache dos registros DNS consultados.
      */
     private static final HashMap<String,ServerDNSBL> MAP = new HashMap<String,ServerDNSBL>();
-    
+
     private static final long SERIAL = 2015102500;
-    
+
     /**
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
-    
+
     private static ServerDNSBL dropExact(String token) {
         ServerDNSBL ret = MAP.remove(token);
         if (ret == null) {
@@ -117,7 +117,7 @@ public final class QueryDNSBL extends Server {
         serverSet.addAll(MAP.values());
         return serverSet;
     }
-    
+
     /**
      * Adiciona um registro DNS no mapa de cache.
      */
@@ -132,7 +132,7 @@ public final class QueryDNSBL extends Server {
             return false;
         }
     }
-    
+
     public static boolean set(String hostname, String message) {
         if (hostname == null) {
             return false;
@@ -149,7 +149,7 @@ public final class QueryDNSBL extends Server {
             return false;
         }
     }
-    
+
     private static ServerDNSBL get(String hostname) {
         if (hostname == null) {
             return null;
@@ -160,7 +160,7 @@ public final class QueryDNSBL extends Server {
             return null;
         }
     }
-    
+
     public static TreeSet<ServerDNSBL> dropAll() {
         TreeSet<ServerDNSBL> serverSet = new TreeSet<ServerDNSBL>();
         for (ServerDNSBL server : getValues()) {
@@ -174,7 +174,7 @@ public final class QueryDNSBL extends Server {
         }
         return serverSet;
     }
-    
+
     public static ServerDNSBL drop(String hostname) {
         if (hostname == null) {
             return null;
@@ -185,7 +185,7 @@ public final class QueryDNSBL extends Server {
             return null;
         }
     }
-    
+
     public static void store() {
         if (CHANGED) {
             try {
@@ -248,7 +248,7 @@ public final class QueryDNSBL extends Server {
             }
         }
     }
-    
+
     /**
      * Configuração e intanciamento do servidor.
      * @throws java.net.SocketException se houver falha durante o bind.
@@ -261,30 +261,30 @@ public final class QueryDNSBL extends Server {
         PORT = port;
         SERVER_SOCKET = new DatagramSocket(port);
     }
-    
+
     private int CONNECTION_ID = 1;
-    
+
     /**
      * Representa uma conexão ativa.
      * Serve para processar todas as requisições.
      */
     private class Connection extends Thread {
-        
+
         /**
          * O poll de pacotes de consulta a serem processados.
          */
         private DatagramPacket PACKET = null;
-        
+
         private final Semaphore SEMAPHORE = new Semaphore(0);
-        
+
         private long time = 0;
-        
+
         public Connection() {
             super("DNSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
         }
-        
+
         /**
          * Processa um pacote de consulta.
          * @param packet o pacote de consulta a ser processado.
@@ -294,7 +294,7 @@ public final class QueryDNSBL extends Server {
             this.time = time;
             this.SEMAPHORE.release();
         }
-        
+
         private boolean isTimeout() {
             if (time == 0) {
                 return false;
@@ -303,7 +303,7 @@ public final class QueryDNSBL extends Server {
                 return interval > 20;
             }
         }
-        
+
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -312,7 +312,7 @@ public final class QueryDNSBL extends Server {
             PACKET = null;
             SEMAPHORE.release();
         }
-        
+
         public DatagramPacket getPacket() {
             if (QueryDNSBL.this.continueListenning()) {
                 try {
@@ -325,12 +325,12 @@ public final class QueryDNSBL extends Server {
                 return null;
             }
         }
-        
+
         public void clearPacket() {
             time = 0;
             PACKET = null;
         }
-        
+
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
@@ -489,25 +489,25 @@ public final class QueryDNSBL extends Server {
             CONNECTION_COUNT--;
         }
     }
-    
+
     /**
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
     private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
-    
+
     /**
      * Semáforo que controla o pool de conexões.
      */
     private final Semaphore CONNECION_SEMAPHORE = new Semaphore(0);
-    
+
     /**
      * Quantidade total de conexões intanciadas.
      */
     private int CONNECTION_COUNT = 0;
-    
+
     private static byte CONNECTION_LIMIT = 16;
-    
+
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
             try {
@@ -517,7 +517,7 @@ public final class QueryDNSBL extends Server {
             }
         }
     }
-    
+
     public static void setConnectionLimit(int limit) {
         if (limit < 1 || limit > Byte.MAX_VALUE) {
             Server.logError("invalid DNSBL connection limit '" + limit + "'.");
@@ -525,28 +525,28 @@ public final class QueryDNSBL extends Server {
             CONNECTION_LIMIT = (byte) limit;
         }
     }
-    
+
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
-    
+
     private synchronized Connection pollUsing() {
         return CONNECTION_USE.poll();
     }
-    
+
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
     }
-    
+
     private synchronized void offerUsing(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
@@ -558,7 +558,7 @@ public final class QueryDNSBL extends Server {
             }
         }
     }
-    
+
     /**
      * Coleta uma conexão ociosa ou inicia uma nova.
      * @return uma conexão ociosa ou nova se não houver ociosa.
@@ -582,12 +582,12 @@ public final class QueryDNSBL extends Server {
             return connection;
         } else {
             // Se não houver liberação, ignorar consulta DNS.
-            // O MX que fizer a consulta terá um TIMEOUT 
+            // O MX que fizer a consulta terá um TIMEOUT
             // considerando assim o IP como não listado.
             return null;
         }
     }
-    
+
     /**
      * Inicialização do serviço.
      */
@@ -631,7 +631,7 @@ public final class QueryDNSBL extends Server {
             Server.logInfo("querie DNSBL server closed.");
         }
     }
-    
+
     /**
      * Fecha todas as conexões e finaliza o servidor UDP.
      * @throws Exception se houver falha em algum fechamento.

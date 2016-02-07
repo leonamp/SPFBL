@@ -23,7 +23,7 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Última alteração: 21/01/2016 12:17
+# Última alteração: 04/02/2016 11:56
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -32,7 +32,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="1.00"
+version="1.01"
 
 head()
 {
@@ -2038,13 +2038,13 @@ case $1 in
 			'add')
 				# Parâmetros de entrada:
 				#
-				#    1. recipient: o destinatário que deve ser bloqueado, com endereço completo.
+				#    1. recipient: o destinatário que deve ser considerado armadilha.
 				#
 				#
 				# Códigos de saída:
 				#
 				#    0: adicionado com sucesso.
-				#    1: erro ao tentar adicionar bloqueio.
+				#    1: erro ao tentar adicionar armadilha.
 				#    2: timeout de conexão.
 
 				if [ $# -lt "3" ]; then
@@ -2073,13 +2073,13 @@ case $1 in
 			'drop')
 				# Parâmetros de entrada:
 				#
-				#    1. recipient: o destinatário que deve ser desbloqueado, com endereço completo.
+				#    1. recipient: o destinatário que deve ser considerado armadilha.
 				#
 				#
 				# Códigos de saída:
 				#
 				#    0: desbloqueado com sucesso.
-				#    1: erro ao tentar adicionar bloqueio.
+				#    1: erro ao tentar adicionar armadilha.
 				#    2: timeout de conexão.
 
 				if [ $# -lt "3" ]; then
@@ -2111,7 +2111,7 @@ case $1 in
 				# Códigos de saída:
 				#
 				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar bloqueio.
+				#    1: erro ao tentar visualizar armadilhas.
 				#    2: timeout de conexão.
 
 				if [ $# -lt "2" ]; then
@@ -2138,6 +2138,114 @@ case $1 in
 			*)
 				head
 				printf "Syntax:\n    $0 trap add recipduient\n    $0 trap drop recipient\n    $0 trap show\n"
+			;;
+		esac
+	;;
+	'noreply')
+		case $2 in
+			'add')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que o SPFBL não deve enviar mensagem de e-mail.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar endereço.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "NOREPLY ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'drop')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que o SPFBL não deve enviar mensagem de e-mail.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar endereço.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
+				else
+					recipient=$3
+
+					response=$(echo "NOREPLY DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'show')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar endereços.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "2" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
+				else
+					response=$(echo "NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			*)
+				head
+				printf "Syntax:\n    $0 noreply add recipduient\n    $0 noreply drop recipient\n    $0 noreply show\n"
 			;;
 		esac
 	;;

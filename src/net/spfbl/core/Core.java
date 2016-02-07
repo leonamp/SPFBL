@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
 import it.sauronsoftware.junique.MessageHandler;
@@ -24,12 +25,22 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Locale;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
+import javax.mail.Address;
+import javax.mail.AuthenticationFailedException;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.mail.Transport;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -49,7 +60,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 1;
+    private static final byte RELEASE = 2;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -209,6 +220,12 @@ public class Core {
                     Server.setLogExpires(properties.getProperty("log_expires"));
                     Core.setHostname(properties.getProperty("hostname"));
                     Core.setAdminEmail(properties.getProperty("admin_email"));
+                    Core.setIsAuthSMTP(properties.getProperty("smtp_auth"));
+                    Core.setStartTLSSMTP(properties.getProperty("smtp_starttls"));
+                    Core.setHostSMTP(properties.getProperty("smtp_host"));
+                    Core.setPortSMTP(properties.getProperty("smpt_port"));
+                    Core.setUserSMTP(properties.getProperty("smtp_user"));
+                    Core.setPasswordSMTP(properties.getProperty("smtp_password"));
                     Core.setPortAdmin(properties.getProperty("admin_port"));
                     Core.setPortWHOIS(properties.getProperty("whois_port"));
                     Core.setPortSPFBL(properties.getProperty("spfbl_port"));
@@ -227,6 +244,7 @@ public class Core {
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
                     Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
+                    Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
@@ -711,6 +729,156 @@ public class Core {
         }
     }
     
+    private static boolean SMTP_IS_AUTH = true;
+    private static boolean SMTP_STARTTLS = true;
+    private static String SMTP_HOST = null;
+    private static short SMTP_PORT = 465;
+    private static String SMTP_USER = null;
+    private static String SMTP_PASSWORD = null;
+    
+    public static void setPortSMTP(String port) {
+        if (port != null && port.length() > 0) {
+            try {
+                setPortSMTP(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP port '" + port + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPortSMTP(int port) {
+        if (port < 1 || port > Short.MAX_VALUE) {
+            Server.logError("invalid SMTP port '" + port + "'.");
+        } else {
+            Core.SMTP_PORT = (short) port;
+        }
+    }
+    
+    public static void setIsAuthSMTP(String auth) {
+        if (auth != null && auth.length() > 0) {
+            try {
+                setIsAuthSMTP(Boolean.parseBoolean(auth));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP is auth '" + auth + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setIsAuthSMTP(boolean auth) {
+        Core.SMTP_IS_AUTH = auth;
+    }
+    
+    public static void setStartTLSSMTP(String startTLS) {
+        if (startTLS != null && startTLS.length() > 0) {
+            try {
+                setStartTLSSMTP(Boolean.parseBoolean(startTLS));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP start TLS '" + startTLS + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setStartTLSSMTP(boolean startTLS) {
+        Core.SMTP_STARTTLS = startTLS;
+    }
+    
+    public static synchronized void setHostSMTP(String host) {
+        if (host != null && host.length() > 0) {
+            if (Domain.isHostname(host)) {
+                Core.SMTP_HOST = host.toLowerCase();
+            } else {
+                Server.logError("invalid SMTP hostname '" + host + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setUserSMTP(String user) {
+        if (user != null && user.length() > 0) {
+            if (Domain.isEmail(user) || Domain.isHostname(user)) {
+                Core.SMTP_USER = user;
+            } else {
+                Server.logError("invalid SMTP user '" + user + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPasswordSMTP(String password) {
+        if (password != null && password.length() > 0) {
+            if (password.contains(" ")) {
+                Server.logError("invalid SMTP password '" + password + "'.");
+            } else {
+                Core.SMTP_PASSWORD = password;
+            }
+        }
+    }
+    
+    /**
+     * Constante para formatar datas com hora no padrão de e-mail.
+     */
+    private static final SimpleDateFormat DATE_EMAIL_FORMAT = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US);
+    
+    public static synchronized String getEmailDate() {
+        return DATE_EMAIL_FORMAT.format(new Date());
+    }
+    
+    public static boolean hasSMTP() {
+        if (SMTP_HOST == null) {
+            return false;
+        } else if (SMTP_IS_AUTH && SMTP_USER == null) {
+            return false;
+        } else if (SMTP_IS_AUTH && SMTP_PASSWORD == null) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    
+    private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
+    
+    public static void sendNextMessage() {
+        Message message = MESSAGE_QUEUE.poll();
+        try {
+            sendMessage(message);
+        } catch (Exception ex) {
+            MESSAGE_QUEUE.offer(message);
+            Server.logError(ex);
+        }
+    }
+    
+    public static boolean offerMessage(Message message) {
+        return MESSAGE_QUEUE.offer(message);
+    }
+    
+    private static void sendMessage(Message message) throws Exception {
+        if (message != null && hasSMTP()) {
+            Server.logDebug("sending e-mail message.");
+            Server.logTrace("SMTP authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
+            Server.logTrace("SMTP start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
+            Properties props = System.getProperties();
+            props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
+            props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
+            Address[] recipients = message.getRecipients(Message.RecipientType.TO);
+            Session session = Session.getDefaultInstance(props);
+            Transport transport = session.getTransport("smtp");
+            try {
+                Server.logTrace("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
+                transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
+                Server.logTrace("SMTP sending message.");
+                transport.sendMessage(message, recipients);
+                Server.logTrace("SMTP message sent.");
+            } catch (AuthenticationFailedException ex) {
+                throw new ProcessException("Falha de autenticação STMP.", ex);
+            } catch (MailConnectException ex) {
+                throw new ProcessException("Falha de conexão STMP.", ex);
+            } catch (MessagingException ex) {
+                throw new ProcessException("Falha de conexão STMP.", ex);
+            } finally {
+                transport.close();
+                Server.logTrace("SMTP connection closed.");
+            }
+        }
+    }
+    
     /**
      * @param args the command line arguments
      */
@@ -770,6 +938,7 @@ public class Core {
     private static final Timer TIMER10 = new Timer("BCKGRND10");
     private static final Timer TIMER30 = new Timer("BCKGRND30");
     private static final Timer TIMER60 = new Timer("BCKGRND60");
+    private static final Timer TIMERST = new Timer("BCKGRNDST");
 
     public static void cancelTimer() {
         TIMER00.cancel();
@@ -777,6 +946,19 @@ public class Core {
         TIMER10.cancel();
         TIMER30.cancel();
         TIMER60.cancel();
+        TIMERST.cancel();
+    }
+    
+    private static class TimerSendMessage extends TimerTask {
+        public TimerSendMessage() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Enviar próxima mensagem de e-mail.
+            Core.sendNextMessage();
+        }
     }
     
     private static class TimerExpiredComplain extends TimerTask {
@@ -959,7 +1141,28 @@ public class Core {
         }
     }
     
+    private static long CACHE_TIME_STORE = 3600000; // Frequência de 1 hora.
+    
+    public static void setCacheTimeStore(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setCacheTimeStore(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid cache time store '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setCacheTimeStore(int time) {
+        if (time < 0 || time > 1440) {
+            Server.logError("invalid cache time store '" + time + "'.");
+        } else {
+            Core.CACHE_TIME_STORE = time * 60000;
+        }
+    }
+    
     public static void startTimer() {
+        TIMER00.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
         TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
         TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
         TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
@@ -973,8 +1176,10 @@ public class Core {
         TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerStoreCache(), 3000000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
+        if (CACHE_TIME_STORE > 0) {
+            TIMERST.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
+        }
     }
     
     public static String removerAcentuacao(String text) {
