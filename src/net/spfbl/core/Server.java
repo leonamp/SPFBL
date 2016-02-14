@@ -16,6 +16,12 @@
  */
 package net.spfbl.core;
 
+import net.spfbl.data.Provider;
+import net.spfbl.data.NoReply;
+import net.spfbl.data.Block;
+import net.spfbl.data.White;
+import net.spfbl.data.Trap;
+import net.spfbl.data.Ignore;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.spf.SPF.Status;
@@ -27,28 +33,23 @@ import net.spfbl.whois.Owner;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -69,6 +70,7 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.dnsbl.ServerDNSBL;
+import net.spfbl.spf.SPF.Binomial;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -118,6 +120,11 @@ public abstract class Server extends Thread {
         NameServer.load();
         Peer.load();
         Reverse.load();
+        Block.load();
+        White.load();
+        Trap.load();
+        Ignore.load();
+        Provider.load();
         SPF.load();
         NoReply.load();
         Defer.load();
@@ -139,6 +146,11 @@ public abstract class Server extends Thread {
         NameServer.store();
         Peer.store();
         Reverse.store();
+        Block.store();
+        White.store();
+        Trap.store();
+        Ignore.store();
+        Provider.store();
         SPF.store();
         NoReply.store();
         Defer.store();
@@ -453,10 +465,6 @@ public abstract class Server extends Thread {
             printStream.close();
             log(time, level, type, baos.toString(), (String) null);
         }
-    }
-    
-    public static void logBlockTrace(long time, String message) {
-        log(time, Core.Level.TRACE, "BLOCK", message, (String) null);
     }
     
     /**
@@ -1133,7 +1141,7 @@ public abstract class Server extends Thread {
                 } else if (token.equals("DUMP") && !tokenizer.hasMoreTokens()) {
                     StringBuilder builder = new StringBuilder();
                     builder.append("BLOCK DROP ALL\n");
-                    for (String block : SPF.getAllBlockSet()) {
+                    for (String block : Block.getAll()) {
                         builder.append("BLOCK ADD ");
                         builder.append(block);
                         builder.append('\n');
@@ -1171,7 +1179,7 @@ public abstract class Server extends Thread {
                         builder.append("\"\n");
                     }
                     builder.append("IGNORE DROP ALL\n");
-                    for (String ignore : SPF.getIgnoreSet()) {
+                    for (String ignore : Ignore.getAll()) {
                         builder.append("IGNORE ADD ");
                         builder.append(ignore);
                         builder.append('\n');
@@ -1193,7 +1201,7 @@ public abstract class Server extends Thread {
                         builder.append('\n');
                     }
                     builder.append("PROVIDER DROP ALL\n");
-                    for (String provider : SPF.getProviderSet()) {
+                    for (String provider : Provider.getAll()) {
                         builder.append("PROVIDER ADD ");
                         builder.append(provider);
                         builder.append('\n');
@@ -1205,7 +1213,7 @@ public abstract class Server extends Thread {
                         builder.append('\n');
                     }
                     builder.append("TRAP DROP ALL\n");
-                    for (String trap : SPF.getAllTrapSet()) {
+                    for (String trap : Trap.getAll()) {
                         builder.append("TRAP ADD ");
                         builder.append(trap);
                         builder.append('\n');
@@ -1219,7 +1227,7 @@ public abstract class Server extends Thread {
                         builder.append('\n');
                     }
                     builder.append("WHITE DROP ALL\n");
-                    for (String white : SPF.getAllWhiteSet()) {
+                    for (String white : White.get()) {
                         builder.append("WHITE ADD ");
                         builder.append(white);
                         builder.append('\n');
@@ -1230,13 +1238,13 @@ public abstract class Server extends Thread {
                         token = tokenizer.nextToken();
                         if (Subnet.isValidCIDR(token)) {
                             String cidr = token;
-                            if (SPF.dropBlock(cidr)) {
+                            if (Block.drop(cidr)) {
                                 result += "DROPED " + cidr + "\n";
                                 result += splitCIDR(cidr);
                             } else {
                                 result = "NOT FOUND\n";
                             }
-                            SPF.storeBlock();
+                            Block.store();
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
@@ -1419,7 +1427,7 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String provider = tokenizer.nextToken();
-                                if (SPF.addProvider(provider)) {
+                                if (Provider.add(provider)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1431,11 +1439,11 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeProvider();
+                        Provider.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
-                            TreeSet<String> providerSet = SPF.dropAllProvider();
+                            TreeSet<String> providerSet = Provider.dropAll();
                             if (providerSet.isEmpty()) {
                                 result = "EMPTY\n";
                             } else {
@@ -1445,7 +1453,7 @@ public abstract class Server extends Thread {
                             }
                         } else {
                             try {
-                                if (SPF.dropProvider(token)) {
+                                if (Provider.drop(token)) {
                                     result = "DROPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
@@ -1457,10 +1465,10 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeProvider();
+                        Provider.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
-                        for (String provider : SPF.getProviderSet()) {
+                        for (String provider : Provider.getAll()) {
                             result += provider + "\n";
                         }
                         if (result.length() == 0) {
@@ -1476,7 +1484,7 @@ public abstract class Server extends Thread {
                         while (tokenizer.hasMoreTokens()) {
                             try {
                                 String ignore = tokenizer.nextToken();
-                                if (SPF.addIgnore(ignore)) {
+                                if (Ignore.add(ignore)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1488,11 +1496,11 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeIgnore();
+                        Ignore.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
-                            TreeSet<String> ignoreSet = SPF.dropAllIgnore();
+                            TreeSet<String> ignoreSet = Ignore.dropAll();
                             if (ignoreSet.isEmpty()) {
                                 result = "EMPTY\n";
                             } else {
@@ -1502,7 +1510,7 @@ public abstract class Server extends Thread {
                             }
                         } else {
                             try {
-                                if (SPF.dropIgnore(token)) {
+                                if (Ignore.drop(token)) {
                                     result += "DROPED\n";
                                 } else {
                                     result += "NOT FOUND\n";
@@ -1514,10 +1522,10 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeIgnore();
+                        Ignore.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
-                        TreeSet<String> ignoreSet = SPF.getIgnoreSet();
+                        TreeSet<String> ignoreSet = Ignore.getAll();
                         for (String ignore : ignoreSet) {
                             result += ignore + "\n";
                         }
@@ -1542,10 +1550,10 @@ public abstract class Server extends Thread {
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && (blockedToken = SPF.addBlock(blockedToken)) != null) {
+                                if (client == null && (blockedToken = Block.add(blockedToken)) != null) {
                                     Peer.sendBlockToAll(blockedToken);
                                     result += "ADDED\n";
-                                } else if (client != null && SPF.addBlock(client, blockedToken)) {
+                                } else if (client != null && Block.add(client, blockedToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1557,21 +1565,17 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeBlock();
+                        Block.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
                             if (tokenizer.hasMoreTokens()) {
                                 result = "ERROR: COMMAND\n";
                             } else {
-                                try {
-                                    if (SPF.dropAllBlock()) {
-                                        result += "DROPED\n";
-                                    } else {
-                                        result += "EMPTY\n";
-                                    }
-                                } catch (ProcessException ex) {
-                                    result += ex.getMessage() + "\n";
+                                if (Block.dropAll()) {
+                                    result += "DROPED\n";
+                                } else {
+                                    result += "EMPTY\n";
                                 }
                             }
                         } else {
@@ -1586,9 +1590,9 @@ public abstract class Server extends Thread {
                                             token = token.substring(index+1);
                                         }
                                     }
-                                    if (client == null && SPF.dropBlock(token)) {
+                                    if (client == null && Block.drop(token)) {
                                         result += "DROPED\n";
-                                    } else if (client != null && SPF.dropBlock(client, token)) {
+                                    } else if (client != null && Block.drop(client, token)) {
                                         result += "DROPED\n";
                                     } else {
                                         result += "NOT FOUND\n";
@@ -1601,12 +1605,26 @@ public abstract class Server extends Thread {
                                 result = "ERROR: COMMAND\n";
                             }
                         }
-                        SPF.storeBlock();
+                        Block.store();
+                    } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Subnet.isValidCIDR(token)) {
+                            String cidr = token;
+                            if (Block.drop(cidr)) {
+                                result += "DROPED " + cidr + "\n";
+                                result += splitCIDR(cidr);
+                            } else {
+                                result = "NOT FOUND\n";
+                            }
+                            Block.store();
+                        } else {
+                            result = "ERROR: COMMAND\n";
+                        }
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
                             // de bloqueios de remetentes.
-                            for (String sender : SPF.getBlockSet()) {
+                            for (String sender : Block.get()) {
                                 result += sender + "\n";
                             }
                             if (result.length() == 0) {
@@ -1617,7 +1635,7 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os bloqueios de remetentes.
-                                for (String sender : SPF.getAllBlockSet()) {
+                                for (String sender : Block.getAll()) {
                                     result += sender + "\n";
                                 }
                                 if (result.length() == 0) {
@@ -1643,9 +1661,9 @@ public abstract class Server extends Thread {
                                         whiteToken = whiteToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.addWhite(whiteToken)) {
+                                if (client == null && White.add(whiteToken)) {
                                     result += "ADDED\n";
-                                } else if (client != null && SPF.addWhite(client, whiteToken)) {
+                                } else if (client != null && White.add(client, whiteToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1657,11 +1675,11 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeWhite();
+                        White.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
-                            TreeSet<String> whiteSet = SPF.dropAllWhite();
+                            TreeSet<String> whiteSet = White.dropAll();
                             if (whiteSet.isEmpty()) {
                                 result = "EMPTY\n";
                             } else {
@@ -1680,9 +1698,9 @@ public abstract class Server extends Thread {
                                         token = token.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.dropWhite(token)) {
+                                if (client == null && White.drop(token)) {
                                     result = "DROPED\n";
-                                } else if (client != null && SPF.dropWhite(client, token)) {
+                                } else if (client != null && White.drop(client, token)) {
                                     result = "DROPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
@@ -1694,12 +1712,12 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeWhite();
+                        White.store();
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
                             // de liberação de remetentes.
-                            for (String sender : SPF.getWhiteSet()) {
+                            for (String sender : White.get()) {
                                 result += sender + "\n";
                             }
                             if (result.length() == 0) {
@@ -1710,7 +1728,7 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os liberação de remetentes.
-                                for (String sender : SPF.getAllWhiteSet()) {
+                                for (String sender : White.getAll()) {
                                     result += sender + "\n";
                                 }
                                 if (result.length() == 0) {
@@ -1736,9 +1754,9 @@ public abstract class Server extends Thread {
                                         trapToken = trapToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.addTrap(trapToken)) {
+                                if (client == null && Trap.add(trapToken)) {
                                     result += "ADDED\n";
-                                } else if (client != null && SPF.addTrap(client, trapToken)) {
+                                } else if (client != null && Trap.add(client, trapToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1750,11 +1768,11 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeTrap();
+                        Trap.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
-                            TreeSet<String> trapSet = SPF.dropAllTrap();
+                            TreeSet<String> trapSet = Trap.dropAll();
                             if (trapSet.isEmpty()) {
                                 result = "EMPTY\n";
                             } else {
@@ -1773,9 +1791,9 @@ public abstract class Server extends Thread {
                                         token = token.substring(index+1);
                                     }
                                 }
-                                if (client == null && SPF.dropTrap(token)) {
+                                if (client == null && Trap.drop(token)) {
                                     result = "DROPED\n";
-                                } else if (client != null && SPF.dropTrap(client, token)) {
+                                } else if (client != null && Trap.drop(client, token)) {
                                     result = "DROPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
@@ -1787,12 +1805,12 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        SPF.storeTrap();
+                        Trap.store();
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
                             // de liberação de remetentes.
-                            for (String sender : SPF.getTrapSet()) {
+                            for (String sender : Trap.get()) {
                                 result += sender + "\n";
                             }
                             if (result.length() == 0) {
@@ -1803,7 +1821,7 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os liberação de remetentes.
-                                for (String sender : SPF.getAllTrapSet()) {
+                                for (String sender : Trap.getAll()) {
                                     result += sender + "\n";
                                 }
                                 if (result.length() == 0) {
@@ -1818,13 +1836,13 @@ public abstract class Server extends Thread {
                     token = tokenizer.nextToken();
                     if (Subnet.isValidCIDR(token)) {
                         String cidr = token;
-                        if (SPF.dropBlock(cidr)) {
+                        if (Block.drop(cidr)) {
                             result += "DROPED " + cidr + "\n";
                             result += splitCIDR(cidr);
                         } else {
                             result = "NOT FOUND\n";
                         }
-                        SPF.storeBlock();
+                        Block.store();
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
@@ -2300,29 +2318,36 @@ public abstract class Server extends Thread {
                     // Comando para verificar a reputação dos tokens.
                     StringBuilder stringBuilder = new StringBuilder();
                     TreeMap<String,Distribution> distributionMap;
+                    TreeMap<String,Binomial> binomialMap;
                     if (tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
                             distributionMap = SPF.getDistributionMap();
+                            binomialMap = null;
                         } else if (token.equals("IPV4")) {
                             distributionMap = SPF.getDistributionMapIPv4();
+                            binomialMap = null;
                         } else if (token.equals("IPV6")) {
                             distributionMap = SPF.getDistributionMapIPv6();
+                            binomialMap = null;
+                        } else if (token.equals("CIDR")) {
+                            distributionMap = null;
+                            binomialMap = SPF.getDistributionMapExtendedCIDR();
                         } else {
                             distributionMap = null;
+                            binomialMap = null;
                         }
                     } else {
                         distributionMap = SPF.getDistributionMap();
+                        binomialMap = null;
                     }
-                    if (distributionMap == null) {
-                        result = "ERROR: COMMAND\n";
-                    } else if (distributionMap.isEmpty()) {
-                        result = "EMPTY\n";
-                    } else {
-                        for (String tokenReputation : distributionMap.keySet()) {
-                            Distribution distribution = distributionMap.get(tokenReputation);
-                            float probability = distribution.getSpamProbability(tokenReputation);
-                            if (probability >= 0.01f) {
+                    if (distributionMap != null) {
+                        if (distributionMap.isEmpty()) {
+                            result = "EMPTY\n";
+                        } else {
+                            for (String tokenReputation : distributionMap.keySet()) {
+                                Distribution distribution = distributionMap.get(tokenReputation);
+                                float probability = distribution.getSpamProbability(tokenReputation);
                                 Status status = distribution.getStatus(tokenReputation);
                                 stringBuilder.append(tokenReputation);
                                 stringBuilder.append(' ');
@@ -2331,8 +2356,28 @@ public abstract class Server extends Thread {
                                 stringBuilder.append(DECIMAL_FORMAT.format(probability));
                                 stringBuilder.append('\n');
                             }
+                            result = stringBuilder.toString();
                         }
-                        result = stringBuilder.toString();
+                        
+                    } else if (binomialMap != null) {
+                        if (binomialMap.isEmpty()) {
+                            result = "EMPTY\n";
+                        } else {
+                            for (String tokenReputation : binomialMap.keySet()) {
+                                Binomial binomial = binomialMap.get(tokenReputation);
+                                float probability = binomial.getSpamProbability();
+                                Status status = binomial.getStatus();
+                                stringBuilder.append(tokenReputation);
+                                stringBuilder.append(' ');
+                                stringBuilder.append(status);
+                                stringBuilder.append(' ');
+                                stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                                stringBuilder.append('\n');
+                            }
+                            result = stringBuilder.toString();
+                        }
+                    } else {
+                        result = "ERROR: COMMAND\n";
                     }
                 } else if (token.equals("CLEAR") && tokenizer.countTokens() == 1) {
                     try {
@@ -2349,7 +2394,7 @@ public abstract class Server extends Thread {
                         result += ex.getMessage() + "\n";
                     }
                     SPF.storeDistribution();
-                    SPF.storeBlock();
+                    Block.store();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {
@@ -2421,7 +2466,7 @@ public abstract class Server extends Thread {
             cidr1 = Subnet.normalizeCIDR(cidr1);
             cidr2 = Subnet.normalizeCIDR(cidr2);
             try {
-                if (SPF.addBlock(cidr1) == null) {
+                if (Block.add(cidr1) == null) {
                     result += "EXISTS " + cidr1 + "\n";
                 } else {
                     result += "ADDED " + cidr1 + "\n";
@@ -2430,7 +2475,7 @@ public abstract class Server extends Thread {
                 result += splitCIDR(cidr1);
             }
             try {
-                if (SPF.addBlock(cidr2) == null) {
+                if (Block.add(cidr2) == null) {
                     result += "EXISTS " + cidr2 + "\n";
                 } else {
                     result += "ADDED " + cidr2 + "\n";

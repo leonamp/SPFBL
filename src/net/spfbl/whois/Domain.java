@@ -604,7 +604,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                         handle.setChanged(changed2);
                     } else if (line.startsWith("% No match for domain")) {
                         throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-                    } else if (line.startsWith("% release process: waiting")) {
+                    } else if (line.startsWith("% release process: ")) {
                         throw new ProcessException("ERROR: WAITING");
                     } else if (line.startsWith("% reserved:    CG")) {
                         throw new ProcessException("ERROR: RESERVED");

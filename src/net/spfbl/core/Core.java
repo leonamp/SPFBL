@@ -60,7 +60,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 2;
+    private static final byte RELEASE = 3;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -896,6 +896,7 @@ public class Core {
             }
             if (alreadyRunning) {
                 JUnique.sendMessage(appId, "register");
+                System.exit(1);
             } else {
                 loadConfiguration();
                 Server.logInfo("starting server...");

@@ -172,13 +172,13 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
-    public static String expandCIDR(String ip) {
-        if (SubnetIPv4.isValidCIDRv4(ip)) {
-            return SubnetIPv4.expandCIDRv4(ip);
-        } else if (SubnetIPv6.isValidCIDRv6(ip)) {
-            return SubnetIPv6.expandCIDRv6(ip);
+    public static String expandCIDR(String cidr) {
+        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+            return SubnetIPv4.expandCIDRv4(cidr);
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.expandCIDRv6(cidr);
         } else {
-            return ip;
+            return cidr;
         }
     }
     

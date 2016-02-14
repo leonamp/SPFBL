@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.dnsbl;
 
@@ -20,7 +20,7 @@ import java.io.Serializable;
 import java.net.InetAddress;
 
 /**
- * Servidor DNSBL que este serviço responde.
+ * Servidor DNSBL que este serviÃ§o responde.
  *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */

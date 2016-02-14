@@ -22,6 +22,8 @@ import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.TreeSet;
+import net.spfbl.core.ProcessException;
+import net.spfbl.core.Server;
 import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 

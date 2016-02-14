@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.spfbl.core;
+package net.spfbl.data;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -22,22 +22,20 @@ import java.io.FileOutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import net.spfbl.core.ProcessException;
+import net.spfbl.core.Server;
 import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
- * Representa a lista de destinários que o SPFBL não deve enviar mensagens de
- * e-mail.
- *
- * Nesta lista podem entrar endereços inexistentes ou com qualquer outro tipo de
- * problema de entrega.
- *
+ * Representa a lista de spamtrap do sistema.
+ * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public class NoReply {
-
+public class Trap {
+    
     /**
-     * Conjunto de destinatarios de não envio.
+     * Conjunto de destinatarios de spamtrap.
      */
     private static final HashSet<String> SET = new HashSet<String>();
     /**
@@ -45,7 +43,7 @@ public class NoReply {
      */
     private static boolean CHANGED = false;
 
-    private static synchronized boolean dropExact(String token) {
+    private static boolean dropExact(String token) {
         if (SET.remove(token)) {
             CHANGED = true;
             return true;
@@ -54,7 +52,7 @@ public class NoReply {
         }
     }
 
-    private static synchronized boolean addExact(String token) {
+    private static boolean addExact(String token) {
         if (SET.add(token)) {
             CHANGED = true;
             return true;
@@ -63,36 +61,44 @@ public class NoReply {
         }
     }
 
-    private static synchronized TreeSet<String> getAll() throws ProcessException {
+    public static TreeSet<String> getAll() throws ProcessException {
         TreeSet<String> blockSet = new TreeSet<String>();
         blockSet.addAll(SET);
         return blockSet;
     }
 
-    private static synchronized boolean containsExact(String address) {
+    public static boolean containsExact(String address) {
         return SET.contains(address);
     }
 
-    private static String normalize(String recipient) {
+    public static boolean isValid(String recipient) {
         if (recipient == null) {
-            return null;
+            return false;
         } else if (Domain.isEmail(recipient)) {
-            return recipient.toLowerCase();
-        } else if (recipient.endsWith("@")) {
-            return recipient.toLowerCase();
+            return true;
         } else if (recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1))) {
-            return recipient.toLowerCase();
-        } else if (recipient.startsWith(".") && Domain.containsDomain(recipient.substring(1))) {
-            return recipient.toLowerCase();
+            return true;
         } else {
-            return null;
+            return false;
         }
     }
 
-    public static boolean add(String address) throws ProcessException {
-        if ((address = normalize(address)) == null) {
+    public static boolean add(String recipient) throws ProcessException {
+        if (!isValid(recipient)) {
             throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (addExact(address)) {
+        } else if (addExact(recipient.toLowerCase())) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public static boolean add(String client, String recipient) throws ProcessException {
+        if (client == null) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if (!isValid(recipient)) {
+            throw new ProcessException("ERROR: RECIPIENT INVALID");
+        } else if (addExact(client + ':' + recipient.toLowerCase())) {
             return true;
         } else {
             return false;
@@ -109,17 +115,41 @@ public class NoReply {
         return trapSet;
     }
 
-    public static boolean drop(String address) throws ProcessException {
-        if ((address = normalize(address)) == null) {
+    public static boolean drop(String recipient) throws ProcessException {
+        if (!isValid(recipient)) {
             throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (dropExact(address)) {
+        } else if (dropExact(recipient.toLowerCase())) {
             return true;
         } else {
             return false;
         }
     }
 
-    public static TreeSet<String> getSet() throws ProcessException {
+    public static boolean drop(String client, String recipient) throws ProcessException {
+        if (client == null) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if (!isValid(recipient)) {
+            throw new ProcessException("ERROR: RECIPIENT INVALID");
+        } else if (dropExact(client + ':' + recipient.toLowerCase())) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public static TreeSet<String> get(String client) throws ProcessException {
+        TreeSet<String> trapSet = new TreeSet<String>();
+        for (String recipient : getAll()) {
+            if (recipient.startsWith(client + ':')) {
+                int index = recipient.indexOf(':') + 1;
+                recipient = recipient.substring(index);
+                trapSet.add(recipient);
+            }
+        }
+        return trapSet;
+    }
+
+    public static TreeSet<String> get() throws ProcessException {
         TreeSet<String> trapSet = new TreeSet<String>();
         for (String recipient : getAll()) {
             if (!recipient.contains(":")) {
@@ -129,26 +159,30 @@ public class NoReply {
         return trapSet;
     }
 
-    public static boolean contains(String address) {
-        if (!Domain.isEmail(address)) {
+    public static boolean contains(String client, String recipient) {
+        if (client == null) {
             return false;
-        } else if (containsExact(address)) {
-            return true;
+        } else if (!isValid(recipient)) {
+            return false;
         } else {
-            address = address.toLowerCase();
-            int index1 = address.indexOf('@');
-            int index2 = address.lastIndexOf('@');
-            String recipient = address.substring(0, index1 + 1);
-            String domain = address.substring(index2);
+            recipient = recipient.toLowerCase();
+            int index2 = recipient.lastIndexOf('@');
+            String domain = recipient.substring(recipient.lastIndexOf('@'));
             if (containsExact(recipient)) {
                 return true;
             } else if (containsExact(domain)) {
+                return true;
+            } else if (containsExact(client + ':' + recipient)) {
+                return true;
+            } else if (containsExact(client + ':' + domain)) {
                 return true;
             } else {
                 int index3 = domain.length();
                 while ((index3 = domain.lastIndexOf('.', index3 - 1)) > index2) {
                     String subdomain = domain.substring(0, index3 + 1);
                     if (containsExact(subdomain)) {
+                        return true;
+                    } else if (containsExact(client + ':' + subdomain)) {
                         return true;
                     }
                 }
@@ -157,13 +191,7 @@ public class NoReply {
                     String subrecipient = recipient.substring(0, index4 + 1);
                     if (containsExact(subrecipient)) {
                         return true;
-                    }
-                }
-                domain = '.' + domain.substring(1);
-                int index5 = 0;
-                while ((index5 = domain.indexOf('.', index5)) != -1) {
-                    String subdomain = domain.substring(index5++);
-                    if (containsExact(subdomain)) {
+                    } else if (containsExact(client + ':' + subrecipient)) {
                         return true;
                     }
                 }
@@ -172,11 +200,11 @@ public class NoReply {
         }
     }
 
-    protected static void store() {
+    public static void store() {
         if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                File file = new File("./data/noreply.set");
+                File file = new File("./data/trap.set");
                 TreeSet<String> set = getAll();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
@@ -192,9 +220,9 @@ public class NoReply {
         }
     }
 
-    protected static void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
-        File file = new File("./data/noreply.set");
+        File file = new File("./data/trap.set");
         if (file.exists()) {
             try {
                 Set<String> set;

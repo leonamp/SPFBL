@@ -38,6 +38,7 @@ import java.net.URLDecoder;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TreeSet;
+import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.Defer;
@@ -287,7 +288,7 @@ public final class ComplainHTTP extends Server {
                                         if (tokenSet.contains(identifier)) {
                                             long time2 = System.currentTimeMillis();
                                             String block = identifier + '>' + recipient;
-                                            if (SPF.addBlockExact(block)) {
+                                            if (Block.addExact(block)) {
                                                 Server.logQuery(
                                                         time2, "BLOCK",
                                                         origin,

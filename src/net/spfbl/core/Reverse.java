@@ -33,6 +33,7 @@ import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.core.Server;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
@@ -82,19 +83,19 @@ public final class Reverse implements Serializable {
         return reverse;
     }
 
-    private static synchronized TreeSet<String> keySet() {
+    private static TreeSet<String> keySet() {
         TreeSet<String> keySet = new TreeSet<String>();
         keySet.addAll(MAP.keySet());
         return keySet;
     }
 
-    private static synchronized HashMap<String,Reverse> getMap() {
+    private static HashMap<String,Reverse> getMap() {
         HashMap<String,Reverse> map = new HashMap<String,Reverse>();
         map.putAll(MAP);
         return map;
     }
 
-    private static synchronized Reverse getExact(String ip) {
+    private static Reverse getExact(String ip) {
         return MAP.get(ip);
     }
 
@@ -115,7 +116,7 @@ public final class Reverse implements Serializable {
         CHANGED = true;
     }
     
-    private synchronized boolean contains(String host) {
+    private boolean contains(String host) {
         if (!Domain.isHostname(host)) {
             return false;
         } else if (addressSet == null) {
@@ -126,7 +127,7 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public synchronized TreeSet<String> getAddressSet() {
+    public TreeSet<String> getAddressSet() {
         if (addressSet == null) {
             return new TreeSet<String>();
         } else {
@@ -136,11 +137,11 @@ public final class Reverse implements Serializable {
         }
     }
     
-    private synchronized int getQueryCount() {
+    private int getQueryCount() {
         return queryCount;
     }
     
-    private synchronized String getAddressOnly() {
+    private String getAddressOnly() {
         try {
             if (addressSet == null) {
                 return null;
@@ -317,7 +318,7 @@ public final class Reverse implements Serializable {
         return ipSet;
     }
     
-    public synchronized void refresh() {
+    public void refresh() {
         long time = System.currentTimeMillis();
         try {
             String reverse;
@@ -349,11 +350,11 @@ public final class Reverse implements Serializable {
         }
     }
 
-    public synchronized boolean isExpired7() {
+    public boolean isExpired7() {
         return System.currentTimeMillis() - lastQuery > 604800000;
     }
 
-    public synchronized boolean isExpired14() {
+    public boolean isExpired14() {
         return System.currentTimeMillis() - lastQuery > 1209600000;
     }
     
@@ -418,15 +419,15 @@ public final class Reverse implements Serializable {
         }
     }
     
-    private static synchronized boolean isChanged() {
+    private static boolean isChanged() {
         return CHANGED;
     }
     
-    private static synchronized void setStored() {
+    private static void setStored() {
         CHANGED = false;
     }
 
-    protected static void store() {
+    public static void store() {
         if (isChanged()) {
             try {
                 long time = System.currentTimeMillis();
@@ -446,7 +447,7 @@ public final class Reverse implements Serializable {
         }
     }
 
-    protected static void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/reverse.map");
         if (file.exists()) {

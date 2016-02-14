@@ -31,8 +31,11 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
+import net.spfbl.data.Trap;
+import net.spfbl.data.White;
 
 /**
  * Servidor de consulta em SPF.
@@ -199,7 +202,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String sender = tokenizer.nextToken();
-                                        boolean added = SPF.addBlock(client, sender);
+                                        boolean added = Block.add(client, sender);
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
@@ -225,7 +228,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String sender = tokenizer.nextToken();
-                                        boolean droped = SPF.dropBlock(client, sender);
+                                        boolean droped = Block.drop(client, sender);
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
@@ -246,7 +249,7 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
                                 // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String sender : SPF.getAllBlockSet(client)) {
+                                for (String sender : Block.getAll(client)) {
                                     if (result == null) {
                                         result = sender + "\n";
                                     } else {
@@ -260,7 +263,7 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
                                 // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String sender : SPF.getBlockSet(client)) {
+                                for (String sender : Block.get(client)) {
                                     if (result == null) {
                                         result = sender + "\n";
                                     } else {
@@ -279,7 +282,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String token = tokenizer.nextToken();
-                                        String block = SPF.findBlock(client, token);
+                                        String block = Block.find(client, token);
                                         if (result == null) {
                                             result = (block == null ? "NONE" : block) + "\n";
                                         } else {
@@ -305,7 +308,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String recipient = tokenizer.nextToken();
-                                        boolean added = SPF.addTrap(client, recipient);
+                                        boolean added = Trap.add(client, recipient);
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
@@ -331,7 +334,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String recipient = tokenizer.nextToken();
-                                        boolean droped = SPF.dropTrap(client, recipient);
+                                        boolean droped = Trap.drop(client, recipient);
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
@@ -352,7 +355,7 @@ public final class QuerySPF extends Server {
                                 query = line.substring(5).trim();
                                 type = "STRAP";
                                 // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getTrapSet(client)) {
+                                for (String recipient : Trap.get(client)) {
                                     if (result == null) {
                                         result = recipient + "\n";
                                     } else {
@@ -371,7 +374,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String recipient = tokenizer.nextToken();
-                                        boolean added = SPF.addWhite(client, recipient);
+                                        boolean added = White.add(client, recipient);
                                         if (result == null) {
                                             result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
                                         } else {
@@ -397,7 +400,7 @@ public final class QuerySPF extends Server {
                                 while (tokenizer.hasMoreElements()) {
                                     try {
                                         String recipient = tokenizer.nextToken();
-                                        boolean droped = SPF.dropWhite(client, recipient);
+                                        boolean droped = White.drop(client, recipient);
                                         if (result == null) {
                                             result = (droped ? "DROPED" : "NOT FOUND") + "\n";
                                         } else {
@@ -418,7 +421,7 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
                                 // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getAllWhiteSet(client)) {
+                                for (String recipient : White.getAll(client)) {
                                     if (result == null) {
                                         result = recipient + "\n";
                                     } else {
@@ -432,7 +435,7 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
                                 // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getWhiteSet(client)) {
+                                for (String recipient : White.get(client)) {
                                     if (result == null) {
                                         result = recipient + "\n";
                                     } else {

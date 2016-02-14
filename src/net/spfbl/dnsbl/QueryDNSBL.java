@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
@@ -392,6 +393,10 @@ public final class QueryDNSBL extends Server {
                                 // Consulta de teste para positivio.
                                 result = "127.0.0.2";
                                 information = server.getMessage();
+                            } else if (Block.containsIP(ip)) {
+                                result = "127.0.0.2";
+                                information = server.getMessage();
+                                ttl = 604800; // Uma semana.
                             } else if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
@@ -402,7 +407,11 @@ public final class QueryDNSBL extends Server {
                         } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                             // A consulta é um IPv6.
                             ip = SubnetIPv6.reverseToIPv6(reverse);
-                            if (SPF.isBlacklisted(ip)) {
+                            if (Block.containsIP(ip)) {
+                                result = "127.0.0.2";
+                                information = server.getMessage();
+                                ttl = 604800; // Uma semana.
+                            } else if (SPF.isBlacklisted(ip)) {
                                 result = "127.0.0.2";
                                 information = server.getMessage();
                                 ttl = 86400; // Um dia.
