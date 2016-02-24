@@ -19,11 +19,9 @@
 # Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Aten√ß√£o! Para utilizar este servi√ßo, solicite a libera√ß√£o das consultas
-# no servidor matrix.spfbl.net atrav√©s do endere√ßo leandro@spfbl.net
-# ou altere o matrix.spfbl.net deste script para seu servidor SPFBL pr√≥prio.
-#
-# √öltima altera√ß√£o: 04/02/2016 11:56
+# AtenÁ„o! Para utilizar este serviÁo, solicite a liberaÁ„o das consultas
+# no servidor matrix.spfbl.net atravÈs do endereÁo leandro@spfbl.net
+# ou altere o matrix.spfbl.net deste script para seu servidor SPFBL prÛprio.
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -32,7 +30,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="1.01"
+version="1.03"
 
 head()
 {
@@ -41,13 +39,13 @@ head()
 
 case $1 in
 	'version')
-		# Verifica a vers√£o do servidor SPPFBL.
+		# Verifica a vers„o do servidor SPPFBL.
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
-		#    0: vers√£o adquirida com sucesso.
-		#    1: erro ao tentar adiquirir vers√£o.
-		#    2: timeout de conex√£o.
+		#    0: vers„o adquirida com sucesso.
+		#    1: erro ao tentar adiquirir vers„o.
+		#    2: timeout de conex„o.
 
 
 		response=$(echo "VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -67,13 +65,13 @@ case $1 in
 		fi
 	;;
 	'shutdown')
-		# Finaliza Servi√ßo.
+		# Finaliza ServiÁo.
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
 		#    0: fechamento de processos realizado com sucesso.
 		#    1: houve falha no fechamento dos processos.
-		#    2: timeout de conex√£o.
+		#    2: timeout de conex„o.
 
 
 		response=$(echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -97,11 +95,11 @@ case $1 in
 	'store')
 		# Comando para gravar o cache em disco.
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
 		#    0: gravar o cache em disco realizado com sucesso.
 		#    1: houve falha ao gravar o cache em disco.
-		#    2: timeout de conex√£o.
+		#    2: timeout de conex„o.
 
 
 		response=$(echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -123,15 +121,15 @@ case $1 in
 	'tld')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. tld: endere√ßo do tld.
+				#    1. tld: endereÁo do tld.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -157,15 +155,15 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. tld: endere√ßo do tld.
+				#    1. tld: endereÁo do tld.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -192,11 +190,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -232,15 +230,15 @@ case $1 in
 	'provider')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. provedor: endere√ßo do provedor de e-mail.
+				#    1. provedor: endereÁo do provedor de e-mail.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -266,15 +264,15 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. provedor: endere√ßo do provedor de e-mail.
+				#    1. provedor: endereÁo do provedor de e-mail.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -301,11 +299,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -338,16 +336,16 @@ case $1 in
 	'ignore')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente que deve ser ignorado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio que deve ser ignorado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente que deve ser ignorado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio que deve ser ignorado, com arroba (ex: @dominio.com.br)
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -373,16 +371,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente ignorado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio ignorado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente ignorado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio ignorado, com arroba (ex: @dominio.com.br)
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -409,11 +407,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -446,18 +444,18 @@ case $1 in
 	'block')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente que deve ser bloqueado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente que deve ser bloqueado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
 				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -483,18 +481,18 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente que deve ser desbloqueado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente que deve ser desbloqueado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
 				#    1. caixa postal: a caixa postal que deve ser desbloqueada, com arroba (ex: www-data@)
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -520,14 +518,14 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#    1: ALL: lista os bloqueios gerais (opcional)
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -555,14 +553,14 @@ case $1 in
 				fi
 			;;
 			'find')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#    1: <token>: um e-mail, host ou IP.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: sem registro.
 				#    1: registro encontrado.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -595,18 +593,18 @@ case $1 in
 	'superblock')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente que deve ser bloqueado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente que deve ser bloqueado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
 				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -632,18 +630,18 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. sender: o remetente que deve ser desbloqueado, com endere√ßo completo.
-				#    1. dom√≠nio: o dom√≠nio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
+				#    1. sender: o remetente que deve ser desbloqueado, com endereÁo completo.
+				#    1. domÌnio: o domÌnio que deve ser desbloqueado, com arroba (ex: @dominio.com.br)
 				#    1. caixa postal: a caixa postal que deve ser desbloqueada, com arroba (ex: www-data@)
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -669,14 +667,14 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#    1: ALL: lista os bloqueios gerais (opcional)
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -712,16 +710,16 @@ case $1 in
 	'white')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser bloqueado, com endere√ßo completo.
+				#    1. recipient: o destinat·rio que deve ser bloqueado, com endereÁo completo.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -747,16 +745,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser desbloqueado, com endere√ßo completo.
+				#    1. recipient: o destinat·rio que deve ser desbloqueado, com endereÁo completo.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -782,13 +780,13 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada: nenhum.
+				# Par‚metros de entrada: nenhum.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -820,16 +818,16 @@ case $1 in
 	'superwhite')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser bloqueado, com endere√ßo completo.
+				#    1. recipient: o destinat·rio que deve ser bloqueado, com endereÁo completo.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -855,16 +853,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser desbloqueado, com endere√ßo completo.
+				#    1. recipient: o destinat·rio que deve ser desbloqueado, com endereÁo completo.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -890,19 +888,23 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada: nenhum.
+				# Par‚metros de entrada: nenhum.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar bloqueio.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superwhite show\n"
+					printf "Faltando parametro(s).\nSintaxe: $0 superwhite show [all]\n"
 				else
-					response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					if [ "$3" == "all" ]; then
+						response=$(echo "WHITE SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -921,25 +923,25 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 superwhite add recipient\n    $0 superwhite drop recipient\n    $0 superwhite show\n"
+				printf "Syntax:\n    $0 superwhite add recipient\n    $0 superwhite drop recipient\n    $0 superwhite show [all]\n"
 			;;
 		esac
 	;;
 	'client')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. cidr: chave prim√°ria - endere√ßo do host de acesso.
+				#    1. cidr: chave prim·ria - endereÁo do host de acesso.
 				#    2. domain: organizador do cadastro
-				#	 3. option: op√ß√µes de acesso -> NONE, SPFBL ou DNSBL
+				#	 3. option: opÁıes de acesso -> NONE, SPFBL ou DNSBL
 				#    4. email: [opcional] e-mail do cliente
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "5" ]; then
 					head
@@ -972,18 +974,18 @@ case $1 in
 				fi
 			;;
 			'set')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. cidr: chave prim√°ria - endere√ßo do host de acesso.
+				#    1. cidr: chave prim·ria - endereÁo do host de acesso.
 				#    2. domain: organizador do cadastro
-				#	 3. option: op√ß√µes de acesso -> NONE, SPFBL ou DNSBL
+				#	 3. option: opÁıes de acesso -> NONE, SPFBL ou DNSBL
 				#    4. email: [opcional] e-mail do cliente
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "4" ]; then
 					head
@@ -1016,15 +1018,15 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. cidr: chave prim√°ria - endere√ßo do host de acesso.
+				#    1. cidr: chave prim·ria - endereÁo do host de acesso.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1051,11 +1053,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1088,16 +1090,16 @@ case $1 in
 	'user')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. email: E-mail do usu√°rio.
-				#    2. nome: Nome do usu√°rio.
+				#    1. email: E-mail do usu·rio.
+				#    2. nome: Nome do usu·rio.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adiciona.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "4" ]; then
 					head
@@ -1124,15 +1126,15 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. email: E-mail do usu√°rio.
+				#    1. email: E-mail do usu·rio.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1159,11 +1161,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1196,16 +1198,16 @@ case $1 in
 	'peer')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
+				#    1. host: EndereÁo do peer.
 				#    2. email: E-mail do administrador.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1238,15 +1240,15 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
+				#    1. host: EndereÁo do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: removido com sucesso.
 				#    1: erro ao tentar remover.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1277,11 +1279,11 @@ case $1 in
 			;;
 			'show')
 
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1311,17 +1313,17 @@ case $1 in
 				fi
 			;;
 			'set')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
-				#    2. send: Op√ß√µes para envio (##??##).
-				#    3. receive: Op√ß√µes para recebimento (##??##).
+				#    1. host: EndereÁo do peer.
+				#    2. send: OpÁıes para envio (##??##).
+				#    3. receive: OpÁıes para recebimento (##??##).
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: setado com sucesso.
-				#    1: erro ao tentar setar op√ß√µes.
-				#    2: timeout de conex√£o.
+				#    1: erro ao tentar setar opÁıes.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "5" ]; then
 					head
@@ -1349,15 +1351,15 @@ case $1 in
 				fi
 			;;
 			'ping')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
+				#    1. host: EndereÁo do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: executado com sucesso.
 				#    1: erro ao tentar executar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1383,15 +1385,15 @@ case $1 in
 				fi
 			;;
 			'send')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
+				#    1. host: EndereÁo do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: executado com sucesso.
 				#    1: erro ao tentar executar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1426,15 +1428,15 @@ case $1 in
 	'retention')
 		case $2 in
 			'show')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. host: Endere√ßo do peer.
+				#    1. host: EndereÁo do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1465,15 +1467,15 @@ case $1 in
 				fi
 			;;
 			'release')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
 				#    1. sender: Bloqueio recebido do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1504,15 +1506,15 @@ case $1 in
 				fi
 			;;
 			'reject')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
 				#    1. sender: Bloqueio recebido do peer.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1554,16 +1556,20 @@ case $1 in
 ## GUESS
 ########
 	'reputation')
-		# Par√¢metros de entrada: nenhum
+		# Par‚metros de entrada: nenhum
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
 		#    0: listado com sucesso.
 		#    1: lista vazia.
-		#    2: timeout de conex√£o.
+		#    2: timeout de conex„o.
 
-		response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
-
+                if [[ $2 == "cidr" ]]; then
+                	response=$(echo "REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                else
+                	response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                fi
+		
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
 		fi
@@ -1579,17 +1585,17 @@ case $1 in
 		fi
 	;;
 	'clear')
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#
-		#    1. hostname: o nome do host cujas den√∫ncias devem ser limpadas.
+		#    1. hostname: o nome do host cujas den˙ncias devem ser limpadas.
 		#
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
 		#    0: limpado com sucesso.
-		#    1: registro n√£o encontrado em cache.
-		#    2: erro ao processar atualiza√ß√£o.
-		#    3: timeout de conex√£o.
+		#    1: registro n„o encontrado em cache.
+		#    2: erro ao processar atualizaÁ„o.
+		#    3: timeout de conex„o.
 
 		if [ $# -lt "2" ]; then
 			head
@@ -1620,17 +1626,17 @@ case $1 in
 ## DROP
 ########
 	'refresh')
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#
 		#    1. hostname: o nome do host cujo registro SPF que deve ser atualizado.
 		#
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
 		#    0: atualizado com sucesso.
-		#    1: registro n√£o encontrado em cache.
-		#    2: erro ao processar atualiza√ß√£o.
-		#    3: timeout de conex√£o.
+		#    1: registro n„o encontrado em cache.
+		#    2: erro ao processar atualizaÁ„o.
+		#    3: timeout de conex„o.
 
 		if [ $# -lt "2" ]; then
 			head
@@ -1658,13 +1664,13 @@ case $1 in
 		fi
 	;;
 	'check')
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#
 		#    1. IP: o IPv4 ou IPv6 do host de origem.
 		#    2. email: o email do remetente.
 		#    3. HELO: o HELO passado pelo host de origem.
 		#
-		# Sa√≠das com qualificadores e os tokens com suas probabilidades:
+		# SaÌdas com qualificadores e os tokens com suas probabilidades:
 		#
 		#    <quaificador>\n
 		#    <token> <probabilidade>\n
@@ -1672,20 +1678,20 @@ case $1 in
 		#    <token> <probabilidade>\n
 		#    ...
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
-		#    0: n√£o especificado.
+		#    0: n„o especificado.
 		#    1: qualificador NEUTRAL.
 		#    2: qualificador PASS.
 		#    3: qualificador FAIL.
 		#    4: qualificador SOFTFAIL.
 		#    5: qualificador NONE.
-		#    6: erro tempor√°rio.
+		#    6: erro tempor·rio.
 		#    7: erro permanente.
 		#    8: listado em lista negra.
-		#    9: timeout de conex√£o.
-		#    10: dom√≠nio inexistente.
-		#    11: par√¢metros inv√°lidos.
+		#    9: timeout de conex„o.
+		#    10: domÌnio inexistente.
+		#    11: par‚metros inv·lidos.
 
 		if [ $# -lt "4" ]; then
 			head
@@ -1733,34 +1739,34 @@ case $1 in
 		fi
 	;;
 	'spam')
-		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o par√¢metro for um arquivo.
+		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o par‚metro for um arquivo.
 		#
-		# Com posse do ticket, ele envia a reclama√ß√£o ao servi√ßo SPFBL para contabiliza√ß√£o de reclama√ß√£o.
+		# Com posse do ticket, ele envia a reclamaÁ„o ao serviÁo SPFBL para contabilizaÁ„o de reclamaÁ„o.
 		#
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#  0. Ticket enviado com sucesso.
 		#  1. Arquivo inexistente.
-		#  2. Arquivo n√£o cont√©m ticket.
+		#  2. Arquivo n„o contÈm ticket.
 		#  3. Erro no envio do ticket.
 		#  4. Timeout no envio do ticket.
-		#  5. Par√¢metro inv√°lido.
-		#  6. Ticket inv√°lido.
+		#  5. Par‚metro inv·lido.
+		#  6. Ticket inv·lido.
 
 		if [ $# -lt "2" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
                         if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
-                                # O par√¢mentro √© uma URL de den√∫ncia SPFBL.
+                                # O par‚mentro È uma URL de den˙ncia SPFBL.
                                 url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
-				# O par√¢mentro √© um ticket SPFBL.
+				# O par‚mentro È um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
-				# O par√¢metro √© um arquivo.
+				# O par‚metro È um arquivo.
 				file=$2
 
 				if [ -e "$file" ]; then
@@ -1778,84 +1784,84 @@ case $1 in
 						fi
 					fi
 				else
-					echo "O arquivo n√£o existe."
+					echo "O arquivo n„o existe."
 					exit 1
 				fi
 			else
-				echo "O par√¢metro passado n√£o corresponde a um arquivo nem a um ticket."
+				echo "O par‚metro passado n„o corresponde a um arquivo nem a um ticket."
 				exit 5
 			fi
 
 			if [[ -z $url ]]; then
 				if [[ -z $ticket ]]; then
-					echo "Ticket SPFBL inv√°lido."
+					echo "Ticket SPFBL inv·lido."
 					exit 6
 				else
-					# Registra reclama√ß√£o SPFBL.
+					# Registra reclamaÁ„o SPFBL.
 					resposta=$(echo "SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $resposta == "" ]]; then
-						echo "A reclama√ß√£o SPFBL n√£o foi enviada por timeout."
+						echo "A reclamaÁ„o SPFBL n„o foi enviada por timeout."
 						exit 4
 					elif [[ $resposta == "OK"* ]]; then
-						echo "Reclama√ß√£o SPFBL enviada com sucesso."
+						echo "ReclamaÁ„o SPFBL enviada com sucesso."
 						exit 0
 					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
-						echo "Ticket SPFBL inv√°lido."
+						echo "Ticket SPFBL inv·lido."
 						exit 6
 					else
-						echo "A reclama√ß√£o SPFBL n√£o foi enviada: $resposta"
+						echo "A reclamaÁ„o SPFBL n„o foi enviada: $resposta"
 						exit 3
 					fi
 				fi
 			else
-				# Registra reclama√ß√£o SPFBL via HTTP.
+				# Registra reclamaÁ„o SPFBL via HTTP.
                                 resposta=$(curl -X PUT -s -m 3 $url)
 				if [[ $? == "28" ]]; then
-					echo "A reclama√ß√£o SPFBL n√£o foi enviada por timeout."
+					echo "A reclamaÁ„o SPFBL n„o foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
-					echo "Reclama√ß√£o SPFBL enviada com sucesso."
+					echo "ReclamaÁ„o SPFBL enviada com sucesso."
 					exit 0
 				elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
-					echo "Ticket SPFBL inv√°lido."
+					echo "Ticket SPFBL inv·lido."
 					exit 6
 				else
-					echo "A reclama√ß√£o SPFBL n√£o foi enviada: $resposta"
+					echo "A reclamaÁ„o SPFBL n„o foi enviada: $resposta"
 					exit 3
 				fi
 			fi
 		fi
 	;;
 	'ham')
-		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o par√¢metro for um arquivo.
+		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o par‚metro for um arquivo.
 		#
-		# Com posse do ticket, ele solicita a revoga√ß√£o da reclama√ß√£o ao servi√ßo SPFBL.
+		# Com posse do ticket, ele solicita a revogaÁ„o da reclamaÁ„o ao serviÁo SPFBL.
 		#
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
 		#
-		# C√≥digos de sa√≠da:
-		#  0. Reclama√ß√£o revogada com sucesso.
+		# CÛdigos de saÌda:
+		#  0. ReclamaÁ„o revogada com sucesso.
 		#  1. Arquivo inexistente.
-		#  2. Arquivo n√£o cont√©m ticket.
+		#  2. Arquivo n„o contÈm ticket.
 		#  3. Erro no envio do ticket.
 		#  4. Timeout no envio do ticket.
-		#  5. Par√¢metro inv√°lido.
-		#  6. Ticket inv√°lido.
+		#  5. Par‚metro inv·lido.
+		#  6. Ticket inv·lido.
 
 		if [ $# -lt "2" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
-	            # O par√¢mentro √© uma URL de den√∫ncia SPFBL.
+	            # O par‚mentro È uma URL de den˙ncia SPFBL.
 	            url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
-				# O par√¢mentro √© um ticket SPFBL.
+				# O par‚mentro È um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
-				# O par√¢metro √© um arquivo.
+				# O par‚metro È um arquivo.
 				file=$2
 
 				if [ -e "$file" ]; then
@@ -1873,53 +1879,53 @@ case $1 in
 						fi
 					fi
 				else
-					echo "O arquivo n√£o existe."
+					echo "O arquivo n„o existe."
 					exit 1
 				fi
 			else
-				echo "O par√¢metro passado n√£o corresponde a um arquivo nem a um ticket."
+				echo "O par‚metro passado n„o corresponde a um arquivo nem a um ticket."
 				exit 5
 			fi
 
 			if [[ -z $url ]]; then
 				if [[ -z $ticket ]]; then
-					echo "Ticket SPFBL inv√°lido."
+					echo "Ticket SPFBL inv·lido."
 					exit 6
 				else
-					# Registra reclama√ß√£o SPFBL.
+					# Registra reclamaÁ„o SPFBL.
 					resposta=$(echo "HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $resposta == "" ]]; then
-						echo "A revoga√ß√£o SPFBL n√£o foi enviada por timeout."
+						echo "A revogaÁ„o SPFBL n„o foi enviada por timeout."
 						exit 4
 					elif [[ $resposta == "OK"* ]]; then
-						echo "Revoga√ß√£o SPFBL enviada com sucesso."
+						echo "RevogaÁ„o SPFBL enviada com sucesso."
 						exit 0
 					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
-						echo "Ticket SPFBL inv√°lido."
+						echo "Ticket SPFBL inv·lido."
 						exit 6
 					else
-						echo "A revoga√ß√£o SPFBL n√£o foi enviada: $resposta"
+						echo "A revogaÁ„o SPFBL n„o foi enviada: $resposta"
 						exit 3
 					fi
 				fi
 			else
-				# Registra reclama√ß√£o SPFBL via HTTP.
+				# Registra reclamaÁ„o SPFBL via HTTP.
 				spamURL=/spam/
                                 hamURL=/ham/
 				url=${url/$spamURL/$hamURL}
                                 resposta=$(curl -X PUT -s -m 3 $url)
 				if [[ $? == "28" ]]; then
-					echo "A revoga√ß√£o SPFBL n√£o foi enviada por timeout."
+					echo "A revogaÁ„o SPFBL n„o foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
-					echo "Revoga√ß√£o SPFBL enviada com sucesso."
+					echo "RevogaÁ„o SPFBL enviada com sucesso."
 					exit 0
 				elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
-					echo "Ticket SPFBL inv√°lido."
+					echo "Ticket SPFBL inv·lido."
 					exit 6
 				else
-					echo "A revoga√ß√£o SPFBL n√£o foi enviada: $resposta"
+					echo "A revogaÁ„o SPFBL n„o foi enviada: $resposta"
 					exit 3
 				fi
 
@@ -1927,56 +1933,57 @@ case $1 in
 		fi
 	;;
 	'query')
-		# A sa√≠da deste programa deve ser incorporada ao cabe√ßalho
+		# A saÌda deste programa deve ser incorporada ao cabeÁalho
 		# Received-SPFBL da mensagem de e-mail que gerou a consulta.
 		#
 		# Exemplo:
 		#
 		#    Received-SPFBL: PASS urNq9eFn65wKwDFGNsqCNYmywnlWmmilhZw5jdtvOr5jYk6mgkiWgQC1w696wT3ylP3r8qZnhOjwntTt5mCAuw==
 		#
-		# A informa√ß√£o que precede o qualificador √© o ticket da consulta SPFBL.
-		# Com o ticket da consulta, √© poss√≠vel realizar uma reclama√ß√£o ao servi√ßo SPFBL,
-		# onde esta reclama√ß√£o vai contabilizar a reclama√ß√£o nos contadores do respons√°vel pelo envio da mensagem.
-		# O ticket da consulta s√≥ √© gerado nas sa√≠das cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
+		# A informaÁ„o que precede o qualificador È o ticket da consulta SPFBL.
+		# Com o ticket da consulta, È possÌvel realizar uma reclamaÁ„o ao serviÁo SPFBL,
+		# onde esta reclamaÁ„o vai contabilizar a reclamaÁ„o nos contadores do respons·vel pelo envio da mensagem.
+		# O ticket da consulta sÛ È gerado nas saÌdas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
 		#
-		# Par√¢metros de entrada:
+		# Par‚metros de entrada:
 		#
 		#    1. IP: o IPv4 ou IPv6 do host de origem.
 		#    2. email: o email do remetente (opcional).
 		#    3. HELO: o HELO passado pelo host de origem.
-		#    4. recipient: o destin√°tario da mensagem (opcional se n√£o utilizar spamtrap).
+		#    4. recipient: o destin·tario da mensagem (opcional se n„o utilizar spamtrap).
 		#
-		# Sa√≠das com qualificadores e as a√ß√µes:
+		# SaÌdas com qualificadores e as aÁıes:
 		#
 		#    PASS <ticket>: permitir o recebimento da mensagem.
-		#    FAIL: rejeitar o recebimento da mensagem e informar √† origem o descumprimento do SPF.
+		#    FAIL: rejeitar o recebimento da mensagem e informar ‡ origem o descumprimento do SPF.
 		#    SOFTFAIL <ticket>: permitir o recebimento da mensagem mas marcar como suspeita.
 		#    NEUTRAL <ticket>: permitir o recebimento da mensagem.
 		#    NONE <ticket>: permitir o recebimento da mensagem.
-		#    LISTED: atrasar o recebimento da mensagem e informar √† origem a listagem em blacklist por sete dias.
-		#    BLOCKED: rejeitar o recebimento da mensagem e informar √† origem o bloqueio permanente.
-		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar √† origem que a mensagem foi recebida com sucesso.
-		#    GREYLIST: atrasar a mensagem informando √† origem ele est√° em greylisting.
-		#    NXDOMAIN: o dom√≠nio do remetente √© inexistente.
-		#    INVALID: o endere√ßo do remetente √© inv√°lido.
+		#    LISTED: atrasar o recebimento da mensagem e informar ‡ origem a listagem em blacklist por sete dias.
+		#    BLOCKED: rejeitar o recebimento da mensagem e informar ‡ origem o bloqueio permanente.
+		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar ‡ origem que a mensagem foi recebida com sucesso.
+		#    GREYLIST: atrasar a mensagem informando ‡ origem ele est· em greylisting.
+		#    NXDOMAIN: o domÌnio do remetente È inexistente.
+		#    INVALID: o endereÁo do remetente È inv·lido.
 		#
-		# C√≥digos de sa√≠da:
+		# CÛdigos de saÌda:
 		#
-		#    0: n√£o especificado.
+		#    0: n„o especificado.
 		#    1: qualificador NEUTRAL.
 		#    2: qualificador PASS.
 		#    3: qualificador FAIL.
 		#    4: qualificador SOFTFAIL.
 		#    5: qualificador NONE.
-		#    6: erro tempor√°rio.
+		#    6: erro tempor·rio.
 		#    7: erro permanente.
 		#    8: listado em lista negra.
-		#    9: timeout de conex√£o.
+		#    9: timeout de conex„o.
 		#    10: bloqueado permanentemente.
 		#    11: spamtrap.
 		#    12: greylisting.
-		#    13: dom√≠nio inexistente.
-		#    14: IP ou remetente inv√°lido.
+		#    13: domÌnio inexistente.
+		#    14: IP ou remetente inv·lido.
+		#    15: mensagem originada de uma rede local.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -2003,6 +2010,8 @@ case $1 in
 				exit 12
 			elif [[ $qualifier == "INVALID" ]]; then
 				exit 14
+			elif [[ $qualifier == "LAN" ]]; then
+				exit 15
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED" ]]; then
@@ -2018,8 +2027,8 @@ case $1 in
 			elif [[ $qualifier == "PASS "* ]]; then
 				exit 2
 			elif [[ $qualifier == "FAIL "* ]]; then
-			        # Retornou FAIL com ticket ent√£o
-			        # significa que est√° em whitelist.
+			        # Retornou FAIL com ticket ent„o
+			        # significa que est· em whitelist.
 			        # Retornar como se fosse SOFTFAIL.
 				exit 4
 			elif [[ $qualifier == "FAIL" ]]; then
@@ -2036,16 +2045,16 @@ case $1 in
 	'trap')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser considerado armadilha.
+				#    1. recipient: o destinat·rio que deve ser considerado armadilha.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar armadilha.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2071,16 +2080,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que deve ser considerado armadilha.
+				#    1. recipient: o destinat·rio que deve ser considerado armadilha.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
 				#    1: erro ao tentar adicionar armadilha.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2106,13 +2115,13 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada: nenhum.
+				# Par‚metros de entrada: nenhum.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar armadilhas.
-				#    2: timeout de conex√£o.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -2144,16 +2153,16 @@ case $1 in
 	'noreply')
 		case $2 in
 			'add')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que o SPFBL n√£o deve enviar mensagem de e-mail.
+				#    1. recipient: o destinat·rio que o SPFBL n„o deve enviar mensagem de e-mail.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: adicionado com sucesso.
-				#    1: erro ao tentar adicionar endere√ßo.
-				#    2: timeout de conex√£o.
+				#    1: erro ao tentar adicionar endereÁo.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2179,16 +2188,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Par√¢metros de entrada:
+				# Par‚metros de entrada:
 				#
-				#    1. recipient: o destinat√°rio que o SPFBL n√£o deve enviar mensagem de e-mail.
+				#    1. recipient: o destinat·rio que o SPFBL n„o deve enviar mensagem de e-mail.
 				#
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: desbloqueado com sucesso.
-				#    1: erro ao tentar adicionar endere√ßo.
-				#    2: timeout de conex√£o.
+				#    1: erro ao tentar adicionar endereÁo.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2214,13 +2223,13 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Par√¢metros de entrada: nenhum.
+				# Par‚metros de entrada: nenhum.
 				#
-				# C√≥digos de sa√≠da:
+				# CÛdigos de saÌda:
 				#
 				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar endere√ßos.
-				#    2: timeout de conex√£o.
+				#    1: erro ao tentar visualizar endereÁos.
+				#    2: timeout de conex„o.
 
 				if [ $# -lt "2" ]; then
 					head
@@ -2250,9 +2259,9 @@ case $1 in
 		esac
 	;;
 	'dump')
-		# Par√¢metros de entrada: nenhum.
+		# Par‚metros de entrada: nenhum.
 		#
-		# C√≥digos de sa√≠da: nenhum.
+		# CÛdigos de saÌda: nenhum.
 
 		echo "DUMP" | nc $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
 		if [ -f $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") ]; then
@@ -2262,9 +2271,9 @@ case $1 in
 		fi
 	;;
 	'load')
-		# Par√¢metros de entrada: nenhum.
+		# Par‚metros de entrada: nenhum.
 		#
-		# C√≥digos de sa√≠da: nenhum.
+		# CÛdigos de saÌda: nenhum.
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2308,7 +2317,7 @@ case $1 in
 		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"
 		printf "    $0 user { add email nome | drop email | show }\n"
 		printf "    $0 superblock { add sender | drop sender | show [all] }\n"
-		printf "    $0 superwhite { add sender | drop sender | show }\n"
+		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
 		printf "    $0 dump\n"
 		printf "    $0 load path\n"
 		printf "\n"
