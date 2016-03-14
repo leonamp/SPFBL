@@ -152,13 +152,17 @@ public final class SubnetIPv4 extends Subnet {
             String ip = inetnum.substring(0, index);
             String size = inetnum.substring(index+1);
             int sizeInt = Integer.parseInt(size);
-            byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
-            byte[] address = SubnetIPv4.split(ip, mask);
-            int octet1 = address[0] & 0xFF;
-            int octet2 = address[1] & 0xFF;
-            int octet3 = address[2] & 0xFF;
-            int octet4 = address[3] & 0xFF;
-            return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
+            if (sizeInt < 0 || sizeInt > 32) {
+                return null;
+            } else {
+                byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+                byte[] address = SubnetIPv4.split(ip, mask);
+                int octet1 = address[0] & 0xFF;
+                int octet2 = address[1] & 0xFF;
+                int octet3 = address[2] & 0xFF;
+                int octet4 = address[3] & 0xFF;
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
+            }
         }
     }
     

@@ -521,24 +521,28 @@ public final class SubnetIPv6 extends Subnet {
             String ip = inetnum.substring(0, index);
             String size = inetnum.substring(index+1);
             int sizeInt = Integer.parseInt(size);
-            short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
-            short[] address = SubnetIPv6.split(ip, mask);
-            int p1 = address[0] & 0xFFFF;
-            int p2 = address[1] & 0xFFFF;
-            int p3 = address[2] & 0xFFFF;
-            int p4 = address[3] & 0xFFFF;
-            int p5 = address[4] & 0xFFFF;
-            int p6 = address[5] & 0xFFFF;
-            int p7 = address[6] & 0xFFFF;
-            int p8 = address[7] & 0xFFFF;
-            return Integer.toHexString(p1) + ":" +
-                    Integer.toHexString(p2) + ":" +
-                    Integer.toHexString(p3) + ":" +
-                    Integer.toHexString(p4) + ":" +
-                    Integer.toHexString(p5) + ":" +
-                    Integer.toHexString(p6) + ":" +
-                    Integer.toHexString(p7) + ":" +
-                    Integer.toHexString(p8) + "/" + sizeInt;
+            if (sizeInt < 0 || sizeInt > 128) {
+                return null;
+            } else {
+                short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
+                short[] address = SubnetIPv6.split(ip, mask);
+                int p1 = address[0] & 0xFFFF;
+                int p2 = address[1] & 0xFFFF;
+                int p3 = address[2] & 0xFFFF;
+                int p4 = address[3] & 0xFFFF;
+                int p5 = address[4] & 0xFFFF;
+                int p6 = address[5] & 0xFFFF;
+                int p7 = address[6] & 0xFFFF;
+                int p8 = address[7] & 0xFFFF;
+                return Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8) + "/" + sizeInt;
+            }
         }
     }
     

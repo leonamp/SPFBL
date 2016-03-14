@@ -2354,6 +2354,8 @@ public abstract class Server extends Thread {
                                 stringBuilder.append(status);
                                 stringBuilder.append(' ');
                                 stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                                stringBuilder.append(' ');
+                                stringBuilder.append(distribution.getFrequencyLiteral());
                                 stringBuilder.append('\n');
                             }
                             result = stringBuilder.toString();
@@ -2372,6 +2374,8 @@ public abstract class Server extends Thread {
                                 stringBuilder.append(status);
                                 stringBuilder.append(' ');
                                 stringBuilder.append(DECIMAL_FORMAT.format(probability));
+                                stringBuilder.append(' ');
+                                stringBuilder.append(binomial.getFrequencyLiteral());
                                 stringBuilder.append('\n');
                             }
                             result = stringBuilder.toString();

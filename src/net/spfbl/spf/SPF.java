@@ -2224,19 +2224,19 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static TreeSet<String> keySet() {
+        private static synchronized TreeSet<String> keySet() {
             TreeSet<String> keySet = new TreeSet<String>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
         
-        private static HashMap<String,Distribution> getMap() {
+        private static synchronized HashMap<String,Distribution> getMap() {
             HashMap<String,Distribution> map = new HashMap<String,Distribution>();
             map.putAll(MAP);
             return map;
         }
         
-        private static NavigableMap<String,Distribution> getSubMap(
+        private static synchronized NavigableMap<String,Distribution> getSubMap(
                 String fromKey, String toKey) {
             return MAP.subMap(fromKey, false, toKey, false);
         }
@@ -3320,7 +3320,15 @@ public final class SPF implements Serializable {
         
         if (!Subnet.isValidIP(ip)) {
             return "action=554 5.7.1 SPFBL "
-                    + ip + " is not a valid IP.\n\n";
+                    + ip + " is not a valid public IP.\n\n";
+        } else if (
+                Subnet.containsIP("10.0.0.0/8", ip) ||
+                Subnet.containsIP("172.16.0.0/12", ip) ||
+                Subnet.containsIP("192.168.0.0/16", ip) ||
+                Subnet.containsIP("169.254.0.0/16", ip)
+                ) {
+            // Message from LAN.
+            return "action=DUNNO\n\n";
         } else {
             try {
                 TreeSet<String> tokenSet = new TreeSet<String>();
@@ -3361,32 +3369,22 @@ public final class SPF implements Serializable {
                         tokenSet.add(ipv6);
                     }
                 }
-                if (sender != null && !Domain.isEmail(sender)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=554 5.7.1 SPFBL "
-                            + sender + " is not a valid e-mail address.\n\n";
-                } else if (sender != null && Domain.isReserved(sender)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=554 5.7.1 SPFBL "
-                            + sender + " has a reserved domain.\n\n";
-                }
                 String result;
                 LinkedList<String> logList = new LinkedList<String>();
-                SPF spf = CacheSPF.get(sender);
-                if (spf == null) {
+                SPF spf;
+                if (sender == null) {
+                    spf = null;
                     result = "NONE";
-                } else if (spf.isDefinitelyInexistent()) {
-                    // O domínio foi dado como inexistente inúmeras vezes.
-                    // Rejeitar e denunciar o host pois há abuso de tentativas.
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=554 5.7.1 SPFBL "
-                            + "sender has non-existent internet domain.\n\n";
+                } else if (!Domain.isEmail(sender)) {
+                    spf = null;
+                    result = "NONE";
+                } else if (Domain.isReserved(sender)) {
+                    spf = null;
+                    result = "NONE";
+                } else if ((spf = CacheSPF.get(sender)) == null) {
+                    result = "NONE";
                 } else if (spf.isInexistent()) {
-                    return "action=554 5.7.1 SPFBL "
-                            + "sender has non-existent internet domain.\n\n";
+                    result = "NONE";
                 } else {
                     result = spf.getResult(ip, sender, helo, logList);
                 }
@@ -3415,7 +3413,7 @@ public final class SPF implements Serializable {
                     hostname = helo;
                 } else {
                     String dominio = Domain.extractDomain(hostname, true);
-                    origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
+                    origem = (sender == null ? "" : sender + '>') + (dominio == null ? hostname : dominio.substring(1));
                     fluxo = origem + ">" + recipient;
                 }
                 if (White.contains(client, ip, sender, hostname, result, recipient)) {
@@ -3435,6 +3433,16 @@ public final class SPF implements Serializable {
                     CacheComplain.addComplain(client, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + "you are permanently blocked in this server.\n\n";
+                } else if (spf != null && spf.isDefinitelyInexistent()) {
+                    // O domínio foi dado como inexistente inúmeras vezes.
+                    // Rejeitar e denunciar o host pois há abuso de tentativas.
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + "sender has non-existent internet domain.\n\n";
+                } else if (spf != null && spf.isInexistent()) {
+                    return "action=554 5.7.1 SPFBL "
+                            + "sender has non-existent internet domain.\n\n";
                 } else if (result.equals("FAIL")) {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
@@ -3443,6 +3451,16 @@ public final class SPF implements Serializable {
                     return "action=554 5.7.1 SPFBL "
                             + sender + " is not allowed to "
                             + "send mail from " + ip + ".\n\n";
+                } else if (sender != null && !Domain.isEmail(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + sender + " is not a valid e-mail address.\n\n";
+                } else if (sender != null && Domain.isReserved(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(client, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + sender + " has a reserved domain.\n\n";
                 } else if (sender == null && !CacheHELO.match(ip, hostname)) {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(client, ticket);
@@ -3651,6 +3669,14 @@ public final class SPF implements Serializable {
                         }
                         if (!Subnet.isValidIP(ip)) {
                             return "INVALID\n";
+                        } else if (
+                                Subnet.containsIP("10.0.0.0/8", ip) ||
+                                Subnet.containsIP("172.16.0.0/12", ip) ||
+                                Subnet.containsIP("192.168.0.0/16", ip) ||
+                                Subnet.containsIP("169.254.0.0/16", ip)
+                                ) {
+                            // Message from LAN.
+                            return "LAN\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
@@ -3690,17 +3716,6 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ipv6);
                                 }
                             }
-                            if (sender != null && !Domain.isEmail(sender)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Endereço inválido do remetente.
-                                return "INVALID\n";
-                            } else if (sender != null && Domain.isReserved(sender)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Endereço inválido do remetente.
-                                return "INVALID\n";
-                            }
                             LinkedList<String> logList = null;
                             if (sender != null && firstToken.equals("CHECK")) {
                                 int index = sender.lastIndexOf('@');
@@ -3713,17 +3728,20 @@ public final class SPF implements Serializable {
                                     logList.add("Using cached SPF registry.");
                                 }
                             }
-                            SPF spf = CacheSPF.get(sender);
-                            if (spf == null) {
+                            SPF spf;
+                            if (sender == null) {
+                                spf = null;
                                 result = "NONE";
-                            } else if (spf.isDefinitelyInexistent()) {
-                                // O domínio foi dado como inexistente inúmeras vezes.
-                                // Rejeitar e denunciar o host pois há abuso de tentativas.
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                return "NXDOMAIN\n";
+                            } else if (!Domain.isEmail(sender)) {
+                                spf = null;
+                                result = "NONE";
+                            } else if (Domain.isReserved(sender)) {
+                                spf = null;
+                                result = "NONE";
+                            } else if ((spf = CacheSPF.get(sender)) == null) {
+                                result = "NONE";
                             } else if (spf.isInexistent()) {
-                                return "NXDOMAIN\n";
+                                result = "NONE";
                             } else {
                                 result = spf.getResult(ip, sender, helo, logList);
                             }
@@ -3801,12 +3819,28 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 return "BLOCKED\n";
+                            } else if (spf != null && spf.isDefinitelyInexistent()) {
+                                // O domínio foi dado como inexistente inúmeras vezes.
+                                // Rejeitar e denunciar o host pois há abuso de tentativas.
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                return "NXDOMAIN\n";
+                            } else if (spf != null && spf.isInexistent()) {
+                                return "NXDOMAIN\n";
                             } else if (result.equals("FAIL")) {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
+                            } else if (sender != null && !Domain.isEmail(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                return "INVALID\n";
+                            } else if (sender != null && Domain.isReserved(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(client, ticket);
+                                return "INVALID\n";
                             } else if (sender == null && !CacheHELO.match(ip, hostname)) {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(client, ticket);
@@ -4481,24 +4515,38 @@ public final class SPF implements Serializable {
         private int ham; // Quantidade total de HAM em sete dias.
         private int spam; // Quantidade total de SPAM em sete dias
         private final Status status;
+        private NormalDistribution frequency = null;
+        private long lastQuery = 0;
         
         public Binomial(String token, Distribution distribution) {
             int[] binomial = distribution.getBinomial(token);
             this.ham = binomial[0];
             this.spam = binomial[1];
             this.status = distribution.getStatus(token);
+            this.frequency = distribution.frequency;
+            this.lastQuery = distribution.lastQuery;
        }
         
         public Binomial(Status status) {
             this.status = status;
             this.ham = 0;
             this.spam = 0;
+            this.frequency = null;
+            this.lastQuery = 0;
         }
         
         public void add(String token, Distribution distribution) {
             int[] binomial = distribution.getBinomial(token);
             this.ham += binomial[0];
             this.spam += binomial[1];
+            if (this.frequency == null) {
+                this.frequency = distribution.frequency;
+            } else {
+                this.frequency.add(distribution.frequency);
+            }
+            if (this.lastQuery < distribution.lastQuery) {
+                this.lastQuery = distribution.lastQuery;
+            }
         }
         
         public int getSPAM() {
@@ -4524,10 +4572,59 @@ public final class SPF implements Serializable {
         }
         
         public synchronized float getSpamProbability() {
-            if (ham + spam == 0) {
+            int total = ham + spam;
+            float probability = (float) spam / (float) total;
+            if (total == 0) {
                 return 0.0f;
+            } else if (probability > LIMIAR1 && spam < 3) {
+                // Quantidade pequena para dar precisão.
+                return LIMIAR1;
+            } else if (probability > LIMIAR2 && spam < 5) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio temporário é 
+                // necessário pelo meno cinco denuncias.
+                return LIMIAR2;
+            } else if (probability > LIMIAR3 && spam < 7) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio definitivo é 
+                // necessário pelo meno sete denuncias.
+                return LIMIAR3;
             } else {
-                return (float) spam / (float) (ham + spam);
+                return probability;
+            }
+        }
+        
+        public int getIdleTimeMillis() {
+            if (lastQuery == 0) {
+                return 0;
+            } else {
+                return (int) (System.currentTimeMillis() - lastQuery);
+            }
+        }
+        
+        public String getFrequencyLiteral() {
+            if (frequency == null) {
+                return "NEW";
+            } else {
+                int frequencyInt = frequency.getMaximumInt();
+                int idleTimeInt = getIdleTimeMillis();
+                if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 604800000) {
+                    return "DEAD";
+                } else {
+                    char sinal = '~';
+                    if (idleTimeInt > frequencyInt * 3) {
+                        sinal = '>';
+                    }
+                    if (frequencyInt >= 3600000) {
+                        return sinal + frequencyInt / 3600000 + "h";
+                    } else if (frequencyInt >= 60000) {
+                        return sinal + frequencyInt / 60000 + "min";
+                    } else if (frequencyInt >= 1000) {
+                        return sinal + frequencyInt / 1000 + "s";
+                    } else {
+                        return sinal + frequencyInt + "ms";
+                    }
+                }
             }
         }
         

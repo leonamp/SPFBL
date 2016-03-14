@@ -60,7 +60,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 3;
+    private static final byte RELEASE = 4;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -901,7 +901,6 @@ public class Core {
                 loadConfiguration();
                 Server.logInfo("starting server...");
                 Server.loadCache();
-                SPF.dropExpiredComplain();
                 administrationTCP = new AdministrationTCP(PORT_ADMIN);
                 administrationTCP.start();
                 if (PORT_WHOIS > 0) {

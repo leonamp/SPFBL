@@ -16,7 +16,6 @@
  */
 package net.spfbl.http;
 
-import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -284,6 +283,7 @@ public final class ComplainHTTP extends Server {
                                 }
                                 TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
                                 if (valid) {
+                                    TreeSet<String> blockSet = new TreeSet<String>();
                                     for (String identifier : identifierSet) {
                                         if (tokenSet.contains(identifier)) {
                                             long time2 = System.currentTimeMillis();
@@ -296,11 +296,12 @@ public final class ComplainHTTP extends Server {
                                                         "ADDED"
                                                         );
                                             }
+                                            blockSet.add(identifier);
                                         }
                                     }
                                     type = "HTTPC";
                                     code = 200;
-                                    result = "Bloqueados: " + tokenSet + " >" + recipient + "\n";
+                                    result = "Bloqueados: " + blockSet + " >" + recipient + "\n";
                                 } else {
                                     type = "HTTPC";
                                     code = 200;
@@ -543,9 +544,13 @@ public final class ComplainHTTP extends Server {
                     code = 405;
                     result = "Method not allowed.\n";
                 }
-                response(code, result, exchange);
-                command = request + " " + command;
-                result = code + " " + result;
+                try {
+                    response(code, result, exchange);
+                    command = request + " " + command;
+                    result = code + " " + result;
+                } catch (IOException ex) {
+                    result = ex.getMessage();
+                }
                 Server.logQuery(
                         time, type,
                         origin,
