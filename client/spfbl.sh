@@ -622,7 +622,81 @@ case $1 in
 
 					if [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					elif [[ $response == "OK" ]]; then
+					elif [[ $response == "ADDED" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'split')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser bloqueado, com endereço completo.
+				#    1. domínio: o domínio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
+				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 superblock split CIDR\n"
+				else
+					sender=$3
+
+					response=$(echo "BLOCK SPLIT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "DROPED" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'overlap')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser bloqueado, com endereço completo.
+				#    1. domínio: o domínio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
+				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 superblock overlap CIDR\n"
+				else
+					sender=$3
+
+					response=$(echo "BLOCK OVERLAP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ADDED" ]]; then
 						exit 0
 					else
 						exit 1
@@ -2014,7 +2088,7 @@ case $1 in
 				exit 15
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
-			elif [[ $qualifier == "BLOCKED" ]]; then
+			elif [[ $qualifier == "BLOCKED"* ]]; then
 				exit 10
 			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
