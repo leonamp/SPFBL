@@ -406,7 +406,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = 4.7.2 SPFBL you are temporarily blocked on this server. see $acl_c_spfblticket
+    message = 4.7.2 SPFBL you are temporarily blocked on this server. See $acl_c_spfblticket
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
@@ -414,6 +414,11 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     message = 4.7.2 SPFBL you are temporarily blocked on this server.
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+  drop
+    message = 5.7.1 SPFBL you are permanently blocked on this server. See $acl_c_spfblticket
+    log_message = SPFBL check blocked.
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
   drop
     message = 5.7.1 SPFBL you are permanently blocked on this server.
     log_message = SPFBL check blocked.
@@ -488,7 +493,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = 4.7.2 SPFBL you are temporarily blocked on this server. see $acl_c_spfblticket
+    message = 4.7.2 SPFBL you are temporarily blocked on this server. See $acl_c_spfblticket
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
@@ -496,6 +501,11 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     message = 4.7.2 SPFBL you are temporarily blocked on this server.
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+  drop
+    message = 5.7.1 SPFBL you are permanently blocked on this server. See $acl_c_spfblticket
+    log_message = SPFBL check blocked.
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
   drop
     message = 5.7.1 SPFBL you are permanently blocked on this server.
     log_message = SPFBL check blocked.
