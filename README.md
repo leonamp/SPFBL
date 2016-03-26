@@ -384,7 +384,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL | LISTED )}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
   drop
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -406,7 +406,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = 4.7.2 SPFBL you are temporarily blocked on this server. See $acl_c_spfblticket
+    message = 4.7.2 SPFBL LISTED $acl_c_spfblticket
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
@@ -415,7 +415,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = 5.7.1 SPFBL you are permanently blocked on this server. See $acl_c_spfblticket
+    message = 5.7.1 SPFBL BLOCKED $acl_c_spfblticket
     log_message = SPFBL check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
@@ -471,7 +471,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL | LISTED )}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
   drop
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -493,7 +493,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = 4.7.2 SPFBL you are temporarily blocked on this server. See $acl_c_spfblticket
+    message = 4.7.2 SPFBL LISTED $acl_c_spfblticket
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
@@ -502,7 +502,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   drop
-    message = 5.7.1 SPFBL you are permanently blocked on this server. See $acl_c_spfblticket
+    message = 5.7.1 SPFBL BLOCKED $acl_c_spfblticket
     log_message = SPFBL check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
