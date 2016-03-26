@@ -68,7 +68,7 @@ while ( my $line = <STDIN> ) {
     # parse the result
     if ( $result =~ /^LISTED / ) {
         STDOUT->print(
-            "action=451 4.7.2 SPFBL you are temporarily blocked on this server. See $result\n\n"
+            "action=451 4.7.2 SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^LISTED/ ) {
@@ -83,7 +83,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^BLOCKED / ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL you are permanently blocked in this server. See $result\n\n"
+            "action=554 5.7.1 SPFBL $result\n\n"
         );
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
