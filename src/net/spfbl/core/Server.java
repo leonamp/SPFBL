@@ -68,6 +68,7 @@ import javax.crypto.SecretKey;
 import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
+import net.spfbl.core.Client.Permission;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.dnsbl.ServerDNSBL;
 import net.spfbl.spf.SPF.Binomial;
@@ -340,10 +341,12 @@ public abstract class Server extends Thread {
             if (message != null) {
                 message = message.replace("\r", "\\r");
                 message = message.replace("\n", "\\n");
+                message = message.replace("\t", "\\t");
             }
             if (result != null) {
                 result = result.replace("\r", "\\r");
                 result = result.replace("\n", "\\n");
+                result = result.replace("\t", "\\t");
             }
             Date date = new Date(time);
             String text = FORMAT_DATE_LOG.format(date)
@@ -1044,10 +1047,8 @@ public abstract class Server extends Thread {
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             if (Domain.backgroundRefresh()) {
                 return true;
-            } else if (Subnet.backgroundRefresh()) {
-                return true;
             } else {
-                return false;
+                return Subnet.backgroundRefresh();
             }
         } else {
             return false;
@@ -1234,20 +1235,164 @@ public abstract class Server extends Thread {
                     }
                     builder.append("STORE\n");
                     result = builder.toString();
-                } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (Subnet.isValidCIDR(token)) {
-                            String cidr = token;
-                            if (Block.drop(cidr)) {
-                                result += "DROPED " + cidr + "\n";
-                                result += splitCIDR(cidr);
+                } else if (token.equals("FIREWALL") && !tokenizer.hasMoreTokens()) {
+                    if (Core.hasInterface()) {
+                        HashMap<Object,TreeSet<Client>> clientMap;
+                        StringBuilder builder = new StringBuilder();
+                        builder.append("#!/bin/bash\n\n");
+                        builder.append("# Flush all rules.\n");
+                        builder.append("iptables -F\n\n");
+                        builder.append("### SPFBL ADMIN\n\n");
+                        clientMap = Client.getMap(Permission.ALL);
+                        for (Object key : clientMap.keySet()) {
+                            if (key instanceof User) {
+                                builder.append("# Accept user ");
+                                builder.append(key);
+                                builder.append(".\n");
+                            } else if (key.equals("NXDOMAIN")) {
+                                builder.append("# Accept not identified networks.\n");
                             } else {
-                                result = "NOT FOUND\n";
+                                builder.append("# Accept domain ");
+                                builder.append(key);
+                                builder.append(".\n");
                             }
-                            Block.store();
-                        } else {
-                            result = "ERROR: COMMAND\n";
+                            for (Client client : clientMap.get(key)) {
+                                builder.append("iptables -A INPUT -i ");
+                                builder.append(Core.getInterface());
+                                builder.append(" -s ");
+                                builder.append(client.getCIDR());
+                                builder.append(" -p tcp --dport ");
+                                builder.append(Core.getPortAdmin());
+                                builder.append(" -j ACCEPT\n");
+                            }
+                            builder.append("\n");
                         }
+                        builder.append("# Log and drop all others.\n");
+                        builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortAdmin());
+                        builder.append(" -j LOG --log-prefix \"ADMIN \"\n");
+                        builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortAdmin());
+                        builder.append(" -j DROP\n\n");
+                        if (Core.hasPortWHOIS()) {
+                            builder.append("### SPFBL WHOIS\n\n");
+                            builder.append("# Log and drop all others.\n");
+                            builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport \n");
+                            builder.append(Core.getPortWHOIS());
+                            builder.append(" -j LOG --log-prefix \"WHOIS \"\n");
+                            builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport ");
+                            builder.append(Core.getPortWHOIS());
+                            builder.append(" -j DROP\n\n");
+                        }
+                        if (Core.hasPortHTTP()) {
+                            builder.append("### SPFBL HTTP\n\n");
+                            builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport ");
+                            builder.append(Core.getPortHTTP());
+                            builder.append(" -j ACCEPT\n\n");
+                        }
+                        builder.append("### SPFBL P2P\n\n");
+                        builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p udp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j ACCEPT\n\n");
+                        builder.append("### SPFBL QUERY\n\n");
+                        clientMap = Client.getMap(Permission.SPFBL);
+                        for (Object key : clientMap.keySet()) {
+                            if (key instanceof User) {
+                                builder.append("# Accept user ");
+                                builder.append(key);
+                                builder.append(".\n");
+                            } else if (key.equals("NXDOMAIN")) {
+                                builder.append("# Accept not identified networks.\n");
+                            } else {
+                                builder.append("# Accept domain ");
+                                builder.append(key);
+                                builder.append(".\n");
+                            }
+                            for (Client client : clientMap.get(key)) {
+                                builder.append("iptables -A INPUT -i ");
+                                builder.append(Core.getInterface());
+                                builder.append(" -s ");
+                                builder.append(client.getCIDR());
+                                builder.append(" -p tcp --dport ");
+                                builder.append(Core.getPortSPFBL());
+                                builder.append(" -j ACCEPT\n");
+                            }
+                            builder.append("\n");
+                        }
+                        builder.append("# Log and drop all others.\n");
+                        builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j LOG --log-prefix \"SPFBL \"\n");
+                        builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j DROP\n\n");
+                        if (Core.hasPortDNSBL()) {
+                            builder.append("### DNSBL\n\n");
+                            clientMap = Client.getMap(Permission.NONE);
+                            for (Object key : clientMap.keySet()) {
+                                if (key instanceof User) {
+                                    builder.append("# Drop user ");
+                                    builder.append(key);
+                                    builder.append(".\n");
+                                } else if (key.equals("NXDOMAIN")) {
+                                    builder.append("# Drop not identified networks.\n");
+                                } else {
+                                    builder.append("# Drop domain ");
+                                    builder.append(key);
+                                    builder.append(".\n");
+                                }
+                                for (Client client : clientMap.get(key)) {
+                                    builder.append("iptables -A INPUT -i ");
+                                    builder.append(Core.getInterface());
+                                    builder.append(" -s ");
+                                    builder.append(client.getCIDR());
+                                    builder.append(" -p udp --dport ");
+                                    builder.append(Core.getPortDNSBL());
+                                    builder.append(" -j DROP\n");
+                                }
+                                builder.append("\n");
+                            }
+                            builder.append("# Accept all others.\n");
+                            builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p udp --dport ");
+                            builder.append(Core.getPortDNSBL());
+                            builder.append(" -j ACCEPT\n\n");
+                        }
+                        result = builder.toString();
+                    } else {
+                        result = "INTERFACE NOT DEFINED\n";
+                    }
+                } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (Subnet.isValidCIDR(token)) {
+                        String cidr = token;
+                        if (Block.drop(cidr)) {
+                            result += "DROPED " + cidr + "\n";
+                            result += splitCIDR(cidr);
+                        } else {
+                            result = "NOT FOUND\n";
+                        }
+                        Block.store();
+                    } else {
+                        result = "ERROR: COMMAND\n";
+                    }
                 } else if (token.equals("LOG") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("LEVEL") && tokenizer.countTokens() == 1) {
@@ -1525,10 +1670,13 @@ public abstract class Server extends Thread {
                         Ignore.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
+                        StringBuilder builder = new StringBuilder();
                         TreeSet<String> ignoreSet = Ignore.getAll();
                         for (String ignore : ignoreSet) {
-                            result += ignore + "\n";
+                            builder.append(ignore);
+                            builder.append('\n');
                         }
+                        result = builder.toString();
                         if (result.length() == 0) {
                             result = "EMPTY\n";
                         }
@@ -1606,6 +1754,19 @@ public abstract class Server extends Thread {
                             }
                         }
                         Block.store();
+                    } else if (token.equals("OVERLAP") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Subnet.isValidCIDR(token)) {
+                            String cidr = token;
+                            if (Block.overlap(cidr)) {
+                                result = "ADDED\n";
+                            } else {
+                                result = "ALREADY EXISTS\n";
+                            }
+                            Block.store();
+                        } else {
+                            result = "ERROR: COMMAND\n";
+                        }
                     } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (Subnet.isValidCIDR(token)) {
@@ -1624,9 +1785,12 @@ public abstract class Server extends Thread {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
                             // de bloqueios de remetentes.
+                            StringBuilder builder = new StringBuilder();
                             for (String sender : Block.get()) {
-                                result += sender + "\n";
+                                builder.append(sender);
+                                builder.append('\n');
                             }
+                            result = builder.toString();
                             if (result.length() == 0) {
                                 result = "EMPTY\n";
                             }
@@ -1635,9 +1799,12 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String sender : Block.getAll()) {
-                                    result += sender + "\n";
+                                    builder.append(sender);
+                                    builder.append('\n');
                                 }
+                                result = builder.toString();
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
@@ -1717,9 +1884,12 @@ public abstract class Server extends Thread {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
                             // de liberação de remetentes.
+                            StringBuilder builder = new StringBuilder();
                             for (String sender : White.get()) {
-                                result += sender + "\n";
+                                builder.append(sender);
+                                builder.append('\n');
                             }
+                            result = builder.toString();
                             if (result.length() == 0) {
                                 result = "EMPTY\n";
                             }
@@ -1728,9 +1898,12 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os liberação de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String sender : White.getAll()) {
-                                    result += sender + "\n";
+                                    builder.append(sender);
+                                    builder.append('\n');
                                 }
+                                result = builder.toString();
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
@@ -1821,9 +1994,12 @@ public abstract class Server extends Thread {
                             if (token.equals("ALL")) {
                                 // Mecanismo de visualização de 
                                 // todos os liberação de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String sender : Trap.getAll()) {
-                                    result += sender + "\n";
+                                    builder.append(sender);
+                                    builder.append('\n');
                                 }
+                                result = builder.toString();
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
@@ -2003,16 +2179,25 @@ public abstract class Server extends Thread {
                             }
                         }
                     } else if (token.equals("SET") && tokenizer.hasMoreTokens()) {
-                        String cidr = tokenizer.nextToken();
-                        if (tokenizer.hasMoreTokens()) {
-                            String domain = tokenizer.nextToken();
-                            if (tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Subnet.isValidCIDR(token) && tokenizer.hasMoreTokens()) {
+                            String cidr = Subnet.normalizeCIDR(token);
+                            token = tokenizer.nextToken();
+                            if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
+                                Client client = Client.getByCIDR(cidr);
+                                if (client == null) {
+                                    result += "NOT FOUND\n";
+                                } else {
+                                    String limit = tokenizer.nextToken();
+                                    client.setLimit(limit);
+                                    result += "UPDATED " + client + "\n";
+                                }
+                            } else if (Domain.isHostname(token) && tokenizer.hasMoreTokens()) {
+                                String domain = Domain.extractDomain(token, false);
                                 String permission = tokenizer.nextToken();
                                 String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
                                 if (tokenizer.hasMoreTokens()) {
                                     result = "ERROR: COMMAND\n";
-                                } else if (!Domain.isHostname(domain)) {
-                                    result = "ERROR: INVALID DOMAIN\n";
                                 } else if (email != null && !Domain.isEmail(email)) {
                                     result = "ERROR: INVALID EMAIL\n";
                                 } else {
@@ -2184,15 +2369,15 @@ public abstract class Server extends Thread {
                         } else {
                             result = "HELO NOT SENT local hostname is invalid\n";
                         }
-                    } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
-                        String address = tokenizer.nextToken();
-                        Peer peer = Peer.get(address);
-                        if (peer == null) {
-                            result = "NOT FOUND " + address + "\n";
-                        } else {
-                            peer.sendAll();
-                            result = "SENT TO " + address + "\n";
-                        }
+//                    } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
+//                        String address = tokenizer.nextToken();
+//                        Peer peer = Peer.get(address);
+//                        if (peer == null) {
+//                            result = "NOT FOUND " + address + "\n";
+//                        } else {
+//                            peer.sendAll();
+//                            result = "SENT TO " + address + "\n";
+//                        }
                     } else if (token.equals("RETENTION") && tokenizer.hasMoreElements()) {
                         token = tokenizer.nextToken();
                         if (token.equals("SHOW") && tokenizer.countTokens() == 1) {

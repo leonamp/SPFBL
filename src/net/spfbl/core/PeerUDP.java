@@ -26,6 +26,7 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 
 /**
@@ -227,7 +228,6 @@ public final class PeerUDP extends Server {
                         String reputation = token.substring(index);
                         StringTokenizer tokenizer = new StringTokenizer(reputation, " ");
                         if (tokenizer.countTokens() == 3) {
-                            address = ipAddress.getHostAddress();
                             String key = tokenizer.nextToken();
                             String ham = tokenizer.nextToken();
                             String spam = tokenizer.nextToken();
@@ -240,6 +240,7 @@ public final class PeerUDP extends Server {
                                 peer.addNotification();
                                 result = peer.setReputation(key, ham, spam);
                             }
+                            SPF.createDistribution(key);
                         } else {
                             address = ipAddress.getHostAddress();
                             result = "INVALID";

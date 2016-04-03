@@ -162,7 +162,6 @@ public class Defer implements Serializable, Comparable<Defer> {
             return false;
         } else {
             id = id.trim().toLowerCase();
-            long now = System.currentTimeMillis();
             Defer defer = getExact(id);
             if (defer == null) {
                 defer = add(id);
@@ -170,13 +169,27 @@ public class Defer implements Serializable, Comparable<Defer> {
                 return true;
             } else if (defer.release) {
                 return false;
-            } else if (defer.start < (now - minutes * 60 * 1000)) {
+            } else if (defer.expired(minutes)) {
                 end(id);
                 return false;
             } else {
                 defer.addCount();
                 return true;
             }
+        }
+    }
+    
+    public boolean expired(int minutes) {
+        long now = System.currentTimeMillis();
+        return start < (now - minutes * 60 * 1000);
+    }
+    
+    public static boolean expired(String id, int minutes) {
+        Defer defer = getExact(id);
+        if (defer == null) {
+            return false;
+        } else {
+            return defer.expired(minutes);
         }
     }
     

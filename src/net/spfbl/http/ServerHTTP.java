@@ -36,12 +36,21 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Properties;
+import java.util.StringTokenizer;
 import java.util.TreeSet;
+import javax.mail.Message;
+import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.Defer;
 import net.spfbl.core.ProcessException;
+import net.spfbl.data.NoReply;
+import net.spfbl.data.Provider;
+import net.spfbl.data.White;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
@@ -57,7 +66,7 @@ import org.apache.commons.lang3.SerializationUtils;
  *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
-public final class ComplainHTTP extends Server {
+public final class ServerHTTP extends Server {
 
     private final String HOSTNAME;
     private final int PORT;
@@ -143,7 +152,7 @@ public final class ComplainHTTP extends Server {
      * @param port a porta HTTPS a ser vinculada.
      * @throws java.io.IOException se houver falha durante o bind.
      */
-    public ComplainHTTP(String hostname, int port) throws IOException {
+    public ServerHTTP(String hostname, int port) throws IOException {
         super("SERVERHTP");
         HOSTNAME = hostname;
         PORT = port;
@@ -168,6 +177,22 @@ public final class ComplainHTTP extends Server {
             return null;
         } else {
             return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/release/";
+        }
+    }
+    
+    public String getUnblockURL() {
+        if (HOSTNAME == null) {
+            return null;
+        } else {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/unblock/";
+        }
+    }
+    
+    public String getWhiteURL() {
+        if (HOSTNAME == null) {
+            return null;
+        } else {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/white/";
         }
     }
 
@@ -255,7 +280,10 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             String recipient = SPF.getRecipient(ticket);
+                            String client = SPF.getClient(ticket);
+                            client = client == null ? "" : client + ':';
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             if (parameterMap.containsKey("identifier")) {
                                 boolean valid = true;
@@ -287,7 +315,7 @@ public final class ComplainHTTP extends Server {
                                     for (String identifier : identifierSet) {
                                         if (tokenSet.contains(identifier)) {
                                             long time2 = System.currentTimeMillis();
-                                            String block = identifier + '>' + recipient;
+                                            String block = client + identifier + '>' + recipient;
                                             if (Block.addExact(block)) {
                                                 Server.logQuery(
                                                         time2, "BLOCK",
@@ -322,6 +350,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             String registry = Server.decrypt(ticket);
                             index = registry.indexOf(' ');
                             Date date = Server.parseTicketDate(registry.substring(0, index));
@@ -383,6 +412,159 @@ public final class ComplainHTTP extends Server {
                             code = 500;
                             result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
                         }
+                    } else if (command.startsWith("/unblock/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
+                            String registry = Server.decrypt(ticket);
+                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "BLOCK";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Este ticket de desbloqueio está vencido."
+                                        );
+                            } else {
+                                boolean valid = true;
+                                if (Core.hasRecaptchaKeys()) {
+                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+                                            && parameterMap.containsKey("recaptcha_response_field")
+                                            ) {
+                                        // reCAPCHA convencional.
+                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                        String remoteAddress = getRemoteAddress(exchange);
+                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                        valid = response.isValid();
+                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                        // TODO: novo reCAPCHA.
+                                        valid = false;
+                                    } else {
+                                        // reCAPCHA necessário.
+                                        valid = false;
+                                    }
+                                }
+                                if (valid) {
+                                    String client = tokenizer.nextToken();
+                                    String ip = tokenizer.nextToken();
+                                    String sender = tokenizer.nextToken();
+                                    String recipient = tokenizer.nextToken();
+                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                    client = client == null ? "" : client + ':';
+                                    String mx = Domain.extractHost(sender, true);
+                                    String origem = Provider.containsExact(mx) ? sender : mx;
+                                    String white = client + origem + ";PASS>" + recipient;
+                                    String url = Core.getWhiteURL(white, client, ip, sender, hostname, recipient);
+                                    String title = "Página de desbloqueio do SPFBL";
+                                    String message;
+                                    if (enviarDesbloqueio(url, sender, recipient)) {
+                                        Block.addExact(white);
+                                        message = "A solicitação de desbloqueio foi "
+                                                + "enviada para o destinatário '" + recipient + "'.\n"
+                                                + "Aguarde pelo desbloqueio sem enviar novas mensagens.";
+                                    } else {
+                                        message = "Não foi possível enviar a solicitação de "
+                                                + "desbloqueio para o destinatário "
+                                                + "'" + recipient + "' devido a problemas técnicos.";
+                                    }
+                                    type = "BLOCK";
+                                    code = 200;
+                                    result = getMessageHMTL(title, message);
+                                } else {
+                                    type = "BLOCK";
+                                    code = 200;
+                                    result = getUnblockHMTL(
+                                            "O desafio reCAPTCHA não foi resolvido. "
+                                            + "Tente novamente."
+                                            );
+                                }
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFSP";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
+                    } else if (command.startsWith("/white/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
+                            String registry = Server.decrypt(ticket);
+                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "WHITE";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Este ticket de desbloqueio está vencido."
+                                        );
+                            } else {
+                                boolean valid = true;
+                                if (Core.hasRecaptchaKeys()) {
+                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+                                            && parameterMap.containsKey("recaptcha_response_field")
+                                            ) {
+                                        // reCAPCHA convencional.
+                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                        String remoteAddress = getRemoteAddress(exchange);
+                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                        valid = response.isValid();
+                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                        // TODO: novo reCAPCHA.
+                                        valid = false;
+                                    } else {
+                                        // reCAPCHA necessário.
+                                        valid = false;
+                                    }
+                                }
+                                if (valid) {
+                                    String white = tokenizer.nextToken();
+                                    String client = tokenizer.nextToken();
+                                    String ip = tokenizer.nextToken();
+                                    String sender = tokenizer.nextToken();
+                                    String recipient = tokenizer.nextToken();
+                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                    client = client == null ? "" : client + ':';
+                                    String title = "Página de desbloqueio do SPFBL";
+                                    String message;
+                                    if (White.addExact(white)) {
+                                        Block.clear(client, ip, sender, hostname, "PASS", recipient);
+                                        message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
+                                    } else {
+                                        message = "O desbloqueio do remetente '" + sender + "' já havia sido evetudao.";
+                                    }
+                                    type = "WHITE";
+                                    code = 200;
+                                    result = getMessageHMTL(title, message);
+                                } else {
+                                    type = "WHITE";
+                                    code = 200;
+                                    result = getWhiteHMTL(
+                                            "O desafio reCAPTCHA não foi resolvido. "
+                                            + "Tente novamente."
+                                            );
+                                }
+                            }
+                        } catch (Exception ex) {
+                            type = "SPFSP";
+                            code = 500;
+                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                        }
                     } else {
                         type = "HTTPC";
                         code = 403;
@@ -393,6 +575,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             String recipient = SPF.getRecipient(ticket);
                             boolean whiteBlockForm = recipient != null;
                             TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
@@ -422,6 +605,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
                             if (tokenSet == null) {
                                 type = "SPFHM";
@@ -442,6 +626,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             String registry = Server.decrypt(ticket);
                             index = registry.indexOf(' ');
                             Date date = Server.parseTicketDate(registry.substring(0, index));
@@ -488,6 +673,131 @@ public final class ComplainHTTP extends Server {
                                     + ex.getMessage() == null ? "undefined error." : ex.getMessage()
                                     );
                         }
+                    } else if (command.startsWith("/unblock/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
+                            String registry = Server.decrypt(ticket);
+                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+                            String client = tokenizer.nextToken();
+                            String ip = tokenizer.nextToken();
+                            String sender = tokenizer.nextToken();
+                            String recipient = tokenizer.nextToken();
+                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                            client = client == null ? "" : client + ':';
+                            String mx = Domain.extractHost(sender, true);
+                            String origem = Provider.containsExact(mx) ? sender : mx;
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "BLOCK";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Este ticket de desbloqueio está vencido."
+                                        );
+                            } else if (sender == null || recipient == null) {
+                                type = "BLOCK";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Este ticket de desbloqueio não "
+                                        + "contém remetente e destinatário."
+                                        );
+                            } else if (White.containsExact(client + origem + ";PASS>" + recipient)) {
+                                type = "BLOCK";
+                                code = 200;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "O destinatário '" + recipient + "' "
+                                        + "já autorizou o recebimento de mensagens "
+                                        + "do remetente '" + sender + "'."
+                                        );
+                            } else if (Block.containsExact(client + origem + ";PASS>" + recipient)) {
+                                type = "BLOCK";
+                                code = 200;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "O destinatário '" + recipient + "' "
+                                        + "não decidiu se quer receber mensagens "
+                                        + "do remetente '" + sender + "'.\n"
+                                        + "Para que a reputação deste remetente "
+                                        + "não seja prejudicada neste sistema, "
+                                        + "é necessário que ele pare de tentar "
+                                        + "enviar mensagens para este "
+                                        + "destinatário até a sua decisão.\n"
+                                        + "Cada tentativa de envio por ele, "
+                                        + "conta um ponto negativo na "
+                                        + "reputação dele deste sistema."
+                                        );
+                            } else {
+                                type = "BLOCK";
+                                code = 200;
+                                result = getUnblockHMTL(
+                                            "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
+                                            + "diretamente para o destinatário '" + recipient + "',\n"
+                                            + "resolva o desafio reCAPTCHA abaixo."
+                                            );
+                            }
+                        } catch (Exception ex) {
+                            type = "BLOCK";
+                            code = 500;
+                            result = getMessageHMTL(
+                                    "Página de desbloqueio do SPFBL",
+                                    "Ocorreu um erro no processamento desta solicitação: "
+                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage()
+                                    );
+                        }
+                    } else if (command.startsWith("/white/")) {
+                        try {
+                            int index = command.indexOf('/', 1) + 1;
+                            String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
+                            String registry = Server.decrypt(ticket);
+                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+                            String white = tokenizer.nextToken();
+                            String client = tokenizer.nextToken();
+                            String ip = tokenizer.nextToken();
+                            String sender = tokenizer.nextToken();
+                            String recipient = tokenizer.nextToken();
+                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                                // Ticket vencido com mais de 5 dias.
+                                type = "WHITE";
+                                code = 500;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Este ticket de desbloqueio está vencido."
+                                        );
+                            } else if (White.containsExact(white)) {
+                                type = "WHITE";
+                                code = 200;
+                                result = getMessageHMTL(
+                                        "Página de desbloqueio do SPFBL",
+                                        "Já houve liberação deste remetente '"
+                                        + sender + "' pelo destinatário '"
+                                        + recipient + "'."
+                                        );
+                            } else {
+                                type = "WHITE";
+                                code = 200;
+                                result = getWhiteHMTL(
+                                        "Para desbloquear este remetente '"
+                                        + sender + "',\n"
+                                        + "resolva o desafio reCAPTCHA abaixo."
+                                        );
+                            }
+                        } catch (Exception ex) {
+                            type = "WHITE";
+                            code = 500;
+                            result = getMessageHMTL(
+                                    "Página de desbloqueio do SPFBL",
+                                    "Ocorreu um erro no processamento desta solicitação: "
+                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage()
+                                    );
+                        }
                     } else {
                         type = "HTTPC";
                         code = 403;
@@ -498,6 +808,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
                             if (complainSet == null) {
                                 type = "SPFSP";
@@ -518,6 +829,7 @@ public final class ComplainHTTP extends Server {
                         try {
                             int index = command.indexOf('/', 1) + 1;
                             String ticket = command.substring(index);
+                            ticket = URLDecoder.decode(ticket, "UTF-8");
                             TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
                             if (tokenSet == null) {
                                 type = "SPFHM";
@@ -564,6 +876,157 @@ public final class ComplainHTTP extends Server {
             }
         }
     }
+    
+    private static boolean enviarDesbloqueio(
+            String url,
+            String remetente,
+            String destinatario
+            ) {
+        if (
+                Core.hasSMTP()
+                && Core.hasAdminEmail()
+                && Domain.isEmail(destinatario)
+                && url != null
+                && !NoReply.contains(destinatario)
+                ) {
+            try {
+                Server.logDebug("sending unblock by e-mail.");
+                InternetAddress[] recipients = InternetAddress.parse(destinatario);
+                Properties props = System.getProperties();
+                Session session = Session.getDefaultInstance(props);
+                MimeMessage message = new MimeMessage(session);
+                message.setHeader("Date", Core.getEmailDate());
+                message.setFrom(Core.getAdminEmail());
+                message.setReplyTo(InternetAddress.parse(remetente));
+                message.addRecipients(Message.RecipientType.TO, recipients);
+                message.setSubject("Solicitação de envio SPFBL");
+                // Corpo da mensagem.
+                StringBuilder builder = new StringBuilder();
+                builder.append("<html>\n");
+                builder.append("  <head>\n");
+                builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>Solicitação de envio</title>\n");
+                builder.append("  </head>\n");
+                builder.append("  <body>\n");
+                builder.append("       O remetente '");
+                builder.append(remetente);
+                builder.append("' deseja lhe enviar mensagens\n");
+                builder.append("       porém foi bloqueado pelo sistema como fonte de SPAM.<br>\n");
+                builder.append("       Se você confia neste remetente e quer receber mensagens dele,\n");
+                builder.append("       acesse esta URL e resolva o reCAPTCHA:<br>\n");
+                builder.append("       <a href=\"");
+                builder.append(url);
+                builder.append("\">");
+                builder.append(url);
+                builder.append("</a><br>\n");
+                builder.append("  </body>\n");
+                builder.append("</html>\n");
+                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                message.saveChanges();
+                // Enviar mensagem.
+                return Core.offerMessage(message);
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    private static String getUnblockHMTL(String message) throws ProcessException {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<html>\n");
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <title>Página de desbloqueio do SPFBL</title>\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+        builder.append("  <body>\n");
+        builder.append("    <form method=\"POST\">\n");
+        builder.append("       A sua mensagem está sendo rejeitada por bloqueio manual.<br>\n");
+        builder.append("       ");
+//        builder.append("       Para liberar o recebimento da mensagem, resolva o desafio reCAPTCHA abaixo.<br>\n");
+        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken();
+            builder.append(line);
+            builder.append("<br>\n");
+        }
+        if (Core.hasRecaptchaKeys()) {
+            String recaptchaKeySite = Core.getRecaptchaKeySite();
+            String recaptchaKeySecret = Core.getRecaptchaKeySecret();
+            ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
+            builder.append(captcha.createRecaptchaHtml(null, null));
+            // novo reCAPCHA
+//            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
+//            builder.append(recaptchaKeySite);
+//            builder.append("\"></div>\n");
+        }
+        builder.append("       <input type=\"submit\" value=\"Liberar\">\n");
+//        if (Core.hasAdminEmail()) {
+//            builder.append("       Se deseja automatizar este procedimento,<br>\n");
+//            builder.append("       entre em contato com <a href=\"");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("\">");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("</a>.<br>\n");
+//        }
+        builder.append("    </form>\n");
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
+    
+    private static String getWhiteHMTL(String message) throws ProcessException {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<html>\n");
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <title>Página de desbloqueio do SPFBL</title>\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+        builder.append("  <body>\n");
+        builder.append("    <form method=\"POST\">\n");
+        builder.append("       Este remetente foi bloqueado no sistema SPFBL.<br>\n");
+        builder.append("       ");
+//        builder.append("       Para liberar o recebimento da mensagem, resolva o desafio reCAPTCHA abaixo.<br>\n");
+        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken();
+            builder.append(line);
+            builder.append("<br>\n");
+        }
+        if (Core.hasRecaptchaKeys()) {
+            String recaptchaKeySite = Core.getRecaptchaKeySite();
+            String recaptchaKeySecret = Core.getRecaptchaKeySecret();
+            ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
+            builder.append(captcha.createRecaptchaHtml(null, null));
+            // novo reCAPCHA
+//            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
+//            builder.append(recaptchaKeySite);
+//            builder.append("\"></div>\n");
+        }
+        builder.append("       <input type=\"submit\" value=\"Liberar\">\n");
+//        if (Core.hasAdminEmail()) {
+//            builder.append("       Se deseja automatizar este procedimento,<br>\n");
+//            builder.append("       entre em contato com <a href=\"");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("\">");
+//            builder.append(Core.getAdminEmail());
+//            builder.append("</a>.<br>\n");
+//        }
+        builder.append("    </form>\n");
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
 
     private static String getReleaseHMTL(String message) throws ProcessException {
         StringBuilder builder = new StringBuilder();
@@ -581,8 +1044,12 @@ public final class ComplainHTTP extends Server {
         builder.append("       O recebimento da sua mensagem está sendo atrasado por suspeita de SPAM.<br>\n");
         builder.append("       ");
 //        builder.append("       Para liberar o recebimento da mensagem, resolva o desafio reCAPTCHA abaixo.<br>\n");
-        builder.append(message);
-        builder.append("<br>\n");
+        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken();
+            builder.append(line);
+            builder.append("<br>\n");
+        }
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -619,8 +1086,12 @@ public final class ComplainHTTP extends Server {
         builder.append("  </head>\n");
         builder.append("  <body>\n");
         builder.append("    ");
-        builder.append(message);
-        builder.append("<br>\n");
+        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken();
+            builder.append(line);
+            builder.append("<br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();

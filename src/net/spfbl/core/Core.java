@@ -23,10 +23,16 @@ import it.sauronsoftware.junique.MessageHandler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Locale;
@@ -35,6 +41,7 @@ import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeSet;
 import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
@@ -45,7 +52,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.dnsbl.QueryDNSBL;
-import net.spfbl.http.ComplainHTTP;
+import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv4;
@@ -60,7 +67,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 4;
+    private static final byte RELEASE = 5;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -111,7 +118,7 @@ public class Core {
         }
     }
     
-    private static ComplainHTTP complainHTTP = null;
+    private static ServerHTTP complainHTTP = null;
     
     public static String getSpamURL() {
         if (complainHTTP == null) {
@@ -134,6 +141,97 @@ public class Core {
             } else {
                 String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
                 return url + Server.encrypt(ticket);
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getUnblockURL(
+            String client,
+            String ip,
+            String sender,
+            String hostname,
+            String result,
+            String recipient
+            ) throws ProcessException {
+        if (client == null) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (sender == null) {
+            return null;
+        } else if (result == null) {
+            return null;
+        } else if (!result.equals("PASS")) {
+            return null;
+        } else if (recipient == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getUnblockURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + client;
+                    ticket += ' ' + ip;
+                    ticket += ' ' + sender;
+                    ticket += ' ' + recipient;
+                    ticket += hostname == null ? "" : ' ' + hostname;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getWhiteURL(
+            String white,
+            String client,
+            String ip,
+            String sender,
+            String hostname,
+            String recipient
+            ) throws ProcessException {
+        if (white == null) {
+            return null;
+        } else if (client == null) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (sender == null) {
+            return null;
+        } else if (recipient == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getWhiteURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + white;
+                    ticket += ' ' + client;
+                    ticket += ' ' + ip;
+                    ticket += ' ' + sender;
+                    ticket += ' ' + recipient;
+                    ticket += hostname == null ? "" : ' ' + hostname;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
             }
         } else {
             return null;
@@ -219,6 +317,7 @@ public class Core {
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
                     Core.setHostname(properties.getProperty("hostname"));
+                    Core.setInterface(properties.getProperty("interface"));
                     Core.setAdminEmail(properties.getProperty("admin_email"));
                     Core.setIsAuthSMTP(properties.getProperty("smtp_auth"));
                     Core.setStartTLSSMTP(properties.getProperty("smtp_starttls"));
@@ -269,7 +368,48 @@ public class Core {
         return ADMIN_EMAIL;
     }
     
+    public static short getPortAdmin() {
+        return PORT_ADMIN;
+    }
+    
+    public static short getPortWHOIS() {
+        return PORT_WHOIS;
+    }
+    
+    public static boolean hasPortWHOIS() {
+        return PORT_WHOIS > 0;
+    }
+    
+    public static short getPortSPFBL() {
+        return PORT_SPFBL;
+    }
+    
+    public static short getPortDNSBL() {
+        return PORT_DNSBL;
+    }
+    
+    public static boolean hasPortDNSBL() {
+        return PORT_DNSBL > 0;
+    }
+    
+    public static short getPortHTTP() {
+        return PORT_HTTP;
+    }
+    
+    public static boolean hasPortHTTP() {
+        return PORT_HTTP > 0;
+    }
+    
+    public static boolean hasInterface() {
+        return INTERFACE != null;
+    }
+    
+    public static String getInterface() {
+        return INTERFACE;
+    }
+    
     private static String HOSTNAME = null;
+    private static String INTERFACE = null;
     private static String ADMIN_EMAIL = null;
     private static short PORT_ADMIN = 9875;
     private static short PORT_WHOIS = 0;
@@ -337,6 +477,30 @@ public class Core {
                 Server.logError("unrouteable hostname '" + hostame + "'.");
             } else {
                 Core.HOSTNAME = Domain.extractHost(hostame, false);
+            }
+        }
+    }
+    
+    private static boolean hasInterface(String netInterface) {
+        try {
+            Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+            for (NetworkInterface netint : Collections.list(nets)) {
+                if (netInterface.equals(netint.getName())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (SocketException ex) {
+            return false;
+        }
+    }
+    
+    public static synchronized void setInterface(String netInterface) {
+        if (netInterface != null && netInterface.length() > 0) {
+            if (hasInterface(netInterface)) {
+                Core.INTERFACE = netInterface;
+            } else {
+                Server.logError("network interface '" + netInterface + "' not found.");
             }
         }
     }
@@ -917,7 +1081,7 @@ public class Core {
                     queryDNSBL.start();
                 }
                 if (PORT_HTTP > 0 ) {
-                    complainHTTP = new ComplainHTTP(HOSTNAME, PORT_HTTP);
+                    complainHTTP = new ServerHTTP(HOSTNAME, PORT_HTTP);
                     complainHTTP.load();
                     complainHTTP.start();
                 }

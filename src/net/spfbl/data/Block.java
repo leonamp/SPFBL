@@ -656,9 +656,68 @@ public class Block {
             }
         }
         
-        private static synchronized boolean addExact(String token) throws ProcessException {
+//        private static synchronized boolean addExact(String token) throws ProcessException {
+//            int index = token.indexOf('=');
+//            String cidr = token.substring(index+1);            
+//            index = token.lastIndexOf(':', index);
+//            String client;
+//            if (index == -1) {
+//                client = null;
+//            } else {
+//                client = token.substring(0, index);
+//            }
+//            TreeSet<String> set = MAP.get(client);
+//            if (set == null) {
+//                set = new TreeSet<String>();
+//                MAP.put(client, set);
+//            }
+//            String key = Subnet.expandCIDR(cidr);
+//            String first = Subnet.getFirstIP(cidr);
+//            String last = Subnet.getLastIP(cidr);
+//            String floorLower = set.lower(key);
+//            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
+//            if (floorLower == null) {
+//                floorLower = null;
+//            } else if (floorLower.contains(".")) {
+//                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
+//            } else if (floorLower.contains(":")) {
+//                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
+//            } else {
+//                floorLower = null;
+//            }
+//            if (floorLast == null) {
+//                floorLast = null;
+//            } else if (floorLast.contains(".")) {
+//                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
+//            } else if (floorLast.contains(":")) {
+//                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
+//            } else {
+//                floorLast = null;
+//            }
+//            if (cidr.equals(floorLast)) {
+//                return false;
+//            } else if (Subnet.containsIP(floorLast, first)) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(floorLast, last)) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(floorLower, first)) {
+//                throw new ProcessException("INTERSECTS " + floorLower);
+//            } else if (Subnet.containsIP(floorLower, last)) {
+//                throw new ProcessException("INTERSECTS " + floorLower);
+//            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else {
+//                return set.add(key);
+//            }
+//        }
+        
+        private static synchronized boolean addExact(
+                String token, boolean overlap
+        ) throws ProcessException {
             int index = token.indexOf('=');
-            String cidr = token.substring(index+1);
+            String cidr = token.substring(index+1);            
             index = token.lastIndexOf(':', index);
             String client;
             if (index == -1) {
@@ -672,44 +731,49 @@ public class Block {
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
-            String first = Subnet.getFirstIP(cidr);
-            String last = Subnet.getLastIP(cidr);
-            String floorLower = set.lower(key);
-            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
-            if (floorLower == null) {
-                floorLower = null;
-            } else if (floorLower.contains(".")) {
-                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
-            } else if (floorLower.contains(":")) {
-                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
-            } else {
-                floorLower = null;
-            }
-            if (floorLast == null) {
-                floorLast = null;
-            } else if (floorLast.contains(".")) {
-                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
-            } else if (floorLast.contains(":")) {
-                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
-            } else {
-                floorLast = null;
-            }
-            if (cidr.equals(floorLast)) {
+            if (set.contains(key)) {
                 return false;
-            } else if (Subnet.containsIP(floorLast, first)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLast, last)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLower, first)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(floorLower, last)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
             } else {
-                return set.add(key);
+                String firstCIDR = Subnet.getFirstIP(cidr);
+                String lastCIDR = Subnet.getLastIP(cidr);
+                String firstExpanded = Subnet.expandIP(firstCIDR) + "/00";
+                String lastExpanded = Subnet.expandIP(lastCIDR) + "/99";
+                String floorExpanded = set.floor(firstExpanded);
+                String floor = Subnet.normalizeCIDR(floorExpanded);
+                TreeSet<String> intersectsSet = new TreeSet<String>();
+                intersectsSet.addAll(set.subSet(firstExpanded, lastExpanded));
+                if (Subnet.containsIP(floor, firstCIDR)) {
+                    intersectsSet.add(floorExpanded);
+                }
+                TreeSet<String> overlapSet = new TreeSet<String>();
+                StringBuilder errorBuilder = new StringBuilder();
+                for (String elementExpanded : intersectsSet) {
+                    String element = Subnet.normalizeCIDR(elementExpanded);
+                    String elementFirst = Subnet.getFirstIP(element);
+                    String elementLast = Subnet.getLastIP(element);
+                    if (!Subnet.containsIP(cidr, elementFirst)) {
+                        errorBuilder.append("INTERSECTS ");
+                        errorBuilder.append(element);
+                        errorBuilder.append('\n');
+                    } else if (!Subnet.containsIP(cidr, elementLast)) {
+                        errorBuilder.append("INTERSECTS ");
+                        errorBuilder.append(element);
+                        errorBuilder.append('\n');
+                    } else if (overlap) {
+                        overlapSet.add(elementExpanded);
+                    } else {
+                        errorBuilder.append("CONTAINS ");
+                        errorBuilder.append(element);
+                        errorBuilder.append('\n');
+                    }
+                }
+                String error = errorBuilder.toString();
+                if (error.length() == 0) {
+                    set.removeAll(overlapSet);
+                    return set.add(key);
+                } else {
+                    throw new ProcessException(error);
+                }
             }
         }
         
@@ -841,7 +905,7 @@ public class Block {
                 return false;
             }
         } else if (token.contains("CIDR=")) {
-            if (CIDR.addExact(token)) {
+            if (CIDR.addExact(token, false)) {
                 Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
@@ -959,6 +1023,14 @@ public class Block {
     private static String normalizeTokenBlock(String token) throws ProcessException {
         return SPF.normalizeToken(token, true, true, true, true, false);
     }
+    
+    public static boolean tryAdd(String token) {
+        try {
+            return add(token) != null;
+        } catch (ProcessException ex) {
+            return false;
+        }
+    }
 
     public static String add(String token) throws ProcessException {
         if ((token = normalizeTokenBlock(token)) == null) {
@@ -967,6 +1039,16 @@ public class Block {
             return token;
         } else {
             return null;
+        }
+    }
+    
+    public static boolean overlap(String cidr) throws ProcessException {
+        if ((cidr = normalizeTokenBlock(cidr)) == null) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else if (!cidr.startsWith("CIDR=")) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else {
+            return CIDR.addExact(cidr, true);
         }
     }
 
@@ -1144,14 +1226,16 @@ public class Block {
             regexSet.add(senderDomain);
         } else if (Subnet.isValidIP(token)) {
             token = Subnet.normalizeIP(token);
+            String cidr;
+            String dnsbl;
             if (SET.contains(token)) {
                 return token;
             } else if (client != null && SET.contains(client + ':' + token)) {
                 return token;
-            } else if ((token = CIDR.get(client, token)) != null) {
-                return token;
-            } else if ((token = DNSBL.get(client, token)) != null) {
-                return token;
+            } else if ((cidr = CIDR.get(client, token)) != null) {
+                return cidr;
+            } else if ((dnsbl = DNSBL.get(client, token)) != null) {
+                return dnsbl;
             }
             Reverse reverse = Reverse.get(token);
             if (reverse != null) {
@@ -1203,9 +1287,14 @@ public class Block {
                 qualifier, recipient) != null;
     }
 
-    public static void clear(String client,
-            String ip, String sender, String helo,
-            String qualifier, String recipient) {
+    public static void clear(
+            String client,
+            String ip,
+            String sender,
+            String helo,
+            String qualifier,
+            String recipient
+            ) {
         if (qualifier.equals("PASS")) {
             String block;
             while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
@@ -1452,8 +1541,8 @@ public class Block {
     public static boolean containsIP(String ip) {
         if ((ip = Subnet.normalizeIP(ip)) == null) {
             return false;
-        } else if (SET.contains(ip)) {
-            return true;
+//        } else if (SET.contains(ip)) {
+//            return true;
         } else {
             return CIDR.get(null, ip) != null;
         }
@@ -1475,6 +1564,39 @@ public class Block {
             } catch (Exception ex2) {
                 return 0;
             }
+        }
+    }
+    
+    public static boolean containsHost(String host) {
+        return containsHost(null, host);
+    }
+    
+    public static boolean containsHostIP(String host, String ip) {
+        if (containsIP(ip)) {
+            return true;
+        } else if (containsHost(null, host)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean containsHost(String client, String host) {
+        host = Domain.extractHost(host, true);
+        if (host == null) {
+            return false;
+        } else {
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                if (SET.contains(token)) {
+                    return true;
+                } else if (client != null && SET.contains(client + ':' + token)) {
+                    return true;
+                }
+            } while (host.contains("."));
+            return false;
         }
     }
 

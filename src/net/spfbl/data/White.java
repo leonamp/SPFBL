@@ -1124,8 +1124,13 @@ public class White {
         return whiteSet;
     }
     
-    
     public static boolean contains(String client,
+            String ip, String sender, String helo,
+            String qualifier, String recipient) {
+        return find(client, ip, sender, helo, qualifier, recipient) != null;
+    }
+    
+    public static String find(String client,
             String ip, String sender, String helo,
             String qualifier, String recipient) {
         TreeSet<String> whoisSet = new TreeSet<String>();
@@ -1147,89 +1152,94 @@ public class White {
             int index2 = sender.lastIndexOf('@');
             String part = sender.substring(0, index1 + 1);
             String senderDomain = sender.substring(index2);
-            if (recipient != null && SET.contains(sender + ';' + qualifier + '>' + recipient)) {
-                return true;
-            } else if (recipientDomain != null && SET.contains(sender + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
-            } else if (SET.contains(sender + ';' + qualifier)) {
-                return true;
+            String found;
+            if (senderDomain.equals("@spfbl.net") && qualifier.equals("PASS")) {
+                return "@spfbl.net;PASS";
+            } else if (sender.equals(Core.getAdminEmail()) && qualifier.equals("PASS")) {
+                return sender + ";PASS";
             } else if (recipient != null && SET.contains(sender + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return sender + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(sender + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return sender + ';' + qualifier + '>' + recipientDomain;
+            } else if (SET.contains(sender + ';' + qualifier)) {
+                return sender + ';' + qualifier;
+            } else if (recipient != null && SET.contains(sender + ';' + qualifier + '>' + recipient)) {
+                return sender + ';' + qualifier + '>' + recipient;
+            } else if (recipientDomain != null && SET.contains(sender + ';' + qualifier + '>' + recipientDomain)) {
+                return sender + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(client + ':' + sender + ';' + qualifier)) {
-                return true;
+                return client + ':' + sender + ';' + qualifier;
             } else if (recipient != null && SET.contains(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return client + ':' + sender + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return client + ':' + sender + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(part + ';' + qualifier)) {
-                return true;
+                return part + ';' + qualifier;
             } else if (recipient != null && SET.contains(part + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return part + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(part + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return part + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(client + ':' + part + ';' + qualifier)) {
-                return true;
+                return client + ':' + part + ';' + qualifier;
             } else if (recipient != null && SET.contains(client + ':' + part + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return client + ':' + part + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return client + ':' + part + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(senderDomain + ';' + qualifier)) {
-                return true;
+                return senderDomain + ';' + qualifier;
             } else if (recipient != null && SET.contains(senderDomain + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return senderDomain + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return senderDomain + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(client + ':' + senderDomain + ';' + qualifier)) {
-                return true;
+                return client + ':' + senderDomain + ';' + qualifier;
             } else if (recipient != null && SET.contains(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return client + ':' + senderDomain + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
-            } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
-                return true;
+                return client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain;
+            } else if ((found = findHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) != null) {
+                return found;
             } else if (recipient != null && SET.contains("@;" + qualifier +  ">" + recipient)) {
-                return true;
+                return "@;" + qualifier +  ">" + recipient;
             } else if (recipientDomain != null && SET.contains("@;" + qualifier +  ">" + recipientDomain)) {
-                return true;
+                return "@;" + qualifier +  ">" + recipientDomain;
             } else if (recipient != null && SET.contains(client + ":@;" + qualifier +  ">" + recipient)) {
-                return true;
+                return client + ":@;" + qualifier +  ">" + recipient;
             } else if (recipientDomain != null && SET.contains(client + ":@;" + qualifier +  ">" + recipientDomain)) {
-                return true;
+                return client + ":@;" + qualifier +  ">" + recipientDomain;
             } else {
                 int index3 = senderDomain.length();
                 while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
                     String subdomain = senderDomain.substring(0, index3 + 1);
                     if (SET.contains(subdomain + ';' + qualifier)) {
-                        return true;
+                        return subdomain + ';' + qualifier;
                     } else if (recipient != null && SET.contains(subdomain + ';' + qualifier + '>' + recipient)) {
-                        return true;
+                        return subdomain + ';' + qualifier + '>' + recipient;
                     } else if (recipientDomain != null && SET.contains(subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
+                        return subdomain + ';' + qualifier + '>' + recipientDomain;
                     } else if (SET.contains(client + ':' + subdomain + ';' + qualifier)) {
-                        return true;
+                        return client + ':' + subdomain + ';' + qualifier;
                     } else if (recipient != null && SET.contains(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
-                        return true;
+                        return client + ':' + subdomain + ';' + qualifier + '>' + recipient;
                     } else if (recipientDomain != null && SET.contains(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
+                        return client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain;
                     }
                 }
                 int index4 = sender.length();
                 while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
                     String subsender = sender.substring(0, index4 + 1);
                     if (SET.contains(subsender + ';' + qualifier)) {
-                        return true;
+                        return subsender + ';' + qualifier;
                     } else if (recipient != null && SET.contains(subsender + ';' + qualifier + '>' + recipient)) {
-                        return true;
+                        return subsender + ';' + qualifier + '>' + recipient;
                     } else if (recipientDomain != null && SET.contains(subsender + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
+                        return subsender + ';' + qualifier + '>' + recipientDomain;
                     } else if (SET.contains(client + ':' + subsender + ';' + qualifier)) {
-                        return true;
+                        return client + ':' + subsender + ';' + qualifier;
                     } else if (recipient != null && SET.contains(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
-                        return true;
+                        return client + ':' + subsender + ';' + qualifier + '>' + recipient;
                     } else if (recipientDomain != null && SET.contains(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
-                        return true;
+                        return client + ':' + subsender + ';' + qualifier + '>' + recipientDomain;
                     }
                 }
             }
@@ -1240,8 +1250,9 @@ public class White {
         }
         // Verifica o HELO.
         if ((helo = Domain.extractHost(helo, true)) != null) {
-            if (containsHost(client, helo, qualifier, recipient, recipientDomain)) {
-                return true;
+            String found;
+            if ((found = findHost(client, helo, qualifier, recipient, recipientDomain)) != null) {
+                return found;
             }
             if (helo.endsWith(".br") && SPF.matchHELO(ip, helo)) {
                 whoisSet.add(helo);
@@ -1251,36 +1262,45 @@ public class White {
         // Verifica o IP.
         if (ip != null) {
             ip = Subnet.normalizeIP(ip);
+            String cidr;
             if (SET.contains(ip + ';' + qualifier)) {
-                return true;
+                return ip + ';' + qualifier;
             } else if (recipient != null && SET.contains(ip + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return ip + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(ip + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return ip + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(client + ':' + ip + ';' + qualifier)) {
-                return true;
+                return client + ':' + ip + ';' + qualifier;
             } else if (recipient != null && SET.contains(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return client + ':' + ip + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
-            } else if (CIDR.get(client, ip) != null) {
-                return true;
+                return client + ':' + ip + ';' + qualifier + '>' + recipientDomain;
+            } else if ((cidr = CIDR.get(client, ip)) != null) {
+                return cidr;
             }
             whoisSet.add(ip);
             regexSet.add(ip);
         }
         // Verifica um critério do REGEX.
-        if (REGEX.get(client, regexSet) != null) {
-            return true;
+        String regex;
+        if ((regex = REGEX.get(client, regexSet)) != null) {
+            return regex;
         }
         // Verifica critérios do WHOIS.
-        if (WHOIS.get(client, whoisSet) != null) {
-            return true;
+        String whois;
+        if ((whois = WHOIS.get(client, whoisSet)) != null) {
+            return whois;
         }
-        return false;
+        return null;
+    }
+    
+    private static boolean containsHost(String client,
+            String host, String qualifier,
+            String recipient, String recipientDomain) {
+        return findHost(client, host, qualifier, recipient, recipientDomain) != null;
     }
 
-    private static boolean containsHost(String client,
+    private static String findHost(String client,
             String host, String qualifier,
             String recipient, String recipientDomain) {
         do {
@@ -1288,20 +1308,20 @@ public class White {
             host = host.substring(index);
             String token = '.' + host;
             if (SET.contains(token + ';' + qualifier)) {
-                return true;
+                return token + ';' + qualifier;
             } else if (recipient != null && SET.contains(token + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return token + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(token + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return token + ';' + qualifier + '>' + recipientDomain;
             } else if (SET.contains(client + ':' + token + ';' + qualifier)) {
-                return true;
+                return client + ':' + token + ';' + qualifier;
             } else if (recipient != null && SET.contains(client + ':' + token + ';' + qualifier + '>' + recipient)) {
-                return true;
+                return client + ':' + token + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
-                return true;
+                return client + ':' + token + ';' + qualifier + '>' + recipientDomain;
             }
         } while (host.contains("."));
-        return false;
+        return null;
     }
     
     private static int parseIntWHOIS(String value) {

@@ -337,6 +337,11 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static void main(String[] args) {
+        System.out.println(isEmail(""));
+        System.out.println(isEmail(""));
+    }
+    
     /**
      * Verifica se o endereço é um e-mail válido.
      * @param address o endereço a ser verificado.
@@ -1124,7 +1129,9 @@ public class Domain implements Serializable, Comparable<Domain> {
                 // Atualizando campos do registro.
                 return domainMax.refresh();
             } catch (ProcessException ex) {
-                if (ex.getErrorMessage().equals("WAITING")) {
+                if (ex.isErrorMessage("WAITING")) {
+                    domainMax.drop();
+                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     domainMax.drop();
                 } else {
                     Server.logError(ex);

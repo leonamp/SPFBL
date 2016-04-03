@@ -141,9 +141,15 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String normalizeCIDR(String cidr) {
-        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        if (cidr == null) {
+            return null;
+        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
         } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.normalizeCIDRv6(cidr);
+        } else if (cidr.contains(".")) {
+            return SubnetIPv4.normalizeCIDRv4(cidr);
+        } else if (cidr.contains(":")) {
             return SubnetIPv6.normalizeCIDRv6(cidr);
         } else {
             return cidr;

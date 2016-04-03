@@ -249,28 +249,26 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
                                 // Mecanismo de visualização de bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String sender : Block.getAll(client)) {
-                                    if (result == null) {
-                                        result = sender + "\n";
-                                    } else {
-                                        result += sender + "\n";
-                                    }
+                                    builder.append(sender);
+                                    builder.append('\n');
                                 }
-                                if (result == null) {
+                                result = builder.toString();
+                                if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (line.equals("BLOCK SHOW")) {
                                 query = line.substring(6).trim();
                                 type = "BLOCK";
                                 // Mecanismo de visualização de bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String sender : Block.get(client)) {
-                                    if (result == null) {
-                                        result = sender + "\n";
-                                    } else {
-                                        result += sender + "\n";
-                                    }
+                                    builder.append(sender);
+                                    builder.append('\n');
                                 }
-                                if (result == null) {
+                                result = builder.toString();
+                                if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (line.startsWith("BLOCK FIND ")) {
@@ -355,14 +353,13 @@ public final class QuerySPF extends Server {
                                 query = line.substring(5).trim();
                                 type = "STRAP";
                                 // Mecanismo de visualização de bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String recipient : Trap.get(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
+                                    builder.append(recipient);
+                                    builder.append('\n');
                                 }
-                                if (result == null) {
+                                result = builder.toString();
+                                if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (line.startsWith("WHITE ADD ")) {
@@ -421,27 +418,25 @@ public final class QuerySPF extends Server {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
                                 // Mecanismo de visualização de bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String recipient : White.getAll(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
+                                    builder.append(recipient);
+                                    builder.append('\n');
                                 }
-                                if (result == null) {
+                                result = builder.toString();
+                                if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (line.equals("WHITE SHOW")) {
                                 query = line.substring(6).trim();
                                 type = "WHITE";
                                 // Mecanismo de visualização de bloqueios de remetentes.
+                                StringBuilder builder = new StringBuilder();
                                 for (String recipient : White.get(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
+                                    builder.append(recipient);
+                                    builder.append('\n');
                                 }
+                                result = builder.toString();
                                 if (result == null) {
                                     result = "EMPTY\n";
                                 }

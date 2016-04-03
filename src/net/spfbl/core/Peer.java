@@ -544,22 +544,22 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return map;
     }
     
-    public void sendAll() {
-        if (Core.hasPeerConnection()) {
-            TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
-            for (String token : distributionSet.keySet()) {
-                Distribution distribution = distributionSet.get(token);
-                if (distribution.isBlocked(token)) {
-                    send(token);
-                }
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException ex) {
-                    // Interrompido.
-                }
-            }
-        }
-    }
+//    public void sendAll() {
+//        if (Core.hasPeerConnection()) {
+//            TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
+//            for (String token : distributionSet.keySet()) {
+//                Distribution distribution = distributionSet.get(token);
+//                if (distribution.isBlocked(token)) {
+//                    send(token);
+//                }
+//                try {
+//                    Thread.sleep(100);
+//                } catch (InterruptedException ex) {
+//                    // Interrompido.
+//                }
+//            }
+//        }
+//    }
     
     public void send(String token) {
         if (Core.hasPeerConnection()) {
@@ -609,21 +609,23 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static void sendBlockToAll(String token) {
-        long time = System.currentTimeMillis();
-        if (Core.hasPeerConnection()) {
-            String origin = null;
-            String result = "SENT";
-            String command = "BLOCK " + token;
-            try {
-                for (Peer peer : getSendAllSet()) {
-                    String address = peer.getAddress();
-                    int port = peer.getPort();
-                    Core.sendCommandToPeer(command, address, port);
+        if (isValid(token)) {
+            long time = System.currentTimeMillis();
+            if (Core.hasPeerConnection()) {
+                String origin = null;
+                String result = "SENT";
+                String command = "BLOCK " + token;
+                try {
+                    for (Peer peer : getSendAllSet()) {
+                        String address = peer.getAddress();
+                        int port = peer.getPort();
+                        Core.sendCommandToPeer(command, address, port);
+                    }
+                } catch (Exception ex) {
+                    result = ex.getMessage();
                 }
-            } catch (Exception ex) {
-                result = ex.getMessage();
+                Server.logPeerSend(time, origin, command, result);
             }
-            Server.logPeerSend(time, origin, command, result);
         }
     }
     
@@ -724,22 +726,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
             return false;
         } else if (Subnet.isValidIP(token)) {
             return false;
-        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
-            return true;
-        } else if (token.contains("@") && Domain.isEmail(token)) {
-            return true;
-        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
-    private static boolean isValid2(String token) {
-        if (token == null || token.length() == 0) {
-            return false;
-        } else if (Subnet.isValidIP(token)) {
-            return true;
         } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
             return true;
         } else if (token.contains("@") && Domain.isEmail(token)) {
@@ -1058,7 +1044,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String spam
     ) {
         try {
-            if (!isValid2(key)) {
+            if (!isValid(key)) {
                 return "INVALID";
             } else if (Domain.isReserved(key)) {
                 return "RESERVED";
