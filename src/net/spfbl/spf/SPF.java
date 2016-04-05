@@ -1954,9 +1954,11 @@ public final class SPF implements Serializable {
                                 }
                             }
                             for (String key : expandTokenSet(tokenSet)) {
-                                Distribution distribution = CacheDistribution.get(key, true);
-                                distribution.addSpamInterval();
-                                distribution.getStatus(key);
+                                if (!Ignore.contains(key)) {
+                                    Distribution distribution = CacheDistribution.get(key, true);
+                                    distribution.addSpamInterval();
+                                    distribution.getStatus(key);
+                                }
                             }
                             putExact(date, tokens);
                         }
@@ -4455,13 +4457,13 @@ public final class SPF implements Serializable {
                         sinal = '>';
                     }
                     if (frequencyInt >= 3600000) {
-                        return sinal + frequencyInt / 3600000 + "h";
+                        return sinal + ((frequencyInt / 3600000) + "h");
                     } else if (frequencyInt >= 60000) {
-                        return sinal + frequencyInt / 60000 + "min";
+                        return sinal + ((frequencyInt / 60000) + "min");
                     } else if (frequencyInt >= 1000) {
-                        return sinal + frequencyInt / 1000 + "s";
+                        return sinal + ((frequencyInt / 1000) + "s");
                     } else {
-                        return sinal + frequencyInt + "ms";
+                        return sinal + (frequencyInt + "ms");
                     }
                 }
             } else {
@@ -4779,13 +4781,13 @@ public final class SPF implements Serializable {
                         sinal = '>';
                     }
                     if (frequencyInt >= 3600000) {
-                        return sinal + frequencyInt / 3600000 + "h";
+                        return sinal + ((frequencyInt / 3600000) + "h");
                     } else if (frequencyInt >= 60000) {
-                        return sinal + frequencyInt / 60000 + "min";
+                        return sinal + ((frequencyInt / 60000) + "min");
                     } else if (frequencyInt >= 1000) {
-                        return sinal + frequencyInt / 1000 + "s";
+                        return sinal + ((frequencyInt / 1000) + "s");
                     } else {
-                        return sinal + frequencyInt + "ms";
+                        return sinal + (frequencyInt + "ms");
                     }
                 }
             }
