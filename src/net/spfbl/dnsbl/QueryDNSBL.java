@@ -372,14 +372,14 @@ public final class QueryDNSBL extends Server {
                             String permission = (domain == null || Block.containsHostIP(hostame, ip)) ? "NONE" : "DNSBL";
                             client = Client.create(cidr, domain, permission, null);
                             if (client != null) {
-                                client.setLimit(10000);
+                                client.setLimit(1000);
                                 Server.logTrace("CLIENT ADDED " + client);
                             }
                         }
                     }
                     if (client == null) {
                         result = "IGNORED";
-                    } else if (client.getPermission() != Permission.DNSBL) {
+                    } else if (!client.hasPermission(Permission.DNSBL)) {
                         client.addQuery();
                         origin += ' ' + client.getDomain();
                         result = "IGNORED";
@@ -418,14 +418,6 @@ public final class QueryDNSBL extends Server {
                             } else if (reverse.length() == 0) {
                                 // O reverso é inválido.
                                 result = "NXDOMAIN";
-                            } else if (type.equals("TXT")) {
-                                String information = server.getMessage();
-                                if (information == null) {
-                                    result = "NXDOMAIN";
-                                } else {
-                                    result = information;
-                                    ttl = 1814400; // Três semanas somente para TXT.
-                                }
                             } else if (SubnetIPv4.isValidIPv4(reverse)) {
                                 // A consulta é um IPv4.
                                 String ip = SubnetIPv4.reverseToIPv4(reverse);
@@ -461,6 +453,18 @@ public final class QueryDNSBL extends Server {
                                 result = "NXDOMAIN";
                             }
                         }
+                        if (type.equals("TXT") && result.equals("127.0.0.2")) {
+                            if (server == null) {
+                                result = "NXDOMAIN";
+                            } else {
+                                String information = server.getMessage();
+                                if (information == null) {
+                                    result = "NXDOMAIN";
+                                } else {
+                                    result = information;
+                                }
+                            }
+                        }
                         // Alterando mensagem DNS para resposta.
                         header.setFlag(Flags.QR);
                         header.setFlag(Flags.AA);
@@ -476,13 +480,13 @@ public final class QueryDNSBL extends Server {
                                         name, SERIAL, refresh, retry, expire, minimum);
                                 message.addRecord(soa, Section.AUTHORITY);
                             }
-                        } else if (result.equals("127.0.0.2")) {
+                        } else if (type.equals("TXT")) {
+                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
+                            message.addRecord(txt, Section.ANSWER);
+                        } else {
                             InetAddress address = InetAddress.getByName(result);
                             ARecord a = new ARecord(name, DClass.IN, ttl, address);
                             message.addRecord(a, Section.ANSWER);
-                        } else {
-                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
-                            message.addRecord(txt, Section.ANSWER);
                         }
                         result = ttl + " " + result;
                         // Enviando resposta.
@@ -494,7 +498,7 @@ public final class QueryDNSBL extends Server {
                                 );
                         SERVER_SOCKET.send(sendPacket);
                     }
-                    query = type + ' ' + query;
+                    query = type + " " + query;
                 } catch (SocketException ex) {
                     // Houve fechamento do socket.
                     result = "CLOSED";

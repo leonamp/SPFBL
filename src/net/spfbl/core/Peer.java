@@ -957,13 +957,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     sinal = '>';
                 }
                 if (frequencyInt >= 3600000) {
-                    return sinal + frequencyInt / 3600000 + "h";
+                    return sinal + ((frequencyInt / 3600000) + "h");
                 } else if (frequencyInt >= 60000) {
-                    return sinal + frequencyInt / 60000 + "min";
+                    return sinal + ((frequencyInt / 60000) + "min");
                 } else if (frequencyInt >= 1000) {
-                    return sinal + frequencyInt / 1000 + "s";
+                    return sinal + ((frequencyInt / 1000) + "s");
                 } else {
-                    return sinal + frequencyInt + "ms";
+                    return sinal + (frequencyInt + "ms");
                 }
             }
         } else {
