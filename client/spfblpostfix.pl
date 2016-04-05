@@ -15,7 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
-# Última alteração: 21/01/2016 13:38
+# Última alteração: 5/04/2016 15:16
 
 use strict;
 use warnings;
@@ -85,6 +85,7 @@ while ( my $line = <STDIN> ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL $result\n\n"
         );
+    }
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL you are permanently blocked in this server.\n\n"

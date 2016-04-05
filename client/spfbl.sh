@@ -30,7 +30,7 @@ PORTA_ADMIN="9875"
 DUMP_PATH="/tmp"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="1.03"
+version="1.04"
 
 head()
 {
@@ -59,6 +59,32 @@ case $1 in
 		if [[ $response == "TIMEOUT" ]]; then
 			exit 2
 		elif [[ $response == "SPFBL"* ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
+	'firewall')
+		# Constroi um firewall pelo SPPFBL.
+		#
+		# Códigos de saída:
+		#
+		#    0: firwall adquirido com sucesso.
+		#    1: erro ao tentar adiquirir firewall.
+		#    2: timeout de conexão.
+
+
+		response=$(echo "FIREWALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+		if [[ $response == "" ]]; then
+			response="TIMEOUT"
+		fi
+
+		echo "$response"
+
+		if [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response == "#!/bin/bash"* ]]; then
 			exit 0
 		else
 			exit 1
