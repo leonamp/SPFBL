@@ -6,7 +6,7 @@ O serviço SPFBL é uma junção dos conceitos de SPF e DNSBL.
 
 O propósito deste serviço é melhorar o processamento SPF e reduzir a quantidade de consultas externas de um servidor de e-mail, na qual utiliza SPF e pelo menos um serviço qualquer de DNSBL.
 
-Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh".
+Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh". Atenção! O script "spfbl.sh" necessita do pacote "netcat"instalado para funcionar corretamente.
 
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
@@ -715,6 +715,7 @@ Abertos:
 ### Noticias sobre o SPFBL
 
 <a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a>
+<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 Painel EEC sobre entregabilidade com representantes da SPFBL, UOL e Return Path</a>
 
 ### Forum de discussão SPFBL
 
