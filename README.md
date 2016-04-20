@@ -714,8 +714,9 @@ Abertos:
 
 ### Noticias sobre o SPFBL
 
-<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a>
-<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 Painel EEC sobre entregabilidade com representantes da SPFBL, UOL e Return Path</a>
+<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a></br>
+
+<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 Painel EEC sobre entregabilidade com representantes da SPFBL, UOL e Return Path</a></br>
 
 ### Forum de discussão SPFBL
 
