@@ -1124,6 +1124,8 @@ public abstract class Server extends Thread {
     
     public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
     
+    public static final NumberFormat PERCENT_FORMAT = NumberFormat.getPercentInstance();
+    
     /**
      * Processa o comando e retorna o resultado.
      * @param command a expressão do comando.
@@ -1139,6 +1141,46 @@ public abstract class Server extends Thread {
                 String token = tokenizer.nextToken();
                 if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
                     return Core.getAplication() + "\n";
+                } else if (token.equals("ANALISE") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (Subnet.isValidIP(token)) {
+                        String ip = Subnet.normalizeIP(token);
+                        StringBuilder builder = new StringBuilder();
+                        builder.append(ip);
+                        builder.append(" RESULT ");
+                        Distribution distribution1 = SPF.getDistribution(ip, true);
+                        float probability1 = distribution1.getSpamProbability(ip);
+                        Status status1 = distribution1.getStatus(ip);
+                        for (String reverse : Reverse.getValidSet(ip)) {
+                            reverse = Domain.normalizeHostname(reverse, true);
+                            Distribution distribution2 = SPF.getDistribution(reverse, true);
+                            float probability2 = distribution2.getSpamProbability(reverse);
+                            Status status2 = distribution2.getStatus(reverse);
+                            if (probability2 >= probability1) {
+                                token = reverse;
+                                distribution1 = distribution2;
+                                probability1 = probability2;
+                                status1 = status2;
+                            }
+                            if (Block.containsHost(reverse)) {
+                                status1 = Status.BLOCK;
+                            }
+                        }
+                        if (Block.containsIP(ip)) {
+                            status1 = Status.BLOCK;
+                        }
+                        builder.append(token);
+                        builder.append(' ');
+                        builder.append(status1);
+                        builder.append(' ');
+                        builder.append(DECIMAL_FORMAT.format(probability1));
+                        builder.append(' ');
+                        builder.append(distribution1.getFrequencyLiteral());
+                        builder.append('\n');
+                        result = builder.toString();
+                    } else {
+                        result = "INVALID PARAMETERS\n";
+                    }
                 } else if (token.equals("DUMP") && !tokenizer.hasMoreTokens()) {
                     StringBuilder builder = new StringBuilder();
                     builder.append("BLOCK DROP ALL\n");
@@ -1690,11 +1732,11 @@ public abstract class Server extends Thread {
                             try {
                                 String blockedToken = tokenizer.nextToken();
                                 int index = blockedToken.indexOf(':');
-                                String client = null;
+                                Client client = null;
                                 if (index != -1) {
                                     String prefix = blockedToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        client = Client.getByEmail(prefix);
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
@@ -1730,11 +1772,11 @@ public abstract class Server extends Thread {
                             do {
                                 try {
                                     int index = token.indexOf(':');
-                                    String client = null;
+                                    Client client = null;
                                     if (index != -1) {
                                         String prefix = token.substring(0, index);
                                         if (Domain.isEmail(prefix)) {
-                                            client = prefix;
+                                            client = Client.getByEmail(prefix);
                                             token = token.substring(index+1);
                                         }
                                     }
@@ -1820,11 +1862,11 @@ public abstract class Server extends Thread {
                             try {
                                 String whiteToken = tokenizer.nextToken();
                                 int index = whiteToken.indexOf(':');
-                                String client = null;
+                                Client client = null;
                                 if (index != -1) {
                                     String prefix = whiteToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        client = Client.getByEmail(prefix);
                                         whiteToken = whiteToken.substring(index+1);
                                     }
                                 }
@@ -1857,11 +1899,11 @@ public abstract class Server extends Thread {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                String client = null;
+                                Client client = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        client = Client.getByEmail(prefix);
                                         token = token.substring(index+1);
                                     }
                                 }
@@ -1919,11 +1961,11 @@ public abstract class Server extends Thread {
                             try {
                                 String trapToken = tokenizer.nextToken();
                                 int index = trapToken.indexOf(':');
-                                String client = null;
+                                Client client = null;
                                 if (index != -1) {
                                     String prefix = trapToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        client = Client.getByEmail(prefix);
                                         trapToken = trapToken.substring(index+1);
                                     }
                                 }
@@ -1956,11 +1998,11 @@ public abstract class Server extends Thread {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                String client = null;
+                                Client client = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        client = Client.getByEmail(prefix);
                                         token = token.substring(index+1);
                                     }
                                 }

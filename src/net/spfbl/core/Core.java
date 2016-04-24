@@ -55,6 +55,7 @@ import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
+import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 
@@ -67,7 +68,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 7;
+    private static final byte RELEASE = 8;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -147,8 +148,23 @@ public class Core {
         }
     }
     
+    public static String getDNSBLURL(String token) throws ProcessException {
+        if (complainHTTP == null) {
+            return null;
+        } else if (token == null) {
+            return null;
+        } else {
+            String url = complainHTTP.getDNSBLURL();
+            if (url == null) {
+                return null;
+            } else {
+                return url + token;
+            }
+        }
+    }
+    
     public static String getUnblockURL(
-            String client,
+            Client client,
             String ip,
             String sender,
             String hostname,
@@ -156,6 +172,8 @@ public class Core {
             String recipient
             ) throws ProcessException {
         if (client == null) {
+            return null;
+        } else if (!client.hasEmail()) {
             return null;
         } else if (ip == null) {
             return null;
@@ -176,11 +194,44 @@ public class Core {
             } else {
                 try {
                     String ticket = Server.getNewTicketDate();
-                    ticket += ' ' + client;
+                    ticket += ' ' + client.getEmail();
                     ticket += ' ' + ip;
                     ticket += ' ' + sender;
                     ticket += ' ' + recipient;
                     ticket += hostname == null ? "" : ' ' + hostname;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getUnblockURL(
+            String client,
+            String ip
+            ) throws ProcessException {
+        if (client == null) {
+            return null;
+        } else if (!Domain.isEmail(client)) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getUnblockURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + client;
+                    ticket += ' ' + ip;
                     ticket = Server.encrypt(ticket);
                     ticket = URLEncoder.encode(ticket, "UTF-8");
                     return url + ticket;

@@ -20,12 +20,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import org.apache.commons.lang3.SerializationUtils;
@@ -37,7 +37,7 @@ import org.apache.commons.lang3.SerializationUtils;
  */
 public class Client implements Serializable, Comparable<Client> {
     
-     private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
     private final String cidr;
     private String domain;
@@ -305,6 +305,16 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public static Client getByEmail(String email) throws ProcessException {
+        if (email == null) {
+            return null;
+        } else if (!Domain.isEmail(email)) {
+            throw new ProcessException("ERROR: INVALID E-MAIL");
+        } else {
+            return MAP.get(email);
+        }
+    }
+    
     public synchronized static Client getByCIDR(String cidr) throws ProcessException {
         if (cidr == null) {
             return null;
@@ -331,6 +341,31 @@ public class Client implements Serializable, Comparable<Client> {
         } else {
             return getByIP(address.getHostAddress());
         }
+    }
+    
+    public static Client create(
+            InetAddress address,
+            String permissao
+            ) throws ProcessException {
+        Client client = get(address);
+        if (client == null) {
+            String cidr = null;
+            if (address instanceof Inet4Address) {
+                cidr = address.getHostAddress() + "/32";
+            } else if (address instanceof Inet6Address) {
+                cidr = address.getHostAddress() + "/128";
+            }
+            if (cidr != null) {
+                String ip = address.getHostAddress();
+                String hostame = Reverse.getHostname(ip);
+                String domain = Domain.extractDomain(hostame, false);
+                client = Client.create(cidr, domain, permissao, null);
+                if (client != null) {
+                    Server.logDebug("CLIENT ADDED " + client);
+                }
+            }
+        }
+        return client;
     }
     
     public static HashMap<Object,TreeSet<Client>> getMap(Permission permission) {
@@ -456,19 +491,27 @@ public class Client implements Serializable, Comparable<Client> {
     public boolean isAbusing() {
         if (frequency == null) {
             return false;
+        } else if (isDead()) {
+            return false;
         } else {
             return frequency.getMaximumInt() < limit;
         }
     }
     
+    public boolean isDead() {
+        int frequencyInt = frequency.getMaximumInt();
+        int idleTimeInt = getIdleTimeMillis();
+        return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
+    }
+    
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
-            int frequencyInt = frequency.getMaximumInt();
-            int idleTimeInt = getIdleTimeMillis();
-            if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
+            if (isDead()) {
                 return "DEAD";
             } else {
                 char sinal = '~';
+                int frequencyInt = frequency.getMaximumInt();
+                int idleTimeInt = getIdleTimeMillis();
                 if (frequencyInt < limit) {
                     frequencyInt = limit;
                     sinal = '<';

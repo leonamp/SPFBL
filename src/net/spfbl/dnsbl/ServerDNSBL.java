@@ -18,6 +18,9 @@ package net.spfbl.dnsbl;
 
 import java.io.Serializable;
 import java.net.InetAddress;
+import net.spfbl.core.Core;
+import net.spfbl.core.ProcessException;
+import net.spfbl.whois.Domain;
 
 /**
  * Servidor DNSBL que este serviço responde.
@@ -44,9 +47,22 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     public String getHostName() {
         return hostname;
     }
-
+    
     public String getMessage() {
         return message;
+    }
+
+    public String getMessage(String token) {
+        try {
+            String url = Core.getDNSBLURL(token);
+            if (url == null) {
+                return message;
+            } else {
+                return url;
+            }
+        } catch (ProcessException ex) {
+            return message;
+        }
     }
 
     @Override
@@ -61,6 +77,24 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     @Override
     public String toString() {
         return hostname;
+    }
+
+    public String extractDomain(String host) {
+        if ((host = Domain.normalizeHostname(host, true)) == null) {
+            return null;
+        } else if (host.equals(this.hostname)) {
+            return null;
+        } else if (host.endsWith(this.hostname)) {
+            int index = host.length() - this.hostname.length();
+            String result = host.substring(0, index);
+            if (Domain.isHostname(result)) {
+                return result;
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
     }
 
 }

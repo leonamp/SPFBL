@@ -157,7 +157,7 @@ public final class QuerySPF extends Server {
                     String result = null;
                     try {
                         InetAddress ipAddress = socket.getInetAddress();
-                        String client = Client.getIdentification(ipAddress);
+                        Client client = Client.create(ipAddress, "SPFBL");
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
@@ -191,7 +191,7 @@ public final class QuerySPF extends Server {
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
                                 result = SPF.processPostfixSPF(
-                                        client, ip, sender, helo, recipient
+                                        ipAddress, client, ip, sender, helo, recipient
                                         );
                             } else if (line.startsWith("BLOCK ADD ")) {
                                 query = line.substring(6).trim();
@@ -442,7 +442,7 @@ public final class QuerySPF extends Server {
                                 }
                             } else {
                                 query = line.trim();
-                                result = SPF.processSPF(client, query);
+                                result = SPF.processSPF(ipAddress, client, query);
                                 if (query.startsWith("HAM ")) {
                                     type = "SPFHM";
                                 } else if (query.startsWith("SPAM ")) {

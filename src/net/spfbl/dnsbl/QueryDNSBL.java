@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
+import net.spfbl.core.Reverse;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
@@ -357,26 +358,7 @@ public final class QueryDNSBL extends Server {
                     String type = Type.string(question.getType());
                     query = name.toString();
                     // Identificação do cliente.
-                    Client client = Client.get(ipAddress);
-                    if (client == null) {
-                        String hostame = ipAddress.getHostName();
-                        String cidr = null;
-                        if (ipAddress instanceof Inet4Address) {
-                            cidr = ipAddress.getHostAddress() + "/32";
-                        } else if (ipAddress instanceof Inet6Address) {
-                            cidr = ipAddress.getHostAddress() + "/128";
-                        }
-                        if (cidr != null) {
-                            String ip = ipAddress.getHostAddress();
-                            String domain = Domain.extractDomain(hostame, false);
-                            String permission = (domain == null || Block.containsHostIP(hostame, ip)) ? "NONE" : "DNSBL";
-                            client = Client.create(cidr, domain, permission, null);
-                            if (client != null) {
-                                client.setLimit(1000);
-                                Server.logTrace("CLIENT ADDED " + client);
-                            }
-                        }
-                    }
+                    Client client = Client.create(ipAddress, "DNSBL");
                     if (client == null) {
                         result = "IGNORED";
                     } else if (!client.hasPermission(Permission.DNSBL)) {
@@ -393,6 +375,7 @@ public final class QueryDNSBL extends Server {
                         long ttl = 3600; // Uma hora padrão.
                         String host = Domain.extractHost(query, false);
                         ServerDNSBL server = null;
+                        String clientQuery = null;
                         if (host == null) {
                             result = "NXDOMAIN";
                         } else {
@@ -420,17 +403,17 @@ public final class QueryDNSBL extends Server {
                                 result = "NXDOMAIN";
                             } else if (SubnetIPv4.isValidIPv4(reverse)) {
                                 // A consulta é um IPv4.
-                                String ip = SubnetIPv4.reverseToIPv4(reverse);
-                                if (ip.equals("127.0.0.1")) {
+                                clientQuery = SubnetIPv4.reverseToIPv4(reverse);
+                                if (clientQuery.equals("127.0.0.1")) {
                                     // Consulta de teste para negativo.
                                     result = "NXDOMAIN";
-                                } else if (ip.equals("127.0.0.2")) {
+                                } else if (clientQuery.equals("127.0.0.2")) {
                                     // Consulta de teste para positivio.
                                     result = "127.0.0.2";
-                                } else if (Block.containsIP(ip)) {
+                                } else if (Block.containsIP(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 604800; // Uma semana.
-                                } else if (SPF.isBlacklisted(ip)) {
+                                } else if (SPF.isBlacklisted(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -438,16 +421,27 @@ public final class QueryDNSBL extends Server {
                                 }
                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                 // A consulta é um IPv6.
-                                String ip = SubnetIPv6.reverseToIPv6(reverse);
-                                if (Block.containsIP(ip)) {
+                                clientQuery = SubnetIPv6.reverseToIPv6(reverse);
+                                if (Block.containsIP(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 604800; // Uma semana.
-                                } else if (SPF.isBlacklisted(ip)) {
+                                } else if (SPF.isBlacklisted(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
                                     result = "NXDOMAIN";
                                 }
+                            } else if ((clientQuery = server.extractDomain(host)) != null) {
+                                if (Block.containsHost(clientQuery)) {
+                                    result = "127.0.0.2";
+                                    ttl = 604800; // Uma semana.
+                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                    result = "127.0.0.2";
+                                    ttl = 86400; // Um dia.
+                                } else {
+                                    result = "NXDOMAIN";
+                                }
+                                clientQuery = Domain.normalizeHostname(clientQuery, false);
                             } else {
                                 // Não está listado.
                                 result = "NXDOMAIN";
@@ -457,7 +451,7 @@ public final class QueryDNSBL extends Server {
                             if (server == null) {
                                 result = "NXDOMAIN";
                             } else {
-                                String information = server.getMessage();
+                                String information = server.getMessage(clientQuery);
                                 if (information == null) {
                                     result = "NXDOMAIN";
                                 } else {

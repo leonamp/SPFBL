@@ -34,6 +34,7 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.core.Server;
+import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
@@ -133,6 +134,25 @@ public final class Reverse implements Serializable {
         } else {
             TreeSet<String> resultSet = new TreeSet<String>();
             resultSet.addAll(addressSet);
+            return resultSet;
+        }
+    }
+    
+    public static TreeSet<String> getValidSet(String ip) {
+        Reverse reverse = Reverse.get(ip);
+        return reverse.getAddressSet(ip);
+    }
+    
+    public TreeSet<String> getAddressSet(String ip) {
+        if (addressSet == null) {
+            return new TreeSet<String>();
+        } else {
+            TreeSet<String> resultSet = new TreeSet<String>();
+            for (String hostname : addressSet) {
+                if (SPF.matchHELO(ip, hostname)) {
+                    resultSet.add(hostname);
+                }
+            }
             return resultSet;
         }
     }

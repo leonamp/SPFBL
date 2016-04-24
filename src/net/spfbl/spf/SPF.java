@@ -60,6 +60,7 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
+import net.spfbl.core.Client;
 import net.spfbl.data.Block;
 import net.spfbl.core.Defer;
 import net.spfbl.data.Ignore;
@@ -2202,7 +2203,7 @@ public final class SPF implements Serializable {
          * @throws ProcessException se houver falha no processamento do ticket.
          */
         public static TreeSet<String> deleteComplain(
-                String client, String ticket) throws ProcessException {
+                String origin, String ticket) throws ProcessException {
             if (ticket == null) {
                 return null;
             } else {
@@ -2226,7 +2227,7 @@ public final class SPF implements Serializable {
                             Peer.sendToAll(key, distribution);
                         }
                     }
-                    Server.logQuery(time, "CLEAR", client, tokenSet);
+                    Server.logQuery(time, "CLEAR", origin, tokenSet);
                     return tokenSet;
                 } else {
                     // Ticket não foi denunciado.
@@ -2581,6 +2582,14 @@ public final class SPF implements Serializable {
 
     public static TreeMap<String,Distribution> getDistributionMap() {
         return CacheDistribution.getTreeMap();
+    }
+    
+    public static Distribution getDistribution(String token) {
+        return CacheDistribution.get(token, false);
+    }
+    
+    public static Distribution getDistribution(String token, boolean create) {
+        return CacheDistribution.get(token, create);
     }
     
     public static TreeMap<String,Distribution> getDistributionMapIPv4() {
@@ -3395,8 +3404,13 @@ public final class SPF implements Serializable {
     }
 
     protected static String processPostfixSPF(
-            String client, String ip, String sender, String helo,
-            String recipient) throws ProcessException {
+            InetAddress ipAddress,
+            Client client,
+            String ip,
+            String sender,
+            String helo,
+            String recipient
+            ) throws ProcessException {
         if (sender == null) {
             sender = null;
         } else if (sender.trim().length() == 0) {
@@ -3421,10 +3435,16 @@ public final class SPF implements Serializable {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 ip = Subnet.normalizeIP(ip);
                 tokenSet.add(Subnet.normalizeIP(ip));
-                if (Domain.isEmail(client)) {
+                String origin;
+                if (client == null) {
+                    origin = ipAddress.getHostAddress();
+                } else if (client.hasEmail()) {
                     // Se houver um cliente válido,
                     // Adicionar no ticket para controle.
-                    tokenSet.add(client + ':');
+                    tokenSet.add(client.getEmail() + ':');
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
+                } else {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain();
                 }
                 if (Domain.isEmail(recipient)) {
                     // Se houver um remetente válido,
@@ -3527,7 +3547,7 @@ public final class SPF implements Serializable {
                 } else if (Block.contains(client, ip, sender, hostname, result, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     String url = Core.getUnblockURL(client, ip, sender, hostname, result, recipient);
                     if (url == null) {
                         return "action=554 5.7.1 SPFBL "
@@ -3540,7 +3560,7 @@ public final class SPF implements Serializable {
                     // O domínio foi dado como inexistente inúmeras vezes.
                     // Rejeitar e denunciar o host pois há abuso de tentativas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + "sender has non-existent internet domain.\n\n";
                 } else if (spf != null && spf.isInexistent()) {
@@ -3548,7 +3568,7 @@ public final class SPF implements Serializable {
                             + "sender has non-existent internet domain.\n\n";
                 } else if (result.equals("FAIL")) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     // Retornar REJECT somente se não houver 
                     // liberação literal do remetente com FAIL.
                     return "action=554 5.7.1 SPFBL "
@@ -3556,21 +3576,21 @@ public final class SPF implements Serializable {
                             + "send mail from " + ip + ".\n\n";
                 } else if (sender != null && !Domain.isEmail(sender)) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + sender + " is not a valid e-mail address.\n\n";
                 } else if (sender != null && Domain.isReserved(sender)) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + sender + " has a reserved domain.\n\n";
                 } else if (sender == null && !CacheHELO.match(ip, hostname)) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
                 } else if (hostname == null && Core.isReverseRequired()) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     if (Block.tryAdd(ip)) {
                         Server.logDebug("new BLOCK '" + ip + "' added by 'ReverseRequired'.");
                     }
@@ -3579,7 +3599,7 @@ public final class SPF implements Serializable {
                 } else if (Trap.contains(client, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=DISCARD SPFBL discarded by spamtrap.\n\n";
                 } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                     // A origem atingiu o limite de atraso 
@@ -3588,18 +3608,18 @@ public final class SPF implements Serializable {
                     Defer.end(fluxo);
                     Server.logDefer(time, fluxo, "DEFER FLOOD");
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + "you are temporarily blocked in this server.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + "you are temporarily blocked in this server.\n\n";
                 } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
+                    CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet)
                         && Defer.defer(fluxo, Core.getDeferTimeBLACK())
@@ -3676,17 +3696,25 @@ public final class SPF implements Serializable {
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
      */
-    protected static String processSPF(String client, String query) {
+    protected static String processSPF(InetAddress ipAddress, Client client, String query) {
         try {
             String result = "";
             if (query.length() == 0) {
                 return "ERROR: QUERY\n";
             } else {
+                String origin;
+                if (client == null) {
+                    origin = ipAddress.getHostAddress();
+                } else if (client.hasEmail()) {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
+                } else {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain();
+                }
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.addComplain(client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.addComplain(origin, ticket);
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
                     } else {
@@ -3695,7 +3723,7 @@ public final class SPF implements Serializable {
                     }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(origin, ticket);
                     if (tokenSet == null) {
                         result = "ALREADY REMOVED\n";
                     } else {
@@ -3818,10 +3846,10 @@ public final class SPF implements Serializable {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
                             tokenSet.add(ip);
-                            if (Domain.isEmail(client)) {
+                            if (client != null && client.hasEmail()) {
                                 // Se houver um cliente válido,
                                 // Adicionar no ticket para controle.
-                                tokenSet.add(client + ':');
+                                tokenSet.add(client.getEmail() + ':');
                             }
                             if (Domain.isEmail(recipient)) {
                                 // Se houver um remetente válido,
@@ -3936,7 +3964,7 @@ public final class SPF implements Serializable {
                                 tokenSet = expandTokenSet(tokenSet);
                                 TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
                                 for (String token : tokenSet) {
-                                    if (!token.startsWith(">")) {
+                                    if (!token.startsWith(">") && !token.endsWith(":")) {
                                         float probability;
                                         Status status;
                                         if (distributionMap.containsKey(token)) {
@@ -3970,7 +3998,7 @@ public final class SPF implements Serializable {
                             } else if (Block.contains(client, ip, sender, hostname, result, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 String url = Core.getUnblockURL(client, ip, sender, hostname, result, recipient);
                                 if (url == null) {
                                     return "BLOCKED\n";
@@ -3981,32 +4009,32 @@ public final class SPF implements Serializable {
                                 // O domínio foi dado como inexistente inúmeras vezes.
                                 // Rejeitar e denunciar o host pois há abuso de tentativas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "NXDOMAIN\n";
                             } else if (spf != null && spf.isInexistent()) {
                                 return "NXDOMAIN\n";
                             } else if (result.equals("FAIL")) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 // Retornar FAIL somente se não houver 
                                 // liberação literal do remetente com FAIL.
                                 return "FAIL\n";
                             } else if (sender != null && !Domain.isEmail(sender)) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
                             } else if (sender != null && Domain.isReserved(sender)) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
                             } else if (sender == null && !CacheHELO.match(ip, hostname)) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 // HELO inválido sem remetente.
                                 return "INVALID\n";
                             } else if (hostname == null && Core.isReverseRequired()) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 if (Block.tryAdd(ip)) {
                                     Server.logDebug("new BLOCK '" + ip + "' added by 'ReverseRequired'.");
                                 }
@@ -4015,7 +4043,7 @@ public final class SPF implements Serializable {
                             } else if (Trap.contains(client, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "SPAMTRAP\n";
                             } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                                 // A origem atingiu o limite de atraso 
@@ -4024,16 +4052,16 @@ public final class SPF implements Serializable {
                                 Defer.end(fluxo);
                                 Server.logDefer(time, fluxo, "DEFER FLOOD");
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlocked(tokenSet)) {
                                  // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "BLOCKED\n";
                             } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
                             } else if (SPF.isBlacklisted(tokenSet)
                                     && Defer.defer(fluxo, Core.getDeferTimeBLACK())
@@ -4167,7 +4195,7 @@ public final class SPF implements Serializable {
         }
     }
     
-    private static TreeSet<String> expandTokenSet(
+    public static TreeSet<String> expandTokenSet(
             TreeSet<String> tokenSet) {
         TreeSet<String> expandedSet = new TreeSet<String>();
         for (String token : tokenSet) {
@@ -4567,6 +4595,14 @@ public final class SPF implements Serializable {
          */
         public boolean isBlacklisted(String token) {
             return getStatus(token) == Status.BLACK;
+        }
+        
+        public boolean isWhitelisted(String token) {
+            return getStatus(token) == Status.WHITE;
+        }
+        
+        public boolean isNotWhitelisted(String token) {
+            return getStatus(token) != Status.WHITE;
         }
 
         public boolean isGreylisted(String token) {
