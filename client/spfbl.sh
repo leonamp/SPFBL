@@ -22,6 +22,11 @@
 # Atenção! Para utilizar este serviço, solicite a liberação das consultas
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
+# 
+# Atenção! Para utilizar este script é necessário ter o netcat instalado:
+#
+#   sudo apt-get install netcat
+#
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -1723,9 +1728,6 @@ case $1 in
 			fi
 		fi
 	;;
-########
-## DROP
-########
 	'refresh')
 		# Parâmetros de entrada:
 		#
@@ -1746,6 +1748,44 @@ case $1 in
 			hostname=$2
 
 			response=$(echo "REFRESH $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		fi
+	;;
+	'analise')
+		# Parâmetros de entrada:
+		#
+		#    1. IP: o IP a ser analisado.
+		#
+		#
+		# Códigos de saída:
+		#
+		#    0: atualizado com sucesso.
+		#    1: registro não encontrado em cache.
+		#    2: erro ao processar atualização.
+		#    3: timeout de conexão.
+
+		if [ $# -lt "1" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 analise <ip>\n"
+		else
+			ip=$2
+
+			response=$(echo "ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
