@@ -333,6 +333,14 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
+    public static String getNextIPv6(String ip) {
+        if (ip == null) {
+            return null;
+        } else {
+            throw new UnsupportedOperationException("NOT IMPLEMENTED YET");
+        }
+    }
+    
     /**
      * Verifica se um CIDR é válido na notação de IPv6.
      * @param cidr o CIDR a ser verificado.

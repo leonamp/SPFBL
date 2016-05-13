@@ -1847,6 +1847,7 @@ public final class SPF implements Serializable {
     public static void refreshSPF() {
         CacheSPF.refresh();
     }
+    
     public static void refreshHELO() {
         CacheHELO.refresh();
     }
@@ -1942,27 +1943,27 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
-                    long end = System.currentTimeMillis() - 604800000;
+//                    long end = System.currentTimeMillis() - 604800000;
                     for (Long date : map.keySet()) {
-                        if (date > end) {
+//                        if (date > end) {
                             String tokens = map.get(date);
-                            TreeSet<String> tokenSet = new TreeSet<String>();
-                            StringTokenizer tokenizer = new StringTokenizer(tokens, " ");
-                            while (tokenizer.hasMoreTokens()) {
-                                String token = tokenizer.nextToken();
-                                if (isValid(token)) {
-                                    tokenSet.add(token);
-                                }
-                            }
-                            for (String key : expandTokenSet(tokenSet)) {
-                                if (!Ignore.contains(key)) {
-                                    Distribution distribution = CacheDistribution.get(key, true);
-                                    distribution.addSpamInterval();
-                                    distribution.getStatus(key);
-                                }
-                            }
+//                            TreeSet<String> tokenSet = new TreeSet<String>();
+//                            StringTokenizer tokenizer = new StringTokenizer(tokens, " ");
+//                            while (tokenizer.hasMoreTokens()) {
+//                                String token = tokenizer.nextToken();
+//                                if (isValid(token)) {
+//                                    tokenSet.add(token);
+//                                }
+//                            }
+//                            for (String key : expandTokenSet(tokenSet)) {
+//                                if (!Ignore.contains(key)) {
+//                                    Distribution distribution = CacheDistribution.get(key, true);
+//                                    distribution.addSpamInterval();
+//                                    distribution.getStatus(key);
+//                                }
+//                            }
                             putExact(date, tokens);
-                        }
+//                        }
                     }
                     CHANGED = false;
                     Server.logLoad(time, file);
@@ -2373,11 +2374,11 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
-                            if (!distribution.isExpired14()) {
-                                distribution.getStatus(key);
-                                distribution.resetSpamInterval();
+//                            if (!distribution.isExpired14()) {
+//                                distribution.getStatus(key);
+//                                distribution.resetSpamInterval();
                                 putExact(key.toLowerCase(), distribution);
-                            }
+//                            }
                         }
                     }
                     setLoaded();
@@ -3292,7 +3293,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static boolean match(String ip, String helo) {
+        public static boolean match(String ip, String helo, boolean refresh) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
                 return false;
             } else {
@@ -3300,6 +3301,10 @@ public final class SPF implements Serializable {
                 if (heloObj == null) {
                     heloObj = new HELO(helo);
                     putExact(helo, heloObj);
+                } else if (refresh) {
+                    heloObj.refresh(helo);
+                    addQuery(helo, heloObj);
+                    CHANGED = true;
                 } else {
                     addQuery(helo, heloObj);
                     CHANGED = true;
@@ -3399,8 +3404,12 @@ public final class SPF implements Serializable {
         CacheHELO.dropExpired();
     }
     
+    public static boolean matchHELO(String ip, String helo, boolean refresh) {
+        return CacheHELO.match(ip, helo, refresh);
+    }
+    
     public static boolean matchHELO(String ip, String helo) {
-        return CacheHELO.match(ip, helo);
+        return CacheHELO.match(ip, helo, false);
     }
 
     protected static String processPostfixSPF(
@@ -3457,7 +3466,7 @@ public final class SPF implements Serializable {
                 // HELO quando apontados para o IP para 
                 // uma nova forma de interpretar dados.
                 String hostname;
-                if (CacheHELO.match(ip, helo)) {
+                if (CacheHELO.match(ip, helo, false)) {
                     helo = Domain.normalizeHostname(helo, true);
                     hostname = helo;
                 } else {
@@ -3584,7 +3593,7 @@ public final class SPF implements Serializable {
                     CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + sender + " has a reserved domain.\n\n";
-                } else if (sender == null && !CacheHELO.match(ip, hostname)) {
+                } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
@@ -3617,7 +3626,7 @@ public final class SPF implements Serializable {
                     CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL "
                             + "you are temporarily blocked in this server.\n\n";
-                } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
+                } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                     String ticket = SPF.addQuery(tokenSet);
                     CacheComplain.addComplain(origin, ticket);
                     return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
@@ -3863,7 +3872,7 @@ public final class SPF implements Serializable {
                             // HELO quando apontados para o IP para 
                             // uma nova forma de interpretar dados.
                             String hostname;
-                            if (CacheHELO.match(ip, helo)) {
+                            if (CacheHELO.match(ip, helo, false)) {
                                 helo = Domain.normalizeHostname(helo, true);
                                 hostname = helo;
                             } else {
@@ -4027,7 +4036,7 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
-                            } else if (sender == null && !CacheHELO.match(ip, hostname)) {
+                            } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(origin, ticket);
                                 // HELO inválido sem remetente.
@@ -4059,7 +4068,7 @@ public final class SPF implements Serializable {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(origin, ticket);
                                 return "BLOCKED\n";
-                            } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
+                            } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                                 String ticket = SPF.addQuery(tokenSet);
                                 CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
@@ -4465,18 +4474,18 @@ public final class SPF implements Serializable {
             return lastQuery > 0;
         }
         
-        public int getIdleTimeMillis() {
+        public long getIdleTimeMillis() {
             if (lastQuery == 0) {
                 return 0;
             } else {
-                return (int) (System.currentTimeMillis() - lastQuery);
+                return System.currentTimeMillis() - lastQuery;
             }
         }
 
         public String getFrequencyLiteral() {
             if (hasFrequency()) {
                 int frequencyInt = frequency.getMaximumInt();
-                int idleTimeInt = getIdleTimeMillis();
+                long idleTimeInt = getIdleTimeMillis();
                 if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                     return "DEAD";
                 } else {
@@ -4795,11 +4804,11 @@ public final class SPF implements Serializable {
             }
         }
         
-        public int getIdleTimeMillis() {
+        public long getIdleTimeMillis() {
             if (lastQuery == 0) {
                 return 0;
             } else {
-                return (int) (System.currentTimeMillis() - lastQuery);
+                return System.currentTimeMillis() - lastQuery;
             }
         }
         
@@ -4808,7 +4817,7 @@ public final class SPF implements Serializable {
                 return "NEW";
             } else {
                 int frequencyInt = frequency.getMaximumInt();
-                int idleTimeInt = getIdleTimeMillis();
+                long idleTimeInt = getIdleTimeMillis();
                 if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 604800000) {
                     return "DEAD";
                 } else {

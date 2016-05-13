@@ -62,6 +62,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -1146,37 +1147,20 @@ public abstract class Server extends Thread {
                     if (Subnet.isValidIP(token)) {
                         String ip = Subnet.normalizeIP(token);
                         StringBuilder builder = new StringBuilder();
-                        builder.append(ip);
-                        builder.append(" RESULT ");
-                        Distribution distribution1 = SPF.getDistribution(ip, true);
-                        float probability1 = distribution1.getSpamProbability(ip);
-                        Status status1 = distribution1.getStatus(ip);
-                        for (String reverse : Reverse.getValidSet(ip)) {
-                            reverse = Domain.normalizeHostname(reverse, true);
-                            Distribution distribution2 = SPF.getDistribution(reverse, true);
-                            float probability2 = distribution2.getSpamProbability(reverse);
-                            Status status2 = distribution2.getStatus(reverse);
-                            if (probability2 >= probability1) {
-                                token = reverse;
-                                distribution1 = distribution2;
-                                probability1 = probability2;
-                                status1 = status2;
+                        analiseIP(ip, builder);
+                        result = builder.toString();
+                    } else if (Subnet.isValidCIDR(token)) {
+                        String cidr = Subnet.normalizeCIDR(token);
+                        String last = Subnet.getLastIP(cidr);
+                        String ip = Subnet.getFirstIP(cidr);
+                        StringBuilder builder = new StringBuilder();
+                        analiseIP(ip, builder);
+                        if (!ip.equals(last)) {
+                            while (!last.equals(ip = Subnet.getNextIP(ip))) {
+                                analiseIP(ip, builder);
                             }
-                            if (Block.containsHost(reverse)) {
-                                status1 = Status.BLOCK;
-                            }
+                            analiseIP(last, builder);
                         }
-                        if (Block.containsIP(ip)) {
-                            status1 = Status.BLOCK;
-                        }
-                        builder.append(token);
-                        builder.append(' ');
-                        builder.append(status1);
-                        builder.append(' ');
-                        builder.append(DECIMAL_FORMAT.format(probability1));
-                        builder.append(' ');
-                        builder.append(distribution1.getFrequencyLiteral());
-                        builder.append('\n');
                         result = builder.toString();
                     } else {
                         result = "INVALID PARAMETERS\n";
@@ -1431,7 +1415,6 @@ public abstract class Server extends Thread {
                         } else {
                             result = "NOT FOUND\n";
                         }
-                        Block.store();
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
@@ -1732,11 +1715,11 @@ public abstract class Server extends Thread {
                             try {
                                 String blockedToken = tokenizer.nextToken();
                                 int index = blockedToken.indexOf(':');
-                                Client client = null;
+                                String client = null;
                                 if (index != -1) {
                                     String prefix = blockedToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = Client.getByEmail(prefix);
+                                        client = prefix;
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
@@ -1755,7 +1738,6 @@ public abstract class Server extends Thread {
                         if (result.length() == 0) {
                             result = "ERROR: COMMAND\n";
                         }
-                        Block.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
@@ -1772,11 +1754,11 @@ public abstract class Server extends Thread {
                             do {
                                 try {
                                     int index = token.indexOf(':');
-                                    Client client = null;
+                                    String client = null;
                                     if (index != -1) {
                                         String prefix = token.substring(0, index);
                                         if (Domain.isEmail(prefix)) {
-                                            client = Client.getByEmail(prefix);
+                                            client = prefix;
                                             token = token.substring(index+1);
                                         }
                                     }
@@ -1795,7 +1777,6 @@ public abstract class Server extends Thread {
                                 result = "ERROR: COMMAND\n";
                             }
                         }
-                        Block.store();
                     } else if (token.equals("OVERLAP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (Subnet.isValidCIDR(token)) {
@@ -1805,7 +1786,6 @@ public abstract class Server extends Thread {
                             } else {
                                 result = "ALREADY EXISTS\n";
                             }
-                            Block.store();
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
@@ -1819,7 +1799,6 @@ public abstract class Server extends Thread {
                             } else {
                                 result = "NOT FOUND\n";
                             }
-                            Block.store();
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
@@ -1862,11 +1841,11 @@ public abstract class Server extends Thread {
                             try {
                                 String whiteToken = tokenizer.nextToken();
                                 int index = whiteToken.indexOf(':');
-                                Client client = null;
+                                String client = null;
                                 if (index != -1) {
                                     String prefix = whiteToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = Client.getByEmail(prefix);
+                                        client = prefix;
                                         whiteToken = whiteToken.substring(index+1);
                                     }
                                 }
@@ -1899,11 +1878,11 @@ public abstract class Server extends Thread {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                Client client = null;
+                                String client = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = Client.getByEmail(prefix);
+                                        client = prefix;
                                         token = token.substring(index+1);
                                     }
                                 }
@@ -2060,7 +2039,6 @@ public abstract class Server extends Thread {
                         } else {
                             result = "NOT FOUND\n";
                         }
-                        Block.store();
                     } else {
                         result = "ERROR: COMMAND\n";
                     }
@@ -2624,8 +2602,6 @@ public abstract class Server extends Thread {
                     } catch (Exception ex) {
                         result += ex.getMessage() + "\n";
                     }
-                    SPF.storeDistribution();
-                    Block.store();
                 } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                     // Comando para apagar registro em cache.
                     while (tokenizer.hasMoreTokens()) {
@@ -2718,5 +2694,51 @@ public abstract class Server extends Thread {
             result += "UNSPLITTABLE " + cidr + "\n";
         }
         return result;
+    }
+    
+    private void analiseIP(
+            String ip,
+            StringBuilder builder
+            ) throws ProcessException {
+        Distribution distribution1 = SPF.getDistribution(ip, true);
+        float probability1 = distribution1.getSpamProbability(ip);
+        Status status1;
+        if (Block.containsIP(ip)) {
+            status1 = Status.BLOCK;
+        } else {
+            status1 = distribution1.getStatus(ip);
+        }
+        builder.append(ip);
+        builder.append(' ');
+        builder.append(status1);
+        builder.append(' ');
+        String token = ip;
+        for (String reverse : Reverse.getValidSet(ip, true)) {
+            reverse = Domain.normalizeHostname(reverse, true);
+            Distribution distribution2 = SPF.getDistribution(reverse, true);
+            float probability2 = distribution2.getSpamProbability(reverse);
+            Status status2 = distribution2.getStatus(reverse);
+            if (probability2 > probability1) {
+                probability1 = probability2;
+                distribution1 = distribution2;
+            }
+            if (probability2 >= probability1 || Subnet.isValidIP(token)) {
+                token = reverse;
+                status1 = status2 == Status.BLOCK ? Status.BLACK : status2;
+                if (Block.containsHost(reverse)) {
+                    status1 = Status.BLOCK;
+                } else if (Block.containsREGEX(reverse)) {
+                    status1 = Status.BLOCK;
+                }
+            }
+        }
+        builder.append(token);
+        builder.append(' ');
+        builder.append(status1);
+        builder.append(' ');
+        builder.append(DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
+        builder.append(' ');
+        builder.append(distribution1.getFrequencyLiteral());
+        builder.append('\n');
     }
 }

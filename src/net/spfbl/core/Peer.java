@@ -934,18 +934,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return frequency != null;
     }
     
-    public int getIdleTimeMillis() {
+    public long getIdleTimeMillis() {
         if (last == 0) {
             return 0;
         } else {
-            return (int) (System.currentTimeMillis() - last);
+            return System.currentTimeMillis() - last;
         }
     }
     
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
-            int idleTimeInt = getIdleTimeMillis();
+            long idleTimeInt = getIdleTimeMillis();
             if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                 return "DEAD";
             } else {

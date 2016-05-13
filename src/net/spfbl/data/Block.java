@@ -539,7 +539,10 @@ public class Block {
 //            }
 //        }
         
-        private static String get(Client client, Set<String> tokenSet) {
+        private static String get(
+                Client client,
+                Set<String> tokenSet
+                ) throws ProcessException {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
@@ -553,7 +556,7 @@ public class Block {
                             Matcher matcher = pattern.matcher(token);
                             if (matcher.matches()) {
                                 String regex = "REGEX=" + pattern.pattern();
-                                if (addExact(token)) {
+                                if (Block.addExact(token)) {
                                     Server.logDebug("new BLOCK '" + token + "' added by '" + regex + "'.");
                                     if (client == null) {
                                         Peer.sendBlockToAll(token);
@@ -1052,16 +1055,24 @@ public class Block {
             return CIDR.addExact(cidr, true);
         }
     }
+    
+    public static boolean add(String client, String token) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if ((token = normalizeTokenBlock(token)) == null) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else {
+            return addExact(client + ':' + token);
+        }
+    }
 
     public static boolean add(Client client, String token) throws ProcessException {
         if (client == null || !client.hasEmail()) {
             throw new ProcessException("ERROR: CLIENT INVALID");
         } else if ((token = normalizeTokenBlock(token)) == null) {
             throw new ProcessException("ERROR: TOKEN INVALID");
-        } else if (addExact(client.getEmail() + ':' + token)) {
-            return true;
         } else {
-            return false;
+            return addExact(client.getEmail() + ':' + token);
         }
     }
 
@@ -1074,16 +1085,24 @@ public class Block {
             return false;
         }
     }
+    
+    public static boolean drop(String client, String token) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if ((token = normalizeTokenBlock(token)) == null) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else {
+            return dropExact(client + ':' + token);
+        }
+    }
 
     public static boolean drop(Client client, String token) throws ProcessException {
         if (client == null || !client.hasEmail()) {
             throw new ProcessException("ERROR: CLIENT INVALID");
         } else if ((token = normalizeTokenBlock(token)) == null) {
             throw new ProcessException("ERROR: TOKEN INVALID");
-        } else if (dropExact(client.getEmail() + ':' + token)) {
-            return true;
         } else {
-            return false;
+            return dropExact(client.getEmail() + ':' + token);
         }
     }
 
@@ -1184,7 +1203,10 @@ public class Block {
         }
     }
 
-    public static String find(Client client, String token) {
+    public static String find(
+            Client client,
+            String token
+            ) throws ProcessException {
         TreeSet<String> whoisSet = new TreeSet<String>();
         TreeSet<String> regexSet = new TreeSet<String>();
         if (token == null) {
@@ -1301,7 +1323,8 @@ public class Block {
 
     public static boolean contains(Client client,
             String ip, String sender, String helo,
-            String qualifier, String recipient) {
+            String qualifier, String recipient
+            ) throws ProcessException {
         return find(client, ip, sender, helo,
                 qualifier, recipient) != null;
     }
@@ -1313,7 +1336,7 @@ public class Block {
             String helo,
             String qualifier,
             String recipient
-            ) {
+            ) throws ProcessException {
         if (qualifier.equals("PASS")) {
             String block;
             while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
@@ -1322,9 +1345,14 @@ public class Block {
         }
     }
 
-    public static String find(Client client,
-            String ip, String sender, String helo,
-            String qualifier, String recipient) {
+    public static String find(
+            Client client,
+            String ip,
+            String sender,
+            String helo,
+            String qualifier,
+            String recipient
+            ) throws ProcessException {
         TreeSet<String> whoisSet = new TreeSet<String>();
         TreeSet<String> regexSet = new TreeSet<String>();
         // Definição do destinatário.
@@ -1618,6 +1646,24 @@ public class Block {
             return false;
         }
     }
+    
+    public static boolean containsREGEX(
+            String host
+            ) throws ProcessException {
+        host = Domain.extractHost(host, true);
+        if (host == null) {
+            return false;
+        } else {
+            TreeSet<String> tokenSet = new TreeSet<String>();
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                tokenSet.add(token);
+            } while (host.contains("."));
+            return REGEX.get(null, tokenSet) != null;
+        }
+    }
 
     private static String findHost(Client client,
             String host, String qualifier,
@@ -1692,69 +1738,72 @@ public class Block {
                 } finally {
                     fileInputStream.close();
                 }
-                // Processo temporário de transição.
                 for (String token : set) {
-                    String client;
-                    String identifier;
-                    if (Subnet.isValidIP(token)) {
-                        client = null;
-                        identifier = token;
-                    } else if (Subnet.isValidCIDR(token)) {
-                        client = null;
-                        identifier = token;
-                    } else if (token.contains(":")) {
-                        int index = token.indexOf(':');
-                        client = token.substring(0, index);
-                        identifier = token.substring(index + 1);
-                    } else {
-                        client = null;
-                        identifier = token;
-                    }
-                    if (Subnet.isValidCIDR(identifier)) {
-                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                    } else if (Owner.isOwnerID(identifier)) {
-                        identifier = "WHOIS/ownerid=" + identifier;
-                    } else {
-                        identifier = normalizeTokenBlock(identifier);
-                    }
-                    if (identifier != null) {
-                        try {
-                            if (client == null) {
-                                addExact(identifier);
-                            } else if (Domain.isEmail(client)) {
-                                addExact(client + ':' + identifier);
-                            }
-                        } catch (ProcessException ex) {
-                            Server.logDebug("BLOCK CIDR " + identifier + " " + ex.getErrorMessage());
-                        }
-                    }
+                    addExact(token);
                 }
-                for (String token : set) {
-                    if (Domain.isHostname(token)) {
-                        String hostname = token;
-                        int index;
-                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
-                            hostname = hostname.substring(index);
-                            if (SET.contains(hostname)) {
-                                dropExact(token);
-                                break;
-                            }
-                        }
-                    } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-                        String hostname = '.' + token.substring(1);
-                        if (SET.contains(hostname)) {
-                            dropExact(token);
-                        }
-                        int index;
-                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
-                            hostname = hostname.substring(index);
-                            if (SET.contains(hostname)) {
-                                dropExact(token);
-                                break;
-                            }
-                        }
-                    }
-                }
+//                // Processo temporário de transição.
+//                for (String token : set) {
+//                    String client;
+//                    String identifier;
+//                    if (Subnet.isValidIP(token)) {
+//                        client = null;
+//                        identifier = token;
+//                    } else if (Subnet.isValidCIDR(token)) {
+//                        client = null;
+//                        identifier = token;
+//                    } else if (token.contains(":")) {
+//                        int index = token.indexOf(':');
+//                        client = token.substring(0, index);
+//                        identifier = token.substring(index + 1);
+//                    } else {
+//                        client = null;
+//                        identifier = token;
+//                    }
+//                    if (Subnet.isValidCIDR(identifier)) {
+//                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
+//                    } else if (Owner.isOwnerID(identifier)) {
+//                        identifier = "WHOIS/ownerid=" + identifier;
+//                    } else {
+//                        identifier = normalizeTokenBlock(identifier);
+//                    }
+//                    if (identifier != null) {
+//                        try {
+//                            if (client == null) {
+//                                addExact(identifier);
+//                            } else if (Domain.isEmail(client)) {
+//                                addExact(client + ':' + identifier);
+//                            }
+//                        } catch (ProcessException ex) {
+//                            Server.logDebug("BLOCK CIDR " + identifier + " " + ex.getErrorMessage());
+//                        }
+//                    }
+//                }
+//                for (String token : set) {
+//                    if (Domain.isHostname(token)) {
+//                        String hostname = token;
+//                        int index;
+//                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
+//                            hostname = hostname.substring(index);
+//                            if (SET.contains(hostname)) {
+//                                dropExact(token);
+//                                break;
+//                            }
+//                        }
+//                    } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+//                        String hostname = '.' + token.substring(1);
+//                        if (SET.contains(hostname)) {
+//                            dropExact(token);
+//                        }
+//                        int index;
+//                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
+//                            hostname = hostname.substring(index);
+//                            if (SET.contains(hostname)) {
+//                                dropExact(token);
+//                                break;
+//                            }
+//                        }
+//                    }
+//                }
                 CHANGED = false;
                 Server.logLoad(time, file);
             } catch (Exception ex) {

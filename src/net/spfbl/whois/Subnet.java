@@ -124,6 +124,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public static String getNextIP(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.getNextIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.getNextIPv6(ip);
+        } else {
+            return null;
+        }
+    }
+    
     public static byte getMask(String cidr) {
         if (cidr == null) {
             return 0;

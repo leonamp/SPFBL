@@ -16,6 +16,7 @@
  */
 package net.spfbl.http;
 
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -36,6 +37,7 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
@@ -45,6 +47,7 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
+import static net.spfbl.core.Client.Permission.DNSBL;
 import net.spfbl.core.Core;
 import net.spfbl.core.Defer;
 import net.spfbl.core.ProcessException;
@@ -226,6 +229,12 @@ public final class ServerHTTP extends Server {
             return address.getHostAddress() + ' ' + client.getDomain();
         }
     }
+    
+    private static Client getClient(HttpExchange exchange) {
+        InetSocketAddress socketAddress = exchange.getRemoteAddress();
+        InetAddress address = socketAddress.getAddress();
+        return Client.get(address);
+    }
 
     private static String getRemoteAddress(HttpExchange exchange) {
         InetSocketAddress socketAddress = exchange.getRemoteAddress();
@@ -271,6 +280,81 @@ public final class ServerHTTP extends Server {
             return map;
         }
     }
+    
+    private static class Language implements Comparable<Language> {
+        
+        private final Locale locale;
+        private float q;
+        
+        private Language(String language) {
+            int index = language.indexOf(';');
+            if (index == -1) {
+                locale = Locale.forLanguageTag(language);
+                q = 1.0f;
+            } else {
+                String value = language.substring(0,index).trim();
+                locale = Locale.forLanguageTag(value);
+                try {
+                    index = language.lastIndexOf('=') + 1;
+                    value = language.substring(index).trim();
+                    q = Float.parseFloat(value);
+                } catch (NumberFormatException ex) {
+                    q = 0.0f;
+                }
+            }
+        }
+        
+        public Locale getLocale() {
+            return locale;
+        }
+
+        public boolean isLanguage(String language) {
+            return locale.getLanguage().equals(language);
+        }
+        
+        @Override
+        public int compareTo(Language other) {
+            if (other == null) {
+                return -1;
+            } else if (this.q < other.q) {
+                return 1;
+            } else {
+                return -1;
+            }
+        }
+        
+        @Override
+        public String toString() {
+            return locale.toLanguageTag();
+        }
+    }
+    
+    private static Locale getLocale(String acceptLanguage) {
+        if (acceptLanguage == null) {
+            return Locale.US;
+        } else {
+            TreeSet<Language> languageSet = new TreeSet<Language>();
+            StringTokenizer tokenizer = new StringTokenizer(acceptLanguage, ",");
+            while (tokenizer.hasMoreTokens()) {
+                Language language = new Language(tokenizer.nextToken());
+                languageSet.add(language);
+            }
+            for (Language language : languageSet) {
+                if (language.isLanguage("en")) {
+                    return language.getLocale();
+                } else if (language.isLanguage("pt")) {
+                    return language.getLocale();
+                }
+            }
+            return Locale.US;
+        }
+    }
+    
+    private static Locale getLocale(HttpExchange exchange) {
+        Headers headers = exchange.getRequestHeaders();
+        String acceptLanguage = headers.getFirst("Accept-Language");
+        return getLocale(acceptLanguage);
+    }
 
     private static class ComplainHandler implements HttpHandler {
         @Override
@@ -281,6 +365,8 @@ public final class ServerHTTP extends Server {
                 String request = exchange.getRequestMethod();
                 URI uri = exchange.getRequestURI();
                 String command = uri.toString();
+                Locale locale = getLocale(exchange);
+                Client client = getClient(exchange);
                 String origin = getOrigin(exchange);
                 int code;
                 String result;
@@ -319,43 +405,82 @@ public final class ServerHTTP extends Server {
                                     }
                                 }
                                 if (valid) {
-                                    String message = "Chave de desbloqueio não pode ser enviada\n"
-                                                    + "devido a um erro interno.";
+                                    String message;
+                                    if (locale.getLanguage().equals("pt")) {
+                                        message = "Chave de desbloqueio não pode ser enviada\n"
+                                                + "devido a um erro interno.";
+                                    } else {
+                                        message = "Unblocking key can not be sent\n"
+                                                + "due to an internal error.";
+                                    }
                                     TreeSet<String> postmaterSet = getPostmaterSet(ip);
+                                    if (
+                                            client != null &&
+                                            client.hasPermission(DNSBL) &&
+                                            client.hasEmail()
+                                            ) {
+                                        postmaterSet.add(client.getEmail());
+                                    }
                                     TreeSet<String> emailSet = (TreeSet) parameterMap.get("identifier");
                                     for (String email : emailSet) {
                                         if (postmaterSet.contains(email)) {
                                             String url = Core.getUnblockURL(email, ip);
                                             if (enviarDesbloqueioDNSBL(url, ip, email)) {
-                                                message = "Chave de desbloqueio enviada com sucesso.";
+                                                if (locale.getLanguage().equals("pt")) {
+                                                    message = "Chave de desbloqueio enviada com sucesso.";
+                                                } else {
+                                                    message = "Unblocking key successfully sent.";
+                                                }
                                             }
                                         }
                                     }
                                     type = "DNSBL";
                                     code = 200;
-                                    result = getMessageHMTL(
-                                            "Página de checagem DNSBL do SPFBL",
-                                            message
-                                            );
+                                    String title;
+                                    if (locale.getLanguage().equals("pt")) {
+                                        title = "Página de checagem DNSBL";
+                                    } else {
+                                        title = "DNSBL check page";
+                                    }
+                                    result = getMessageHMTL(title, message);
                                 } else {
                                     type = "DNSBL";
                                     code = 200;
-                                    String message = "O desafio do reCAPTCHA não foi resolvido.";
-                                    result = getDNSBLHMTL(ip, message);
+                                    String message;
+                                    if (locale.getLanguage().equals("pt")) {
+                                        message = "O desafio do reCAPTCHA não foi resolvido.";
+                                    } else {
+                                        message = "The reCAPTCHA challenge has not been resolved.";
+                                    }
+                                    result = getDNSBLHTML(locale, client, ip, message);
                                 }
                             } else {
                                 type = "DNSBL";
                                 code = 200;
-                                String message = "O e-mail do responsável pelo IP não foi definido.";
-                                result = getDNSBLHMTL(ip, message);
+                                String message;
+                                if (locale.getLanguage().equals("pt")) {
+                                    message = "O e-mail do responsável pelo IP não foi definido.";
+                                } else {
+                                    message = "The e-mail of responsible IP was not set.";
+                                }
+                                result = getDNSBLHTML(locale, client, ip, message);
                             }
                         } else {
                             type = "DNSBL";
                             code = 500;
-                            result = getMessageHMTL(
-                                    "Página de checagem DNSBL do SPFBL",
-                                    "O identificador informado não é um IP válido."
-                                    );
+                            String title;
+                            if (locale.getLanguage().equals("pt")) {
+                                title = "Página de checagem DNSBL";
+                            } else {
+                                title = "DNSBL check page";
+                            }
+                            String message;
+                            if (locale.getLanguage().equals("pt")) {
+                                message = "O identificador informado não é um IP nem um domínio válido.";
+                            } else {
+                                message = "Informed identifier is not a valid IP or a valid domain.";
+                            }
+                            result = getMessageHMTL(title, message);
                         }
                     } else if (command.startsWith("/spam/")) {
                         try {
@@ -363,8 +488,8 @@ public final class ServerHTTP extends Server {
                             String ticket = command.substring(index);
                             ticket = URLDecoder.decode(ticket, "UTF-8");
                             String recipient = SPF.getRecipient(ticket);
-                            String client = SPF.getClient(ticket);
-                            client = client == null ? "" : client + ':';
+                            String clientTicket = SPF.getClient(ticket);
+                            clientTicket = clientTicket == null ? "" : clientTicket + ':';
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             if (parameterMap.containsKey("identifier")) {
                                 boolean valid = true;
@@ -401,7 +526,7 @@ public final class ServerHTTP extends Server {
                                     for (String identifier : identifierSet) {
                                         if (tokenSet.contains(identifier)) {
                                             long time2 = System.currentTimeMillis();
-                                            String block = client + identifier + '>' + recipient;
+                                            String block = clientTicket + identifier + '>' + recipient;
                                             if (Block.addExact(block)) {
                                                 Server.logQuery(
                                                         time2, "BLOCK",
@@ -481,6 +606,14 @@ public final class ServerHTTP extends Server {
                                     String title = "Página de liberação do SPFBL";
                                     String message;
                                     if (Defer.release(id)) {
+                                        String clientTicket = SPF.getClient(ticket);
+                                        String sender = SPF.getSender(ticket);
+                                        String recipient = SPF.getRecipient(ticket);
+                                        if (clientTicket != null && sender != null && recipient != null) {
+                                            if (White.addExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+                                                Server.logDebug("WHITE ADD " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                                            }
+                                        }
                                         message = "Sua mensagem foi liberada com sucesso.";
                                     } else {
                                         message = "Sua mensagem já havia sido liberada.";
@@ -546,13 +679,13 @@ public final class ServerHTTP extends Server {
                                         valid = false;
                                     }
                                 }
-                                String client = tokenizer.nextToken();
+                                String clientTicket = tokenizer.nextToken();
                                 String ip = tokenizer.nextToken();
                                 if (!tokenizer.hasMoreTokens()) {
                                     if (valid) {
                                         String title = "Página de desbloqueio do SPFBL";
                                         String message;
-                                        if (Block.clearCIDR(ip, client)) {
+                                        if (Block.clearCIDR(ip, clientTicket)) {
                                             message = "O IP " + ip + " foi desbloqueado com sucesso.";
                                         } else {
                                             message = "O IP " + ip + " já estava desbloqueado.";
@@ -563,20 +696,25 @@ public final class ServerHTTP extends Server {
                                     } else {
                                         type = "BLOCK";
                                         code = 200;
-                                        result = getUnblockDNSBLHMTL(
-                                                "O desafio reCAPTCHA não foi resolvido. "
-                                                + "Tente novamente."
-                                                );
+                                        String message;
+                                        if (locale.getLanguage().equals("pt")) {
+                                            message = "O desafio reCAPTCHA não foi resolvido. "
+                                                    + "Tente novamente.";
+                                        } else {
+                                            message = "The reCAPTCHA challenge was not resolved. "
+                                                    + "Try again.";
+                                        }
+                                        result = getUnblockDNSBLHMTL(locale, message);
                                     }
                                 } else if (valid) {
                                     String sender = tokenizer.nextToken();
                                     String recipient = tokenizer.nextToken();
                                     String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                    client = client == null ? "" : client + ':';
+                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
                                     String mx = Domain.extractHost(sender, true);
                                     String origem = Provider.containsExact(mx) ? sender : mx;
-                                    String white = client + origem + ";PASS>" + recipient;
-                                    String url = Core.getWhiteURL(white, client, ip, sender, hostname, recipient);
+                                    String white = clientTicket + origem + ";PASS>" + recipient;
+                                    String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
                                     String title = "Página de desbloqueio do SPFBL";
                                     String message;
                                     if (enviarDesbloqueio(url, sender, recipient)) {
@@ -652,7 +790,7 @@ public final class ServerHTTP extends Server {
                                 }
                                 if (valid) {
                                     String white = tokenizer.nextToken();
-                                    Client client = Client.getByEmail(tokenizer.nextToken());
+                                    client = Client.getByEmail(tokenizer.nextToken().replace(":", ""));
                                     String ip = tokenizer.nextToken();
                                     String sender = tokenizer.nextToken();
                                     String recipient = tokenizer.nextToken();
@@ -694,24 +832,39 @@ public final class ServerHTTP extends Server {
                         if (Subnet.isValidIP(query)) {
                             type = "DNSBL";
                             code = 200;
-                            result = getDNSBLHMTL(
-                                    query,
-                                    "Resutado da checagem DNSBL do IP " + query + "."
-                                    );
+                            String message;
+                            if (locale.getLanguage().equals("pt")) {
+                                message = "Resultado da checagem DNSBL do IP " + query + ".";
+                            } else {
+                                message = "DNSBL checking the result of IP " + query + ".";
+                            }
+                            result = getDNSBLHTML(locale, client, query, message);
                         } else if (Domain.isHostname(query)) {
                             type = "DNSBL";
                             code = 200;
-                            result = getDNSBLHMTL(
-                                    query,
-                                    "Resutado da checagem DNSBL do domínio '" + query + "'."
-                                    );
+                            String message;
+                            if (locale.getLanguage().equals("pt")) {
+                                message = "Resutado da checagem DNSBL do domínio '" + query + "'.";
+                            } else {
+                                message = "DNSBL checking the result of domain " + query + ".";
+                            }
+                            result = getDNSBLHTML(locale, client, query, message);
                         } else {
                             type = "DNSBL";
                             code = 500;
-                            result = getMessageHMTL(
-                                    "Página de checagem DNSBL do SPFBL",
-                                    "O identificador informado não é um IP nem um domínio válido."
-                                    );
+                            String title;
+                            if (locale.getLanguage().equals("pt")) {
+                                title = "Página de checagem DNSBL";
+                            } else {
+                                title = "DNSBL check page";
+                            }
+                            String message;
+                            if (locale.getLanguage().equals("pt")) {
+                                message = "O identificador informado não é um IP nem um domínio válido.";
+                            } else {
+                                message = "Informed identifier is not a valid IP or a valid domain.";
+                            }
+                            result = getMessageHMTL(title, message);
                         }
                     } else if (command.startsWith("/spam/")) {
                         try {
@@ -729,6 +882,13 @@ public final class ServerHTTP extends Server {
                                 complainSet = SPF.getComplain(ticket);
                                 message = "A mensagem já havia sido denunciada antes.";
                             } else {
+                                String clientTicket = SPF.getClient(ticket);
+                                String sender = SPF.getSender(ticket);
+                                if (clientTicket != null && sender != null && recipient != null) {
+                                    if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+                                        Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                                    }
+                                }
                                 message = "A mensagem foi denunciada com sucesso.";
                             }
                             for (String token : complainSet) {
@@ -824,20 +984,25 @@ public final class ServerHTTP extends Server {
                             String registry = Server.decrypt(ticket);
                             StringTokenizer tokenizer = new StringTokenizer(registry, " ");
                             Date date = Server.parseTicketDate(tokenizer.nextToken());
-                            String client = tokenizer.nextToken();
+                            String clientTicket = tokenizer.nextToken();
                             String ip = tokenizer.nextToken();
                             if (!tokenizer.hasMoreTokens()) {
                                 type = "BLOCK";
                                 code = 200;
-                                result = getUnblockDNSBLHMTL(
-                                        "Para desbloquear o IP '" + ip + "'\n"
-                                        + "resolva o desafio reCAPTCHA abaixo."
-                                        );
+                                String message;
+                                if (locale.getLanguage().equals("pt")) {
+                                    message = "Para desbloquear o IP '" + ip + "'\n"
+                                            + "resolva o desafio reCAPTCHA abaixo.";
+                                } else {
+                                    message = "To unblock the IP '" + ip + "'\n"
+                                            + "solve the CAPTCHA below.";
+                                }
+                                result = getUnblockDNSBLHMTL(locale, message);
                             } else {
                                 String sender = tokenizer.nextToken();
                                 String recipient = tokenizer.nextToken();
                                 String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                client = client == null ? "" : client + ':';
+                                clientTicket = clientTicket == null ? "" : clientTicket + ':';
                                 String mx = Domain.extractHost(sender, true);
                                 String origem = Provider.containsExact(mx) ? sender : mx;
                                 if (System.currentTimeMillis() - date.getTime() > 432000000) {
@@ -856,7 +1021,7 @@ public final class ServerHTTP extends Server {
                                             "Este ticket de desbloqueio não "
                                             + "contém remetente e destinatário."
                                             );
-                                } else if (White.containsExact(client + origem + ";PASS>" + recipient)) {
+                                } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
                                     type = "BLOCK";
                                     code = 200;
                                     result = getMessageHMTL(
@@ -865,7 +1030,7 @@ public final class ServerHTTP extends Server {
                                             + "já autorizou o recebimento de mensagens "
                                             + "do remetente '" + sender + "'."
                                             );
-                                } else if (Block.containsExact(client + origem + ";PASS>" + recipient)) {
+                                } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
                                     type = "BLOCK";
                                     code = 200;
                                     result = getMessageHMTL(
@@ -911,7 +1076,7 @@ public final class ServerHTTP extends Server {
                             StringTokenizer tokenizer = new StringTokenizer(registry, " ");
                             Date date = Server.parseTicketDate(tokenizer.nextToken());
                             String white = tokenizer.nextToken();
-                            String client = tokenizer.nextToken();
+                            String clientTicket = tokenizer.nextToken();
                             String ip = tokenizer.nextToken();
                             String sender = tokenizer.nextToken();
                             String recipient = tokenizer.nextToken();
@@ -1189,12 +1354,19 @@ public final class ServerHTTP extends Server {
         return builder.toString();
     }
     
-    private static String getUnblockDNSBLHMTL(String message) throws ProcessException {
+    private static String getUnblockDNSBLHMTL(
+            Locale locale,
+            String message
+    ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
         builder.append("<html>\n");
         builder.append("  <head>\n");
         builder.append("    <meta charset=\"UTF-8\">\n");
-        builder.append("    <title>Página de desbloqueio do SPFBL</title>\n");
+        if (locale.getLanguage().equals("pt")) {
+            builder.append("    <title>Página de desbloqueio DNSBL</title>\n");
+        } else {
+            builder.append("    <title>DNSBL unblock page</title>\n");
+        }
         if (Core.hasRecaptchaKeys()) {
 //             novo reCAPCHA
 //            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
@@ -1218,7 +1390,11 @@ public final class ServerHTTP extends Server {
 //            builder.append(recaptchaKeySite);
 //            builder.append("\"></div>\n");
         }
-        builder.append("       <input type=\"submit\" value=\"Desbloquear\">\n");
+        if (locale.getLanguage().equals("pt")) {
+            builder.append("       <input type=\"submit\" value=\"Desbloquear\">\n");
+        } else {
+            builder.append("       <input type=\"submit\" value=\"Unblock\">\n");
+        }
         builder.append("    </form>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
@@ -1396,7 +1572,9 @@ public final class ServerHTTP extends Server {
         return emailSet;
     }
     
-    private static String getDNSBLHMTL(
+    private static String getDNSBLHTML(
+            Locale locale,
+            Client client,
             String query,
             String message
             ) {
@@ -1404,7 +1582,11 @@ public final class ServerHTTP extends Server {
         builder.append("<html>\n");
         builder.append("  <head>\n");
         builder.append("    <meta charset=\"UTF-8\">\n");
-        builder.append("    <title>Página de checagem DNSBL do SPFBL</title>\n");
+        if (locale.getLanguage().equals("pt")) {
+            builder.append("    <title>Página de checagem DNSBL</title>\n");
+        } else {
+            builder.append("    <title>DNSBL check page</title>\n");
+        }
         builder.append("  </head>\n");
         builder.append("  <body>\n");
         builder.append("    ");
@@ -1413,11 +1595,19 @@ public final class ServerHTTP extends Server {
         builder.append("    <br>\n");
         TreeSet<String> emailSet = new TreeSet<String>();
         if (Subnet.isValidIP(query)) {
-            builder.append("    Reversos encontrados:");
-            Reverse reverse = Reverse.get(query);
+            if (locale.getLanguage().equals("pt")) {
+                builder.append("    Reversos encontrados:");
+            } else {
+                builder.append("    rDNS found:");
+            }
+            Reverse reverse = Reverse.get(query, true);
             TreeSet<String> reverseSet = reverse.getAddressSet();
             if (reverseSet.isEmpty()) {
-                builder.append(" nenhum<br>\n");
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append(" nenhum<br>\n");
+                } else {
+                    builder.append(" none<br>\n");
+                }
                 builder.append("    <br>\n");
             } else {
                 builder.append("<br>\n");
@@ -1428,7 +1618,7 @@ public final class ServerHTTP extends Server {
                     builder.append("      <li>&lt;");
                     builder.append(hostname);
                     builder.append("&gt; ");
-                    if (SPF.matchHELO(query, hostname)) {
+                    if (SPF.matchHELO(query, hostname, true)) {
                         String domain;
                         try {
                             domain = Domain.extractDomain(hostname, false);
@@ -1436,7 +1626,11 @@ public final class ServerHTTP extends Server {
                             domain = null;
                         }
                         if (domain == null) {
-                            builder.append("inválido.</li>\n");
+                            if (locale.getLanguage().equals("pt")) {
+                                builder.append("inválido.</li>\n");
+                            } else {
+                                builder.append("invalid.</li>\n");
+                            }
                         } else {
                             String subdominio = hostname;
                             while (subdominio.endsWith(domain)) {
@@ -1444,52 +1638,108 @@ public final class ServerHTTP extends Server {
                                 int index = subdominio.indexOf('.', 1) + 1;
                                 subdominio = subdominio.substring(index);
                             }
-                            builder.append("válido.</li>\n");
+                            if (locale.getLanguage().equals("pt")) {
+                                builder.append("válido.</li>\n");
+                            } else {
+                                builder.append("valid.</li>\n");
+                            }
                         }
                     } else {
-                        builder.append("inválido.</li>\n");
+                        if (locale.getLanguage().equals("pt")) {
+                            builder.append("inválido.</li>\n");
+                        } else {
+                            builder.append("invalid.</li>\n");
+                        }
                     }
                 } while ((hostname = reverseSet.pollFirst()) != null);
                 builder.append("    </ul>\n");
             }
             Distribution distribution;
+            float probability;
             if (emailSet.isEmpty()) {
-                builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
-            } else if ((distribution = SPF.getDistribution(query, true)).isNotWhitelisted(query)) {
-                float probability = distribution.getSpamProbability(query);
-                if (distribution.isBlacklisted(query) || Block.containsIP(query)) {
-                    builder.append("    Este IP está listado por má reputação com ");
-                    builder.append(Server.PERCENT_FORMAT.format(probability));
-                    builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
-                    builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-                    builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
-                    builder.append("    onde este ponto expira em uma semana.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
                 } else {
-                    builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
-                    builder.append(Server.PERCENT_FORMAT.format(probability));
-                    builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
-                    builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
-                    builder.append("    tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Cada rejeição SMTP com este prefixo");
-                    builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                    builder.append("    Register a valid rDNS for this IP, which point to the same IP.<br>\n");
+                }
+            } else if ((probability = (distribution = SPF.getDistribution(query, true)).getSpamProbability(query)) > 0.01f) {
+                if (distribution.isBlacklisted(query) || Block.containsIP(query)) {
+                    if (locale.getLanguage().equals("pt")) {
+                        builder.append("    Este IP está listado por má reputação com ");
+                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
+                        builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
+                        builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
+                        builder.append("    onde este ponto expira em uma semana.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                    } else {
+                        builder.append("    This IP is listed by bad reputation in ");
+                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(" of negative points of total sending.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    In order for this IP can be removed from this list,<br>\n");
+                        builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
+                        builder.append("    whose SMTP rejection has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
+                        builder.append("    where this point expires in a week.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                    }
+                } else {
+                    if (locale.getLanguage().equals("pt")) {
+                        builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
+                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
+                        builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
+                        builder.append("    tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Cada rejeição SMTP com este prefixo");
+                        builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                    } else {
+                        builder.append("    This IP is not listed in this system but its reputation is with ");
+                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(" of negative points of total sending.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    If this reputation have significant increase in the number of negative points,");
+                        builder.append("    this IP will automatically be listed in the system.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
+                        builder.append("    has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    Each SMTP rejection with this prefix");
+                        builder.append("    automatically generates a new negative point in this system.<br>\n");
+                        builder.append("    <br>\n");
+                        builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                    }
+                    
                 }
             } else if (Block.containsIP(query)) {
-                builder.append("    E-mails para envio de chave de desbloqueio:");
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    E-mails para envio de chave de desbloqueio:");
+                } else {
+                    builder.append("    E-mails to send unblock key:");
+                }
                 builder.append("<br>\n");
                 builder.append("    <ul>\n");
+                if (
+                        client != null &&
+                        client.hasPermission(DNSBL) &&
+                        client.hasEmail()
+                        ) {
+                    emailSet.add(client.getEmail());
+                }
                 TreeSet<String> sendSet = new TreeSet<String>();
                 String email = emailSet.pollFirst();
                 do  {
@@ -1497,19 +1747,36 @@ public final class ServerHTTP extends Server {
                     builder.append(email);
                     builder.append("&gt; ");
                     if (NoReply.contains(email)) {
-                        builder.append("não permitido.</li>\n");
+                        if (locale.getLanguage().equals("pt")) {
+                            builder.append("não permitido.</li>\n");
+                        } else {
+                            builder.append("not permitted.</li>\n");
+                        }
                     } else {
                         sendSet.add(email);
-                        builder.append("permitido.</li>\n");
+                        if (locale.getLanguage().equals("pt")) {
+                            builder.append("permitido.</li>\n");
+                        } else {
+                            builder.append("permitted.</li>\n");
+                        }
                     }
                 } while ((email = emailSet.pollFirst()) != null);
                 builder.append("    </ul>\n");
                 if (sendSet.isEmpty()) {
-                    builder.append("    Nenhum e-mail do responsável pelo IP é permitido neste sistema.<br>\n");
+                    if (locale.getLanguage().equals("pt")) {
+                        builder.append("    Nenhum e-mail do responsável pelo IP é permitido neste sistema.<br>\n");
+                    } else {
+                        builder.append("    None of the responsible for IP has e-mail permitted under this system.<br>\n");
+                    }
                 } else {
                     builder.append("    <form method=\"POST\">\n");
-                    builder.append("      Para que a chave de desbloqueio seja enviada,<br>\n");
-                    builder.append("      selecione o endereço de e-mail do responsável pelo IP:<br>\n");
+                    if (locale.getLanguage().equals("pt")) {
+                        builder.append("      Para que a chave de desbloqueio seja enviada,<br>\n");
+                        builder.append("      selecione o endereço de e-mail do responsável pelo IP:<br>\n");
+                    } else {
+                        builder.append("      For the release key is sent,<br>\n");
+                        builder.append("      select the responsible e-mail address of the IP:<br>\n");
+                    }
                     for (String send : sendSet) {
                         builder.append("      <input type=\"checkbox\" name=\"identifier\" value=\"");
                         builder.append(send);
@@ -1519,8 +1786,13 @@ public final class ServerHTTP extends Server {
                     }
                     if (Core.hasRecaptchaKeys()) {
                         builder.append("      <br>\n");
-                        builder.append("      Para que sua solicitação seja aceita,<br>\n");
-                        builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                        if (locale.getLanguage().equals("pt")) {
+                            builder.append("      Para que sua solicitação seja aceita,<br>\n");
+                            builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                        } else {
+                            builder.append("      For your request is accepted,<br>\n");
+                            builder.append("      solve the reCAPTCHA below.<br>\n");
+                        }
                         String recaptchaKeySite = Core.getRecaptchaKeySite();
                         String recaptchaKeySecret = Core.getRecaptchaKeySecret();
                         ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
@@ -1531,40 +1803,78 @@ public final class ServerHTTP extends Server {
             //            builder.append(recaptchaKeySite);
             //            builder.append("\"></div>\n");
                     }
-                    builder.append("      <input type=\"submit\" value=\"Solicitar\">\n");
+                    if (locale.getLanguage().equals("pt")) {
+                        builder.append("      <input type=\"submit\" value=\"Solicitar\">\n");
+                    } else {
+                        builder.append("      <input type=\"submit\" value=\"Request\">\n");
+                    }
                     builder.append("    </form>\n");
                 }
             } else {
-                builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
+                } else {
+                    builder.append("    No block was found for this IP.<br>\n");
+                }
             }
         } else if (Domain.isHostname(query)) {
             Distribution distribution;
             query = Domain.normalizeHostname(query, true);
             if ((distribution = SPF.getDistribution(query, true)).isNotWhitelisted(query)) {
                 float probability = distribution.getSpamProbability(query);
-                builder.append("    Este domínio está listado por má reputação com ");
-                builder.append(Server.PERCENT_FORMAT.format(probability));
-                builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                builder.append("    <br>\n");
-                builder.append("    Para que este domínio possa ser removido desta lista,<br>\n");
-                builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-                builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                builder.append("    <br>\n");
-                builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
-                builder.append("    onde este expira em uma semana.<br>\n");
-                builder.append("    <br>\n");
-                builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
-            } else if (Block.containsHost(query)) {
-                builder.append("    Este domínio está listado por bloqueio manual.<br>\n");
-                if (Core.hasAdminEmail()) {
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    Este domínio está listado por má reputação com ");
+                    builder.append(Server.PERCENT_FORMAT.format(probability));
+                    builder.append(" de pontos negativos do volume total de envio.<br>\n");
                     builder.append("    <br>\n");
-                    builder.append("    Para que este domínio seja removido desta lista,<br>\n");
-                    builder.append("    é necessário enviar uma solicitação para ");
-                    builder.append(Core.getAdminEmail());
-                    builder.append(".<br>\n");
+                    builder.append("    Para que este domínio possa ser removido desta lista,<br>\n");
+                    builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
+                    builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                    builder.append("    <br>\n");
+                    builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
+                    builder.append("    onde este expira em uma semana.<br>\n");
+                    builder.append("    <br>\n");
+                    builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                } else {
+                    builder.append("    This domain is listed by bad reputation in ");
+                    builder.append(Server.PERCENT_FORMAT.format(probability));
+                    builder.append(" of negative points of total sending.<br>\n");
+                    builder.append("    <br>\n");
+                    builder.append("    In order for this domain can be removed from this list,<br>\n");
+                    builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
+                    builder.append("    whose SMTP rejection has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                    builder.append("    <br>\n");
+                    builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
+                    builder.append("    where this point expires in a week.<br>\n");
+                    builder.append("    <br>\n");
+                    builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                }
+            } else if (Block.containsHost(query)) {
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    Este domínio está listado por bloqueio manual.<br>\n");
+                    if (Core.hasAdminEmail()) {
+                        builder.append("    <br>\n");
+                        builder.append("    Para que este domínio seja removido desta lista,<br>\n");
+                        builder.append("    é necessário enviar uma solicitação para ");
+                        builder.append(Core.getAdminEmail());
+                        builder.append(".<br>\n");
+                    }
+                } else {
+                    builder.append("    This domain is listed by manual block.<br>\n");
+                    if (Core.hasAdminEmail()) {
+                        builder.append("    <br>\n");
+                        builder.append("    In order for this domain to be removed from this list,<br>\n");
+                        builder.append("    You must send a request to ");
+                        builder.append(Core.getAdminEmail());
+                        builder.append(".<br>\n");
+                    }
                 }
             } else {
-                builder.append("    Nenhum bloqueio foi encontrado para este domínio.<br>\n");
+                if (locale.getLanguage().equals("pt")) {
+                    builder.append("    Nenhum bloqueio foi encontrado para este domínio.<br>\n");
+                } else {
+                    builder.append("    No block was found for this domain.<br>\n");
+                }
             }
         }
         builder.append("  </body>\n");

@@ -993,6 +993,8 @@ public class White {
             return token;
         } else if (isCIDR(token)) {
             return token;
+        } else if (token.startsWith("@>")) {
+            return token;
         } else if (token.contains(">")) {
             int index = token.indexOf('>');
             return token.substring(0, index) + ";PASS" + token.substring(index);
@@ -1012,15 +1014,23 @@ public class White {
         }
     }
 
+    public static boolean add(String client, String token) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if ((token = normalizeTokenWhite(token)) == null) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else {
+            return addExact(client + ':' + token);
+        }
+    }
+    
     public static boolean add(Client client, String token) throws ProcessException {
         if (client == null || !client.hasEmail()) {
             throw new ProcessException("ERROR: CLIENT INVALID");
         } else if ((token = normalizeTokenWhite(token)) == null) {
             throw new ProcessException("ERROR: TOKEN INVALID");
-        } else if (addExact(client.getEmail() + ':' + token)) {
-            return true;
         } else {
-            return false;
+            return addExact(client.getEmail() + ':' + token);
         }
     }
 
@@ -1033,16 +1043,24 @@ public class White {
             return false;
         }
     }
+    
+    public static boolean drop(String client, String token) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("ERROR: CLIENT INVALID");
+        } else if ((token = normalizeTokenWhite(token)) == null) {
+            throw new ProcessException("ERROR: TOKEN INVALID");
+        } else {
+            return dropExact(client + ':' + token);
+        }
+    }
 
     public static boolean drop(Client client, String token) throws ProcessException {
         if (client == null || !client.hasEmail()) {
             throw new ProcessException("ERROR: CLIENT INVALID");
         } else if ((token = normalizeTokenWhite(token)) == null) {
             throw new ProcessException("ERROR: TOKEN INVALID");
-        } else if (dropExact(client.getEmail() + ':' + token)) {
-            return true;
         } else {
-            return false;
+            return dropExact(client.getEmail() + ':' + token);
         }
     }
 
@@ -1204,14 +1222,22 @@ public class White {
                 return client.getEmail() + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain;
             } else if ((found = findHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) != null) {
                 return found;
+            } else if (recipient != null && SET.contains("@>" + recipient)) {
+                return "@>" + recipient;
+            } else if (recipientDomain != null && SET.contains("@>" + recipientDomain)) {
+                return "@>" + recipientDomain;
+            } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@>" + recipient)) {
+                return client.getEmail() + ":@>" + recipient;
+            } else if (recipientDomain != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@>" + recipientDomain)) {
+                return client.getEmail() + ":@>" + recipientDomain;
             } else if (recipient != null && SET.contains("@;" + qualifier +  ">" + recipient)) {
                 return "@;" + qualifier +  ">" + recipient;
             } else if (recipientDomain != null && SET.contains("@;" + qualifier +  ">" + recipientDomain)) {
                 return "@;" + qualifier +  ">" + recipientDomain;
-            } else if (recipient != null && SET.contains(client + ":@;" + qualifier +  ">" + recipient)) {
-                return client + ":@;" + qualifier +  ">" + recipient;
-            } else if (recipientDomain != null && SET.contains(client + ":@;" + qualifier +  ">" + recipientDomain)) {
-                return client + ":@;" + qualifier +  ">" + recipientDomain;
+            } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + qualifier +  ">" + recipient)) {
+                return client.getEmail() + ":@;" + qualifier +  ">" + recipient;
+            } else if (recipientDomain != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + qualifier +  ">" + recipientDomain)) {
+                return client.getEmail() + ":@;" + qualifier +  ">" + recipientDomain;
             } else {
                 int index3 = senderDomain.length();
                 while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {

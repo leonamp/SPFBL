@@ -43,6 +43,10 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     public void setMessage(String message) {
         this.message = message;
     }
+    
+    public boolean isHostName(String hostname) {
+        return this.hostname.equals(Domain.normalizeHostname(hostname, true));
+    }
 
     public String getHostName() {
         return hostname;

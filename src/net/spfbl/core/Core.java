@@ -68,7 +68,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 8;
+    private static final byte RELEASE = 9;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -140,8 +140,14 @@ public class Core {
             } else if (url == null) {
                 return null;
             } else {
-                String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
-                return url + Server.encrypt(ticket);
+                try {
+                    String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (UnsupportedEncodingException ex) {
+                    throw new ProcessException("ERROR: ENCODE", ex);
+                }
             }
         } else {
             return null;
@@ -457,6 +463,10 @@ public class Core {
     
     public static String getInterface() {
         return INTERFACE;
+    }
+    
+    public static String getHostname() {
+        return HOSTNAME;
     }
     
     private static String HOSTNAME = null;

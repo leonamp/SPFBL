@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
+import net.spfbl.core.Core;
 import net.spfbl.core.Reverse;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
@@ -46,6 +47,7 @@ import org.xbill.DNS.DClass;
 import org.xbill.DNS.Flags;
 import org.xbill.DNS.Header;
 import org.xbill.DNS.Message;
+import org.xbill.DNS.NSRecord;
 import org.xbill.DNS.Name;
 import org.xbill.DNS.Rcode;
 import org.xbill.DNS.Record;
@@ -361,7 +363,7 @@ public final class QueryDNSBL extends Server {
                     Client client = Client.create(ipAddress, "DNSBL");
                     if (client == null) {
                         result = "IGNORED";
-                    } else if (!client.hasPermission(Permission.DNSBL)) {
+                    } else if (client.hasPermission(Permission.NONE)) {
                         client.addQuery();
                         origin += ' ' + client.getDomain();
                         result = "IGNORED";
@@ -383,18 +385,35 @@ public final class QueryDNSBL extends Server {
                             host = host.substring(0, index);
                             String hostname = null;
                             String reverse = "";
-                            while ((index = host.lastIndexOf('.', index)) != -1) {
-                                reverse = host.substring(0, index);
-                                hostname = host.substring(index);
-                                if ((server = getExact(hostname)) == null) {
-                                    index--;
-                                } else {
-                                    break;
+                            if ((server = getExact('.' + host)) == null) {
+                                while ((index = host.lastIndexOf('.', index)) != -1) {
+                                    reverse = host.substring(0, index);
+                                    hostname = host.substring(index);
+                                    if ((server = getExact(hostname)) == null) {
+                                        index--;
+                                    } else {
+                                        break;
+                                    }
                                 }
                             }
                             if (server == null) {
                                 // Não existe servidor DNSBL cadastrado.
                                 result = "NXDOMAIN";
+                            } else if (type.equals("A") && server.isHostName(host)) {
+                                // O A é o próprio servidor.
+                                if ((result = Core.getHostname()) == null) {
+                                    result = "NXDOMAIN";
+                                } else {
+                                    InetAddress address = InetAddress.getByName(result);
+                                    result = address.getHostAddress();
+                                }
+                            } else if (type.equals("NS") && server.isHostName(host)) {
+                                // O NS é o próprio servidor.
+                                if ((result = Core.getHostname()) == null) {
+                                    result = "NXDOMAIN";
+                                } else {
+                                    result += '.';
+                                }
                             } else if (host.equals(hostname)) {
                                 // Consulta do próprio hostname do servidor.
                                 result = "NXDOMAIN";
@@ -477,6 +496,10 @@ public final class QueryDNSBL extends Server {
                         } else if (type.equals("TXT")) {
                             TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
                             message.addRecord(txt, Section.ANSWER);
+                        } else if (type.equals("NS")) {
+                            Name hostname = Name.fromString(result);
+                            NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
+                            message.addRecord(ns, Section.ANSWER);
                         } else {
                             InetAddress address = InetAddress.getByName(result);
                             ARecord a = new ARecord(name, DClass.IN, ttl, address);

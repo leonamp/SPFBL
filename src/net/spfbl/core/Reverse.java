@@ -84,7 +84,7 @@ public final class Reverse implements Serializable {
         return reverse;
     }
 
-    private static TreeSet<String> keySet() {
+    private static synchronized TreeSet<String> keySet() {
         TreeSet<String> keySet = new TreeSet<String>();
         keySet.addAll(MAP.keySet());
         return keySet;
@@ -138,18 +138,23 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public static TreeSet<String> getValidSet(String ip) {
-        Reverse reverse = Reverse.get(ip);
-        return reverse.getAddressSet(ip);
+    public static TreeSet<String> getValidSet(String ip, boolean refresh) {
+        Reverse reverse = Reverse.get(ip, refresh);
+        return reverse.getAddressSet(ip, refresh);
     }
     
-    public TreeSet<String> getAddressSet(String ip) {
+    public static TreeSet<String> getValidSet(String ip) {
+        Reverse reverse = Reverse.get(ip);
+        return reverse.getAddressSet(ip, false);
+    }
+    
+    public TreeSet<String> getAddressSet(String ip, boolean refresh) {
         if (addressSet == null) {
             return new TreeSet<String>();
         } else {
             TreeSet<String> resultSet = new TreeSet<String>();
             for (String hostname : addressSet) {
-                if (SPF.matchHELO(ip, hostname)) {
+                if (SPF.matchHELO(ip, hostname, refresh)) {
                     resultSet.add(hostname);
                 }
             }
@@ -388,6 +393,10 @@ public final class Reverse implements Serializable {
     }
     
     public static Reverse get(String ip) {
+        return get(ip, false);
+    }
+    
+    public static Reverse get(String ip, boolean refresh) {
         if ((ip = Subnet.normalizeIP(ip)) == null) {
             return null;
         } else {
@@ -395,6 +404,8 @@ public final class Reverse implements Serializable {
             if (reverse == null) {
                 reverse = new Reverse(ip);
                 putExact(ip, reverse);
+            } else if (refresh) {
+                reverse.refresh();
             } else if (reverse.isExpired7()) {
                 reverse.refresh();
             } else {
