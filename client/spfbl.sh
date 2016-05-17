@@ -27,21 +27,35 @@
 #
 #   sudo apt-get install netcat
 #
+# Se estiver usando a autenticação por OTP, prencha a constante OTP_SECRET
+# com a chave secreta fornecida pelo serviço SPFBL e mantenha a variável 
+# OTP_SECRET vazia. É necessário oathtool para usar esta autenticação:
+#
+#   sudo apt-get install oathtool
+#
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
+OTP_SECRET=""
+OTP_CODE=""
 DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="1.04"
+version="2.00"
 
 head()
 {
 	echo "SPFBL v$version - by Leandro Rodrigues - leandro@spfbl.net"
 }
+
+if [[ $OTP_SECRET == "" ]]; then
+	OTP_CODE=""
+else
+	OTP_CODE=" $(oathtool --totp -b -d 6 $OTP_SECRET)"
+fi
 
 case $1 in
 	'version')
@@ -256,9 +270,6 @@ case $1 in
 			;;
 		esac
 	;;
-##########
-### DNSBL?
-##########
 	'provider')
 		case $2 in
 			'add')
@@ -1656,11 +1667,6 @@ case $1 in
 			;;
 		esac
 	;;
-
-
-########
-## GUESS
-########
 	'reputation')
 		# Parâmetros de entrada: nenhum
 		#
@@ -1782,7 +1788,69 @@ case $1 in
 		if [ $# -lt "1" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 analise <ip>\n"
+			
+		elif [ $2 == "show" ]; then
+		
+			response=$(echo "ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+			
+		elif [ $2 == "dump" ]; then
+		
+			response=$(echo "ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		
+		elif [ $2 == "drop" ]; then
+		
+			response=$(echo "ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 3
+			elif [[ $response == "UPDATED" ]]; then
+				exit 0
+			elif [[ $response == "NOT LOADED" ]]; then
+				exit 1
+			else
+				exit 2
+			fi
+		
 		else
+		
 			ip=$2
 
 			response=$(echo "ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
