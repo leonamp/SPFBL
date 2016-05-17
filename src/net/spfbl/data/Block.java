@@ -113,9 +113,9 @@ public class Block {
             for (String client : MAP.keySet()) {
                 for (String whois : MAP.get(client)) {
                     if (client == null) {
-                        set.add("WHOIS=" + whois);
+                        set.add("WHOIS/" + whois);
                     } else {
-                        set.add(client + ":WHOIS=" + whois);
+                        set.add(client + ":WHOIS/" + whois);
                     }
                 }
         }
@@ -553,17 +553,19 @@ public class Block {
                     for (Object object : patternList.toArray()) {
                         Pattern pattern = (Pattern) object;
                         for (String token : tokenSet) {
-                            Matcher matcher = pattern.matcher(token);
-                            if (matcher.matches()) {
-                                String regex = "REGEX=" + pattern.pattern();
-                                if (Block.addExact(token)) {
-                                    Server.logDebug("new BLOCK '" + token + "' added by '" + regex + "'.");
-                                    if (client == null) {
-                                        Peer.sendBlockToAll(token);
+                            if (token.contains("@") == pattern.pattern().contains("@")) {
+                                Matcher matcher = pattern.matcher(token);
+                                if (matcher.matches()) {
+                                    String regex = "REGEX=" + pattern.pattern();
+                                    if (Block.addExact(token)) {
+                                        Server.logDebug("new BLOCK '" + token + "' added by '" + regex + "'.");
+                                        if (client == null) {
+                                            Peer.sendBlockToAll(token);
+                                        }
                                     }
+                                    result = regex;
+                                    break;
                                 }
-                                result = regex;
-                                break;
                             }
                         }
                     }
@@ -574,15 +576,17 @@ public class Block {
                         for (Object object : patternList.toArray()) {
                             Pattern pattern = (Pattern) object;
                             for (String token : tokenSet) {
-                                Matcher matcher = pattern.matcher(token);
-                                if (matcher.matches()) {
-                                    String regex = "REGEX=" + pattern.pattern();
-                                    token = client + ":" + token;
-                                    if (addExact(token)) {
-                                        Server.logDebug("new BLOCK '" + token + "' added by '" + client + ":" + regex + "'.");
+                                if (token.contains("@") == pattern.pattern().contains("@")) {
+                                    Matcher matcher = pattern.matcher(token);
+                                    if (matcher.matches()) {
+                                        String regex = "REGEX=" + pattern.pattern();
+                                        token = client + ":" + token;
+                                        if (addExact(token)) {
+                                            Server.logDebug("new BLOCK '" + token + "' added by '" + client + ":" + regex + "'.");
+                                        }
+                                        result = client + ":" + regex;
+                                        break;
                                     }
-                                    result = client + ":" + regex;
-                                    break;
                                 }
                             }
                         }
@@ -864,7 +868,7 @@ public class Block {
             } else {
                 return false;
             }
-        } else if (token.contains("WHOIS=")) {
+        } else if (token.contains("WHOIS/")) {
             if (WHOIS.dropExact(token)) {
                 CHANGED = true;
                 return true;
@@ -892,7 +896,7 @@ public class Block {
     public static boolean addExact(String token) throws ProcessException {
         if (token == null) {
             return false;
-        } else if (token.contains("WHOIS=")) {
+        } else if (token.contains("WHOIS/")) {
             if (WHOIS.addExact(token)) {
                 Peer.releaseAll(token);
                 CHANGED = true;
@@ -947,7 +951,7 @@ public class Block {
     }
 
     public static boolean containsExact(String token) {
-        if (token.contains("WHOIS=")) {
+        if (token.contains("WHOIS/")) {
             int index = token.indexOf('=');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
@@ -1340,7 +1344,13 @@ public class Block {
         if (qualifier.equals("PASS")) {
             String block;
             while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
-                Server.logDebug("false positive BLOCK '" + block + "' detected.");
+                if (client == null) {
+                    Server.logDebug("false positive BLOCK '" + block + "' detected.");
+                } else if (client.hasEmail()) {
+                    Server.logDebug("false positive BLOCK '" + block + "' detected by '" + client.getEmail() + "'.");
+                } else {
+                    Server.logDebug("false positive BLOCK '" + block + "' detected by '" + client.getDomain() + "'.");
+                }
             }
         }
     }
@@ -1739,71 +1749,42 @@ public class Block {
                     fileInputStream.close();
                 }
                 for (String token : set) {
-                    addExact(token);
+                    if (Domain.isHostname(token)) {
+                        boolean add = true;
+                        String hostname = token;
+                        int index;
+                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
+                            hostname = hostname.substring(index);
+                            if (set.contains(hostname)) {
+                                add = false;
+                                break;
+                            }
+                        }
+                        if (add) {
+                            SET.addExact(token);
+                        }
+                    } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                        boolean add = true;
+                        String hostname = '.' + token.substring(1);
+                        if (set.contains(hostname)) {
+                            add = false;
+                        } else {
+                            int index;
+                            while ((index = hostname.indexOf('.', 1)) != -1) {                                
+                                hostname = hostname.substring(index);
+                                if (set.contains(hostname)) {
+                                    add = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (add) {
+                            SET.addExact(token);
+                        }
+                    } else {
+                        addExact(token);
+                    }
                 }
-//                // Processo temporário de transição.
-//                for (String token : set) {
-//                    String client;
-//                    String identifier;
-//                    if (Subnet.isValidIP(token)) {
-//                        client = null;
-//                        identifier = token;
-//                    } else if (Subnet.isValidCIDR(token)) {
-//                        client = null;
-//                        identifier = token;
-//                    } else if (token.contains(":")) {
-//                        int index = token.indexOf(':');
-//                        client = token.substring(0, index);
-//                        identifier = token.substring(index + 1);
-//                    } else {
-//                        client = null;
-//                        identifier = token;
-//                    }
-//                    if (Subnet.isValidCIDR(identifier)) {
-//                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-//                    } else if (Owner.isOwnerID(identifier)) {
-//                        identifier = "WHOIS/ownerid=" + identifier;
-//                    } else {
-//                        identifier = normalizeTokenBlock(identifier);
-//                    }
-//                    if (identifier != null) {
-//                        try {
-//                            if (client == null) {
-//                                addExact(identifier);
-//                            } else if (Domain.isEmail(client)) {
-//                                addExact(client + ':' + identifier);
-//                            }
-//                        } catch (ProcessException ex) {
-//                            Server.logDebug("BLOCK CIDR " + identifier + " " + ex.getErrorMessage());
-//                        }
-//                    }
-//                }
-//                for (String token : set) {
-//                    if (Domain.isHostname(token)) {
-//                        String hostname = token;
-//                        int index;
-//                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
-//                            hostname = hostname.substring(index);
-//                            if (SET.contains(hostname)) {
-//                                dropExact(token);
-//                                break;
-//                            }
-//                        }
-//                    } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-//                        String hostname = '.' + token.substring(1);
-//                        if (SET.contains(hostname)) {
-//                            dropExact(token);
-//                        }
-//                        int index;
-//                        while ((index = hostname.indexOf('.', 1)) != -1) {                                
-//                            hostname = hostname.substring(index);
-//                            if (SET.contains(hostname)) {
-//                                dropExact(token);
-//                                break;
-//                            }
-//                        }
-//                    }
-//                }
                 CHANGED = false;
                 Server.logLoad(time, file);
             } catch (Exception ex) {

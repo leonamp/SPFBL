@@ -157,8 +157,21 @@ public class Client implements Serializable, Comparable<Client> {
         return User.get(email);
     }
     
+    public boolean hasUser() {
+        return User.exists(email);
+    }
+    
     public boolean hasEmail() {
         return email != null;
+    }
+    
+    public boolean hasSecretOTP() {
+        User user = getUser();
+        if (user == null) {
+            return false;
+        } else {
+            return user.hasSecretOTP();
+        }
     }
     
     public boolean contains(String ip) {

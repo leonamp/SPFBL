@@ -68,6 +68,7 @@ import net.spfbl.data.NoReply;
 import net.spfbl.core.Peer;
 import net.spfbl.data.Provider;
 import net.spfbl.core.Reverse;
+import net.spfbl.core.User;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
 import org.apache.commons.lang3.SerializationUtils;
@@ -3435,7 +3436,8 @@ public final class SPF implements Serializable {
                 Subnet.containsIP("10.0.0.0/8", ip) ||
                 Subnet.containsIP("172.16.0.0/12", ip) ||
                 Subnet.containsIP("192.168.0.0/16", ip) ||
-                Subnet.containsIP("169.254.0.0/16", ip)
+                Subnet.containsIP("169.254.0.0/16", ip) ||
+                (client != null && client.contains(ip))
                 ) {
             // Message from LAN.
             return "action=DUNNO\n\n";
@@ -3712,15 +3714,28 @@ public final class SPF implements Serializable {
                 return "ERROR: QUERY\n";
             } else {
                 String origin;
+                User user;
                 if (client == null) {
                     origin = ipAddress.getHostAddress();
+                    user = null;
                 } else if (client.hasEmail()) {
                     origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
+                    user = client.getUser();
                 } else {
                     origin = ipAddress.getHostAddress() + " " + client.getDomain();
+                    user = client.getUser();
                 }
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
+                Integer otpCode = Core.getInteger(firstToken);
+                if (otpCode != null) {
+                    firstToken = tokenizer.nextToken();
+                    if (user == null) {
+                        return "ERROR: OTP UNDEFINED USER\n";
+                    } else if (!user.isValidOTP(otpCode)) {
+                        return "ERROR: OTP INVALID CODE\n";
+                    }
+                }
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
                     TreeSet<String> tokenSet = CacheComplain.addComplain(origin, ticket);
@@ -3847,7 +3862,8 @@ public final class SPF implements Serializable {
                                 Subnet.containsIP("10.0.0.0/8", ip) ||
                                 Subnet.containsIP("172.16.0.0/12", ip) ||
                                 Subnet.containsIP("192.168.0.0/16", ip) ||
-                                Subnet.containsIP("169.254.0.0/16", ip)
+                                Subnet.containsIP("169.254.0.0/16", ip) ||
+                                (client != null && client.contains(ip))
                                 ) {
                             // Message from LAN.
                             return "LAN\n";
@@ -4385,7 +4401,9 @@ public final class SPF implements Serializable {
         WHITE, // Whitelisted
         GRAY, // Graylisted
         BLACK, // Blacklisted
-        BLOCK; // Blocked
+        BLOCK, // Blocked
+        IGNORE, // Ignored
+        CLOSED; // Closed
     }
     /**
      * Constantes que determinam os limiares de listagem.
@@ -4582,16 +4600,16 @@ public final class SPF implements Serializable {
         public Status getStatus(String token) {
             Status statusOld = status;
             float probability = getSpamProbability(token);
-            if (probability == 0.0f) {
+            if (probability < 0.015625f) {
                 status = Status.WHITE;
+            } else if (probability < LIMIAR1) {
+                status = statusOld == Status.BLACK ? Status.GRAY : statusOld;
             } else if (probability > LIMIAR3) {
-                status = Subnet.isValidIP(token) ? Status.BLACK : Status.BLOCK;
+                status = (Subnet.isValidIP(token) ? Status.BLACK : Status.BLOCK);
             } else if (probability > LIMIAR2) {
                 status = Status.BLACK;
             } else if (probability > LIMIAR1) {
-                status = Subnet.isValidIP(token) ? Status.GRAY : Status.BLACK;
-            } else if (statusOld == Status.BLACK && probability < LIMIAR1) {
-                status = Status.GRAY;
+                status = (Subnet.isValidIP(token) ? Status.GRAY : Status.BLACK);
             }
             return status;
         }

@@ -29,6 +29,8 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.security.SecureRandom;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
@@ -41,13 +43,15 @@ import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeSet;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
 import javax.mail.Transport;
+import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -55,9 +59,9 @@ import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
-import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
+import org.apache.commons.codec.binary.Base32;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -67,8 +71,8 @@ import net.spfbl.whois.SubnetIPv6;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 9;
+    private static final byte SUBVERSION = 1;
+    private static final byte RELEASE = 0;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -126,6 +130,14 @@ public class Core {
             return null;
         } else {
             return complainHTTP.getSpamURL();
+        }
+    }
+    
+    public static String getLoginURL() {
+        if (complainHTTP == null) {
+            return null;
+        } else {
+            return complainHTTP.getLoginURL();
         }
     }
     
@@ -419,6 +431,18 @@ public class Core {
     
     public static boolean hasAdminEmail() {
         return ADMIN_EMAIL != null;
+    }
+    
+    public static InternetAddress getAdminInternetAddress() {
+        if (ADMIN_EMAIL == null) {
+            return null;
+        } else {
+            try {
+                return new InternetAddress(ADMIN_EMAIL, "SPFBL Admin");
+            } catch (UnsupportedEncodingException ex) {
+                return null;
+            }
+        }
     }
     
     public static String getAdminEmail() {
@@ -1468,6 +1492,83 @@ public class Core {
                 builder.append(character);
             }
             return builder.toString();
+        }
+    }
+    
+    public static boolean isValidOTP(String secret, int code) {
+        if (secret == null) {
+            return false;
+        } else {
+            byte[] buffer = new Base32().decode(secret);
+            long index = getTimeIndexOTP();
+            if (code == getCodeOTP(buffer, index - 1)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index + 1)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    public static String generateSecretOTP() {
+        byte[] buffer = new byte[10];
+        new SecureRandom().nextBytes(buffer);
+        return new String(new Base32().encode(buffer));
+    }
+ 
+    private static long getTimeIndexOTP() {
+        return System.currentTimeMillis() / 1000 / 30;
+    }
+
+    private static long getCodeOTP(byte[] secret, long timeIndex) {
+        try {
+            SecretKeySpec signKey = new SecretKeySpec(secret, "HmacSHA1");
+            ByteBuffer buffer = ByteBuffer.allocate(8);
+            buffer.putLong(timeIndex);
+            byte[] timeBytes = buffer.array();
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(signKey);
+            byte[] hash = mac.doFinal(timeBytes);
+            int offset = hash[19] & 0xf;
+            long truncatedHash = hash[offset] & 0x7f;
+            for (int i = 1; i < 4; i++) {
+                truncatedHash <<= 8;
+                truncatedHash |= hash[offset + i] & 0xff;
+            }
+            return (truncatedHash %= 1000000);
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+    
+    public static boolean isOpenSMTP(String host, int port, int timeout) {
+        try {
+            Properties props = new Properties();
+            props.put("mail.smtp.starttls.enable", "false");
+            props.put("mail.smtp.auth", "false");
+            props.put("mail.smtp.timeout", timeout);
+            Session session = Session.getInstance(props, null);
+            Transport transport = session.getTransport("smtp");
+            transport.connect(host, port, null, null);
+            transport.close();
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+    
+    public static Integer getInteger(String text) {
+        if (text == null) {
+            return null;
+        } else {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
         }
     }
 }

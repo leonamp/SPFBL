@@ -20,8 +20,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.TreeSet;
+import javax.mail.internet.InternetAddress;
 import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -36,11 +38,14 @@ public class User implements Serializable, Comparable<User> {
     
     private final String email;
     private String name;
-    
+
     /**
-     * Permissões de usuário.
+     * Atributos para OTP.
      */
-    private boolean permission_spfbl = false; // Pode manipular o SPFBL.
+    private String otp_secret = null; // Chave oficial.
+    private String otp_transition = null; // Chave de transição.
+    private byte otp_fail = 0;
+    private long otp_last = 0;
     
     private User(String email, String name) throws ProcessException {
         if (Domain.isEmail(email) && simplify(name) != null) {
@@ -64,16 +69,57 @@ public class User implements Serializable, Comparable<User> {
         return email;
     }
     
+    public boolean isEmail(String email) {
+        return this.email.equals(email);
+    }
+    
+    public boolean hasSecretOTP() {
+        return otp_secret != null;
+    }
+    
+    public boolean hasTransitionOTP() {
+        return otp_transition != null;
+    }
+    
+    public String newSecretOTP() {
+        CHANGED = true;
+        return otp_transition = Core.generateSecretOTP();
+    }
+    
+    public boolean isValidOTP(Integer code) {
+        if (code == null) {
+            return false;
+        } else if (Core.isValidOTP(otp_transition, code)) {
+            otp_secret = otp_transition;
+            otp_transition = null;
+            otp_fail = 0;
+            otp_last = System.currentTimeMillis();
+            CHANGED = true;
+            return true;
+        } else if (Core.isValidOTP(otp_secret, code)) {
+            otp_transition = null;
+            otp_fail = 0;
+            otp_last = System.currentTimeMillis();
+            CHANGED = true;
+            return true;
+        } else {
+            otp_fail = otp_fail < Byte.MAX_VALUE ? otp_fail++ : otp_fail;
+            otp_last = System.currentTimeMillis();
+            CHANGED = true;
+            return false;
+        }
+    }
+    
     public String getName() {
         return name;
     }
     
-    public boolean hasPermissionSPFBL() {
-        return permission_spfbl;
-    }
-    
-    public void setPermissionSPFBL(boolean spfbl) {
-        this.permission_spfbl = spfbl;
+    public InternetAddress getInternetAddress() {
+        try {
+            return new InternetAddress(email, name);
+        } catch (UnsupportedEncodingException ex) {
+            return null;
+        }
     }
     
     private static String simplify(String text) {
@@ -168,6 +214,14 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public static boolean exists(String email) {
+        if (email == null) {
+            return false;
+        } else {
+            return MAP.containsKey(email);
+        }
+    }
+    
     public static synchronized HashMap<String,User> getMap() {
         HashMap<String,User> map = new HashMap<String,User>();
         map.putAll(MAP);
@@ -247,7 +301,6 @@ public class User implements Serializable, Comparable<User> {
     
     @Override
     public String toString() {
-        return name + " <" + email + ">"
-                + (permission_spfbl ? " SPFBL" : "");
+        return name + " <" + email + ">";
     }
 }

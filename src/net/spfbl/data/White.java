@@ -116,9 +116,9 @@ public class White {
             for (String client : MAP.keySet()) {
                 for (String whois : MAP.get(client)) {
                     if (client == null) {
-                        set.add("WHOIS=" + whois);
+                        set.add("WHOIS/" + whois);
                     } else {
-                        set.add(client + ":WHOIS=" + whois);
+                        set.add(client + ":WHOIS/" + whois);
                     }
                 }
         }
@@ -531,10 +531,12 @@ public class White {
                 if (patternArray != null) {
                     for (Pattern pattern : patternArray) {
                         for (String token : tokenSet) {
-                            Matcher matcher = pattern.matcher(token);
-                            if (matcher.matches()) {
-                                result = "REGEX=" + pattern.pattern();
-                                break;
+                            if (token.contains("@") == pattern.pattern().contains("@")) {
+                                Matcher matcher = pattern.matcher(token);
+                                if (matcher.matches()) {
+                                    result = "REGEX=" + pattern.pattern();
+                                    break;
+                                }
                             }
                         }
                     }
@@ -544,10 +546,12 @@ public class White {
                     if (patternArray != null) {
                         for (Pattern pattern : patternArray) {
                             for (String token : tokenSet) {
-                                Matcher matcher = pattern.matcher(token);
-                                if (matcher.matches()) {
-                                    result = client + ":REGEX=" + pattern.pattern();
-                                    break;
+                                if (token.contains("@") == pattern.pattern().contains("@")) {
+                                    Matcher matcher = pattern.matcher(token);
+                                    if (matcher.matches()) {
+                                        result = client + ":REGEX=" + pattern.pattern();
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -737,7 +741,7 @@ public class White {
     public static boolean dropExact(String token) throws ProcessException {
         if (token == null) {
             return false;
-        } else if (token.contains("WHOIS=")) {
+        } else if (token.contains("WHOIS/")) {
             if (WHOIS.dropExact(token)) {
                 Peer.releaseAll(token);
                 CHANGED = true;
@@ -791,7 +795,7 @@ public class White {
     public static boolean addExact(String token) throws ProcessException {
         if (token == null) {
             return false;
-        } else if (token.contains("WHOIS=")) {
+        } else if (token.contains("WHOIS/")) {
             if (WHOIS.addExact(token)) {
                 Peer.releaseAll(token);
                 CHANGED = true;
@@ -840,9 +844,19 @@ public class White {
         whiteSet.addAll(WHOIS.getAll());
         return whiteSet;
     }
+    
+    public static boolean containsIP(String ip) {
+        if ((ip = Subnet.normalizeIP(ip)) == null) {
+            return false;
+//        } else if (SET.contains(ip)) {
+//            return true;
+        } else {
+            return CIDR.get(null, ip) != null;
+        }
+    }
 
     public static boolean containsExact(String token) {
-        if (token.contains("WHOIS=")) {
+        if (token.contains("WHOIS/")) {
             int index = token.indexOf('=');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);

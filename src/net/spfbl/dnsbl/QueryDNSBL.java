@@ -496,6 +496,10 @@ public final class QueryDNSBL extends Server {
                         } else if (type.equals("TXT")) {
                             TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
                             message.addRecord(txt, Section.ANSWER);
+                        } else if (result.equals("127.0.0.2")) {
+                            InetAddress address = InetAddress.getByName(result);
+                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                            message.addRecord(a, Section.ANSWER);
                         } else if (type.equals("NS")) {
                             Name hostname = Name.fromString(result);
                             NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
@@ -525,6 +529,7 @@ public final class QueryDNSBL extends Server {
                     result = "IGNORED";
                 } catch (Exception ex) {
                     Server.logError(ex);
+                    result = "ERROR";
                 } finally {
                     Server.logQueryDNSBL(
                             time,

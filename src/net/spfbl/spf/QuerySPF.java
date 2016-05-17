@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
+import net.spfbl.core.User;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
 
@@ -157,15 +158,14 @@ public final class QuerySPF extends Server {
                     String result = null;
                     try {
                         InetAddress ipAddress = socket.getInetAddress();
-                        Client client = Client.create(ipAddress, "SPFBL");
+                        Client client = Client.get(ipAddress);
+                        User user = client == null ? null : client.getUser();
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
-                            if (line.equals("VERSION")) {
-                                result = Core.getAplication() + "\n";
-                            } else if (line.equals("request=smtpd_access_policy")) {
+                            if (line.equals("request=smtpd_access_policy")) {
                                 // Entrada padrão do Postfix.
                                 // Extrair os atributos necessários.
                                 String ip = null;
@@ -193,262 +193,281 @@ public final class QuerySPF extends Server {
                                 result = SPF.processPostfixSPF(
                                         ipAddress, client, ip, sender, helo, recipient
                                         );
-                            } else if (line.startsWith("BLOCK ADD ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de adição bloqueio de remetente.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String sender = tokenizer.nextToken();
-                                        boolean added = Block.add(client, sender);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("BLOCK DROP ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de remoção de bloqueio de remetente.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String sender = tokenizer.nextToken();
-                                        boolean droped = Block.drop(client, sender);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("BLOCK SHOW ALL")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                StringBuilder builder = new StringBuilder();
-                                for (String sender : Block.getAll(client)) {
-                                    builder.append(sender);
-                                    builder.append('\n');
-                                }
-                                result = builder.toString();
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.equals("BLOCK SHOW")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                StringBuilder builder = new StringBuilder();
-                                for (String sender : Block.get(client)) {
-                                    builder.append(sender);
-                                    builder.append('\n');
-                                }
-                                result = builder.toString();
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.startsWith("BLOCK FIND ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de remoção de bloqueio de remetente.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String token = tokenizer.nextToken();
-                                        String block = Block.find(client, token);
-                                        if (result == null) {
-                                            result = (block == null ? "NONE" : block) + "\n";
-                                        } else {
-                                            result += (block == null ? "NONE" : block) + "\n";
-                                        }
-                                    } catch (Exception ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("TRAP ADD ")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de adição de spamtrap.
-                                line = line.substring(9);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean added = Trap.add(client, recipient);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("TRAP DROP ")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de remoção de spamtrap.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean droped = Trap.drop(client, recipient);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("TRAP SHOW")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                StringBuilder builder = new StringBuilder();
-                                for (String recipient : Trap.get(client)) {
-                                    builder.append(recipient);
-                                    builder.append('\n');
-                                }
-                                result = builder.toString();
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.startsWith("WHITE ADD ")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de adição de whitelist.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean added = White.add(client, recipient);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("WHITE DROP ")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de remoção de whitelist.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean droped = White.drop(client, recipient);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("WHITE SHOW ALL")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                StringBuilder builder = new StringBuilder();
-                                for (String recipient : White.getAll(client)) {
-                                    builder.append(recipient);
-                                    builder.append('\n');
-                                }
-                                result = builder.toString();
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.equals("WHITE SHOW")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                StringBuilder builder = new StringBuilder();
-                                for (String recipient : White.get(client)) {
-                                    builder.append(recipient);
-                                    builder.append('\n');
-                                }
-                                result = builder.toString();
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
                             } else {
-                                query = line.trim();
-                                result = SPF.processSPF(ipAddress, client, query);
-                                if (query.startsWith("HAM ")) {
-                                    type = "SPFHM";
-                                } else if (query.startsWith("SPAM ")) {
-                                    type = "SPFSP";
-                                } else if (query.startsWith("CHECK ")) {
-                                    type = "SPFCK";
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                String token = tokenizer.nextToken();
+                                Integer otpCode = Core.getInteger(token);
+                                if (otpCode != null) {
+                                    int index = line.indexOf(token) + token.length() + 1;
+                                    line = line.substring(index).trim();
+                                    token = tokenizer.nextToken();
+                                    if (user == null) {
+                                        result = "ERROR: OTP UNDEFINED USER\n";
+                                    } else if (!user.isValidOTP(otpCode)) {
+                                        result = "ERROR: OTP INVALID CODE\n";
+                                    }
+                                }
+                                if (result != null) {
+                                    // Houve erro de OTP.
+                                } else if (token.equals("VERSION")) {
+                                    result = Core.getAplication() + "\n";
+                                } if (line.startsWith("BLOCK ADD ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de adição bloqueio de remetente.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String sender = tokenizer.nextToken();
+                                            boolean added = Block.add(client, sender);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("BLOCK DROP ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de remoção de bloqueio de remetente.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String sender = tokenizer.nextToken();
+                                            boolean droped = Block.drop(client, sender);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("BLOCK SHOW ALL")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String sender : Block.getAll(client)) {
+                                        builder.append(sender);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.equals("BLOCK SHOW")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String sender : Block.get(client)) {
+                                        builder.append(sender);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.startsWith("BLOCK FIND ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de remoção de bloqueio de remetente.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            token = tokenizer.nextToken();
+                                            String block = Block.find(client, token);
+                                            if (result == null) {
+                                                result = (block == null ? "NONE" : block) + "\n";
+                                            } else {
+                                                result += (block == null ? "NONE" : block) + "\n";
+                                            }
+                                        } catch (Exception ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("TRAP ADD ")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de adição de spamtrap.
+                                    line = line.substring(9);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean added = Trap.add(client, recipient);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("TRAP DROP ")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de remoção de spamtrap.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean droped = Trap.drop(client, recipient);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("TRAP SHOW")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : Trap.get(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.startsWith("WHITE ADD ")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de adição de whitelist.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean added = White.add(client, recipient);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("WHITE DROP ")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de remoção de whitelist.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean droped = White.drop(client, recipient);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("WHITE SHOW ALL")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : White.getAll(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.equals("WHITE SHOW")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : White.get(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result == null) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else {
+                                    query = line.trim();
+                                    result = SPF.processSPF(ipAddress, client, query);
+                                    if (query.startsWith("HAM ")) {
+                                        type = "SPFHM";
+                                    } else if (query.startsWith("SPAM ")) {
+                                        type = "SPFSP";
+                                    } else if (query.startsWith("CHECK ")) {
+                                        type = "SPFCK";
+                                    }
                                 }
                             }
                             // Enviando resposta.

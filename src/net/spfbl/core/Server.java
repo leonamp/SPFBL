@@ -50,6 +50,7 @@ import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -770,6 +771,7 @@ public abstract class Server extends Thread {
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
         Server.logInfo("shutting down server...");
+        Analise.interrupt();
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {
@@ -1129,10 +1131,11 @@ public abstract class Server extends Thread {
     
     /**
      * Processa o comando e retorna o resultado.
+     * @param user o usuário do processo.
      * @param command a expressão do comando.
      * @return o resultado do processamento.
      */
-    protected String processCommand(String command) {
+    protected String processCommand(User user, String command) {
         try {
             String result = "";
             if (command.length() == 0) {
@@ -1140,28 +1143,106 @@ public abstract class Server extends Thread {
             } else {
                 StringTokenizer tokenizer = new StringTokenizer(command, " ");
                 String token = tokenizer.nextToken();
+                Integer otpCode = Core.getInteger(token);
+                if (otpCode != null) {
+                    token = tokenizer.nextToken();
+                    if (user == null) {
+                        return "ERROR: OTP UNDEFINED USER\n";
+                    } else if (!user.isValidOTP(otpCode)) {
+                        return "ERROR: OTP INVALID CODE\n";
+                    }
+                }
                 if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
                     return Core.getAplication() + "\n";
                 } else if (token.equals("ANALISE") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
-                    if (Subnet.isValidIP(token)) {
-                        String ip = Subnet.normalizeIP(token);
+                    if (token.equals("SHOW")) {
+                        TreeSet<Analise> queue = Analise.getAnaliseSet();
+                        if (queue.isEmpty()) {
+                            result = "EMPTY\n";
+                        } else {
+                            StringBuilder builder = new StringBuilder();
+                            for (Analise analise : queue) {
+                                builder.append(analise);
+                                builder.append('\n');
+                            }
+                            result = builder.toString();
+                        }
+                    } else if (token.equals("DUMP") && tokenizer.countTokens() == 1) {
+                        token = tokenizer.nextToken();
                         StringBuilder builder = new StringBuilder();
-                        analiseIP(ip, builder);
-                        result = builder.toString();
+                        if (token.equals("ALL")) {
+                            Analise.dumpAll(builder);
+                        } else {
+                            Analise analise = Analise.get(token, true);
+                            if (analise == null) {
+                                builder.append("NOT FOUND\n");
+                            } else {
+                                analise.dump(builder);
+                            }
+                        }
+                        if (builder.length() == 0) {
+                            result = "EMPTY\n";
+                        } else {
+                            result = builder.toString();
+                        }
+                    } else if (token.equals("DROP") && tokenizer.countTokens() == 1) {
+                        token = tokenizer.nextToken();
+                        TreeSet<String> nameSet;
+                        if (token.equals("ALL")) {
+                            nameSet = Analise.getNameSet();
+                        } else {
+                            nameSet = new TreeSet<String>();
+                            nameSet.add(token);
+                        }
+                        StringBuilder builder = new StringBuilder();
+                        for (String name : nameSet) {
+                            Analise analise = Analise.drop(name);
+                            if (analise == null) {
+                                builder.append("NOT FOUND ");
+                                builder.append(token);
+                                builder.append("\n");
+                            } else {
+                                builder.append("DROPED ");
+                                builder.append(analise);
+                                builder.append("\n");
+                            }
+                        }
+                        if (builder.length() == 0) {
+                            result = "EMPTY\n";
+                        } else {
+                            result = builder.toString();
+                        }
+                    } else if (Subnet.isValidIP(token)) {
+                        String ip = Subnet.normalizeIP(token);
+                        String name;
+                        if (tokenizer.hasMoreTokens()) {
+                            name = tokenizer.nextToken();
+                        } else {
+                            name = "UNDEFINED";
+                        }
+                        Analise analise = Analise.get(name, true);
+                        analise.add(ip);
+                        result = "QUEUED\n";
                     } else if (Subnet.isValidCIDR(token)) {
                         String cidr = Subnet.normalizeCIDR(token);
+                        String name;
+                        if (tokenizer.hasMoreTokens()) {
+                            name = tokenizer.nextToken();
+                        } else {
+                            name = cidr;
+                        }
                         String last = Subnet.getLastIP(cidr);
                         String ip = Subnet.getFirstIP(cidr);
-                        StringBuilder builder = new StringBuilder();
-                        analiseIP(ip, builder);
+                        Analise analise = Analise.get(name, true);
+                        analise.add(ip);
                         if (!ip.equals(last)) {
                             while (!last.equals(ip = Subnet.getNextIP(ip))) {
-                                analiseIP(ip, builder);
+                                analise.add(ip);
                             }
-                            analiseIP(last, builder);
+                            analise.add(last);
                         }
-                        result = builder.toString();
+                        result = "QUEUED\n";
                     } else {
                         result = "INVALID PARAMETERS\n";
                     }
@@ -1174,16 +1255,16 @@ public abstract class Server extends Thread {
                         builder.append('\n');
                     }
                     builder.append("CLIENT DROP ALL\n");
-                    for (Client client : Client.getSet()) {
+                    for (Client clientLocal : Client.getSet()) {
                         builder.append("CLIENT ADD ");
-                        builder.append(client.getCIDR());
+                        builder.append(clientLocal.getCIDR());
                         builder.append(' ');
-                        builder.append(client.getDomain());
+                        builder.append(clientLocal.getDomain());
                         builder.append(' ');
-                        builder.append(client.getPermission().name());
-                        if (client.hasEmail()) {
+                        builder.append(clientLocal.getPermission().name());
+                        if (clientLocal.hasEmail()) {
                             builder.append(' ');
-                            builder.append(client.getEmail());
+                            builder.append(clientLocal.getEmail());
                         }
                         builder.append('\n');
                     }
@@ -1246,11 +1327,11 @@ public abstract class Server extends Thread {
                         builder.append('\n');
                     }
                     builder.append("USER DROP ALL\n");
-                    for (User user : User.getSet()) {
+                    for (User userLocal : User.getSet()) {
                         builder.append("USER ADD ");
-                        builder.append(user.getEmail());
+                        builder.append(userLocal.getEmail());
                         builder.append(' ');
-                        builder.append(user.getName());
+                        builder.append(userLocal.getName());
                         builder.append('\n');
                     }
                     builder.append("WHITE DROP ALL\n");
@@ -1282,11 +1363,11 @@ public abstract class Server extends Thread {
                                 builder.append(key);
                                 builder.append(".\n");
                             }
-                            for (Client client : clientMap.get(key)) {
+                            for (Client clientLocal : clientMap.get(key)) {
                                 builder.append("iptables -A INPUT -i ");
                                 builder.append(Core.getInterface());
                                 builder.append(" -s ");
-                                builder.append(client.getCIDR());
+                                builder.append(clientLocal.getCIDR());
                                 builder.append(" -p tcp --dport ");
                                 builder.append(Core.getPortAdmin());
                                 builder.append(" -j ACCEPT\n");
@@ -1346,11 +1427,11 @@ public abstract class Server extends Thread {
                                 builder.append(key);
                                 builder.append(".\n");
                             }
-                            for (Client client : clientMap.get(key)) {
+                            for (Client clientLocal : clientMap.get(key)) {
                                 builder.append("iptables -A INPUT -i ");
                                 builder.append(Core.getInterface());
                                 builder.append(" -s ");
-                                builder.append(client.getCIDR());
+                                builder.append(clientLocal.getCIDR());
                                 builder.append(" -p tcp --dport ");
                                 builder.append(Core.getPortSPFBL());
                                 builder.append(" -j ACCEPT\n");
@@ -1383,11 +1464,11 @@ public abstract class Server extends Thread {
                                     builder.append(key);
                                     builder.append(".\n");
                                 }
-                                for (Client client : clientMap.get(key)) {
+                                for (Client clientLocal : clientMap.get(key)) {
                                     builder.append("iptables -A INPUT -i ");
                                     builder.append(Core.getInterface());
                                     builder.append(" -s ");
-                                    builder.append(client.getCIDR());
+                                    builder.append(clientLocal.getCIDR());
                                     builder.append(" -p udp --dport ");
                                     builder.append(Core.getPortDNSBL());
                                     builder.append(" -j DROP\n");
@@ -1715,18 +1796,18 @@ public abstract class Server extends Thread {
                             try {
                                 String blockedToken = tokenizer.nextToken();
                                 int index = blockedToken.indexOf(':');
-                                String client = null;
+                                String clientLocal = null;
                                 if (index != -1) {
                                     String prefix = blockedToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        clientLocal = prefix;
                                         blockedToken = blockedToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && (blockedToken = Block.add(blockedToken)) != null) {
+                                if (clientLocal == null && (blockedToken = Block.add(blockedToken)) != null) {
                                     Peer.sendBlockToAll(blockedToken);
                                     result += "ADDED\n";
-                                } else if (client != null && Block.add(client, blockedToken)) {
+                                } else if (clientLocal != null && Block.add(clientLocal, blockedToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1754,17 +1835,17 @@ public abstract class Server extends Thread {
                             do {
                                 try {
                                     int index = token.indexOf(':');
-                                    String client = null;
+                                    String clientLocal = null;
                                     if (index != -1) {
                                         String prefix = token.substring(0, index);
                                         if (Domain.isEmail(prefix)) {
-                                            client = prefix;
+                                            clientLocal = prefix;
                                             token = token.substring(index+1);
                                         }
                                     }
-                                    if (client == null && Block.drop(token)) {
+                                    if (clientLocal == null && Block.drop(token)) {
                                         result += "DROPED\n";
-                                    } else if (client != null && Block.drop(client, token)) {
+                                    } else if (clientLocal != null && Block.drop(clientLocal, token)) {
                                         result += "DROPED\n";
                                     } else {
                                         result += "NOT FOUND\n";
@@ -1841,17 +1922,17 @@ public abstract class Server extends Thread {
                             try {
                                 String whiteToken = tokenizer.nextToken();
                                 int index = whiteToken.indexOf(':');
-                                String client = null;
+                                String clientLocal = null;
                                 if (index != -1) {
                                     String prefix = whiteToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        clientLocal = prefix;
                                         whiteToken = whiteToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && White.add(whiteToken)) {
+                                if (clientLocal == null && White.add(whiteToken)) {
                                     result += "ADDED\n";
-                                } else if (client != null && White.add(client, whiteToken)) {
+                                } else if (clientLocal != null && White.add(clientLocal, whiteToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1878,17 +1959,17 @@ public abstract class Server extends Thread {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                String client = null;
+                                String clientLocal = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = prefix;
+                                        clientLocal = prefix;
                                         token = token.substring(index+1);
                                     }
                                 }
-                                if (client == null && White.drop(token)) {
+                                if (clientLocal == null && White.drop(token)) {
                                     result = "DROPED\n";
-                                } else if (client != null && White.drop(client, token)) {
+                                } else if (clientLocal != null && White.drop(clientLocal, token)) {
                                     result = "DROPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
@@ -1940,17 +2021,17 @@ public abstract class Server extends Thread {
                             try {
                                 String trapToken = tokenizer.nextToken();
                                 int index = trapToken.indexOf(':');
-                                Client client = null;
+                                Client clientLocal = null;
                                 if (index != -1) {
                                     String prefix = trapToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = Client.getByEmail(prefix);
+                                        clientLocal = Client.getByEmail(prefix);
                                         trapToken = trapToken.substring(index+1);
                                     }
                                 }
-                                if (client == null && Trap.add(trapToken)) {
+                                if (clientLocal == null && Trap.add(trapToken)) {
                                     result += "ADDED\n";
-                                } else if (client != null && Trap.add(client, trapToken)) {
+                                } else if (clientLocal != null && Trap.add(clientLocal, trapToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1977,17 +2058,17 @@ public abstract class Server extends Thread {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                Client client = null;
+                                Client clientLocal = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        client = Client.getByEmail(prefix);
+                                        clientLocal = Client.getByEmail(prefix);
                                         token = token.substring(index+1);
                                     }
                                 }
-                                if (client == null && Trap.drop(token)) {
+                                if (clientLocal == null && Trap.drop(token)) {
                                     result = "DROPED\n";
-                                } else if (client != null && Trap.drop(client, token)) {
+                                } else if (clientLocal != null && Trap.drop(clientLocal, token)) {
                                     result = "DROPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
@@ -2107,13 +2188,13 @@ public abstract class Server extends Thread {
                                 String permission = tokenizer.nextToken();
                                 String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
                                 try {
-                                    Client client = Client.create(
+                                    Client clientLocal = Client.create(
                                             cidr, domain, permission, email
                                     );
-                                    if (client == null) {
+                                    if (clientLocal == null) {
                                         result = "ALREADY EXISTS\n";
                                     } else {
-                                        result = "ADDED " + client + "\n";
+                                        result = "ADDED " + clientLocal + "\n";
                                     }
                                 } catch (ProcessException ex) {
                                     result = ex.getMessage() + "\n";
@@ -2132,17 +2213,17 @@ public abstract class Server extends Thread {
                             if (clientSet.isEmpty()) {
                                 result += "EMPTY\n";
                             } else {
-                                for (Client client : clientSet) {
-                                    result += "DROPED " + client + "\n";
+                                for (Client clientLocal : clientSet) {
+                                    result += "DROPED " + clientLocal + "\n";
                                 }
                             }
                             Client.store();
                         } else if (Subnet.isValidCIDR(token)) {
-                            Client client = Client.drop(token);
-                            if (client == null) {
+                            Client clientLocal = Client.drop(token);
+                            if (clientLocal == null) {
                                 result += "NOT FOUND\n";
                             } else {
-                                result += "DROPED " + client + "\n";
+                                result += "DROPED " + clientLocal + "\n";
                             }
                             Client.store();
                         } else {
@@ -2153,46 +2234,46 @@ public abstract class Server extends Thread {
                         if (tokenizer.hasMoreTokens()) {
                             token = tokenizer.nextToken();
                             if (token.equals("DNSBL")) {
-                                for (Client client : Client.getSet(Client.Permission.DNSBL)) {
-                                    result += client + "\n";
+                                for (Client clientLocal : Client.getSet(Client.Permission.DNSBL)) {
+                                    result += clientLocal + "\n";
                                 }
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (token.equals("SPFBL")) {
-                                for (Client client : Client.getSet(Client.Permission.SPFBL)) {
-                                    result += client + "\n";
+                                for (Client clientLocal : Client.getSet(Client.Permission.SPFBL)) {
+                                    result += clientLocal + "\n";
                                 }
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (token.equals("NONE")) {
-                                for (Client client : Client.getSet(Client.Permission.NONE)) {
-                                    result += client + "\n";
+                                for (Client clientLocal : Client.getSet(Client.Permission.NONE)) {
+                                    result += clientLocal + "\n";
                                 }
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (token.equals("ALL")) {
-                                for (Client client : Client.getSet(Client.Permission.ALL)) {
-                                    result += client + "\n";
+                                for (Client clientLocal : Client.getSet(Client.Permission.ALL)) {
+                                    result += clientLocal + "\n";
                                 }
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
                             } else if (Subnet.isValidIP(token)) {
-                                Client client = Client.getByIP(token);
-                                if (client == null) {
+                                Client clientLocal = Client.getByIP(token);
+                                if (clientLocal == null) {
                                     result += "NOT FOUND\n";
                                 } else {
-                                    result += client + "\n";
+                                    result += clientLocal + "\n";
                                 }
                             } else {
                                 result = "ERROR: COMMAND\n";
                             }
                         } else {
-                            for (Client client : Client.getSet()) {
-                                result += client + "\n";
+                            for (Client clientLocal : Client.getSet()) {
+                                result += clientLocal + "\n";
                             }
                             if (result.length() == 0) {
                                 result = "EMPTY\n";
@@ -2204,13 +2285,13 @@ public abstract class Server extends Thread {
                             String cidr = Subnet.normalizeCIDR(token);
                             token = tokenizer.nextToken();
                             if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
-                                Client client = Client.getByCIDR(cidr);
-                                if (client == null) {
+                                Client clientLocal = Client.getByCIDR(cidr);
+                                if (clientLocal == null) {
                                     result += "NOT FOUND\n";
                                 } else {
                                     String limit = tokenizer.nextToken();
-                                    client.setLimit(limit);
-                                    result += "UPDATED " + client + "\n";
+                                    clientLocal.setLimit(limit);
+                                    result += "UPDATED " + clientLocal + "\n";
                                 }
                             } else if (Domain.isHostname(token) && tokenizer.hasMoreTokens()) {
                                 String domain = Domain.extractDomain(token, false);
@@ -2221,14 +2302,14 @@ public abstract class Server extends Thread {
                                 } else if (email != null && !Domain.isEmail(email)) {
                                     result = "ERROR: INVALID EMAIL\n";
                                 } else {
-                                    Client client = Client.getByCIDR(cidr);
-                                    if (client == null) {
+                                    Client clientLocal = Client.getByCIDR(cidr);
+                                    if (clientLocal == null) {
                                         result += "NOT FOUND\n";
                                     } else {
-                                        client.setPermission(permission);
-                                        client.setDomain(domain);
-                                        client.setEmail(email);
-                                        result += "UPDATED " + client + "\n";
+                                        clientLocal.setPermission(permission);
+                                        clientLocal.setDomain(domain);
+                                        clientLocal.setEmail(email);
+                                        result += "UPDATED " + clientLocal + "\n";
                                     }
                                     Client.store();
                                 }
@@ -2251,11 +2332,11 @@ public abstract class Server extends Thread {
                                 name += ' ' + tokenizer.nextToken();
                             }
                             try {
-                                User user = User.create(email, name);
-                                if (user == null) {
+                                User userLocal = User.create(email, name);
+                                if (userLocal == null) {
                                     result = "ALREADY EXISTS\n";
                                 } else {
-                                    result = "ADDED " + user + "\n";
+                                    result = "ADDED " + userLocal + "\n";
                                 }
                             } catch (ProcessException ex) {
                                 result = ex.getMessage() + "\n";
@@ -2271,22 +2352,22 @@ public abstract class Server extends Thread {
                             if (userSet.isEmpty()) {
                                 result = "EMPTY\n";
                             } else {
-                                for (User user : userSet) {
-                                    result += "DROPED " + user + "\n";
+                                for (User userLocal : userSet) {
+                                    result += "DROPED " + userLocal + "\n";
                                 }
                             }
                         } else {
-                            User user = User.drop(token);
-                            if (user == null) {
+                            User userLocal = User.drop(token);
+                            if (userLocal == null) {
                                 result = "NOT FOUND\n";
                             } else {
-                                result = "DROPED " + user + "\n";
+                                result = "DROPED " + userLocal + "\n";
                             }
                         }
                         User.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (User user : User.getSet()) {
-                            result += user + "\n";
+                        for (User userLocal : User.getSet()) {
+                            result += userLocal + "\n";
                         }
                         if (result.length() == 0) {
                             result = "EMPTY\n";
@@ -2694,51 +2775,5 @@ public abstract class Server extends Thread {
             result += "UNSPLITTABLE " + cidr + "\n";
         }
         return result;
-    }
-    
-    private void analiseIP(
-            String ip,
-            StringBuilder builder
-            ) throws ProcessException {
-        Distribution distribution1 = SPF.getDistribution(ip, true);
-        float probability1 = distribution1.getSpamProbability(ip);
-        Status status1;
-        if (Block.containsIP(ip)) {
-            status1 = Status.BLOCK;
-        } else {
-            status1 = distribution1.getStatus(ip);
-        }
-        builder.append(ip);
-        builder.append(' ');
-        builder.append(status1);
-        builder.append(' ');
-        String token = ip;
-        for (String reverse : Reverse.getValidSet(ip, true)) {
-            reverse = Domain.normalizeHostname(reverse, true);
-            Distribution distribution2 = SPF.getDistribution(reverse, true);
-            float probability2 = distribution2.getSpamProbability(reverse);
-            Status status2 = distribution2.getStatus(reverse);
-            if (probability2 > probability1) {
-                probability1 = probability2;
-                distribution1 = distribution2;
-            }
-            if (probability2 >= probability1 || Subnet.isValidIP(token)) {
-                token = reverse;
-                status1 = status2 == Status.BLOCK ? Status.BLACK : status2;
-                if (Block.containsHost(reverse)) {
-                    status1 = Status.BLOCK;
-                } else if (Block.containsREGEX(reverse)) {
-                    status1 = Status.BLOCK;
-                }
-            }
-        }
-        builder.append(token);
-        builder.append(' ');
-        builder.append(status1);
-        builder.append(' ');
-        builder.append(DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
-        builder.append(' ');
-        builder.append(distribution1.getFrequencyLiteral());
-        builder.append('\n');
     }
 }

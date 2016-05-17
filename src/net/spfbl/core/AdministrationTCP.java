@@ -86,6 +86,7 @@ public final class AdministrationTCP extends Server {
             while (continueListenning() && (socket = getSocket()) != null) {
                 try {
                     time = System.currentTimeMillis();
+                    InetAddress ipAddress = socket.getInetAddress();
                     try {
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "ISO-8859-1");
@@ -94,7 +95,9 @@ public final class AdministrationTCP extends Server {
                         if (command == null) {
                             command = "DISCONNECTED";
                         } else {
-                            result = AdministrationTCP.this.processCommand(command);
+                            Client client = Client.get(ipAddress);
+                            User user = client == null ? null : client.getUser();
+                            result = AdministrationTCP.this.processCommand(user, command);
                             // Enviando resposta.
                             OutputStream outputStream = socket.getOutputStream();
                             outputStream.write(result.getBytes("ISO-8859-1"));
@@ -107,7 +110,7 @@ public final class AdministrationTCP extends Server {
                     } finally {
                         // Fecha conexão logo após resposta.
                         socket.close();
-                        InetAddress address = socket.getInetAddress();
+                        InetAddress address = ipAddress;
                         clearSocket();
                         // Log da consulta com o respectivo resultado.
                         Server.logAdministration(
