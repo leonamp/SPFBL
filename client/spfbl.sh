@@ -39,12 +39,11 @@ IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 OTP_SECRET=""
-OTP_CODE=""
 DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.00"
+version="2.1"
 
 head()
 {
@@ -54,7 +53,7 @@ head()
 if [[ $OTP_SECRET == "" ]]; then
 	OTP_CODE=""
 else
-	OTP_CODE=" $(oathtool --totp -b -d 6 $OTP_SECRET)"
+	OTP_CODE="$(oathtool --totp -b -d 6 $OTP_SECRET) "
 fi
 
 case $1 in
@@ -68,7 +67,7 @@ case $1 in
 		#    2: timeout de conexão.
 
 
-		response=$(echo "VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+		response=$(echo $OTP_CODE"VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
@@ -94,7 +93,7 @@ case $1 in
 		#    2: timeout de conexão.
 
 
-		response=$(echo "FIREWALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo $OTP_CODE"FIREWALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
@@ -120,7 +119,7 @@ case $1 in
 		#    2: timeout de conexão.
 
 
-		response=$(echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo $OTP_CODE"SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
@@ -148,7 +147,7 @@ case $1 in
 		#    2: timeout de conexão.
 
 
-		response=$(echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo $OTP_CODE"STORE" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
@@ -183,7 +182,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo "TLD ADD $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"TLD ADD $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -217,7 +216,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo "TLD DROP $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"TLD DROP $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -247,7 +246,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 tld show\n"
 				else
 
-					response=$(echo "TLD SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"TLD SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -289,7 +288,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo "PROVIDER ADD $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PROVIDER ADD $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -323,7 +322,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo "PROVIDER DROP $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PROVIDER DROP $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -353,7 +352,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 provider show\n"
 				else
 
-					response=$(echo "PROVIDER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PROVIDER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -396,7 +395,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo "IGNORE ADD $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"IGNORE ADD $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -431,7 +430,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo "IGNORE DROP $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"IGNORE DROP $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -461,7 +460,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 ignore show\n"
 				else
 
-					response=$(echo "IGNORE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"IGNORE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -506,7 +505,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -543,7 +542,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -575,9 +574,9 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 					else
-						response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+						response=$(echo $OTP_CODE"BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -610,7 +609,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 block find token\n"
 				else
  					token=$3
-					response=$(echo "BLOCK FIND $token" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"BLOCK FIND $token" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -655,7 +654,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -692,7 +691,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK SPLIT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"BLOCK SPLIT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -729,7 +728,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK OVERLAP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"BLOCK OVERLAP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -766,7 +765,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -798,9 +797,9 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 superblock show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						response=$(echo "BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -844,7 +843,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -879,7 +878,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -909,7 +908,7 @@ case $1 in
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 white show\n"
 				else
-					response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -952,7 +951,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -987,7 +986,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1018,9 +1017,9 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 superwhite show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "WHITE SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"WHITE SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						response=$(echo "WHITE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"WHITE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1073,7 +1072,7 @@ case $1 in
 						email=$6
 					fi
 					
-					response=$(echo "CLIENT ADD $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"CLIENT ADD $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1117,7 +1116,7 @@ case $1 in
 						email=$6
 					fi
 					
-					response=$(echo "CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1151,7 +1150,7 @@ case $1 in
 				else
 					cidr=$3
 
-					response=$(echo "CLIENT DROP $cidr" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"CLIENT DROP $cidr" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1181,7 +1180,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 client show\n"
 				else
 
-					response=$(echo "CLIENT SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"CLIENT SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1225,7 +1224,7 @@ case $1 in
 					email=$3
 					nome="${@:4}"
 
-					response=$(echo "USER ADD $email $nome" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"USER ADD $email $nome" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1259,7 +1258,7 @@ case $1 in
 				else
 					email=$3
 
-					response=$(echo "USER DROP $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"USER DROP $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1289,7 +1288,7 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 user show\n"
 				else
 
-					response=$(echo "USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1334,9 +1333,9 @@ case $1 in
 
 					if [ -f "$4" ]; then
 						email=$4
-						response=$(echo "PEER ADD $host $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER ADD $host $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						response=$(echo "PEER ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1374,9 +1373,9 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-						response=$(echo "PEER DROP ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER DROP ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						response=$(echo "PEER DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1409,9 +1408,9 @@ case $1 in
 
 					if [ -f "$3" ]; then
 						host=$3
-						response=$(echo "PEER SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					else
-						response=$(echo "PEER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo $OTP_CODE"PEER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1450,7 +1449,7 @@ case $1 in
 					send=$4
 					receive=$5
 
-					response=$(echo "PEER SET $host $send $receive" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PEER SET $host $send $receive" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1484,7 +1483,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "PEER PING $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PEER PING $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1518,7 +1517,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "PEER SEND $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"PEER SEND $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -1563,9 +1562,9 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-                                                response=$(echo "PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         else
-                                                response=$(echo "PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         fi
 
 					if [[ $response == "" ]]; then
@@ -1602,9 +1601,9 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-                                                response=$(echo "PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         else
-                                                response=$(echo "PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         fi
 
 					if [[ $response == "" ]]; then
@@ -1641,9 +1640,9 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-                                                response=$(echo "PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         else
-                                                response=$(echo "PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                                                response=$(echo $OTP_CODE"PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
                                         fi
 
 					if [[ $response == "" ]]; then
@@ -1677,9 +1676,9 @@ case $1 in
 		#    2: timeout de conexão.
 
                 if [[ $2 == "cidr" ]]; then
-                	response=$(echo "REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                	response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
                 else
-                	response=$(echo "REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
+                	response=$(echo $OTP_CODE"REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
                 fi
 		
 		if [[ $response == "" ]]; then
@@ -1715,7 +1714,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo "CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1753,7 +1752,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo "REFRESH $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo $OTP_CODE"REFRESH $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1791,7 +1790,7 @@ case $1 in
 			
 		elif [ $2 == "show" ]; then
 		
-			response=$(echo "ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 			
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1811,7 +1810,7 @@ case $1 in
 			
 		elif [ $2 == "dump" ]; then
 		
-			response=$(echo "ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
 			
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1831,7 +1830,7 @@ case $1 in
 		
 		elif [ $2 == "drop" ]; then
 		
-			response=$(echo "ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
 			
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1853,7 +1852,7 @@ case $1 in
 		
 			ip=$2
 
-			response=$(echo "ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -1910,7 +1909,7 @@ case $1 in
 			email=$3
 			helo=$4
 
-			qualifier=$(echo "CHECK '$ip' '$email' '$helo'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo $OTP_CODE"CHECK '$ip' '$email' '$helo'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
@@ -1968,7 +1967,7 @@ case $1 in
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
 		else
-                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
+                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
@@ -2007,7 +2006,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					resposta=$(echo $OTP_CODE"SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $resposta == "" ]]; then
 						echo "A reclamação SPFBL não foi enviada por timeout."
@@ -2063,7 +2062,7 @@ case $1 in
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
-			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9/+=]{44,512}$ ]]; then
+			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
 	            # O parâmentro é uma URL de denúncia SPFBL.
 	            url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
@@ -2102,7 +2101,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					resposta=$(echo $OTP_CODE"HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $resposta == "" ]]; then
 						echo "A revogação SPFBL não foi enviada por timeout."
@@ -2203,7 +2202,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | nc -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo $OTP_CODE"SPF '$ip' '$email' '$helo' '$recipient'" | nc -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier="TIMEOUT"
@@ -2271,7 +2270,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"TRAP ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2306,7 +2305,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"TRAP DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2336,7 +2335,7 @@ case $1 in
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
 				else
-					response=$(echo "TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo $OTP_CODE"TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2379,7 +2378,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "NOREPLY ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"NOREPLY ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2414,7 +2413,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "NOREPLY DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"NOREPLY DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2444,7 +2443,7 @@ case $1 in
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
 				else
-					response=$(echo "NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo $OTP_CODE"NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
@@ -2472,7 +2471,7 @@ case $1 in
 		#
 		# Códigos de saída: nenhum.
 
-		echo "DUMP" | nc $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
+		echo $OTP_CODE"DUMP" | nc $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
 		if [ -f $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") ]; then
 			echo "Dump saved as $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")"
 		else
@@ -2492,7 +2491,7 @@ case $1 in
 			if [ -f $file ]; then
 				for line in `cat $file`; do
 					echo -n "Adding $line ... "
-					echo "$line" | nc $IP_SERVIDOR $PORTA_ADMIN
+					echo $OTP_CODE"$line" | nc $IP_SERVIDOR $PORTA_ADMIN
 				done
 			else
 				echo "File not found."
