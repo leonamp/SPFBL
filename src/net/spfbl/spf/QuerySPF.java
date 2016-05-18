@@ -83,7 +83,7 @@ public final class QuerySPF extends Server {
 
 
         public Connection() {
-            super("SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("SPFTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             setPriority(Thread.MAX_PRIORITY);
         }
 
@@ -191,7 +191,7 @@ public final class QuerySPF extends Server {
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
                                 result = SPF.processPostfixSPF(
-                                        ipAddress, client, ip, sender, helo, recipient
+                                        ipAddress, client, user, ip, sender, helo, recipient
                                         );
                             } else {
                                 StringTokenizer tokenizer = new StringTokenizer(line, " ");
@@ -211,7 +211,7 @@ public final class QuerySPF extends Server {
                                     // Houve erro de OTP.
                                 } else if (token.equals("VERSION")) {
                                     result = Core.getAplication() + "\n";
-                                } if (line.startsWith("BLOCK ADD ")) {
+                                } else if (line.startsWith("BLOCK ADD ")) {
                                     query = line.substring(6).trim();
                                     type = "BLOCK";
                                     // Mecanismo de adição bloqueio de remetente.
@@ -460,7 +460,7 @@ public final class QuerySPF extends Server {
                                     }
                                 } else {
                                     query = line.trim();
-                                    result = SPF.processSPF(ipAddress, client, query);
+                                    result = SPF.processSPF(ipAddress, client, user, query);
                                     if (query.startsWith("HAM ")) {
                                         type = "SPFHM";
                                     } else if (query.startsWith("SPAM ")) {
@@ -604,7 +604,7 @@ public final class QuerySPF extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Server.logDebug("creating SPFTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 connection.start();
                 use(connection);

@@ -18,6 +18,7 @@ package net.spfbl.core;
 
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import net.spfbl.data.Block;
@@ -38,19 +39,28 @@ public class Analise implements Comparable<Analise> {
     private final String name; // Nome do processo.
     private final TreeSet<String> ipSet = new TreeSet<String>(); // Lista dos IPs a serem analisados.
     private final TreeSet<String> processSet = new TreeSet<String>(); // Lista dos IPs em processamento.
-    private final TreeSet<String> resultSet = new TreeSet<String>(); // Lista dos resultados das anaises.
+    private final TreeMap<String,String> resultMap = new TreeMap<String,String>(); // Lista dos resultados das anaises.
     
     private Analise(String name) {
         this.name = name;
     }
     
-    public synchronized void add(String ip) {
-        if (Subnet.isValidIP(ip)) {
-            ipSet.add(Subnet.normalizeIP(ip));
+    public synchronized boolean add(String ip) {
+        if (!Subnet.isValidIP(ip)) {
+            return false;
+        } else if (ipSet.contains(ip = Subnet.normalizeIP(ip))) {
+            return false;
+        } else if (processSet.contains(ip)) {
+            return false;
+        } else if (resultMap.containsKey(ip)) {
+            return false;
+        } else {
+            ipSet.add(ip);
             if (SEMAPHORE.tryAcquire()) {
                 Process process = new Process();
                 process.start();
             }
+            return true;
         }
     }
     
@@ -62,7 +72,10 @@ public class Analise implements Comparable<Analise> {
         for (String ip: processSet) {
             set.add(ip + " PROCESSING");
         }
-        set.addAll(resultSet);
+        for (String ip : resultMap.keySet()) {
+            String result = resultMap.get(ip);
+            set.add(ip + " " + result);
+        }
         return set;
     }
     
@@ -95,7 +108,7 @@ public class Analise implements Comparable<Analise> {
     
     private synchronized boolean addResult(String ip, String result) {
         processSet.remove(ip);
-        return resultSet.add(result);
+        return resultMap.put(ip, result) == null;
     }
     
     private boolean process() {
@@ -147,12 +160,13 @@ public class Analise implements Comparable<Analise> {
                 builder.append(' ');
                 builder.append(status3);
                 builder.append(' ');
-                builder.append(Server.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
+                builder.append(Core.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
                 builder.append(' ');
                 builder.append(distribution1.getFrequencyLiteral());
                 String result = builder.toString();
-                addResult(ip, result);
-                Server.logTrace(result);
+                if (addResult(ip, result)) {
+                    Server.logTrace(result);
+                }
                 return true;
             } catch (ProcessException ex) {
                 addResult(ip, ip + " ERROR");
@@ -188,7 +202,7 @@ public class Analise implements Comparable<Analise> {
         return name + " "
                 + ipSet.size() + " "
                 + processSet.size() + " "
-                + resultSet.size();
+                + resultMap.size();
     }
     
     /**
@@ -290,6 +304,8 @@ public class Analise implements Comparable<Analise> {
                         status3 = Status.BLOCK;
                     } else if (Block.containsREGEX(reverse)) {
                         status3 = Status.BLOCK;
+                    } else if (Ignore.contains(reverse)) {
+                        status3 = Status.IGNORE;
                     }
                 }
             }
@@ -297,7 +313,7 @@ public class Analise implements Comparable<Analise> {
             builder.append(' ');
             builder.append(status3);
             builder.append(' ');
-            builder.append(Server.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
+            builder.append(Core.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
             builder.append(' ');
             builder.append(distribution1.getFrequencyLiteral());
         } catch (ProcessException ex) {
@@ -306,7 +322,7 @@ public class Analise implements Comparable<Analise> {
         }
     }
 
-    private final Semaphore SEMAPHORE = new Semaphore(32);
+    private static final Semaphore SEMAPHORE = new Semaphore(128);
     private static boolean run = true;
     
     public static void interrupt() {

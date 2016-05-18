@@ -3416,6 +3416,7 @@ public final class SPF implements Serializable {
     protected static String processPostfixSPF(
             InetAddress ipAddress,
             Client client,
+            User user,
             String ip,
             String sender,
             String helo,
@@ -3547,7 +3548,7 @@ public final class SPF implements Serializable {
 //                    } else
                     if (White.contains(client, ip, sender, hostname, result, null)) {
                         // Limpa da lista BLOCK um possível falso positivo.
-                        Block.clear(null, ip, sender, hostname, result, null);
+                        Block.clear(null, user, ip, sender, hostname, result, null);
                     }
                     // Calcula frequencia de consultas.
                     String url = Core.getSpamURL(recipient);
@@ -3707,35 +3708,27 @@ public final class SPF implements Serializable {
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
      */
-    protected static String processSPF(InetAddress ipAddress, Client client, String query) {
+    protected static String processSPF(
+            InetAddress ipAddress,
+            Client client,
+            User user,
+            String query
+    ) {
         try {
             String result = "";
             if (query.length() == 0) {
                 return "ERROR: QUERY\n";
             } else {
                 String origin;
-                User user;
                 if (client == null) {
                     origin = ipAddress.getHostAddress();
-                    user = null;
                 } else if (client.hasEmail()) {
                     origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
-                    user = client.getUser();
                 } else {
                     origin = ipAddress.getHostAddress() + " " + client.getDomain();
-                    user = client.getUser();
                 }
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
-                Integer otpCode = Core.getInteger(firstToken);
-                if (otpCode != null) {
-                    firstToken = tokenizer.nextToken();
-                    if (user == null) {
-                        return "ERROR: OTP UNDEFINED USER\n";
-                    } else if (!user.isValidOTP(otpCode)) {
-                        return "ERROR: OTP INVALID CODE\n";
-                    }
-                }
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
                     TreeSet<String> tokenSet = CacheComplain.addComplain(origin, ticket);
@@ -4002,7 +3995,7 @@ public final class SPF implements Serializable {
                                         }
                                         results += "   " + token
                                                 + " " + status.name() + " "
-                                                + Server.DECIMAL_FORMAT.format(probability) + "\n";
+                                                + Core.DECIMAL_FORMAT.format(probability) + "\n";
                                     }
                                 }
                                 results += "\n";
@@ -4014,7 +4007,7 @@ public final class SPF implements Serializable {
 //                                } else
                                 if (White.contains(client, ip, sender, hostname, result, null)) {
 //                                  // Limpa da lista BLOCK um possível falso positivo.
-                                    Block.clear(null, ip, sender, hostname, result, null);
+                                    Block.clear(null, user, ip, sender, hostname, result, null);
                                 }
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL(recipient);

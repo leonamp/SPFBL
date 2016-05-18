@@ -31,6 +31,8 @@ import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
@@ -72,7 +74,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 1;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -1060,6 +1062,12 @@ public class Core {
             }
         }
     }
+    
+    public static final DecimalFormat CENTENA_FORMAT = new DecimalFormat("000");
+    
+    public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
+    
+    public static final NumberFormat PERCENT_FORMAT = NumberFormat.getPercentInstance();
     
     /**
      * Constante para formatar datas com hora no padrão de e-mail.

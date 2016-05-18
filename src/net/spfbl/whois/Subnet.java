@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.TreeSet;
+import net.spfbl.data.Block;
 
 /**
  * Representa o registro de bloco IP de uma subrede alocada 
@@ -558,6 +559,47 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else {
             return false;
         }
+    }
+    
+    public static String splitCIDR(String cidr) {
+        String result = "";
+        String first = Subnet.getFirstIP(cidr);
+        String last = Subnet.getLastIP(cidr);
+        byte mask = Subnet.getMask(cidr);
+        byte max;
+        if (SubnetIPv4.isValidIPv4(first)) {
+            max = 32;
+        } else {
+            max = 64;
+        }
+        if (mask < max) {
+            mask++;
+            String cidr1 = first + "/" + mask;
+            String cidr2 = last + "/" + mask;
+            cidr1 = Subnet.normalizeCIDR(cidr1);
+            cidr2 = Subnet.normalizeCIDR(cidr2);
+            try {
+                if (Block.add(cidr1) == null) {
+                    result += "EXISTS " + cidr1 + "\n";
+                } else {
+                    result += "ADDED " + cidr1 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr1);
+            }
+            try {
+                if (Block.add(cidr2) == null) {
+                    result += "EXISTS " + cidr2 + "\n";
+                } else {
+                    result += "ADDED " + cidr2 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr2);
+            }
+        } else {
+            result += "UNSPLITTABLE " + cidr + "\n";
+        }
+        return result;
     }
     
     public static Subnet getSubnet(String ip) throws ProcessException {

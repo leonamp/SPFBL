@@ -1030,7 +1030,7 @@ public final class ServerHTTP extends Server {
                                     String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
                                     String message;
                                     if (White.addExact(white)) {
-                                        Block.clear(client, ip, sender, hostname, "PASS", recipient);
+                                        Block.clear(client, user, ip, sender, hostname, "PASS", recipient);
                                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                                             message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
                                         } else {
@@ -2228,7 +2228,7 @@ public final class ServerHTTP extends Server {
                 if (distribution.isBlacklisted(query) || Block.containsIP(query)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         builder.append("    Este IP está listado por má reputação com ");
-                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(Core.PERCENT_FORMAT.format(probability));
                         builder.append(" de pontos negativos do volume total de envio.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
@@ -2241,7 +2241,7 @@ public final class ServerHTTP extends Server {
                         builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                     } else {
                         builder.append("    This IP is listed by poor reputation in ");
-                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(Core.PERCENT_FORMAT.format(probability));
                         builder.append(" of negative points of total sending.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    In order for this IP can be removed from this list,<br>\n");
@@ -2256,7 +2256,7 @@ public final class ServerHTTP extends Server {
                 } else {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
-                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(Core.PERCENT_FORMAT.format(probability));
                         builder.append(" de pontos negativos do volume total de envio.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
@@ -2271,7 +2271,7 @@ public final class ServerHTTP extends Server {
                         builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                     } else {
                         builder.append("    This IP is not listed in this system but its reputation is with ");
-                        builder.append(Server.PERCENT_FORMAT.format(probability));
+                        builder.append(Core.PERCENT_FORMAT.format(probability));
                         builder.append(" of negative points of total sending.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    If this reputation have significant increase in the number of negative points,");
@@ -2384,7 +2384,7 @@ public final class ServerHTTP extends Server {
                 float probability = distribution.getSpamProbability(query);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Este domínio está listado por má reputação com ");
-                    builder.append(Server.PERCENT_FORMAT.format(probability));
+                    builder.append(Core.PERCENT_FORMAT.format(probability));
                     builder.append(" de pontos negativos do volume total de envio.<br>\n");
                     builder.append("    <br>\n");
                     builder.append("    Para que este domínio possa ser removido desta lista,<br>\n");
@@ -2397,7 +2397,7 @@ public final class ServerHTTP extends Server {
                     builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                 } else {
                     builder.append("    This domain is listed by poor reputation in ");
-                    builder.append(Server.PERCENT_FORMAT.format(probability));
+                    builder.append(Core.PERCENT_FORMAT.format(probability));
                     builder.append(" of negative points of total sending.<br>\n");
                     builder.append("    <br>\n");
                     builder.append("    In order for this domain can be removed from this list,<br>\n");

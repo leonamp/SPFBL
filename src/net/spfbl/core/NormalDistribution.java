@@ -125,7 +125,7 @@ public class NormalDistribution implements Serializable {
     
     @Override
     public String toString() {
-        return Server.DECIMAL_FORMAT.format(getAverage()) +
-                "±" + Server.DECIMAL_FORMAT.format(getStandardError());
+        return Core.DECIMAL_FORMAT.format(getAverage()) +
+                "±" + Core.DECIMAL_FORMAT.format(getStandardError());
     }
 }

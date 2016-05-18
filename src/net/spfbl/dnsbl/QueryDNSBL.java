@@ -287,7 +287,7 @@ public final class QueryDNSBL extends Server {
         private long time = 0;
 
         public Connection() {
-            super("DNSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
         }
@@ -632,7 +632,7 @@ public final class QueryDNSBL extends Server {
         } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating DNSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+            Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
             connection.start();
             CONNECTION_COUNT++;

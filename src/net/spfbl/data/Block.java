@@ -35,6 +35,7 @@ import net.spfbl.core.Core;
 import net.spfbl.core.Peer;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
+import net.spfbl.core.User;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Owner;
@@ -123,7 +124,7 @@ public class Block {
         }
         
         private static synchronized boolean dropExact(String token) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -145,7 +146,7 @@ public class Block {
         }
         
         private static synchronized boolean addExact(String token) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -952,7 +953,7 @@ public class Block {
 
     public static boolean containsExact(String token) {
         if (token.contains("WHOIS/")) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -1335,6 +1336,7 @@ public class Block {
 
     public static void clear(
             Client client,
+            User user,
             String ip,
             String sender,
             String helo,
@@ -1344,12 +1346,10 @@ public class Block {
         if (qualifier.equals("PASS")) {
             String block;
             while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
-                if (client == null) {
+                if (user == null) {
                     Server.logDebug("false positive BLOCK '" + block + "' detected.");
                 } else if (client.hasEmail()) {
-                    Server.logDebug("false positive BLOCK '" + block + "' detected by '" + client.getEmail() + "'.");
-                } else {
-                    Server.logDebug("false positive BLOCK '" + block + "' detected by '" + client.getDomain() + "'.");
+                    Server.logDebug("false positive BLOCK '" + block + "' detected by '" + user.getEmail() + "'.");
                 }
             }
         }
@@ -1749,7 +1749,21 @@ public class Block {
                     fileInputStream.close();
                 }
                 for (String token : set) {
-                    if (Domain.isHostname(token)) {
+                    String identifier;
+                    if (token.contains(":")) {
+                        int index = token.indexOf(':');
+                        identifier = token.substring(index + 1);
+                    } else {
+                        identifier = token;
+                    }
+                    if (identifier.startsWith("WHOIS/")
+                            && !identifier.contains("=")
+                            && !identifier.contains("<")
+                            && !identifier.contains(">")
+                            ) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        token = null;
+                    } else if (Domain.isHostname(token)) {
                         boolean add = true;
                         String hostname = token;
                         int index;

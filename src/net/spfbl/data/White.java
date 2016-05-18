@@ -126,7 +126,7 @@ public class White {
         }
         
         private static synchronized boolean dropExact(String token) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -148,7 +148,7 @@ public class White {
         }
         
         private static synchronized boolean addExact(String token) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -857,7 +857,7 @@ public class White {
 
     public static boolean containsExact(String token) {
         if (token.contains("WHOIS/")) {
-            int index = token.indexOf('=');
+            int index = token.indexOf('/');
             String whois = token.substring(index+1);
             index = token.lastIndexOf(':', index);
             String client;
@@ -1473,7 +1473,14 @@ public class White {
                         client = null;
                         identifier = token;
                     }
-                    if (Subnet.isValidCIDR(identifier)) {
+                    if (identifier.startsWith("WHOIS/")
+                            && !identifier.contains("=")
+                            && !identifier.contains("<")
+                            && !identifier.contains(">")
+                            ) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        identifier = null;
+                    } else if (Subnet.isValidCIDR(identifier)) {
                         identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
                     } else if (Owner.isOwnerID(identifier)) {
                         identifier = "WHOIS/ownerid=" + identifier;
