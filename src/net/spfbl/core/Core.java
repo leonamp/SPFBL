@@ -74,7 +74,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 1;
-    private static final byte RELEASE = 1;
+    private static final byte RELEASE = 2;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -1068,6 +1068,8 @@ public class Core {
     public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
     
     public static final NumberFormat PERCENT_FORMAT = NumberFormat.getPercentInstance();
+    
+    public static final SimpleDateFormat SQL_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
     
     /**
      * Constante para formatar datas com hora no padrão de e-mail.

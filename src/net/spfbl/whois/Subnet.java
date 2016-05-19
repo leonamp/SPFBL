@@ -310,6 +310,8 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         handle.setEmail(e_mail);
                         handle.setCreated(created2);
                         handle.setChanged(changed2);
+                    } else if (line.startsWith("% Not assigned.")) {
+                        throw new ProcessException("ERROR: SUBNET NOT ASSIGNED");
                     } else if (line.startsWith("% Permission denied.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Permissão negada.")) {

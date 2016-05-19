@@ -200,78 +200,89 @@ public class Block {
                 if (client != null && client.hasEmail()) {
                     whoisSet = MAP.get(client.getEmail());
                     if (whoisSet != null) {
-                        subSet.addAll(whoisSet);
+                        for (String whois : whoisSet) {
+                            subSet.add(client.getEmail() + ':' + whois);
+                        }
                     }
                 }
                 if (subSet.isEmpty()) {
                     return null;
                 } else {
                     for (String whois : subSet) {
-                        int indexKey = whois.indexOf('/');
-                        char signal = '=';
-                        int indexValue = whois.indexOf(signal);
-                        if (indexValue == -1) {
-                            signal = '<';
-                            indexValue = whois.indexOf(signal);
+                        try {
+                            char signal = '=';
+                            int indexValue = whois.indexOf(signal);
                             if (indexValue == -1) {
-                                signal = '>';
+                                signal = '<';
                                 indexValue = whois.indexOf(signal);
-                            }
-                        }
-                        if (indexValue != -1) {
-                            String user = null;
-                            int indexUser = whois.indexOf(':');
-                            if (indexUser > 0 && indexUser < indexValue) {
-                                user = whois.substring(0, indexUser);
-                            }
-                            String key = whois.substring(indexKey + 1, indexValue);
-                            String criterion = whois.substring(indexValue + 1);
-                            for (String token : tokenSet) {
-                                String value = null;
-                                if (Subnet.isValidIP(token)) {
-                                    value = Subnet.getValue(token, key);
-                                } else if (!token.startsWith(".") && Domain.containsDomain(token)) {
-                                    value = Domain.getValue(token, key);
-                                } else if (!token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
-                                    value = Domain.getValue(token, key);
+                                if (indexValue == -1) {
+                                    signal = '>';
+                                    indexValue = whois.indexOf(signal);
                                 }
-                                if (value != null) {
-                                    if (signal == '=') {
-                                        if (criterion.equals(value)) {
-                                            if ((token = addDomain(user, token)) != null) {
-                                                Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                                if (user == null) {
-                                                    Peer.sendBlockToAll(token);
+                            }
+                            if (indexValue != -1) {
+                                String user = null;
+                                int indexUser = whois.indexOf(':');
+                                if (indexUser > 0 && indexUser < indexValue) {
+                                    user = whois.substring(0, indexUser);
+                                }
+                                String key = whois.substring(indexUser + 1, indexValue);
+                                String criterion = whois.substring(indexValue + 1);
+                                for (String token : tokenSet) {
+                                    String value = null;
+                                    if (Subnet.isValidIP(token)) {
+                                        value = Subnet.getValue(token, key);
+                                    } else if (!token.startsWith(".") && Domain.containsDomain(token)) {
+                                        value = Domain.getValue(token, key);
+                                    } else if (!token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
+                                        value = Domain.getValue(token, key);
+                                    }
+                                    if (value != null) {
+                                        if (signal == '=') {
+                                            if (criterion.equals(value)) {
+                                                if ((token = addDomain(user, token)) != null) {
+                                                    if (user == null) {
+                                                        Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
+                                                        Peer.sendBlockToAll(token);
+                                                    } else {
+                                                        Server.logDebug("new BLOCK '" + user + ":" + token + "' added by '" + user + ":WHOIS/" + whois + "'.");
+                                                    }
                                                 }
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
                                             }
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
-                                        }
-                                    } else if (value.length() > 0) {
-                                        int criterionInt = parseIntWHOIS(criterion);
-                                        int valueInt = parseIntWHOIS(value);
-                                        if (signal == '<' && valueInt < criterionInt) {
-                                            if ((token = addDomain(user, token)) != null) {
-                                                Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                                if (user == null) {
-                                                    Peer.sendBlockToAll(token);
+                                        } else if (value.length() > 0) {
+                                            int criterionInt = parseIntWHOIS(criterion);
+                                            int valueInt = parseIntWHOIS(value);
+                                            if (signal == '<' && valueInt < criterionInt) {
+                                                if ((token = addDomain(user, token)) != null) {
+                                                    if (user == null) {
+                                                        Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
+                                                        Peer.sendBlockToAll(token);
+                                                    } else {
+                                                        Server.logDebug("new BLOCK '" + user + ":" + token + "' added by '" + user + ":WHOIS/" + whois + "'.");
+                                                    }
                                                 }
-                                            }
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
-                                        } else if (signal == '>' && valueInt > criterionInt) {
-                                            if ((token = addDomain(user, token)) != null) {
-                                                Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                                if (user == null) {
-                                                    Peer.sendBlockToAll(token);
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
+                                            } else if (signal == '>' && valueInt > criterionInt) {
+                                                if ((token = addDomain(user, token)) != null) {
+                                                    if (user == null) {
+                                                        Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
+                                                        Peer.sendBlockToAll(token);
+                                                    } else {
+                                                        Server.logDebug("new BLOCK '" + user + ":" + token + "' added by '" + user + ":WHOIS/" + whois + "'.");
+                                                    }
                                                 }
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
                                             }
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
                                         }
                                     }
                                 }
                             }
+                        } catch (Exception ex) {
+                            Server.logError(ex);
                         }
                     }
                     logTrace(time, "WHOIS lookup for " + tokenSet + ".");
@@ -1292,7 +1303,6 @@ public class Block {
                     }
                 }
             }
-            whoisSet.add(token);
             regexSet.add(token);
         } else if (Domain.isHostname(token)) {
             String host = Domain.normalizeHostname(token, true);
@@ -1348,7 +1358,7 @@ public class Block {
             while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
                 if (user == null) {
                     Server.logDebug("false positive BLOCK '" + block + "' detected.");
-                } else if (client.hasEmail()) {
+                } else {
                     Server.logDebug("false positive BLOCK '" + block + "' detected by '" + user.getEmail() + "'.");
                 }
             }
@@ -1579,7 +1589,6 @@ public class Block {
                     }
                 }
             }
-            whoisSet.add(ip);
             regexSet.add(ip);
         }
         // Verifica um critério do REGEX.
@@ -1749,14 +1758,27 @@ public class Block {
                     fileInputStream.close();
                 }
                 for (String token : set) {
+                    String client;
                     String identifier;
                     if (token.contains(":")) {
                         int index = token.indexOf(':');
+                        client = token.substring(0, index);
                         identifier = token.substring(index + 1);
                     } else {
+                        client = null;
                         identifier = token;
                     }
-                    if (identifier.startsWith("WHOIS/")
+                    if (client != null && client.startsWith("WHOIS/")) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        while (client.startsWith("WHOIS/")) {
+                            client = client.substring(6);
+                        }
+                        token = client + ':' + identifier;
+                    }
+                    if (identifier.startsWith("WHOIS/WHOIS/")) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        token = null;
+                    } else if (identifier.startsWith("WHOIS/")
                             && !identifier.contains("=")
                             && !identifier.contains("<")
                             && !identifier.contains(">")

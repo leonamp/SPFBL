@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.TreeMap;
@@ -116,63 +117,13 @@ public class Analise implements Comparable<Analise> {
         if (ip == null) {
             return false;
         } else {
-            try {
-                StringBuilder builder = new StringBuilder();
-                Distribution distribution1 = SPF.getDistribution(ip, true);
-                float probability1 = distribution1.getSpamProbability(ip);
-                Status status1;
-                Status status3 = distribution1.getStatus(ip);
-                if (Block.containsIP(ip)) {
-                    status1 = Status.BLOCK;
-                    status3 = Status.BLOCK;
-                } else if (Ignore.contains(ip)) {
-                    status1 = Status.IGNORE;
-                } else if (Core.isOpenSMTP(ip, 25, 30000)) {
-                    status1 = status3;
-                } else {
-                    status1 = Status.CLOSED;
-                }
-                builder.append(ip);
-                builder.append(' ');
-                builder.append(status1);
-                builder.append(' ');
-                String token = ip;
-                for (String reverse : Reverse.getValidSet(ip, true)) {
-                    reverse = Domain.normalizeHostname(reverse, true);
-                    Distribution distribution2 = SPF.getDistribution(reverse, true);
-                    float probability2 = distribution2.getSpamProbability(reverse);
-                    Status status2 = distribution2.getStatus(reverse);
-                    if (probability2 > probability1) {
-                        probability1 = probability2;
-                        distribution1 = distribution2;
-                    }
-                    if (probability2 >= probability1 || Subnet.isValidIP(token)) {
-                        token = reverse;
-                        status3 = status2 == Status.BLOCK ? Status.BLACK : status2;
-                        if (Block.containsHost(reverse)) {
-                            status3 = Status.BLOCK;
-                        } else if (Block.containsREGEX(reverse)) {
-                            status3 = Status.BLOCK;
-                        }
-                    }
-                }
-                builder.append(token);
-                builder.append(' ');
-                builder.append(status3);
-                builder.append(' ');
-                builder.append(Core.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
-                builder.append(' ');
-                builder.append(distribution1.getFrequencyLiteral());
-                String result = builder.toString();
-                if (addResult(ip, result)) {
-                    Server.logTrace(result);
-                }
-                return true;
-            } catch (ProcessException ex) {
-                addResult(ip, ip + " ERROR");
-                Server.logError(ex);
-                return false;
+            StringBuilder builder = new StringBuilder();
+            Analise.process(ip, builder);
+            String result = builder.toString();
+            if (addResult(ip, result)) {
+                Server.logTrace(ip + ' ' + result);
             }
+            return true;
         }
     }
     
@@ -264,6 +215,13 @@ public class Analise implements Comparable<Analise> {
         }
     }
     
+    public static void processToday(String ip) {
+        Date today = new Date();
+        String name = Core.SQL_FORMAT.format(today);
+        Analise analise = Analise.get(name, true);
+        analise.add(ip);
+    }     
+    
     public static void process(
             String ip,
             StringBuilder builder
@@ -283,10 +241,7 @@ public class Analise implements Comparable<Analise> {
             } else {
                 status1 = Status.CLOSED;
             }
-            builder.append(ip);
-            builder.append(' ');
             builder.append(status1);
-            builder.append(' ');
             String token = ip;
             for (String reverse : Reverse.getValidSet(ip, true)) {
                 reverse = Domain.normalizeHostname(reverse, true);
@@ -309,6 +264,7 @@ public class Analise implements Comparable<Analise> {
                     }
                 }
             }
+            builder.append(' ');
             builder.append(token);
             builder.append(' ');
             builder.append(status3);
@@ -316,17 +272,33 @@ public class Analise implements Comparable<Analise> {
             builder.append(Core.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
             builder.append(' ');
             builder.append(distribution1.getFrequencyLiteral());
+            builder.append(' ');
+            if (Subnet.isValidIP(token)) {
+                builder.append(Subnet.expandIP(token));
+            } else {
+                builder.append(Domain.revert(token));
+            }
         } catch (ProcessException ex) {
-            builder.append(ex.getErrorMessage());
+            builder.append("ERROR");
             Server.logError(ex);
         }
     }
 
-    private static final Semaphore SEMAPHORE = new Semaphore(128);
+    private static final int MAX = 128;
+    private static final Semaphore SEMAPHORE = new Semaphore(MAX);
     private static boolean run = true;
     
     public static void interrupt() {
         run = false;
+        int count = MAX;
+        while (count > 0) {
+            try {
+                SEMAPHORE.acquire();
+                count--;
+            } catch (InterruptedException ex) {
+                Server.logError(ex);
+            }
+        }
     }
 
     private class Process extends Thread {

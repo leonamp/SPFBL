@@ -202,55 +202,61 @@ public class White {
                 if (client != null) {
                     array = getArray(client);
                     if (array != null) {
-                        subSet.addAll(Arrays.asList(array));
+                        for (String whois : array) {
+                            subSet.add(client.getEmail() + ':' + whois);
+                        }
                     }
                 }
                 if (subSet.isEmpty()) {
                     return null;
                 } else {
                     for (String whois : subSet) {
-                        int indexKey = whois.indexOf('/');
-                        char signal = '=';
-                        int indexValue = whois.indexOf(signal);
-                        if (indexValue == -1) {
-                            signal = '<';
-                            indexValue = whois.indexOf(signal);
+                        try {
+                            char signal = '=';
+                            int indexValue = whois.indexOf(signal);
                             if (indexValue == -1) {
-                                signal = '>';
+                                signal = '<';
                                 indexValue = whois.indexOf(signal);
-                            }
-                        }
-                        if (indexValue != -1) {
-                            String key = whois.substring(indexKey + 1, indexValue);
-                            String criterion = whois.substring(indexValue + 1);
-                            for (String token : tokenSet) {
-                                String value = null;
-                                if (Subnet.isValidIP(token)) {
-                                    value = Subnet.getValue(token, key);
-                                } else if (!token.startsWith(".") && Domain.containsDomain(token)) {
-                                    value = Domain.getValue(token, key);
-                                } else if (!token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
-                                    value = Domain.getValue(token, key);
+                                if (indexValue == -1) {
+                                    signal = '>';
+                                    indexValue = whois.indexOf(signal);
                                 }
-                                if (value != null) {
-                                    if (signal == '=') {
-                                        if (criterion.equals(value)) {
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
-                                        }
-                                    } else if (value.length() > 0) {
-                                        int criterionInt = parseIntWHOIS(criterion);
-                                        int valueInt = parseIntWHOIS(value);
-                                        if (signal == '<' && valueInt < criterionInt) {
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
-                                        } else if (signal == '>' && valueInt > criterionInt) {
-                                            logTrace(time, "WHOIS lookup for " + tokenSet + ".");
-                                            return whois;
+                            }
+                            if (indexValue != -1) {
+                                int indexUser = whois.indexOf(':');
+                                String key = whois.substring(indexUser + 1, indexValue);
+                                String criterion = whois.substring(indexValue + 1);
+                                for (String token : tokenSet) {
+                                    String value = null;
+                                    if (Subnet.isValidIP(token)) {
+                                        value = Subnet.getValue(token, key);
+                                    } else if (!token.startsWith(".") && Domain.containsDomain(token)) {
+                                        value = Domain.getValue(token, key);
+                                    } else if (!token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
+                                        value = Domain.getValue(token, key);
+                                    }
+                                    if (value != null) {
+                                        if (signal == '=') {
+                                            if (criterion.equals(value)) {
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
+                                            }
+                                        } else if (value.length() > 0) {
+                                            int criterionInt = parseIntWHOIS(criterion);
+                                            int valueInt = parseIntWHOIS(value);
+                                            if (signal == '<' && valueInt < criterionInt) {
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
+                                            } else if (signal == '>' && valueInt > criterionInt) {
+                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
+                                                return whois;
+                                            }
                                         }
                                     }
                                 }
                             }
+                        } catch (Exception ex) {
+                            Server.logError(ex);
                         }
                     }
                     logTrace(time, "WHOIS lookup for " + tokenSet + ".");
@@ -1323,7 +1329,6 @@ public class White {
             } else if ((cidr = CIDR.get(client, ip)) != null) {
                 return cidr;
             }
-            whoisSet.add(ip);
             regexSet.add(ip);
         }
         // Verifica um critério do REGEX.
@@ -1473,7 +1478,17 @@ public class White {
                         client = null;
                         identifier = token;
                     }
-                    if (identifier.startsWith("WHOIS/")
+                    if (client != null && client.startsWith("WHOIS/")) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        while (client.startsWith("WHOIS/")) {
+                            client = client.substring(6);
+                        }
+                        token = client + ':' + identifier;
+                    }
+                    if (identifier.startsWith("WHOIS/WHOIS/")) {
+                        // Correção temporária do defeito no registro WHOIS.
+                        token = null;
+                    } else if (identifier.startsWith("WHOIS/")
                             && !identifier.contains("=")
                             && !identifier.contains("<")
                             && !identifier.contains(">")

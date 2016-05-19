@@ -60,6 +60,7 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
+import net.spfbl.core.Analise;
 import net.spfbl.core.Client;
 import net.spfbl.data.Block;
 import net.spfbl.core.Defer;

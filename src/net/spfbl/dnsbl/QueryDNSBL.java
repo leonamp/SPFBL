@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.core.Analise;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
@@ -423,6 +424,7 @@ public final class QueryDNSBL extends Server {
                             } else if (SubnetIPv4.isValidIPv4(reverse)) {
                                 // A consulta é um IPv4.
                                 clientQuery = SubnetIPv4.reverseToIPv4(reverse);
+                                Analise.processToday(clientQuery);
                                 if (clientQuery.equals("127.0.0.1")) {
                                     // Consulta de teste para negativo.
                                     result = "NXDOMAIN";

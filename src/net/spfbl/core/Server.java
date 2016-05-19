@@ -770,8 +770,9 @@ public abstract class Server extends Thread {
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
-        Server.logInfo("shutting down server...");
+        Server.logInfo("interrupting analises...");
         Analise.interrupt();
+        Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {

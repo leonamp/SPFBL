@@ -90,7 +90,7 @@ public final class Reverse implements Serializable {
         return keySet;
     }
 
-    private static HashMap<String,Reverse> getMap() {
+    private static synchronized HashMap<String,Reverse> getMap() {
         HashMap<String,Reverse> map = new HashMap<String,Reverse>();
         map.putAll(MAP);
         return map;
