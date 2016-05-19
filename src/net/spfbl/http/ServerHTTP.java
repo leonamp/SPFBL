@@ -67,6 +67,7 @@ import net.spfbl.whois.Subnet;
 import net.tanesha.recaptcha.ReCaptcha;
 import net.tanesha.recaptcha.ReCaptchaFactory;
 import net.tanesha.recaptcha.ReCaptchaResponse;
+import org.apache.commons.lang3.LocaleUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 
@@ -296,13 +297,14 @@ public final class ServerHTTP extends Server {
         private float q;
         
         private Language(String language) {
+            language = language.replace('-', '_');
             int index = language.indexOf(';');
             if (index == -1) {
-                locale = Locale.forLanguageTag(language);
+                locale = LocaleUtils.toLocale(language);
                 q = 1.0f;
             } else {
                 String value = language.substring(0,index).trim();
-                locale = Locale.forLanguageTag(value);
+                locale = LocaleUtils.toLocale(value);
                 try {
                     index = language.lastIndexOf('=') + 1;
                     value = language.substring(index).trim();
@@ -345,8 +347,12 @@ public final class ServerHTTP extends Server {
             TreeSet<Language> languageSet = new TreeSet<Language>();
             StringTokenizer tokenizer = new StringTokenizer(acceptLanguage, ",");
             while (tokenizer.hasMoreTokens()) {
-                Language language = new Language(tokenizer.nextToken());
-                languageSet.add(language);
+                try {
+                    Language language = new Language(tokenizer.nextToken());
+                    languageSet.add(language);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
             }
             for (Language language : languageSet) {
                 if (language.isLanguage("en")) {

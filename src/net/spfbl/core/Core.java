@@ -74,7 +74,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 1;
-    private static final byte RELEASE = 2;
+    private static final byte RELEASE = 3;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
