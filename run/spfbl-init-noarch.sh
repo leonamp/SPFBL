@@ -1,5 +1,6 @@
 #!/bin/bash
-
+# chkconfig: 345 99 01
+# description: SPFBL
 ##########################################
 #       Gerenciador de start / stop      #                  
 #               SPFBL                    #
@@ -16,6 +17,7 @@ start()
     echo -n "[SPFBL] Starting... "
 
     if [ "$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)" -eq "0" ]; then
+	cd /opt/spfbl/
         # Log personalizado caso nao deseja utilizar logrotate.d/spfbl
         if [ ! -f /etc/logrotate.d/spfbl ]; then
             /usr/bin/java -jar /opt/spfbl/SPFBL.jar 9875 512 >> /var/log/spfbl/spfbl-$(date "+%Y-%m-%d").log &
@@ -44,8 +46,7 @@ stop()
         sleep 5
         if [[ $response == "" ]]; then
             # Encerro o processo via kill pois certamente esta trancado
-            pid=$(ps aux | grep SPFBL | grep java | grep -v grep | awk '{print $2}')
-            kill -9 $pid
+            ps aux | grep SPFBL | grep java | grep -v grep | awk '{print $2}'
             ret=0
         elif [[ $response == "OK" ]]; then
             ret=0
