@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.1"
+version="2.2"
 
 head()
 {
@@ -74,14 +74,6 @@ case $1 in
 		fi
 
 		echo "$response"
-
-		if [[ $response == "TIMEOUT" ]]; then
-			exit 2
-		elif [[ $response == "SPFBL"* ]]; then
-			exit 0
-		else
-			exit 1
-		fi
 	;;
 	'firewall')
 		# Constroi um firewall pelo SPPFBL.
@@ -126,16 +118,6 @@ case $1 in
 		fi
 
 		echo "$response"
-
-		if [[ $response == "TIMEOUT" ]]; then
-			exit 2
-		elif [[ $response == "OK" ]]; then
-			exit 0
-		elif [[ $response == "ERROR: SHUTDOWN" ]]; then
-			exit 1
-		else
-			exit 1
-		fi
 	;;
 	'store')
 		# Comando para gravar o cache em disco.
@@ -154,14 +136,6 @@ case $1 in
 		fi
 
 		echo "$response"
-
-		if [[ $response == "TIMEOUT" ]]; then
-			exit 2
-		elif [[ $response == "OK" ]]; then
-			exit 0
-		else
-			exit 1
-		fi
 	;;
 	'tld')
 		case $2 in
@@ -189,14 +163,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -223,14 +189,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -253,14 +211,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -295,14 +245,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -329,14 +271,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -359,14 +293,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -402,14 +328,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -437,14 +355,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -467,14 +377,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -512,14 +414,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -549,14 +443,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -584,14 +470,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'find')
@@ -616,14 +494,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "NONE" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
@@ -661,14 +531,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'split')
@@ -698,14 +560,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'overlap')
@@ -735,14 +589,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -772,14 +618,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -807,14 +645,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
@@ -850,14 +680,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -885,14 +707,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -915,14 +729,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
@@ -958,14 +764,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -993,14 +791,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -1027,14 +817,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
@@ -1079,14 +861,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED"* ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'set')
@@ -1123,14 +897,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "UPDATED"* ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -1157,14 +923,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED"* ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -1187,14 +945,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -1231,14 +981,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ADDED"* ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -1265,14 +1007,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "DROPED"* ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -1295,14 +1029,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -1343,16 +1069,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					elif [[ $response == "ALREADY"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'drop')
@@ -1383,14 +1099,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'show')
@@ -1418,14 +1126,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "NOT FOUND"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'set')
@@ -1456,14 +1156,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "NOT"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'ping')
@@ -1490,14 +1182,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "NOT"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'send')
@@ -1524,17 +1208,8 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "NOT"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
-
 			*)
 				head
 				printf "Syntax:\n    $0 peer add host [email]\n    $0 peer drop { host | all }\n    $0 peer show [host]\n    $0 peer set host send receive\n    $0 peer ping host\n    $0 peer send host\n"
@@ -1562,24 +1237,16 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-                                                response=$(echo $OTP_CODE"PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        else
-                                                response=$(echo $OTP_CODE"PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        fi
+						response=$(echo $OTP_CODE"PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo $OTP_CODE"PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'release')
@@ -1601,24 +1268,16 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-                                                response=$(echo $OTP_CODE"PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        else
-                                                response=$(echo $OTP_CODE"PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        fi
+						response=$(echo $OTP_CODE"PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo $OTP_CODE"PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			'reject')
@@ -1640,24 +1299,16 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-                                                response=$(echo $OTP_CODE"PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        else
-                                                response=$(echo $OTP_CODE"PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                                        fi
+						response=$(echo $OTP_CODE"PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					else
+						response=$(echo $OTP_CODE"PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					fi
 
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "ERROR"* ]]; then
-						exit 1
-					else
-						exit 0
-					fi
 				fi
 			;;
 			*)
@@ -1675,25 +1326,17 @@ case $1 in
 		#    1: lista vazia.
 		#    2: timeout de conexão.
 
-                if [[ $2 == "cidr" ]]; then
-                	response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                else
-                	response=$(echo $OTP_CODE"REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
-                fi
+		if [[ $2 == "cidr" ]]; then
+			response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		else
+			response=$(echo $OTP_CODE"REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		fi
 		
 		if [[ $response == "" ]]; then
 			response="TIMEOUT"
 		fi
 
 		echo "$response"
-
-		if [[ $response == "TIMEOUT" ]]; then
-			exit 2
-		elif [[ $response == "EMPTY" ]]; then
-			exit 1
-		else
-			exit 0
-		fi
 	;;
 	'clear')
 		# Parâmetros de entrada:
@@ -1721,16 +1364,6 @@ case $1 in
 			fi
 
 			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
 		fi
 	;;
 	'refresh')
@@ -1759,16 +1392,6 @@ case $1 in
 			fi
 
 			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
 		fi
 	;;
 	'analise')
@@ -1787,88 +1410,49 @@ case $1 in
 		if [ $# -lt "1" ]; then
 			head
 			printf "Faltando parametro(s).\nSintaxe: $0 analise <ip>\n"
-			
-		elif [ $2 == "show" ]; then
-		
-			response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
-			
-			if [[ $response == "" ]]; then
-				response="TIMEOUT"
-			fi
-
-			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
-			
-		elif [ $2 == "dump" ]; then
-		
-			response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
-			
-			if [[ $response == "" ]]; then
-				response="TIMEOUT"
-			fi
-
-			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
-		
-		elif [ $2 == "drop" ]; then
-		
-			response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
-			
-			if [[ $response == "" ]]; then
-				response="TIMEOUT"
-			fi
-
-			echo "$response"
-
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
-		
 		else
+			case $2 in
+				'show')
 		
-			ip=$2
+					response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
 
-			response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					echo "$response"
+				;;
+				'dump')
+					response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
 
-			if [[ $response == "" ]]; then
-				response="TIMEOUT"
-			fi
+					echo "$response"
+				;;
+				'drop')
+		
+					response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
 
-			echo "$response"
+					echo "$response"
+				;;
+				[0-9]*)
+					ip=$2
 
-			if [[ $response == "TIMEOUT" ]]; then
-				exit 3
-			elif [[ $response == "UPDATED" ]]; then
-				exit 0
-			elif [[ $response == "NOT LOADED" ]]; then
-				exit 1
-			else
-				exit 2
-			fi
+					response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+				;;
+			esac
 		fi
 	;;
 	'check')
@@ -2277,14 +1861,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -2312,14 +1888,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -2342,19 +1910,11 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 trap add recipduient\n    $0 trap drop recipient\n    $0 trap show\n"
+				printf "Syntax:\n    $0 trap add recipient\n    $0 trap drop recipient\n    $0 trap show\n"
 			;;
 		esac
 	;;
@@ -2385,14 +1945,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'drop')
@@ -2420,14 +1972,6 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			'show')
@@ -2450,19 +1994,11 @@ case $1 in
 					fi
 
 					echo "$response"
-
-					if [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					elif [[ $response == "OK" ]]; then
-						exit 0
-					else
-						exit 1
-					fi
 				fi
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 noreply add recipduient\n    $0 noreply drop recipient\n    $0 noreply show\n"
+				printf "Syntax:\n    $0 noreply add recipient\n    $0 noreply drop recipient\n    $0 noreply show\n"
 			;;
 		esac
 	;;
@@ -2526,6 +2062,7 @@ case $1 in
 		printf "    $0 user { add email nome | drop email | show }\n"
 		printf "    $0 superblock { add sender | drop sender | show [all] }\n"
 		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
+		printf "    $0 analise <ip> or { show | dump | drop }\n"
 		printf "    $0 dump\n"
 		printf "    $0 load path\n"
 		printf "\n"
