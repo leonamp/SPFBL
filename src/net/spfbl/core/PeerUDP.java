@@ -26,6 +26,7 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 
 /**
@@ -99,7 +100,7 @@ public final class PeerUDP extends Server {
         private long time = 0;
         
         public Connection() {
-            super("P2PUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("P2PUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -227,7 +228,6 @@ public final class PeerUDP extends Server {
                         String reputation = token.substring(index);
                         StringTokenizer tokenizer = new StringTokenizer(reputation, " ");
                         if (tokenizer.countTokens() == 3) {
-                            address = ipAddress.getHostAddress();
                             String key = tokenizer.nextToken();
                             String ham = tokenizer.nextToken();
                             String spam = tokenizer.nextToken();
@@ -240,6 +240,7 @@ public final class PeerUDP extends Server {
                                 peer.addNotification();
                                 result = peer.setReputation(key, ham, spam);
                             }
+                            SPF.createDistribution(key);
                         } else {
                             address = ipAddress.getHostAddress();
                             result = "INVALID";
@@ -404,7 +405,7 @@ public final class PeerUDP extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating P2PUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Server.logDebug("creating P2PUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 connection.start();
                 use(connection);

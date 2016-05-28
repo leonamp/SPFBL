@@ -1,16 +1,16 @@
 /*
  * This file is part of SPFBL.
- * 
+ *
  * SPFBL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * SPFBL is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -31,21 +31,25 @@ import java.util.LinkedList;
 import java.util.StringTokenizer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
+import net.spfbl.core.User;
+import net.spfbl.data.Trap;
+import net.spfbl.data.White;
 
 /**
  * Servidor de consulta em SPF.
- * 
+ *
  * Este serviço responde a consulta e finaliza a conexão logo em seguida.
- * 
+ *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class QuerySPF extends Server {
 
     private final int PORT;
     private final ServerSocket SERVER_SOCKET;
-    
+
     /**
      * Configuração e intanciamento do servidor.
      * @param port a porta SPF a ser vinculada.
@@ -59,30 +63,30 @@ public final class QuerySPF extends Server {
         Server.logDebug("binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
     }
-    
+
     private int CONNECTION_ID = 1;
-    
+
     /**
      * Representa uma conexão ativa.
      * Serve para processar todas as requisições.
      */
     private class Connection extends Thread {
-        
+
         /**
          * O poll de sockets de consulta a serem processados.
          */
         private Socket SOCKET = null;
-        
+
         private final Semaphore SEMAPHORE = new Semaphore(0);
-        
+
         private long time = 0;
-       
-        
+
+
         public Connection() {
-            super("SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("SPFTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             setPriority(Thread.MAX_PRIORITY);
         }
-        
+
         /**
          * Processa um socket de consulta.
          * @param socket o socket de consulta a ser processado.
@@ -92,7 +96,7 @@ public final class QuerySPF extends Server {
             this.time = time;
             SEMAPHORE.release();
         }
-        
+
         private boolean isTimeout() {
             if (time == 0) {
                 return false;
@@ -101,7 +105,7 @@ public final class QuerySPF extends Server {
                 return interval > 20;
             }
         }
-        
+
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -110,7 +114,7 @@ public final class QuerySPF extends Server {
             SOCKET = null;
             SEMAPHORE.release();
         }
-        
+
         @Override
         public void interrupt() {
             try {
@@ -121,7 +125,7 @@ public final class QuerySPF extends Server {
                 Server.logError(ex);
             }
         }
-        
+
         public Socket getSocket() {
             if (QuerySPF.this.continueListenning()) {
                 try {
@@ -134,12 +138,12 @@ public final class QuerySPF extends Server {
                 return null;
             }
         }
-        
+
         public void clearSocket() {
             time = 0;
             SOCKET = null;
         }
-        
+
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
@@ -154,15 +158,14 @@ public final class QuerySPF extends Server {
                     String result = null;
                     try {
                         InetAddress ipAddress = socket.getInetAddress();
-                        String client = Client.getIdentification(ipAddress);
+                        Client client = Client.get(ipAddress);
+                        User user = client == null ? null : client.getUser();
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         String line = bufferedReader.readLine();
                         if (line != null) {
-                            if (line.equals("VERSION")) {
-                                result = Core.getAplication() + "\n";
-                            } else if (line.equals("request=smtpd_access_policy")) {
+                            if (line.equals("request=smtpd_access_policy")) {
                                 // Entrada padrão do Postfix.
                                 // Extrair os atributos necessários.
                                 String ip = null;
@@ -188,269 +191,283 @@ public final class QuerySPF extends Server {
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
                                 result = SPF.processPostfixSPF(
-                                        client, ip, sender, helo, recipient
+                                        ipAddress, client, user, ip, sender, helo, recipient
                                         );
-                            } else if (line.startsWith("BLOCK ADD ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de adição bloqueio de remetente.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String sender = tokenizer.nextToken();
-                                        boolean added = SPF.addBlock(client, sender);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("BLOCK DROP ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de remoção de bloqueio de remetente.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String sender = tokenizer.nextToken();
-                                        boolean droped = SPF.dropBlock(client, sender);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("BLOCK SHOW ALL")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String sender : SPF.getAllBlockSet(client)) {
-                                    if (result == null) {
-                                        result = sender + "\n";
-                                    } else {
-                                        result += sender + "\n";
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.equals("BLOCK SHOW")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String sender : SPF.getBlockSet(client)) {
-                                    if (result == null) {
-                                        result = sender + "\n";
-                                    } else {
-                                        result += sender + "\n";
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.startsWith("BLOCK FIND ")) {
-                                query = line.substring(6).trim();
-                                type = "BLOCK";
-                                // Mecanismo de remoção de bloqueio de remetente.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String token = tokenizer.nextToken();
-                                        String block = SPF.findBlock(client, token);
-                                        if (result == null) {
-                                            result = (block == null ? "NONE" : block) + "\n";
-                                        } else {
-                                            result += (block == null ? "NONE" : block) + "\n";
-                                        }
-                                    } catch (Exception ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("TRAP ADD ")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de adição de spamtrap.
-                                line = line.substring(9);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean added = SPF.addTrap(client, recipient);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("TRAP DROP ")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de remoção de spamtrap.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean droped = SPF.dropTrap(client, recipient);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("TRAP SHOW")) {
-                                query = line.substring(5).trim();
-                                type = "STRAP";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getTrapSet(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.startsWith("WHITE ADD ")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de adição de whitelist.
-                                line = line.substring(10);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean added = SPF.addWhite(client, recipient);
-                                        if (result == null) {
-                                            result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        } else {
-                                            result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.startsWith("WHITE DROP ")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de remoção de whitelist.
-                                line = line.substring(11);
-                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
-                                while (tokenizer.hasMoreElements()) {
-                                    try {
-                                        String recipient = tokenizer.nextToken();
-                                        boolean droped = SPF.dropWhite(client, recipient);
-                                        if (result == null) {
-                                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        } else {
-                                            result += (droped ? "DROPED" : "NOT FOUND") + "\n";
-                                        }
-                                    } catch (ProcessException ex) {
-                                        if (result == null) {
-                                            result = ex.getMessage() + "\n";
-                                        } else {
-                                            result += ex.getMessage() + "\n";
-                                        }
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "ERROR: COMMAND";
-                                }
-                            } else if (line.equals("WHITE SHOW ALL")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getAllWhiteSet(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (line.equals("WHITE SHOW")) {
-                                query = line.substring(6).trim();
-                                type = "WHITE";
-                                // Mecanismo de visualização de bloqueios de remetentes.
-                                for (String recipient : SPF.getWhiteSet(client)) {
-                                    if (result == null) {
-                                        result = recipient + "\n";
-                                    } else {
-                                        result += recipient + "\n";
-                                    }
-                                }
-                                if (result == null) {
-                                    result = "EMPTY\n";
-                                }
                             } else {
-                                query = line.trim();
-                                result = SPF.processSPF(client, query);
-                                if (query.startsWith("HAM ")) {
-                                    type = "SPFHM";
-                                } else if (query.startsWith("SPAM ")) {
-                                    type = "SPFSP";
-                                } else if (query.startsWith("CHECK ")) {
-                                    type = "SPFCK";
+                                StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                                String token = tokenizer.nextToken();
+                                Integer otpCode = Core.getInteger(token);
+                                if (otpCode != null) {
+                                    int index = line.indexOf(token) + token.length() + 1;
+                                    line = line.substring(index).trim();
+                                    token = tokenizer.nextToken();
+                                    if (user == null) {
+                                        result = "ERROR: OTP UNDEFINED USER\n";
+                                    } else if (!user.isValidOTP(otpCode)) {
+                                        result = "ERROR: OTP INVALID CODE\n";
+                                    }
+                                }
+                                if (result != null) {
+                                    // Houve erro de OTP.
+                                } else if (token.equals("VERSION")) {
+                                    result = Core.getAplication() + "\n";
+                                } else if (line.startsWith("BLOCK ADD ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de adição bloqueio de remetente.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String sender = tokenizer.nextToken();
+                                            boolean added = Block.add(client, sender);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("BLOCK DROP ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de remoção de bloqueio de remetente.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String sender = tokenizer.nextToken();
+                                            boolean droped = Block.drop(client, sender);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("BLOCK SHOW ALL")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String sender : Block.getAll(client)) {
+                                        builder.append(sender);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.equals("BLOCK SHOW")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String sender : Block.get(client)) {
+                                        builder.append(sender);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.startsWith("BLOCK FIND ")) {
+                                    query = line.substring(6).trim();
+                                    type = "BLOCK";
+                                    // Mecanismo de remoção de bloqueio de remetente.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            token = tokenizer.nextToken();
+                                            String block = Block.find(client, token);
+                                            if (result == null) {
+                                                result = (block == null ? "NONE" : block) + "\n";
+                                            } else {
+                                                result += (block == null ? "NONE" : block) + "\n";
+                                            }
+                                        } catch (Exception ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("TRAP ADD ")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de adição de spamtrap.
+                                    line = line.substring(9);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean added = Trap.add(client, recipient);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("TRAP DROP ")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de remoção de spamtrap.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean droped = Trap.drop(client, recipient);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("TRAP SHOW")) {
+                                    query = line.substring(5).trim();
+                                    type = "STRAP";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : Trap.get(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.startsWith("WHITE ADD ")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de adição de whitelist.
+                                    line = line.substring(10);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean added = White.add(client, recipient);
+                                            if (result == null) {
+                                                result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            } else {
+                                                result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("WHITE DROP ")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de remoção de whitelist.
+                                    line = line.substring(11);
+                                    tokenizer = new StringTokenizer(line, " ");
+                                    while (tokenizer.hasMoreElements()) {
+                                        try {
+                                            String recipient = tokenizer.nextToken();
+                                            boolean droped = White.drop(client, recipient);
+                                            if (result == null) {
+                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            } else {
+                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                            }
+                                        } catch (ProcessException ex) {
+                                            if (result == null) {
+                                                result = ex.getMessage() + "\n";
+                                            } else {
+                                                result += ex.getMessage() + "\n";
+                                            }
+                                        }
+                                    }
+                                    if (result == null) {
+                                        result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.equals("WHITE SHOW ALL")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : White.getAll(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result.length() == 0) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else if (line.equals("WHITE SHOW")) {
+                                    query = line.substring(6).trim();
+                                    type = "WHITE";
+                                    // Mecanismo de visualização de bloqueios de remetentes.
+                                    StringBuilder builder = new StringBuilder();
+                                    for (String recipient : White.get(client)) {
+                                        builder.append(recipient);
+                                        builder.append('\n');
+                                    }
+                                    result = builder.toString();
+                                    if (result == null) {
+                                        result = "EMPTY\n";
+                                    }
+                                } else {
+                                    query = line.trim();
+                                    result = SPF.processSPF(ipAddress, client, user, query);
+                                    if (query.startsWith("HAM ")) {
+                                        type = "SPFHM";
+                                    } else if (query.startsWith("SPAM ")) {
+                                        type = "SPFSP";
+                                    } else if (query.startsWith("CHECK ")) {
+                                        type = "SPFCK";
+                                    }
                                 }
                             }
                             // Enviando resposta.
@@ -499,25 +516,25 @@ public final class QuerySPF extends Server {
             CONNECTION_COUNT--;
         }
     }
-    
+
     /**
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
     private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
-    
+
     /**
      * Semáforo que controla o pool de conexões.
      */
     private final Semaphore CONNECION_SEMAPHORE = new Semaphore(0);
-    
+
     /**
      * Quantidade total de conexões intanciadas.
      */
     private int CONNECTION_COUNT = 0;
-    
+
     private static byte CONNECTION_LIMIT = 16;
-    
+
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
             try {
@@ -527,7 +544,7 @@ public final class QuerySPF extends Server {
             }
         }
     }
-    
+
     public static void setConnectionLimit(int limit) {
         if (limit < 1 || limit > Byte.MAX_VALUE) {
             Server.logError("invalid SPFBL connection limit '" + limit + "'.");
@@ -535,28 +552,28 @@ public final class QuerySPF extends Server {
             CONNECTION_LIMIT = (byte) limit;
         }
     }
-    
+
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
-    
+
     private synchronized Connection pollUsing() {
         return CONNECTION_USE.poll();
     }
-    
+
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
     }
-    
+
     private synchronized void offerUsing(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     public void interruptTimeout() {
         Connection connection = pollUsing();
         if (connection != null) {
@@ -568,7 +585,7 @@ public final class QuerySPF extends Server {
             }
         }
     }
-    
+
     /**
      * Coleta uma conexão ociosa.
      * @return uma conexão ociosa ou nulo se exceder o tempo.
@@ -587,7 +604,7 @@ public final class QuerySPF extends Server {
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating SPFTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Server.logDebug("creating SPFTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 connection.start();
                 use(connection);
@@ -595,7 +612,7 @@ public final class QuerySPF extends Server {
                 return connection;
             } else {
                 // Se a quantidade de conexões atingir o limite,
-                // Aguardar a próxima liberação de conexão 
+                // Aguardar a próxima liberação de conexão
                 // independente de quanto tempo levar.
                 CONNECION_SEMAPHORE.acquire();
                 Connection connection = poll();
@@ -611,7 +628,7 @@ public final class QuerySPF extends Server {
             return null;
         }
     }
-    
+
     /**
      * Inicialização do serviço.
      */
@@ -650,7 +667,7 @@ public final class QuerySPF extends Server {
             Server.logInfo("querie SPFBL server closed.");
         }
     }
-    
+
     private static void sendMessage(long time,
             Socket socket, String message
             ) throws IOException {
@@ -666,7 +683,7 @@ public final class QuerySPF extends Server {
                 );
         }
     }
-    
+
     @Override
     protected void close() throws Exception {
         while (CONNECTION_COUNT > 0) {

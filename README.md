@@ -6,7 +6,7 @@ O serviço SPFBL é uma junção dos conceitos de SPF e DNSBL.
 
 O propósito deste serviço é melhorar o processamento SPF e reduzir a quantidade de consultas externas de um servidor de e-mail, na qual utiliza SPF e pelo menos um serviço qualquer de DNSBL.
 
-Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh".
+Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh". Atenção! O script "spfbl.sh" necessita do pacote "netcat"instalado para funcionar corretamente.
 
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
@@ -264,7 +264,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
-* LISTED: atrasa o recebimento da mensagem e informa à origem a listagem temporária em blacklist.
+* LISTED [&lt;ticket&gt;]: atrasa o recebimento da mensagem, informa à origem a listagem temporária em blacklist e envia e-mail com URL de liberação quando for o caso.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
@@ -277,7 +277,7 @@ O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: W
 
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/doc/flagFSM.png "flagFSM.png")
 
-Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED.
+Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED. O LISTED pode vir acompanhado de uma URL de liberação. Se for o caso, o MTA deve ser capaz de extrair a URL e enviar um e-mail de retorno com o link ao remetente informando o atraso e a possibilidade de liberação através do link.
 
 Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio permanente, retornando BLOCKED. Esta transição é utilizada para disseminar a lista de bloqueio entre pools via P2P. Deve haver concenso total dentro do mesmo pool para passar a diante o bloqueio para outros pools associados.
 
@@ -382,50 +382,59 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
 ```
 # Use 'spfbl.sh query' to perform SPFBL check.
   warn
-    set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL )}{}}
-  drop
-    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = [SPFBL] failed.
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
+  deny
+    message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
+    log_message = SPFBL check failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] error.
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPFBL check error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = [SPFBL] unknown.
+    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = SPFBL check unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   deny
-    message = [SPF] sender has non-existent internet domain.
-    log_message = [SPFBL] nxdomain.
+    message = 5.7.1 SPFBL sender has non-existent internet domain.
+    log_message = SPFBL check nxdomain.
     condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
   deny
-    message = [SPF] IP or sender is invalid.
-    log_message = [SPFBL] invalid.
+    message = 5.7.1 SPFBL IP or sender is invalid.
+    log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = [RBL] you are temporarily blocked on this server.
-    log_message = [SPFBL] listed.
+    message = 4.7.2 SPFBL LISTED $acl_c_spfblticket
+    log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
-  drop
-    message = [RBL] you are permanently blocked in this server.
-    log_message = [SPFBL] blocked.
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
+  defer
+    message = 4.7.2 SPFBL you are temporarily blocked on this server.
+    log_message = SPFBL check listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+  deny
+    message = 5.7.1 SPFBL BLOCKED $acl_c_spfblticket
+    log_message = SPFBL check blocked.
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
+  deny
+    message = 5.7.1 SPFBL you are permanently blocked on this server.
+    log_message = SPFBL check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = [SPFBL] spamtrap.
+    log_message = SPFBL check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   defer
-    message = [RBL] you are greylisted on this server.
-    log_message = [SPFBL] greylisting.
+    message = 4.7.1 SPFBL you are greylisted on this server.
+    log_message = SPFBL check greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   defer
-    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] timeout.
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
-    condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
@@ -435,13 +444,13 @@ Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar
   deny
     condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
     condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_From:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
-    message = you are permanently blocked on this server.
+    message = 5.7.1 SPFBL you are permanently blocked on this server.
     log_message = SPFBL check blocked. From:${address:$h_From:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
   deny
     condition = ${if match {${address:$h_Reply-To:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
     condition = ${if eq {${address:$h_From:}}{${address:$h_Reply-To:}}{false}{true}}
     condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_Reply-To:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
-    message = you are permanently blocked on this server.
+    message = 5.7.1 SPFBL you are permanently blocked on this server.
     log_message = SPFBL check blocked. Reply-To:${address:$h_Reply-To:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
 ```
 
@@ -451,7 +460,7 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
   deny
     condition = ${if < {$message_size}{16m}{true}{false}}
     malware = *
-    message = This message was detected as possible malware ($malware_name).
+    message = 5.7.1 SPFBL this message was detected as possible malware ($malware_name).
     log_message = malware detected. ${run{/usr/local/bin/exim4/spfblticket.sh $acl_c_spfblticket}{$value}{SPFBL ERROR}}.
 ```
 
@@ -460,50 +469,59 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_rbl" com o seguinte código:
 ```
   warn
-    set acl_c_spfbl = ${run{/etc/spfbl/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL )}{}}
-  drop
-    message = [SPF] $sender_host_address is not allowed to send mail from $sender_address. Please see http://www.openspf.org/why.html?sender=$sender_address&ip=$sender_host_address for details.
-    log_message = [SPFBL] failed.
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
+  deny
+    message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
+    log_message = SPFBL check failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] error.
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPFBL check error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = [SPF] One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
-    log_message = [SPFBL] unknown.
+    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    log_message = SPFBL check unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   deny
-    message = [SPF] sender has non-existent internet domain.
-    log_message = [SPFBL] nxdomain.
+    message = 5.7.1 SPFBL sender has non-existent internet domain.
+    log_message = SPFBL check nxdomain.
     condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
   deny
-    message = [SPF] IP or sender is invalid.
-    log_message = [SPFBL] invalid.
+    message = 5.7.1 SPFBL IP or sender is invalid.
+    log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
-    message = [RBL] you are temporarily blocked on this server.
-    log_message = [SPFBL] listed.
+    message = 4.7.2 SPFBL LISTED $acl_c_spfblticket
+    log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
-  drop
-    message = [RBL] you are permanently blocked in this server.
-    log_message = [SPFBL] blocked.
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
+  defer
+    message = 4.7.2 SPFBL you are temporarily blocked on this server.
+    log_message = SPFBL check listed.
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
+  deny
+    message = 5.7.1 SPFBL BLOCKED $acl_c_spfblticket
+    log_message = SPFBL check blocked.
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
+    condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
+  deny
+    message = 5.7.1 SPFBL you are permanently blocked on this server.
+    log_message = SPFBL check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
-    log_message = [SPFBL] spamtrap.
+    log_message = SPFBL check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   defer
-    message = [RBL] you are greylisted on this server.
-    log_message = [SPFBL] greylisting.
+    message = 4.7.1 SPFBL you are greylisted on this server.
+    log_message = SPFBL check greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   defer
-    message = [SPF] A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
-    log_message = [SPFBL] timeout.
+    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
-    condition = ${if def:acl_c_spfbl {true}{false}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
@@ -692,11 +710,12 @@ Aqui vemos alguns pools em funcionamento para que novos membros possam se cadast
 Abertos:
 * MatrixDefense: leandro@spfbl.net
 * MX-Protection: gian@spfbl.net
-* Papuda: smux@spfbl.net
 
 ### Noticias sobre o SPFBL
 
-<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a>
+<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a></br>
+
+<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 EEC: Painel sobre entregabilidade com representantes da SPFBL, UOL e Return Path</a></br>
 
 ### Forum de discussão SPFBL
 

@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.TreeSet;
+import net.spfbl.data.Block;
 
 /**
  * Representa o registro de bloco IP de uma subrede alocada 
@@ -114,10 +115,52 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
-    public static String normalizeCIDR(String cidr) {
+    public static String getLastIP(String cidr) {
         if (SubnetIPv4.isValidCIDRv4(cidr)) {
+            return SubnetIPv4.getLastIPv4(cidr);
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.getLastIPv6(cidr);
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getNextIP(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.getNextIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.getNextIPv6(ip);
+        } else {
+            return null;
+        }
+    }
+    
+    public static byte getMask(String cidr) {
+        if (cidr == null) {
+            return 0;
+        } else if (cidr.contains("/")) {
+            try {
+                int index = cidr.lastIndexOf('/') + 1;
+                String number = cidr.substring(index);
+                return Byte.parseByte(number);
+            } catch (NumberFormatException ex) {
+                return 0;
+            }
+        } else {
+            return 0;
+        }
+    }
+    
+    public static String normalizeCIDR(String cidr) {
+        if (cidr == null) {
+            return null;
+        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
         } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.normalizeCIDRv6(cidr);
+        } else if (cidr.contains(".")) {
+            return SubnetIPv4.normalizeCIDRv4(cidr);
+        } else if (cidr.contains(":")) {
             return SubnetIPv6.normalizeCIDRv6(cidr);
         } else {
             return cidr;
@@ -143,6 +186,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             return SubnetIPv6.expandIPv6(ip);
         } else {
             return ip;
+        }
+    }
+    
+    public static String expandCIDR(String cidr) {
+        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+            return SubnetIPv4.expandCIDRv4(cidr);
+        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+            return SubnetIPv6.expandCIDRv6(cidr);
+        } else {
+            return cidr;
         }
     }
     
@@ -257,6 +310,8 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         handle.setEmail(e_mail);
                         handle.setCreated(created2);
                         handle.setChanged(changed2);
+                    } else if (line.startsWith("% Not assigned.")) {
+                        throw new ProcessException("ERROR: SUBNET NOT ASSIGNED");
                     } else if (line.startsWith("% Permission denied.")) {
                         throw new ProcessException("ERROR: WHOIS DENIED");
                     } else if (line.startsWith("% Permissão negada.")) {
@@ -506,6 +561,47 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else {
             return false;
         }
+    }
+    
+    public static String splitCIDR(String cidr) {
+        String result = "";
+        String first = Subnet.getFirstIP(cidr);
+        String last = Subnet.getLastIP(cidr);
+        byte mask = Subnet.getMask(cidr);
+        byte max;
+        if (SubnetIPv4.isValidIPv4(first)) {
+            max = 32;
+        } else {
+            max = 64;
+        }
+        if (mask < max) {
+            mask++;
+            String cidr1 = first + "/" + mask;
+            String cidr2 = last + "/" + mask;
+            cidr1 = Subnet.normalizeCIDR(cidr1);
+            cidr2 = Subnet.normalizeCIDR(cidr2);
+            try {
+                if (Block.add(cidr1) == null) {
+                    result += "EXISTS " + cidr1 + "\n";
+                } else {
+                    result += "ADDED " + cidr1 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr1);
+            }
+            try {
+                if (Block.add(cidr2) == null) {
+                    result += "EXISTS " + cidr2 + "\n";
+                } else {
+                    result += "ADDED " + cidr2 + "\n";
+                }
+            } catch (ProcessException ex) {
+                result += splitCIDR(cidr2);
+            }
+        } else {
+            result += "UNSPLITTABLE " + cidr + "\n";
+        }
+        return result;
     }
     
     public static Subnet getSubnet(String ip) throws ProcessException {

@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.spf;
 
@@ -31,24 +31,27 @@ import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Set;
+import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.mail.Message;
+import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -57,10 +60,18 @@ import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InvalidAttributeIdentifierException;
+import net.spfbl.core.Analise;
+import net.spfbl.core.Client;
+import net.spfbl.data.Block;
 import net.spfbl.core.Defer;
+import net.spfbl.data.Ignore;
+import net.spfbl.data.NoReply;
 import net.spfbl.core.Peer;
-import net.spfbl.core.Peer.Binomial;
+import net.spfbl.data.Provider;
 import net.spfbl.core.Reverse;
+import net.spfbl.core.User;
+import net.spfbl.data.Trap;
+import net.spfbl.data.White;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -1612,11 +1623,11 @@ public final class SPF implements Serializable {
          */
         private static boolean CHANGED = false;
         
-        private static synchronized boolean isChanged() {
+        private static boolean isChanged() {
             return CHANGED;
         }
         
-        private static synchronized void setNotChanged() {
+        private static void setNotChanged() {
             CHANGED = false;
         }
         
@@ -1636,19 +1647,19 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static synchronized TreeSet<String> keySet() {
+        private static TreeSet<String> keySet() {
             TreeSet<String> keySet = new TreeSet<String>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
         
-        private static synchronized HashMap<String,SPF> getMap() {
+        private static HashMap<String,SPF> getMap() {
             HashMap<String,SPF> map = new HashMap<String,SPF>();
             map.putAll(MAP);
             return map;
         }
         
-        private static synchronized SPF getExact(String host) {
+        private static SPF getExact(String host) {
             return MAP.get(host);
         }
         
@@ -1786,7 +1797,9 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof SPF) {
                             SPF spf = (SPF) value;
-                            putExact(key, spf);
+                            if (!spf.isRegistryExpired14()) {
+                                putExact(key, spf);
+                            }
                         }
                     }
                     setNotChanged();
@@ -1836,6 +1849,7 @@ public final class SPF implements Serializable {
     public static void refreshSPF() {
         CacheSPF.refresh();
     }
+    
     public static void refreshHELO() {
         CacheHELO.refresh();
     }
@@ -1931,9 +1945,27 @@ public final class SPF implements Serializable {
                     } finally {
                         fileInputStream.close();
                     }
+//                    long end = System.currentTimeMillis() - 604800000;
                     for (Long date : map.keySet()) {
-                        String tokens = map.get(date);
-                        putExact(date, tokens);
+//                        if (date > end) {
+                            String tokens = map.get(date);
+//                            TreeSet<String> tokenSet = new TreeSet<String>();
+//                            StringTokenizer tokenizer = new StringTokenizer(tokens, " ");
+//                            while (tokenizer.hasMoreTokens()) {
+//                                String token = tokenizer.nextToken();
+//                                if (isValid(token)) {
+//                                    tokenSet.add(token);
+//                                }
+//                            }
+//                            for (String key : expandTokenSet(tokenSet)) {
+//                                if (!Ignore.contains(key)) {
+//                                    Distribution distribution = CacheDistribution.get(key, true);
+//                                    distribution.addSpamInterval();
+//                                    distribution.getStatus(key);
+//                                }
+//                            }
+                            putExact(date, tokens);
+//                        }
                     }
                     CHANGED = false;
                     Server.logLoad(time, file);
@@ -2008,6 +2040,60 @@ public final class SPF implements Serializable {
             }
         }
         
+        public static String getClient(String ticket) throws ProcessException {
+            if (ticket == null) {
+                return null;
+            } else {
+                String registry = Server.decrypt(ticket);
+                int index = registry.indexOf(' ');
+                Date date = getTicketDate(registry.substring(0, index));
+                if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                    // Ticket vencido com mais de 5 dias.
+                    throw new ProcessException("TICKET EXPIRED");
+                } else {
+                    registry = registry.substring(index + 1);
+                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        if (token.endsWith(":")) {
+                            int end = token.length() - 1;
+                            token = token.substring(0, end);
+                            if (Domain.isEmail(token)) {
+                                return token;
+                            }
+                        }
+                    }
+                    return null;
+                }
+            }
+        }
+        
+        public static String getSender(String ticket) throws ProcessException {
+            if (ticket == null) {
+                return null;
+            } else {
+                String registry = Server.decrypt(ticket);
+                int index = registry.indexOf(' ');
+                Date date = getTicketDate(registry.substring(0, index));
+                if (System.currentTimeMillis() - date.getTime() > 432000000) {
+                    // Ticket vencido com mais de 5 dias.
+                    throw new ProcessException("TICKET EXPIRED");
+                } else {
+                    registry = registry.substring(index + 1);
+                    StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                            return token;
+                        } else if (Domain.isEmail(token)) {
+                            return token;
+                        }
+                    }
+                    return null;
+                }
+            }
+        }
+        
         public static TreeSet<String> getTokenSet(String ticket) throws ProcessException {
             String registry = Server.decrypt(ticket);
             int index = registry.indexOf(' ');
@@ -2068,7 +2154,7 @@ public final class SPF implements Serializable {
                     }
                     if (putExact(date.getTime(), builder.toString())) {
                         for (String key : expandTokenSet(tokenSet)) {
-                            if (!CacheIgnore.contains(key)) {
+                            if (!Ignore.contains(key)) {
                                 Distribution distribution = CacheDistribution.get(key, true);
                                 if (distribution.addSpam()) {
                                     Peer.sendToAll(key, distribution);
@@ -2086,6 +2172,32 @@ public final class SPF implements Serializable {
                 }
             }
         }
+        
+        public static TreeSet<String> getComplain(
+                String ticket) throws ProcessException {
+            if (ticket == null) {
+                return null;
+            } else {
+                TreeSet<String> tokenSet = new TreeSet<String>();
+                TreeSet<String> blackSet = new TreeSet<String>();
+                String registry = Server.decrypt(ticket);
+                int index = registry.indexOf(' ');
+                registry = registry.substring(index + 1);
+                StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    if (isValid(token)) {
+                        tokenSet.add(token);
+                    }
+                }
+                for (String key : expandTokenSet(tokenSet)) {
+                    if (!Ignore.contains(key)) {
+                        blackSet.add(key);
+                    }
+                }
+                return blackSet;
+            }
+        }
 
         /**
          * Remove uma nova reclamação de SPAM.
@@ -2094,7 +2206,7 @@ public final class SPF implements Serializable {
          * @throws ProcessException se houver falha no processamento do ticket.
          */
         public static TreeSet<String> deleteComplain(
-                String client, String ticket) throws ProcessException {
+                String origin, String ticket) throws ProcessException {
             if (ticket == null) {
                 return null;
             } else {
@@ -2118,7 +2230,7 @@ public final class SPF implements Serializable {
                             Peer.sendToAll(key, distribution);
                         }
                     }
-                    Server.logQuery(time, "CLEAR", client, tokenSet);
+                    Server.logQuery(time, "CLEAR", origin, tokenSet);
                     return tokenSet;
                 } else {
                     // Ticket não foi denunciado.
@@ -2136,9 +2248,22 @@ public final class SPF implements Serializable {
         return CacheComplain.getRecipient(ticket);
     }
     
+    public static String getClient(String ticket) throws ProcessException {
+        return CacheComplain.getClient(ticket);
+    }
+    
+    public static String getSender(String ticket) throws ProcessException {
+        return CacheComplain.getSender(ticket);
+    }
+    
     public static TreeSet<String> addComplain(String origin,
                 String ticket) throws ProcessException {
         return CacheComplain.addComplain(origin, ticket);
+    }
+    
+    public static TreeSet<String> getComplain(
+            String ticket) throws ProcessException {
+        return CacheComplain.getComplain(ticket);
     }
     
     public static TreeSet<String> getTokenSet(
@@ -2199,19 +2324,19 @@ public final class SPF implements Serializable {
             return MAP.subMap(fromKey, false, toKey, false);
         }
         
-        private static synchronized Distribution getExact(String host) {
+        private static Distribution getExact(String host) {
             return MAP.get(host);
         }
         
-        private static synchronized boolean isChanged() {
+        private static boolean isChanged() {
             return CHANGED;
         }
         
-        private static synchronized void setStored() {
+        private static void setStored() {
             CHANGED = false;
         }
         
-        private static synchronized void setLoaded() {
+        private static void setLoaded() {
             CHANGED = false;
         }
 
@@ -2251,7 +2376,11 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
-                            putExact(key.toLowerCase(), distribution);
+//                            if (!distribution.isExpired14()) {
+//                                distribution.getStatus(key);
+//                                distribution.resetSpamInterval();
+                                putExact(key.toLowerCase(), distribution);
+//                            }
                         }
                     }
                     setLoaded();
@@ -2282,13 +2411,13 @@ public final class SPF implements Serializable {
         private static Distribution drop(String key) {
             Distribution distribution = dropExact(key);
             if (distribution != null) {
-                CacheBlock.dropExact(key);
+                Block.dropExact(key);
                 Peer.sendToAll(key, null);
             }
             return distribution;
         }
         
-        private synchronized static TreeMap<String,Distribution> getAll(String value) {
+        private static TreeMap<String,Distribution> getAll(String value) {
             TreeMap<String,Distribution> map = new TreeMap<String,Distribution>();
             NavigableMap<String,Distribution> subMap;
             Distribution distribution;
@@ -2405,6 +2534,37 @@ public final class SPF implements Serializable {
             }
             return distributionMap;
         }
+        
+        private static TreeMap<String,Binomial> getTreeMapExtendedCIDR() {
+            TreeMap<String,Binomial> binomialMap = new TreeMap<String,Binomial>();
+            for (String cidr : Block.getExtendedCIDR()) {
+                Binomial binomial = new Binomial(Status.BLOCK);
+                binomialMap.put(cidr, binomial);
+            }
+            for (String key : keySet()) {
+                if (SubnetIPv4.isValidIPv4(key)) {
+                    String expandedIP = null;
+                    Distribution distribution = getExact(key);
+                    if (distribution != null) {
+                        expandedIP = SubnetIPv4.expandIPv4(key);
+                        String floor = binomialMap.floorKey(expandedIP + "/9");
+                        if (floor != null && floor.contains(".")) {
+                            String cidr = SubnetIPv4.normalizeCIDRv4(floor);
+                            if (SubnetIPv4.containsIPv4(cidr, key)) {
+                                Binomial binomial = binomialMap.get(floor);
+                                binomial.add(key, distribution);
+                                distribution = null;
+                            }
+                        }
+                    }
+                    if (distribution != null && expandedIP != null) {
+                        Binomial binomial = new Binomial(key, distribution);
+                        binomialMap.put(expandedIP + "/32", binomial);
+                    }
+                }
+            }
+            return binomialMap;
+        }
 
         private static TreeMap<String,Distribution> getMap(TreeSet<String> tokenSet) {
             TreeMap<String, Distribution> distributionMap = new TreeMap<String,Distribution>();
@@ -2427,6 +2587,14 @@ public final class SPF implements Serializable {
         return CacheDistribution.getTreeMap();
     }
     
+    public static Distribution getDistribution(String token) {
+        return CacheDistribution.get(token, false);
+    }
+    
+    public static Distribution getDistribution(String token, boolean create) {
+        return CacheDistribution.get(token, create);
+    }
+    
     public static TreeMap<String,Distribution> getDistributionMapIPv4() {
         return CacheDistribution.getTreeMapIPv4();
     }
@@ -2434,1158 +2602,13 @@ public final class SPF implements Serializable {
     public static TreeMap<String,Distribution> getDistributionMapIPv6() {
         return CacheDistribution.getTreeMapIPv6();
     }
+    
+    public static TreeMap<String,Binomial> getDistributionMapExtendedCIDR() {
+        return CacheDistribution.getTreeMapExtendedCIDR();
+    }
 
     public static void dropDistribution(String token) {
         CacheDistribution.drop(token);
-    }
-
-    /**
-     * Classe que representa o cache de provedores de e-mail.
-     */
-    private static class CacheProvider {
-
-        /**
-         * Conjunto de provedores notórios de e-mail.
-         */
-        private static final TreeSet<String> SET = new TreeSet<String>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-
-        private static boolean dropExact(String token) {
-            if (SET.remove(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean addExact(String token) {
-            if (SET.add(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            blockSet.addAll(SET);
-            return blockSet;
-        }
-
-        private static boolean containsExact(String address) {
-            if (address == null) {
-                return false;
-            } else {
-                return SET.contains(address);
-            }
-        }
-
-        private static synchronized Set<String> subSet(String begin, String end) {
-            return SET.subSet(begin, false, end, false);
-        }
-        
-        private static boolean add(String address) throws ProcessException {
-            if ((address = normalizeProvider(address)) == null) {
-                throw new ProcessException("ERROR: PROVIDER INVALID");
-            } else if (addExact(address)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static TreeSet<String> dropAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String token : getAll()) {
-                if (dropExact(token)) {
-                    blockSet.add(token);
-                }
-            }
-            return blockSet;
-        }
-
-        private static boolean drop(String address) throws ProcessException {
-            if ((address = normalizeProvider(address)) == null) {
-                throw new ProcessException("ERROR: PROVIDER INVALID");
-            } else if (dropExact(address)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean containsHELO(String ip, String helo) {
-            if (CacheHELO.match(ip, helo)) {
-                helo = Domain.extractHost(helo, true);
-                do {
-                    int index = helo.indexOf('.') + 1;
-                    helo = helo.substring(index);
-                    if (SET.contains('.' + helo)) {
-                        return true;
-                    }
-                } while (helo.contains("."));
-            }
-            // Verifica o CIDR.
-            for (String cidr : subSet("CIDR=", "CIDR>")) {
-                int index = cidr.indexOf('=');
-                cidr = cidr.substring(index + 1);
-                if (Subnet.containsIP(cidr, ip)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static void store() {
-            if (CHANGED) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/provider.set");
-                    TreeSet<String> set = getAll();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(set, outputStream);
-                        CHANGED = false;
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/provider.set");
-            if (file.exists()) {
-                try {
-                    TreeSet<String> set;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        set = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    for (String token : set) {
-                        addExact(token);
-                    }
-                    CHANGED = false;
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean addProvider(String provider) throws ProcessException {
-        return CacheProvider.add(provider);
-    }
-    
-    public static TreeSet<String> dropAllProvider() throws ProcessException {
-        return CacheProvider.dropAll();
-    }
-
-    public static boolean dropProvider(String provider) throws ProcessException {
-        return CacheProvider.drop(provider);
-    }
-
-    /**
-     * Classe que representa o cache de whitelist.
-     */
-    private static class CacheWhite {
-
-        /**
-         * Conjunto de remetentes em whitelist.
-         */
-        private static final TreeSet<String> SET = new TreeSet<String>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static boolean dropExact(String token) {
-            if (SET.remove(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean addExact(String token) {
-            if (SET.add(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            blockSet.addAll(SET);
-            return blockSet;
-        }
-
-        private static boolean containsExact(String address) {
-            return SET.contains(address);
-        }
-
-        private static synchronized Set<String> subSet(String begin, String end) {
-            return SET.subSet(begin, false, end, false);
-        }
-        
-        private static boolean add(
-                String sender) throws ProcessException {
-            if ((sender = normalizeTokenWhite(sender)) == null) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (addExact(sender)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean add(
-                String client, String sender) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeTokenWhite(sender)) == null) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (addExact(client + ':' + sender)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static TreeSet<String> dropAll() throws ProcessException {
-            TreeSet<String> whiteSet = new TreeSet<String>();
-            for (String white : getAll()) {
-                if (dropExact(white)) {
-                    whiteSet.add(white);
-                }
-            }
-            return whiteSet;
-        }
-
-        private static boolean drop(
-                String sender) throws ProcessException {
-            if ((sender = normalizeTokenWhite(sender)) == null) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (dropExact(sender)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean drop(String client,
-                String sender) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((sender = normalizeTokenWhite(sender)) == null) {
-                throw new ProcessException("ERROR: SENDER INVALID");
-            } else if (dropExact(client + ':' + sender)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static TreeSet<String> get(
-                String client) throws ProcessException {
-            TreeSet<String> whiteSet = new TreeSet<String>();
-            for (String sender : getAll()) {
-                if (sender.startsWith(client + ':')) {
-                    int index = sender.indexOf(':') + 1;
-                    sender = sender.substring(index);
-                    whiteSet.add(sender);
-                }
-            }
-            return whiteSet;
-        }
-        
-        private static TreeSet<String> getAll(
-                String client) throws ProcessException {
-            TreeSet<String> whiteSet = new TreeSet<String>();
-            for (String sender : getAll()) {
-                if (!sender.contains(":")) {
-                    whiteSet.add(sender);
-                } else if (sender.startsWith(client + ':')) {
-                    int index = sender.indexOf(':') + 1;
-                    sender = sender.substring(index);
-                    whiteSet.add(sender);
-                }
-            }
-            return whiteSet;
-        }
-        
-        private static TreeSet<String> get() throws ProcessException {
-            TreeSet<String> whiteSet = new TreeSet<String>();
-            for (String sender : getAll()) {
-                if (!sender.contains(":")) {
-                    whiteSet.add(sender);
-                }
-            }
-            return whiteSet;
-        }
-        
-        private static boolean containsSender(String client,
-                String sender, String qualifier,
-                String recipient) throws ProcessException {
-            // Definição do destinatário.
-            String recipientDomain;
-            if (recipient != null && recipient.contains("@")) {
-                int index = recipient.indexOf('@');
-                recipient = recipient.toLowerCase();
-                recipientDomain = recipient.substring(index);
-            } else {
-                recipient = null;
-                recipientDomain = null;
-            }
-            // Verifica o remetente.
-            if (sender != null && sender.contains("@")) {
-                sender = sender.toLowerCase();
-                int index1 = sender.indexOf('@');
-                int index2 = sender.lastIndexOf('@');
-                String part = sender.substring(0, index1 + 1);
-                String senderDomain = sender.substring(index2);
-                if (containsExact(sender)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(part)) {
-                    return true;
-                } else if (containsExact(part + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(part + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(part + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + part)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(senderDomain)) {
-                    return true;
-                } else if (containsExact(senderDomain + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(senderDomain + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(senderDomain + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact("@;" + qualifier +  ">" + recipient)) {
-                    return true;
-                } else if (containsExact("@;" + qualifier +  ">" + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ":@>" + recipient)) {
-                    return true;
-                } else if (containsExact(client + ":@>" + recipientDomain)) {
-                    return true;
-                } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
-                    return true;
-                } else {
-                    int index3 = senderDomain.length();
-                    while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
-                        String subdomain = senderDomain.substring(0, index3 + 1);
-                        if (containsExact(subdomain)) {
-                            return true;
-                        } else if (containsExact(subdomain + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(subdomain + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(subdomain + ';' + qualifier)) {
-                            return true;
-                        } else if (containsExact(subdomain + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        }
-                    }
-                    int index4 = sender.length();
-                    while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
-                        String subsender = sender.substring(0, index4 + 1);
-                        if (containsExact(subsender)) {
-                            return true;
-                        } else if (containsExact(subsender + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(subsender + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(subsender + ';' + qualifier)) {
-                            return true;
-                        } else if (containsExact(subsender + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-
-        private static boolean contains(String client,
-                String ip, String sender, String helo,
-                String qualifier, String recipient) {
-            TreeSet<String> whoisSet = new TreeSet<String>();
-            TreeSet<String> regexSet = new TreeSet<String>();
-            // Definição do destinatário.
-            String recipientDomain;
-            if (recipient != null && recipient.contains("@")) {
-                int index = recipient.indexOf('@');
-                recipient = recipient.toLowerCase();
-                recipientDomain = recipient.substring(index);
-            } else {
-                recipient = null;
-                recipientDomain = null;
-            }
-            // Verifica o remetente.
-            if (sender != null && sender.contains("@")) {
-                sender = sender.toLowerCase();
-                int index1 = sender.indexOf('@');
-                int index2 = sender.lastIndexOf('@');
-                String part = sender.substring(0, index1 + 1);
-                String senderDomain = sender.substring(index2);
-                if (containsExact(sender)) {
-                    return true;
-                } else if (recipient != null && containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(sender + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + sender + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + sender + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + sender + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(part)) {
-                    return true;
-                } else if (recipient != null && containsExact(part + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(part + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(part + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(part + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + part)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + part + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + part + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + part + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(senderDomain)) {
-                    return true;
-                } else if (recipient != null && containsExact(senderDomain + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(senderDomain + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(senderDomain + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + senderDomain + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + senderDomain + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain)) {
-                    return true;
-                } else if (recipient != null && containsExact("@;" + qualifier +  ">" + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact("@;" + qualifier +  ">" + recipientDomain)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ":@>" + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ":@>" + recipientDomain)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ":@;" + qualifier +  ">" + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ":@;" + qualifier +  ">" + recipientDomain)) {
-                    return true;
-                } else {
-                    int index3 = senderDomain.length();
-                    while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
-                        String subdomain = senderDomain.substring(0, index3 + 1);
-                        if (containsExact(subdomain)) {
-                            return true;
-                        } else if (recipient != null && containsExact(subdomain + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(subdomain + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(subdomain + ';' + qualifier)) {
-                            return true;
-                        } else if (recipient != null && containsExact(subdomain + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain)) {
-                            return true;
-                        } else if (recipient != null && containsExact(client + ':' + subdomain + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain + ';' + qualifier)) {
-                            return true;
-                        } else if (recipient != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        }
-                    }
-                    int index4 = sender.length();
-                    while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
-                        String subsender = sender.substring(0, index4 + 1);
-                        if (containsExact(subsender)) {
-                            return true;
-                        } else if (recipient != null && containsExact(subsender + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(subsender + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(subsender + ';' + qualifier)) {
-                            return true;
-                        } else if (recipient != null && containsExact(subsender + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender)) {
-                            return true;
-                        } else if (recipient != null && containsExact(client + ':' + subsender + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(client + ':' + subsender + '>' + recipientDomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subsender + ';' + qualifier)) {
-                            return true;
-                        } else if (recipient != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
-                            return true;
-                        } else if (recipientDomain != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
-                            return true;
-                        }
-                    }
-                }
-                if (senderDomain.endsWith(".br")) {
-                    whoisSet.add(senderDomain);
-                }
-                regexSet.add(sender);
-            }
-            // Verifica o HELO.
-            if ((helo = Domain.extractHost(helo, true)) != null) {
-                if (containsHost(client, helo, qualifier, recipient, recipientDomain)) {
-                    return true;
-                }
-                if (helo.endsWith(".br") && CacheHELO.match(ip, helo)) {
-                    whoisSet.add(helo);
-                }
-                regexSet.add(helo);
-            }
-            // Verifica o IP.
-            if (ip != null) {
-                ip = Subnet.normalizeIP(ip);
-                if (containsExact(ip)) {
-                    return true;
-                } else if (recipient != null && containsExact(ip + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(ip + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(ip + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(ip + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(ip + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + ip)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + ip + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + ip + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + ip + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                }
-                whoisSet.add(ip);
-                regexSet.add(ip);
-            }
-            // Verifica o CIDR.
-            if (ip != null) {
-                for (String cidr : subSet("CIDR=", "CIDR>")) {
-                    int index = cidr.indexOf('=');
-                    cidr = cidr.substring(index + 1);
-                    if (Subnet.containsIP(cidr, ip)) {
-                        return true;
-                    }
-                }
-                for (String cidr : subSet(client + ":CIDR=", client + ":CIDR>")) {
-                    int index = cidr.indexOf('=');
-                    cidr = cidr.substring(index + 1);
-                    if (Subnet.containsIP(cidr, ip)) {
-                        return true;
-                    }
-                }
-            }
-            // Verifica um critério do REGEX.
-            if (!regexSet.isEmpty()) {
-                for (String whois : subSet("REGEX=", "REGEX>")) {
-                    int index = whois.indexOf('=');
-                    String regex = whois.substring(index + 1);
-                    for (String token : regexSet) {
-                        if (matches(regex, token)) {
-                            return true;
-                        }
-                    }
-                }
-                for (String whois : subSet(client + ":REGEX=", client + ":REGEX>")) {
-                    int index = whois.indexOf('=');
-                    String regex = whois.substring(index + 1);
-                    for (String token : regexSet) {
-                        if (matches(regex, token)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            // Verifica critérios do WHOIS.
-            if (!whoisSet.isEmpty()) {
-                for (String whois : subSet("WHOIS/", "WHOIS<")) {
-                    int indexKey = whois.indexOf('/');
-                    int indexValue = whois.indexOf('=');
-                    String key = whois.substring(indexKey + 1, indexValue);
-                    String criterion = whois.substring(indexValue + 1);
-                    for (String token : whoisSet) {
-                        String value;
-                        if (Subnet.isValidIP(token)) {
-                            value = Subnet.getValue(token, key);
-                        } else if (Domain.containsDomain(token)) {
-                            value = Domain.getValue(token, key);
-                        } else {
-                            value = "";
-                        }
-                        if (criterion.equals(value)) {
-                            return true;
-                        }
-                    }
-                }
-                for (String whois : subSet(client + ":WHOIS/", client + ":WHOIS<")) {
-                    int indexKey = whois.indexOf('/');
-                    int indexValue = whois.indexOf('=');
-                    String key = whois.substring(indexKey + 1, indexValue);
-                    String criterion = whois.substring(indexValue + 1);
-                    for (String token : whoisSet) {
-                        String value;
-                        if (Subnet.isValidIP(token)) {
-                            value = Subnet.getValue(token, key);
-                        } else if (Domain.containsDomain(token)) {
-                            value = Domain.getValue(token, key);
-                        } else {
-                            value = "";
-                        }
-                        if (criterion.equals(value)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-
-        private static boolean containsHost(String client,
-                String host, String qualifier,
-                String recipient, String recipientDomain) {
-            do {
-                int index = host.indexOf('.') + 1;
-                host = host.substring(index);
-                String token = '.' + host;
-                if (containsExact(token)) {
-                    return true;
-                } else if (recipient != null && containsExact(token + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(token + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(token + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(token + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + token)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + token + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + token + '>' + recipientDomain)) {
-                    return true;
-                } else if (containsExact(client + ':' + token + ';' + qualifier)) {
-                    return true;
-                } else if (recipient != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
-                    return true;
-                } else if (recipientDomain != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
-                    return true;
-                }
-            } while (host.contains("."));
-            return false;
-        }
-
-        private static void store() {
-            if (CHANGED) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/white.set");
-                    TreeSet<String> set = getAll();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(set, outputStream);
-                        CHANGED = false;
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/white.set");
-            if (file.exists()) {
-                try {
-                    Set<String> set;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        set = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    // Processo temporário de transição.
-                    for (String token : set) {
-                        String client;
-                        String identifier;
-                        if (token.contains(":")) {
-                            int index = token.indexOf(':');
-                            client = token.substring(0, index);
-                            identifier = token.substring(index + 1);
-                        } else {
-                            client = null;
-                            identifier = token;
-                        }
-                        if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                        } else if (Owner.isOwnerID(identifier)) {
-                            identifier = "WHOIS/ownerid=" + identifier;
-                        } else {
-                            identifier = normalizeTokenWhite(identifier);
-                        }
-                        if (identifier != null) {
-                            if (client == null) {
-                                addExact(identifier);
-                            } else if (Domain.isEmail(client)) {
-                                addExact(client + ':' + identifier);
-                            }
-                        }
-                    }
-                    CHANGED = false;
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean addWhite(String sender) throws ProcessException {
-        return CacheWhite.add(sender);
-    }
-
-    public static boolean addWhite(String client, String sender) throws ProcessException {
-        return CacheWhite.add(client, sender);
-    }
-
-    public static TreeSet<String> dropAllWhite() throws ProcessException {
-        return CacheWhite.dropAll();
-    }
-    
-    public static boolean dropWhite(String sender) throws ProcessException {
-        return CacheWhite.drop(sender);
-    }
-
-    public static boolean dropWhite(String client, String sender) throws ProcessException {
-        return CacheWhite.drop(client, sender);
-    }
-
-    public static TreeSet<String> getWhiteSet(String client) throws ProcessException {
-        return CacheWhite.get(client);
-    }
-    
-    public static TreeSet<String> getAllWhiteSet(String client) throws ProcessException {
-        return CacheWhite.getAll(client);
-    }
-    
-    public static TreeSet<String> getWhiteSet() throws ProcessException {
-        return CacheWhite.get();
-    }
-    
-    public static TreeSet<String> getAllWhiteSet() throws ProcessException {
-        return CacheWhite.getAll();
-    }
-
-    /**
-     * Classe que representa o cache de spamtrap.
-     */
-    private static class CacheTrap {
-
-        /**
-         * Conjunto de destinatarios de spamtrap.
-         */
-        private static final HashSet<String> SET = new HashSet<String>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static boolean dropExact(String token) {
-            if (SET.remove(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean addExact(String token) {
-            if (SET.add(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            blockSet.addAll(SET);
-            return blockSet;
-        }
-
-        private static boolean containsExact(String address) {
-            return SET.contains(address);
-        }
-
-        private static boolean isValid(String recipient) {
-            if (recipient == null) {
-                return false;
-            } else if (Domain.isEmail(recipient)) {
-                return true;
-            } else if (recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1))) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean add(String recipient) throws ProcessException {
-            if (!isValid(recipient)) {
-                throw new ProcessException("ERROR: RECIPIENT INVALID");
-            } else if (addExact(recipient.toLowerCase())) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean add(String client, String recipient) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if (!isValid(recipient)) {
-                throw new ProcessException("ERROR: RECIPIENT INVALID");
-            } else if (addExact(client + ':' + recipient.toLowerCase())) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static TreeSet<String> dropAll() throws ProcessException {
-            TreeSet<String> trapSet = new TreeSet<String>();
-            for (String trap : getAll()) {
-                if (dropExact(trap)) {
-                    trapSet.add(trap);
-                }
-            }
-            return trapSet;
-        }
-
-        private static boolean drop(String recipient) throws ProcessException {
-            if (!isValid(recipient)) {
-                throw new ProcessException("ERROR: RECIPIENT INVALID");
-            } else if (dropExact(recipient.toLowerCase())) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean drop(String client, String recipient) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if (!isValid(recipient)) {
-                throw new ProcessException("ERROR: RECIPIENT INVALID");
-            } else if (dropExact(client + ':' + recipient.toLowerCase())) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static TreeSet<String> get(String client) throws ProcessException {
-            TreeSet<String> trapSet = new TreeSet<String>();
-            for (String recipient : getAll()) {
-                if (recipient.startsWith(client + ':')) {
-                    int index = recipient.indexOf(':') + 1;
-                    recipient = recipient.substring(index);
-                    trapSet.add(recipient);
-                }
-            }
-            return trapSet;
-        }
-        
-        private static TreeSet<String> get() throws ProcessException {
-            TreeSet<String> trapSet = new TreeSet<String>();
-            for (String recipient : getAll()) {
-                if (!recipient.contains(":")) {
-                    trapSet.add(recipient);
-                }
-            }
-            return trapSet;
-        }
-
-        private static boolean contains(String client, String recipient) {
-            if (client == null) {
-                return false;
-            } else if (!isValid(recipient)) {
-                return false;
-            } else {
-                recipient = recipient.toLowerCase();
-                int index2 = recipient.lastIndexOf('@');
-                String domain = recipient.substring(recipient.lastIndexOf('@'));
-                if (containsExact(recipient)) {
-                    return true;
-                } else if (containsExact(domain)) {
-                    return true;
-                } else if (containsExact(client + ':' + recipient)) {
-                    return true;
-                } else if (containsExact(client + ':' + domain)) {
-                    return true;
-                } else {
-                    int index3 = domain.length();
-                    while ((index3 = domain.lastIndexOf('.', index3 - 1)) > index2) {
-                        String subdomain = domain.substring(0, index3 + 1);
-                        if (containsExact(subdomain)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subdomain)) {
-                            return true;
-                        }
-                    }
-                    int index4 = recipient.length();
-                    while ((index4 = recipient.lastIndexOf('.', index4 - 1)) > index2) {
-                        String subrecipient = recipient.substring(0, index4 + 1);
-                        if (containsExact(subrecipient)) {
-                            return true;
-                        } else if (containsExact(client + ':' + subrecipient)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            }
-        }
-
-        private static void store() {
-            if (CHANGED) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/trap.set");
-                    TreeSet<String> set = getAll();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(set, outputStream);
-                        CHANGED = false;
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/trap.set");
-            if (file.exists()) {
-                try {
-                    Set<String> set;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        set = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    for (String token : set) {
-                        addExact(token);
-                    }
-                    CHANGED = false;
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean addTrap(String sender) throws ProcessException {
-        return CacheTrap.add(sender);
-    }
-
-    public static boolean addTrap(String client, String sender) throws ProcessException {
-        return CacheTrap.add(client, sender);
-    }
-    
-    public static TreeSet<String> dropAllTrap() throws ProcessException {
-        return CacheTrap.dropAll();
-    }
-
-    public static boolean dropTrap(String sender) throws ProcessException {
-        return CacheTrap.drop(sender);
-    }
-
-    public static boolean dropTrap(String client, String sender) throws ProcessException {
-        return CacheTrap.drop(client, sender);
-    }
-
-    public static TreeSet<String> getTrapSet() throws ProcessException {
-        return CacheTrap.get();
-    }
-    
-    public static TreeSet<String> getTrapSet(String client) throws ProcessException {
-        return CacheTrap.get(client);
-    }
-    
-    public static TreeSet<String> getAllTrapSet() throws ProcessException {
-        return CacheTrap.getAll();
     }
 
     private static boolean matches(String regex, String token) {
@@ -3656,49 +2679,7 @@ public final class SPF implements Serializable {
         return normalizeToken(token, true, true, true, true ,true);
     }
 
-    private static String normalizeTokenBlock(String token) throws ProcessException {
-        return normalizeToken(token, true, true, true, true, false);
-    }
-    
-    private static String normalizeProvider(String token) throws ProcessException {
-        return normalizeToken(token, false, false, true, false, false);
-    }
-    
-    private static String normalizeTokenWhite(String token) throws ProcessException {
-        token = normalizeToken(token, true, true, true, false, true);
-        if (token == null) {
-            return null;
-        } else if (token.contains(";PASS")) {
-            return token;
-        } else if (token.contains(";FAIL")) {
-            return token;
-        } else if (token.contains(";SOFTFAIL")) {
-            return token;
-        } else if (token.contains(";NEUTRAL")) {
-            return token;
-        } else if (token.contains(";NONE")) {
-            return token;
-        } else if (isWHOIS(token)) {
-            return token;
-        } else if (isREGEX(token)) {
-            return token;
-        } else if (isDNSBL(token)) {
-            return token;
-        } else if (isCIDR(token)) {
-            return token;
-        } else if (token.contains(">")) {
-            int index = token.indexOf('>');
-            return token.substring(0, index) + ";PASS" + token.substring(index);
-        } else {
-            return token + ";PASS";
-        }
-    }
-
-    private static String normalizeTokenCIDR(String token) throws ProcessException {
-        return normalizeToken(token, false, false, true, false, false);
-    }
-
-    private static String normalizeToken(
+    public static String normalizeToken(
             String token,
             boolean canWHOIS,
             boolean canREGEX,
@@ -3721,6 +2702,10 @@ public final class SPF implements Serializable {
             }
         } else if (canCIDR && isCIDR(token)) {
             return normalizeCIDR(token);
+        } else if (canCIDR && SubnetIPv4.isValidIPv4(token)) {
+            return "CIDR=" + SubnetIPv4.normalizeIPv4(token) + "/32";
+        } else if (canCIDR && SubnetIPv6.isValidIPv6(token)) {
+            return "CIDR=" + SubnetIPv6.normalizeIPv6(token) + "/128";
         } else if (canWHOIS && Owner.isOwnerID(token)) {
             return "WHOIS/ownerid=" + Owner.normalizeID(token);
         } else if (canCIDR && Subnet.isValidCIDR(token)) {
@@ -3785,1038 +2770,6 @@ public final class SPF implements Serializable {
         }
     }
 
-    /**
-     * Classe que representa o cache de bloqueios de remetente.
-     */
-    private static class CacheBlock {
-
-        /**
-         * Conjunto de remetentes bloqueados.
-         */
-        private static final TreeSet<String> SET = new TreeSet<String>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static synchronized boolean dropExact(String token) {
-            if (token == null) {
-                return false;
-            } else if (SET.remove(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized boolean dropAll() {
-            if (SET.isEmpty()) {
-                return false;
-            } else {
-                SET.clear();
-                CHANGED = true;
-                return true;
-            }
-        }
-
-        private static synchronized boolean addExact(String token) {
-            if (token == null) {
-                return false;
-            } else if (SET.add(token)) {
-                Peer.releaseAll(token);
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            blockSet.addAll(SET);
-            return blockSet;
-        }
-
-        private static synchronized boolean containsExact(String address) {
-            return SET.contains(address);
-        }
-
-        private static synchronized Set<String> subSet(String begin, String end) {
-            return SET.subSet(begin, false, end, false);
-        }
-        
-        private static String addDomain(String user, String token) {
-            try {
-                if (token == null) {
-                    return null;
-                } else if (token.startsWith("@") && (token = Domain.extractDomain(token.substring(1), true)) != null) {
-                    if (user == null && addExact(token)) {
-                        return token;
-                    } else if (user != null && addExact(user + ':' + token)) {
-                        return user + ':' + token;
-                    } else {
-                        return null;
-                    }
-                } else if (token.startsWith(".") && (token = Domain.extractDomain(token, true)) != null) {
-                    if (user == null && addExact(token)) {
-                        return token;
-                    } else if (user != null && addExact(user + ':' + token)) {
-                        return user + ':' + token;
-                    } else {
-                        return null;
-                    }
-                } else {
-                    return null;
-                }
-            } catch (ProcessException ex) {
-                return null;
-            }
-        }
-        
-        private static String add(String token) throws ProcessException {
-            if ((token = normalizeTokenBlock(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (addExact(token)) {
-                return token;
-            } else {
-                return null;
-            }
-        }
-
-        private static boolean add(String client, String token) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((token = normalizeTokenBlock(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (addExact(client + ':' + token)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean drop(String token) throws ProcessException {
-            if ((token = normalizeTokenBlock(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (dropExact(token)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean drop(String client, String token) throws ProcessException {
-            if (client == null) {
-                throw new ProcessException("ERROR: CLIENT INVALID");
-            } else if ((token = normalizeTokenBlock(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (dropExact(client + ':' + token)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static TreeSet<String> get(String client) throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String token : getAll()) {
-                if (token.startsWith(client + ':')) {
-                    int index = token.indexOf(':') + 1;
-                    token = token.substring(index);
-                    blockSet.add(token);
-                }
-            }
-            return blockSet;
-        }
-
-        private static TreeSet<String> getAll(String client) throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String token : getAll()) {
-                if (!token.contains(":")) {
-                    blockSet.add(token);
-                } else if (token.startsWith(client + ':')) {
-                    int index = token.indexOf(':') + 1;
-                    token = token.substring(index);
-                    blockSet.add(token);
-                }
-            }
-            return blockSet;
-        }
-        
-        private static TreeSet<String> getAllTokens(String value) {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            if (Subnet.isValidIP(value)) {
-                String ip = Subnet.normalizeIP(value);
-                if (containsExact(ip)) {
-                    blockSet.add(ip);
-                }
-            } else if (Subnet.isValidCIDR(value)) {
-                String cidr = Subnet.normalizeCIDR(value);
-                if (containsExact("CIDR=" + cidr)) {
-                    blockSet.add(cidr);
-                }
-                for (String ip : subSet("0", ":")) {
-                    if (Subnet.containsIP(cidr, ip)) {
-                        blockSet.add(ip);
-                    }
-                }
-                for (String ip : subSet("a", "g")) {
-                    if (SubnetIPv6.containsIP(cidr, ip)) {
-                        blockSet.add(ip);
-                    }
-                }
-            } else if (value.startsWith(".")) {
-                String hostname = value;
-                for (String key : subSet(".", "/")) {
-                    if (key.endsWith(hostname)) {
-                        blockSet.add(key);
-                    }
-                }
-                for (String mx : subSet("@", "A")) {
-                    String hostKey = '.' + mx.substring(1);
-                    if (hostKey.endsWith(hostname)) {
-                        blockSet.add(hostKey);
-                    }
-                }
-            } else if (containsExact(value)) {
-                blockSet.add(value);
-            }
-            return blockSet;
-        }
-
-        private static TreeSet<String> get() throws ProcessException {
-            TreeSet<String> blockSet = new TreeSet<String>();
-            for (String token : getAll()) {
-                if (!token.contains(":")) {
-                    blockSet.add(token);
-                }
-            }
-            return blockSet;
-        }
-        
-        private static String find(String client, String token) {
-            TreeSet<String> whoisSet = new TreeSet<String>();
-            TreeSet<String> regexSet = new TreeSet<String>();
-            if (token == null) {
-                return null;
-            } else if (Domain.isEmail(token)) {
-                String sender = token.toLowerCase();
-                int index1 = sender.indexOf('@');
-                int index2 = sender.lastIndexOf('@');
-                String part = sender.substring(0, index1 + 1);
-                String senderDomain = sender.substring(index2);
-                if (containsExact(sender)) {
-                    return sender;
-                } else if (client != null && containsExact(client + ':' + sender)) {
-                    return sender;
-                } else if (containsExact(part)) {
-                    return part;
-                } else if (client != null && containsExact(client + ':' + part)) {
-                    return part;
-                } else if (containsExact(senderDomain)) {
-                    return senderDomain;
-                } else if (client != null && containsExact(client + ':' + senderDomain)) {
-                    return senderDomain;
-                } else {
-                    int index3 = senderDomain.length();
-                    while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
-                        String subdomain = senderDomain.substring(0, index3 + 1);
-                        if (containsExact(subdomain)) {
-                            return subdomain;
-                        } else if (client != null && containsExact(client + ':' + subdomain)) {
-                            return subdomain;
-                        }
-                    }
-                    String host = '.' + senderDomain.substring(1);
-                    do {
-                        int index = host.indexOf('.') + 1;
-                        host = host.substring(index);
-                        token = '.' + host;
-                        if (containsExact(token)) {
-                            return token;
-                        } else if (client != null && containsExact(client + ':' + token)) {
-                            return token;
-                        }
-                    } while (host.contains("."));
-                    int index4 = sender.length();
-                    while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
-                        String subsender = sender.substring(0, index4 + 1);
-                        if (containsExact(subsender)) {
-                            return subsender;
-                        } else if (client != null && containsExact(client + ':' + subsender)) {
-                            return subsender;
-                        }
-                    }
-                }
-                if (senderDomain.endsWith(".br")) {
-                    whoisSet.add(senderDomain);
-                }
-                regexSet.add(sender);
-                regexSet.add(senderDomain);
-            } else if (Subnet.isValidIP(token)) {
-                String ip = Subnet.normalizeIP(token);
-                if (containsExact(ip)) {
-                    return ip;
-                } else if (client != null && containsExact(client + ':' + ip)) {
-                    return ip;
-                }
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("CIDR=", "CIDR>"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
-                }
-                for (String cidr : subSet) {
-                    int index = cidr.indexOf('=');
-                    cidr = cidr.substring(index + 1);
-                    if (Subnet.containsIP(cidr, ip)) {
-                        return "CIDR=" + cidr;
-                    }
-                }
-                Reverse reverse = Reverse.get(ip);
-                if (reverse != null) {
-                    for (String host : reverse.getAddressSet()) {
-                        String block = find(client, host);
-                        if (block != null) {
-                            return block;
-                        }
-                    }
-                }
-                TreeSet<String> dnsblSet = new TreeSet<String>();
-                dnsblSet.addAll(subSet("DNSBL=", "DNSBL>"));
-                if (client != null) {
-                    dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
-                }
-                for (String dnsbl : dnsblSet) {
-                    int index1 = dnsbl.indexOf(':');
-                    int index2 = dnsbl.indexOf('=', index1);
-                    int index3 = dnsbl.indexOf(';', index2);
-                    String server = dnsbl.substring(index2 + 1, index3);
-                    String value = dnsbl.substring(index3 + 1);
-                    if (Reverse.isListed(ip, server, value)) {
-                        Server.logDebug("the address " + ip + " is listed in " + server + ".");
-                        return dnsbl;
-                    }
-                }
-                whoisSet.add(ip);
-                regexSet.add(ip);
-            } else if (Domain.isHostname(token)) {
-                String host = Domain.normalizeHostname(token, true);
-                do {
-                    int index = host.indexOf('.') + 1;
-                    host = host.substring(index);
-                    String token2 = '.' + host;
-                    if (containsExact(token2)) {
-                        return token2;
-                    } else if (client != null && containsExact(client + ':' + token2)) {
-                        return token2;
-                    }
-                } while (host.contains("."));
-                if (host.endsWith(".br")) {
-                    whoisSet.add(host);
-                }
-                regexSet.add(host);
-            } else {
-                regexSet.add(token);
-            }
-            // Verifica um critério do REGEX.
-            if (!regexSet.isEmpty()) {
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("REGEX=", "REGEX>"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
-                }
-                for (String regexOriginal : subSet.descendingSet()) {
-                    int index1 = regexOriginal.indexOf(':');
-                    int index2 = regexOriginal.indexOf('=');
-                    String regex = regexOriginal.substring(index2 + 1);
-                    String user = null;
-                    if (index1 > 0 && index1 < index2) {
-                        user = regexOriginal.substring(0, index1);
-                    }
-                    for (String token2 : regexSet) {
-                        if (matches(regex, token2)) {
-                            if (regex.startsWith("(\\.|@)") && regex.endsWith("$")) {
-                                if (token2.startsWith("@")) {
-                                    token2 = '.' + token2.substring(1);
-                                }
-                                if (user != null) {
-                                    token2 = user + ':' + token2;
-                                }
-                                if (addExact(token2)) {
-                                    Server.logDebug("new BLOCK '" + token2 + "' added by '" + regexOriginal + "'.");
-                                    if (user == null) {
-                                        Peer.sendBlockToAll(token2);
-                                    }
-                                }
-                            }
-                            return regexOriginal;
-                        }
-                    }
-                }
-            }
-            // Verifica critérios do WHOIS.
-            if (!whoisSet.isEmpty()) {
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("WHOIS/", "WHOIS<"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
-                }
-                for (String whois : subSet.descendingSet()) {
-                    int indexKey = whois.indexOf('/');
-                    char signal = '=';
-                    int indexValue = whois.indexOf(signal);
-                    if (indexValue == -1) {
-                        signal = '<';
-                        indexValue = whois.indexOf(signal);
-                        if (indexValue == -1) {
-                            signal = '>';
-                            indexValue = whois.indexOf(signal);
-                        }
-                    }
-                    if (indexValue != -1) {
-                        String user = null;
-                        int indexUser = whois.indexOf(':');
-                        if (indexUser > 0 && indexUser < indexValue) {
-                            user = whois.substring(0, indexUser);
-                        }
-                        String key = whois.substring(indexKey + 1, indexValue);
-                        String criterion = whois.substring(indexValue + 1);
-                        for (String token2 : whoisSet) {
-                            String value = null;
-                            if (Subnet.isValidIP(token2)) {
-                                value = Subnet.getValue(token2, key);
-                            } else if (!token2.startsWith(".") && Domain.containsDomain(token2)) {
-                                value = Domain.getValue(token2, key);
-                            } else if (!token2.startsWith(".") && Domain.containsDomain(token2.substring(1))) {
-                                value = Domain.getValue(token2, key);
-                            }
-                            if (value != null) {
-                                if (signal == '=') {
-                                    if (criterion.equals(value)) {
-                                        if ((token2 = addDomain(user, token2)) != null) {
-                                            Server.logDebug("new BLOCK '" + token2 + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token2);
-                                            }
-                                        }
-                                        return whois;
-                                    }
-                                } else if (value.length() > 0) {
-                                    int criterionInt = parseIntWHOIS(criterion);
-                                    int valueInt = parseIntWHOIS(value);
-                                    if (signal == '<' && valueInt < criterionInt) {
-                                        if ((token2 = addDomain(user, token2)) != null) {
-                                            Server.logDebug("new BLOCK '" + token2 + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token2);
-                                            }
-                                        }
-                                        return whois;
-                                    } else if (signal == '>' && valueInt > criterionInt) {
-                                        if ((token2 = addDomain(user, token2)) != null) {
-                                            Server.logDebug("new BLOCK '" + token2 + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token2);
-                                            }
-                                        }
-                                        return whois;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return null;
-        }
-        
-        private static boolean contains(String client,
-                String ip, String sender, String helo,
-                String qualifier, String recipient) {
-            return find(client, ip, sender, helo,
-                    qualifier, recipient) != null;
-        }
-        
-        private static void clear(String client,
-                String ip, String sender, String helo,
-                String qualifier, String recipient) {
-            if (qualifier.equals("PASS")) {
-                String block;
-                while (dropExact(block = find(client, ip, sender, helo, qualifier, recipient))) {
-                    Server.logDebug("false positive BLOCK '" + block + "' detected.");
-                }
-            }
-        }
-
-        private static String find(String client,
-                String ip, String sender, String helo,
-                String qualifier, String recipient) {
-            TreeSet<String> whoisSet = new TreeSet<String>();
-            TreeSet<String> regexSet = new TreeSet<String>();
-            // Definição do destinatário.
-            String recipientDomain;
-            if (recipient != null && recipient.contains("@")) {
-                int index = recipient.indexOf('@');
-                recipient = recipient.toLowerCase();
-                recipientDomain = recipient.substring(index);
-            } else {
-                recipient = null;
-                recipientDomain = null;
-            }
-            // Verifica o remetente.
-            if (sender != null && sender.contains("@")) {
-                sender = sender.toLowerCase();
-                int index1 = sender.indexOf('@');
-                int index2 = sender.lastIndexOf('@');
-                String part = sender.substring(0, index1 + 1);
-                String senderDomain = sender.substring(index2);
-                if (containsExact(sender)) {
-                    return sender;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return sender + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return sender + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(sender + ';' + qualifier)) {
-                    return sender + ';' + qualifier;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipient)) {
-                    return sender + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return sender + ';' + qualifier + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + sender)) {
-                    return sender;
-                } else if (client != null && containsExact(client + ':' + sender + '>' + recipient)) {
-                    return sender + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + sender + '>' + recipientDomain)) {
-                    return sender + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier)) {
-                    return sender + ';' + qualifier;
-                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipient)) {
-                    return sender + ';' + qualifier + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + sender + ';' + qualifier + '>' + recipientDomain)) {
-                    return sender + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(part)) {
-                    return part;
-                } else if (containsExact(part + '>' + recipient)) {
-                    return part + '>' + recipient;
-                } else if (containsExact(part + '>' + recipientDomain)) {
-                    return part + '>' + recipientDomain;
-                } else if (containsExact(part + ';' + qualifier)) {
-                    return part + ';' + qualifier;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipient)) {
-                    return part + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(part + ';' + qualifier + '>' + recipientDomain)) {
-                    return part + ';' + qualifier + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + part)) {
-                    return part;
-                } else if (client != null && containsExact(client + ':' + part + '>' + recipient)) {
-                    return part + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + part + '>' + recipientDomain)) {
-                    return part + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier)) {
-                    return part + ';' + qualifier;
-                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipient)) {
-                    return part + ';' + qualifier + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + part + ';' + qualifier + '>' + recipientDomain)) {
-                    return part + ';' + qualifier + '>' + recipientDomain;
-                } else if (containsExact(senderDomain)) {
-                    return senderDomain;
-                } else if (containsExact(senderDomain + '>' + recipient)) {
-                    return senderDomain + '>' + recipient;
-                } else if (containsExact(senderDomain + '>' + recipientDomain)) {
-                    return senderDomain + '>' + recipientDomain;
-                } else if (containsExact(senderDomain + ';' + qualifier)) {
-                    return senderDomain + ';' + qualifier;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return senderDomain + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return senderDomain + ';' + qualifier + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + senderDomain)) {
-                    return senderDomain;
-                } else if (client != null && containsExact(client + ':' + senderDomain + '>' + recipient)) {
-                    return senderDomain + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + senderDomain + '>' + recipientDomain)) {
-                    return senderDomain + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier)) {
-                    return senderDomain + ';' + qualifier;
-                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipient)) {
-                    return  senderDomain + ';' + qualifier + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + senderDomain + ';' + qualifier + '>' + recipientDomain)) {
-                    return senderDomain + ';' + qualifier + '>' + recipientDomain;
-                } else {
-                    String host = findHost(client, senderDomain.substring(1), qualifier, recipient, recipientDomain);
-                    if (host != null) {
-                        return host;
-                    } else {
-                        int index3 = senderDomain.length();
-                        while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
-                            String subdomain = senderDomain.substring(0, index3 + 1);
-                            if (containsExact(subdomain)) {
-                                return subdomain;
-                            } else if (containsExact(subdomain + '>' + recipient)) {
-                                return subdomain + '>' + recipient;
-                            } else if (containsExact(subdomain + '>' + recipientDomain)) {
-                                return subdomain + '>' + recipientDomain;
-                            } else if (containsExact(subdomain + ';' + qualifier)) {
-                                return subdomain + ';' + qualifier;
-                            } else if (containsExact(subdomain + ';' + qualifier + '>' + recipient)) {
-                                return subdomain + ';' + qualifier + '>' + recipient;
-                            } else if (containsExact(subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                                return subdomain + ';' + qualifier + '>' + recipientDomain;
-                            } else if (client != null && containsExact(client + ':' + subdomain)) {
-                                return subdomain;
-                            } else if (client != null && containsExact(client + ':' + subdomain + '>' + recipient)) {
-                                return subdomain + '>' + recipient;
-                            } else if (client != null && containsExact(client + ':' + subdomain + '>' + recipientDomain)) {
-                                return subdomain + '>' + recipientDomain;
-                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier)) {
-                                return subdomain + ';' + qualifier;
-                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipient)) {
-                                return subdomain + ';' + qualifier + '>' + recipient;
-                            } else if (client != null && containsExact(client + ':' + subdomain + ';' + qualifier + '>' + recipientDomain)) {
-                                return subdomain + ';' + qualifier + '>' + recipientDomain;
-                            }
-                        }
-                        int index4 = sender.length();
-                        while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
-                            String subsender = sender.substring(0, index4 + 1);
-                            if (containsExact(subsender)) {
-                                return subsender;
-                            } else if (containsExact(subsender + '>' + recipient)) {
-                                return subsender + '>' + recipient;
-                            } else if (containsExact(subsender + '>' + recipientDomain)) {
-                                return subsender + '>' + recipientDomain;
-                            } else if (containsExact(subsender + ';' + qualifier)) {
-                                return subsender + ';' + qualifier;
-                            } else if (containsExact(subsender + ';' + qualifier + '>' + recipient)) {
-                                return subsender + ';' + qualifier + '>' + recipient;
-                            } else if (containsExact(subsender + ';' + qualifier + '>' + recipientDomain)) {
-                                return subsender + ';' + qualifier + '>' + recipientDomain;
-                            } else if (client != null && containsExact(client + ':' + subsender)) {
-                                return subsender;
-                            } else if (client != null && containsExact(client + ':' + subsender + '>' + recipient)) {
-                                return subsender + '>' + recipient;
-                            } else if (client != null && containsExact(client + ':' + subsender + '>' + recipientDomain)) {
-                                return subsender + '>' + recipientDomain;
-                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier)) {
-                                return subsender + ';' + qualifier;
-                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipient)) {
-                                return subsender + ';' + qualifier + '>' + recipient;
-                            } else if (client != null && containsExact(client + ':' + subsender + ';' + qualifier + '>' + recipientDomain)) {
-                                return subsender + ';' + qualifier + '>' + recipientDomain;
-                            }
-                        }
-                    }
-                }
-                if (senderDomain.endsWith(".br")) {
-                    whoisSet.add(senderDomain);
-                }
-                regexSet.add(sender);
-                regexSet.add(senderDomain);
-            }
-            // Verifica o HELO.
-            if ((helo = Domain.extractHost(helo, true)) != null) {
-                String host = findHost(client, helo, qualifier, recipient, recipientDomain);
-                if (host != null) {
-                    return host;
-                }
-                if (helo.endsWith(".br") && CacheHELO.match(ip, helo)) {
-                    whoisSet.add(helo);
-                }
-                regexSet.add(helo);
-            }
-            // Verifica o IP.
-            if (ip != null) {
-                ip = Subnet.normalizeIP(ip);
-                if (containsExact(ip)) {
-                    return ip;
-                } else if (containsExact(ip + '>' + recipient)) {
-                    return ip + '>' + recipient;
-                } else if (containsExact(ip + '>' + recipientDomain)) {
-                    return ip + '>' + recipientDomain;
-                } else if (containsExact(ip + ';' + qualifier)) {
-                    return ip + ';' + qualifier;
-                } else if (containsExact(ip + ';' + qualifier + '>' + recipient)) {
-                    return ip + ';' + qualifier + '>' + recipient;
-                } else if (containsExact(ip + ';' + qualifier + '>' + recipientDomain)) {
-                    return ip + ';' + qualifier + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + ip)) {
-                    return ip;
-                } else if (client != null && containsExact(client + ':' + ip + '>' + recipient)) {
-                    return ip + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + ip + '>' + recipientDomain)) {
-                    return ip + '>' + recipientDomain;
-                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier)) {
-                    return ip + ';' + qualifier;
-                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipient)) {
-                    return ip + ';' + qualifier + '>' + recipient;
-                } else if (client != null && containsExact(client + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
-                    return ip + ';' + qualifier + '>' + recipientDomain;
-                }
-                whoisSet.add(ip);
-                regexSet.add(ip);
-            }
-            // Verifica o CIDR.
-            if (ip != null) {
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("CIDR=", "CIDR>"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":CIDR=", client + ":CIDR>"));
-                }
-                for (String cidr : subSet) {
-                    int index = cidr.indexOf('=');
-                    cidr = cidr.substring(index + 1);
-                    if (Subnet.containsIP(cidr, ip)) {
-                        return "CIDR=" + cidr;
-                    }
-                }
-            }
-            // Verifica um critério do REGEX.
-            if (!regexSet.isEmpty()) {
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("REGEX=", "REGEX>"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":REGEX=", client + ":REGEX>"));
-                }
-                for (String regexOriginal : subSet.descendingSet()) {
-                    int index1 = regexOriginal.indexOf(':');
-                    int index2 = regexOriginal.indexOf('=');
-                    String regex = regexOriginal.substring(index2 + 1);
-                    String user = null;
-                    if (index1 > 0 && index1 < index2) {
-                        user = regexOriginal.substring(0, index1);
-                    }
-                    for (String token : regexSet) {
-                        if (matches(regex, token)) {
-                            if (regex.startsWith("(\\.|@)") && regex.endsWith("$")) {
-                                if (token.startsWith("@")) {
-                                    token = '.' + token.substring(1);
-                                }
-                                if (user != null) {
-                                    token = user + ':' + token;
-                                }
-                                if (addExact(token)) {
-                                    Server.logDebug("new BLOCK '" + token + "' added by '" + regexOriginal + "'.");
-                                    if (user == null) {
-                                        Peer.sendBlockToAll(token);
-                                    }
-                                }
-                            }
-                            return regexOriginal;
-                        }
-                    }
-                }
-            }
-            Reverse reverse = Reverse.get(ip);
-            if (reverse != null) {
-                for (String host : reverse.getAddressSet()) {
-                    String block = find(client, host);
-                    if (block != null) {
-                        return block;
-                    }
-                }
-            }
-            // Verifica o DNSBL.
-            if (ip != null) {
-                TreeSet<String> dnsblSet = new TreeSet<String>();
-                dnsblSet.addAll(subSet("DNSBL=", "DNSBL>"));
-                if (client != null) {
-                    dnsblSet.addAll(subSet(client + ":DNSBL=", client + ":DNSBL>"));
-                }
-                for (String dnsbl : dnsblSet) {
-                    int index1 = dnsbl.indexOf(':');
-                    int index2 = dnsbl.indexOf('=', index1);
-                    int index3 = dnsbl.indexOf(';', index2);
-                    String server = dnsbl.substring(index2 + 1, index3);
-                    String value = dnsbl.substring(index3 + 1);
-                    if (Reverse.isListed(ip, server, value)) {
-                        Server.logDebug("IP " + ip + " is listed in " + server + ".");
-                        return dnsbl;
-                    }
-                }
-            }
-            // Verifica critérios do WHOIS.
-            if (!whoisSet.isEmpty()) {
-                TreeSet<String> subSet = new TreeSet<String>();
-                subSet.addAll(subSet("WHOIS/", "WHOIS<"));
-                if (client != null) {
-                    subSet.addAll(subSet(client + ":WHOIS/", client + ":WHOIS<"));
-                }
-                for (String whois : subSet) {
-                    int indexKey = whois.indexOf('/');
-                    char signal = '=';
-                    int indexValue = whois.indexOf(signal);
-                    if (indexValue == -1) {
-                        signal = '<';
-                        indexValue = whois.indexOf(signal);
-                        if (indexValue == -1) {
-                            signal = '>';
-                            indexValue = whois.indexOf(signal);
-                        }
-                    }
-                    if (indexValue != -1) {
-                        String user = null;
-                        int indexUser = whois.indexOf(':');
-                        if (indexUser > 0 && indexUser < indexValue) {
-                            user = whois.substring(0, indexUser);
-                        }
-                        String key = whois.substring(indexKey + 1, indexValue);
-                        String criterion = whois.substring(indexValue + 1);
-                        for (String token : whoisSet) {
-                            String value = null;
-                            if (Subnet.isValidIP(token)) {
-                                value = Subnet.getValue(token, key);
-                            } else if (!token.startsWith(".") && Domain.containsDomain(token)) {
-                                value = Domain.getValue(token, key);
-                            } else if (!token.startsWith(".") && Domain.containsDomain(token.substring(1))) {
-                                value = Domain.getValue(token, key);
-                            }
-                            if (value != null) {
-                                if (signal == '=') {
-                                    if (criterion.equals(value)) {
-                                        if ((token = addDomain(user, token)) != null) {
-                                            Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token);
-                                            }
-                                        }
-                                        return whois;
-                                    }
-                                } else if (value.length() > 0) {
-                                    int criterionInt = parseIntWHOIS(criterion);
-                                    int valueInt = parseIntWHOIS(value);
-                                    if (signal == '<' && valueInt < criterionInt) {
-                                        if ((token = addDomain(user, token)) != null) {
-                                            Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token);
-                                            }
-                                        }
-                                        return whois;
-                                    } else if (signal == '>' && valueInt > criterionInt) {
-                                        if ((token = addDomain(user, token)) != null) {
-                                            Server.logDebug("new BLOCK '" + token + "' added by '" + whois + "'.");
-                                            if (user == null) {
-                                                Peer.sendBlockToAll(token);
-                                            }
-                                        }
-                                        return whois;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return null;
-        }
-        
-        private static int parseIntWHOIS(String value) {
-            try {
-                if (value == null || value.length() == 0) {
-                    return 0;
-                } else {
-                    Date date = Domain.DATE_FORMATTER.parse(value);
-                    long time = date.getTime() / (1000 * 60 * 60 * 24);
-                    long today = System.currentTimeMillis() / (1000 * 60 * 60 * 24);
-                    return (int) (today - time);
-                }
-            } catch (Exception ex) {
-                try {
-                    return Integer.parseInt(value);
-                } catch (Exception ex2) {
-                    return 0;
-                }
-            }
-        }
-
-        private static String findHost(String client,
-                String host, String qualifier,
-                String recipient, String recipientDomain) {
-            host = Domain.extractHost(host, true);
-            if (host == null) {
-                return null;
-            } else {
-                do {
-                    int index = host.indexOf('.') + 1;
-                    host = host.substring(index);
-                    String token = '.' + host;
-                    if (containsExact(token)) {
-                        return token;
-                    } else if (containsExact(token + '>' + recipient)) {
-                        return token + '>' + recipient;
-                    } else if (containsExact(token + '>' + recipientDomain)) {
-                        return token + '>' + recipientDomain;
-                    } else if (containsExact(token + ';' + qualifier)) {
-                        return token + ';' + qualifier;
-                    } else if (containsExact(token + ';' + qualifier + '>' + recipient)) {
-                        return token + ';' + qualifier + '>' + recipient;
-                    } else if (containsExact(token + ';' + qualifier + '>' + recipientDomain)) {
-                        return token + ';' + qualifier + '>' + recipientDomain;
-                    } else if (client != null && containsExact(client + ':' + token)) {
-                        return token;
-                    } else if (client != null && containsExact(client + ':' + token + '>' + recipient)) {
-                        return token + '>' + recipient;
-                    } else if (client != null && containsExact(client + ':' + token + '>' + recipientDomain)) {
-                        return token + '>' + recipientDomain;
-                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier)) {
-                        return token + ';' + qualifier;
-                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipient)) {
-                        return token + ';' + qualifier + '>' + recipient;
-                    } else if (client != null && containsExact(client + ':' + token + ';' + qualifier + '>' + recipientDomain)) {
-                        return token + ';' + qualifier + '>' + recipientDomain;
-                    }
-                } while (host.contains("."));
-                return null;
-            }
-        }
-
-        private static void store() {
-            if (CHANGED) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/block.set");
-                    TreeSet<String> set = getAll();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(set, outputStream);
-                        CHANGED = false;
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/block.set");
-            if (file.exists()) {
-                try {
-                    Set<String> set;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        set = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    // Processo temporário de transição.
-                    for (String token : set) {
-                        String client;
-                        String identifier;
-                        if (token.contains(":")) {
-                            int index = token.indexOf(':');
-                            client = token.substring(0, index);
-                            identifier = token.substring(index + 1);
-                        } else {
-                            client = null;
-                            identifier = token;
-                        }
-                        if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                        } else if (Owner.isOwnerID(identifier)) {
-                            identifier = "WHOIS/ownerid=" + identifier;
-                        } else {
-                            identifier = normalizeTokenBlock(identifier);
-                        }
-                        if (identifier != null) {
-                            if (client == null) {
-                                addExact(identifier);
-                            } else if (Domain.isEmail(client)) {
-                                addExact(client + ':' + identifier);
-                            }
-                        }
-                    }
-                    for (String token : set) {
-                        if (Domain.isHostname(token)) {
-                            String hostname = token;
-                            int index;
-                            while ((index = hostname.indexOf('.', 1)) != -1) {                                
-                                hostname = hostname.substring(index);
-                                if (containsExact(hostname)) {
-                                    dropExact(token);
-                                    break;
-                                }
-                            }
-                        } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-                            String hostname = '.' + token.substring(1);
-                            if (containsExact(hostname)) {
-                                dropExact(token);
-                            }
-                            int index;
-                            while ((index = hostname.indexOf('.', 1)) != -1) {                                
-                                hostname = hostname.substring(index);
-                                if (containsExact(hostname)) {
-                                    dropExact(token);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    CHANGED = false;
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static String addBlock(String token) throws ProcessException {
-        return CacheBlock.add(token);
-    }
-    
-    public static boolean addBlockExact(String token) {
-        return CacheBlock.addExact(token);
-    }
-
-    public static boolean addBlock(String client, String sender) throws ProcessException {
-        return CacheBlock.add(client, sender);
-    }
-
-    public static boolean dropBlock(String token) throws ProcessException {
-        return CacheBlock.drop(token);
-    }
-    
-    public static boolean dropAllBlock() throws ProcessException {
-        return CacheBlock.dropAll();
-    }
-
-    public static boolean dropBlock(String client, String sender) throws ProcessException {
-        return CacheBlock.drop(client, sender);
-    }
-
-    public static TreeSet<String> getBlockSet(String client) throws ProcessException {
-        return CacheBlock.get(client);
-    }
-
-    public static TreeSet<String> getAllBlockSet(String client) throws ProcessException {
-        return CacheBlock.getAll(client);
-    }
-
-    public static TreeSet<String> getProviderSet() throws ProcessException {
-        return CacheProvider.getAll();
-    }
-    
-    public static boolean containsBlock(String token) {
-        return CacheBlock.containsExact(token);
-    }
-    
-    public static String findBlock(String client, String token) {
-        return CacheBlock.find(client, token);
-    }
-
-    public static TreeSet<String> getBlockSet() throws ProcessException {
-        return CacheBlock.get();
-    }
-
-    public static TreeSet<String> getAllBlockSet() throws ProcessException {
-        return CacheBlock.getAll();
-    }
-
     public static TreeSet<String> clear(String token) {
         TreeSet<String> clearSet = new TreeSet<String>();
         TreeMap<String,Distribution> distribuitonMap = CacheDistribution.getAll(token);
@@ -4828,12 +2781,12 @@ public final class SPF implements Serializable {
                     Peer.sendToAll(key, distribution);
                 }
             }
-            if (CacheBlock.dropExact(key)) {
+            if (Block.dropExact(key)) {
                 clearSet.add(key);
             }
         }
-        for (String key : CacheBlock.getAllTokens(token)) {
-            if (CacheBlock.dropExact(key)) {
+        for (String key : Block.getAllTokens(token)) {
+            if (Block.dropExact(key)) {
                 clearSet.add(key);
             }
         }
@@ -4841,241 +2794,6 @@ public final class SPF implements Serializable {
             clearSet.add(key);
         }
         return clearSet;
-    }
-
-    /**
-     * Classe que representa o cache de tokens que devem ser ignorados na
-     * reclamação.
-     */
-    private static class CacheIgnore {
-
-        /**
-         * Conjunto de remetentes em ignorelist.
-         */
-        private static final TreeSet<String> SET = new TreeSet<String>();
-        /**
-         * Flag que indica se o cache foi modificado.
-         */
-        private static boolean CHANGED = false;
-        
-        private static boolean dropExact(String token) {
-            if (SET.remove(token)) {
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        private static boolean addExact(String token) {
-            if (SET.add(token)) {
-                Peer.rejectAll(token);
-                CHANGED = true;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized TreeSet<String> getAll() throws ProcessException {
-            TreeSet<String> ignoreSet = new TreeSet<String>();
-            ignoreSet.addAll(SET);
-            return ignoreSet;
-        }
-
-        private static boolean containsExact(String address) {
-            return SET.contains(address);
-        }
-
-        private static synchronized Set<String> subSet(String begin, String end) {
-            return SET.subSet(begin, false, end, false);
-        }
-
-        private static boolean add(String token) throws ProcessException {
-            if ((token = normalizeTokenCIDR(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (addExact(token)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static TreeSet<String> dropAll() throws ProcessException {
-            TreeSet<String> ignoreSet = new TreeSet<String>();
-            for (String token : getAll()) {
-                if (dropExact(token)) {
-                    ignoreSet.add(token);
-                }
-            }
-            return ignoreSet;
-        }
-
-        private static boolean drop(String token) throws ProcessException {
-            if ((token = normalizeTokenCIDR(token)) == null) {
-                throw new ProcessException("ERROR: TOKEN INVALID");
-            } else if (dropExact(token)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-        
-        private static boolean contains(String token) {
-            if (token == null) {
-                return false;
-            } else {
-                // Verifica o remetente.
-                if (token.contains("@")) {
-                    String sender = token.toLowerCase();
-                    int index1 = sender.indexOf('@');
-                    int index2 = sender.lastIndexOf('@');
-                    String part = sender.substring(0, index1 + 1);
-                    String senderDomain = sender.substring(index2);
-                    if (containsExact(sender)) {
-                        return true;
-                    } else if (containsExact(part)) {
-                        return true;
-                    } else if (containsExact(senderDomain)) {
-                        return true;
-                    } else if (containsHost(senderDomain.substring(1))) {
-                        return true;
-                    } else {
-                        int index3 = senderDomain.length();
-                        while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
-                            String subdomain = senderDomain.substring(0, index3 + 1);
-                            if (containsExact(subdomain)) {
-                                return true;
-                            }
-                        }
-                        int index4 = sender.length();
-                        while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
-                            String subsender = sender.substring(0, index4 + 1);
-                            if (containsExact(subsender)) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                // Verifica o HELO.
-                String helo;
-                if ((helo = Domain.extractHost(token, true)) != null) {
-                    if (containsHost(helo)) {
-                        return true;
-                    }
-                }
-                // Verifica o IP.
-                String ip;
-                if (Subnet.isValidIP(token)) {
-                    ip = Subnet.normalizeIP(token);
-                    if (containsExact(ip)) {
-                        return true;
-                    }
-                    // Verifica o CIDR.
-                    for (String cidr : subSet("CIDR=", "CIDR>")) {
-                        int index = cidr.indexOf('=');
-                        cidr = cidr.substring(index + 1);
-                        if (Subnet.containsIP(cidr, ip)) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        }
-
-        private static boolean containsHost(String host) {
-            do {
-                int index = host.indexOf('.') + 1;
-                host = host.substring(index);
-                String token = '.' + host;
-                if (containsExact(token)) {
-                    return true;
-                }
-            } while (host.contains("."));
-            return false;
-        }
-
-        private static void store() {
-            if (CHANGED) {
-                try {
-                    long time = System.currentTimeMillis();
-                    File file = new File("./data/ignore.set");
-                    TreeSet<String> set = getAll();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
-                        SerializationUtils.serialize(set, outputStream);
-                        CHANGED = false;
-                    } finally {
-                        outputStream.close();
-                    }
-                    Server.logStore(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-
-        private static void load() {
-            long time = System.currentTimeMillis();
-            File file = new File("./data/ignore.set");
-            if (file.exists()) {
-                try {
-                    Set<String> set;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
-                        set = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
-                    }
-                    // Processo temporário de transição.
-                    for (String token : set) {
-                        String client;
-                        String identifier;
-                        if (token.contains(":")) {
-                            int index = token.indexOf(':');
-                            client = token.substring(0, index);
-                            identifier = token.substring(index + 1);
-                        } else {
-                            client = null;
-                            identifier = token;
-                        }
-                        if (Subnet.isValidCIDR(identifier)) {
-                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                        }
-                        if (client == null) {
-                            addExact(identifier);
-                        } else {
-                            addExact(client + ':' + identifier);
-                        }
-                    }
-                    CHANGED = false;
-                    Server.logLoad(time, file);
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
-
-    public static boolean isIgnore(String token) {
-        return CacheIgnore.contains(token);
-    }
-
-    public static boolean addIgnore(String token) throws ProcessException {
-        return CacheIgnore.add(token);
-    }
-    
-    public static TreeSet<String> dropAllIgnore() throws ProcessException {
-        return CacheIgnore.dropAll();
-    }
-
-    public static boolean dropIgnore(String token) throws ProcessException {
-        return CacheIgnore.drop(token);
-    }
-
-    public static TreeSet<String> getIgnoreSet() throws ProcessException {
-        return CacheIgnore.getAll();
     }
 
     public static TreeSet<String> getGuessSet() throws ProcessException {
@@ -5124,35 +2842,35 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static synchronized TreeSet<String> keySet() {
+        private static TreeSet<String> keySet() {
             TreeSet<String> keySet = new TreeSet<String>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
         
-        private static synchronized HashMap<String,String> getMap() {
+        private static HashMap<String,String> getMap() {
             HashMap<String,String> map = new HashMap<String,String>();
             map.putAll(MAP);
             return map;
         }
 
-        private static synchronized boolean containsExact(String address) {
+        private static boolean containsExact(String address) {
             return MAP.containsKey(address);
         }
         
-        private static synchronized String getExact(String host) {
+        private static String getExact(String host) {
             return MAP.get(host);
         }
         
-        private static synchronized boolean isChanged() {
+        private static boolean isChanged() {
             return CHANGED;
         }
         
-        private static synchronized void setStored() {
+        private static void setStored() {
             CHANGED = false;
         }
         
-        private static synchronized void setLoaded() {
+        private static void setLoaded() {
             CHANGED = false;
         }
 
@@ -5283,30 +3001,10 @@ public final class SPF implements Serializable {
         return CacheGuess.dropAll();
     }
 
-    public static void storeProvider() {
-        CacheProvider.store();
-    }
-
-    public static void storeIgnore() {
-        CacheIgnore.store();
-    }
-
-    public static void storeBlock() {
-        CacheBlock.store();
-    }
-
     public static void storeGuess() {
         CacheGuess.store();
     }
-
-    public static void storeTrap() {
-        CacheTrap.store();
-    }
-
-    public static void storeWhite() {
-        CacheWhite.store();
-    }
-
+    
     public static void storeDistribution() {
         CacheDistribution.store();
     }
@@ -5320,16 +3018,10 @@ public final class SPF implements Serializable {
      */
     public static void store() {
         CacheSPF.store();
-        CacheComplain.store();
         CacheDistribution.store();
-        CacheProvider.store();
-        CacheTrap.store();
-        CacheWhite.store();
-        CacheIgnore.store();
-        CacheBlock.store();
+        CacheComplain.store();
         CacheGuess.store();
         CacheHELO.store();
-//        CacheDefer.store();
     }
 
     /**
@@ -5337,16 +3029,10 @@ public final class SPF implements Serializable {
      */
     public static void load() {
         CacheSPF.load();
-        CacheComplain.load();
         CacheDistribution.load();
-        CacheProvider.load();
-        CacheTrap.load();
-        CacheWhite.load();
-        CacheIgnore.load();
-        CacheBlock.load();
+        CacheComplain.load();
         CacheGuess.load();
         CacheHELO.load();
-//        CacheDefer.load();
     }
 
     /**
@@ -5390,19 +3076,13 @@ public final class SPF implements Serializable {
             return keySet;
         }
         
-        private static synchronized ArrayList<HELO> values() {
-            ArrayList<HELO> values = new ArrayList<HELO>();
-            values.addAll(MAP.values());
-            return values;
-        }
-        
-        private static synchronized HashMap<String,HELO> getMap() {
+        private static HashMap<String,HELO> getMap() {
             HashMap<String,HELO> map = new HashMap<String,HELO>();
             map.putAll(MAP);
             return map;
         }
         
-        private static synchronized HELO getExact(String host) {
+        private static HELO getExact(String host) {
             return MAP.get(host);
         }
         
@@ -5516,13 +3196,13 @@ public final class SPF implements Serializable {
                 }
             }
             
-            public synchronized TreeSet<String> getAddressSet() {
+            public TreeSet<String> getAddressSet() {
                 TreeSet<String> set = new TreeSet<String>();
                 set.addAll(this.addressSet);
                 return set;
             }
             
-            public synchronized boolean contains(String ip) {
+            public boolean contains(String ip) {
                 if ((ip = Subnet.normalizeIP(ip)) == null) {
                     return false;
                 } else if (addressSet == null) {
@@ -5532,19 +3212,19 @@ public final class SPF implements Serializable {
                 }
             }
             
-            public synchronized String getAddress4() {
+            public String getAddress4() {
                 return address4;
             }
             
-            public synchronized String getAddress6() {
+            public String getAddress6() {
                 return address6;
             }
 
-            public synchronized boolean isExpired7() {
+            public boolean isExpired7() {
                 return System.currentTimeMillis() - lastQuery > 604800000;
             }
             
-            public synchronized boolean isExpired14() {
+            public boolean isExpired14() {
                 return System.currentTimeMillis() - lastQuery > 1209600000;
             }
 
@@ -5615,7 +3295,7 @@ public final class SPF implements Serializable {
             }
         }
 
-        public static boolean match(String ip, String helo) {
+        public static boolean match(String ip, String helo, boolean refresh) {
             if ((helo = Domain.extractHost(helo, false)) == null) {
                 return false;
             } else {
@@ -5623,6 +3303,10 @@ public final class SPF implements Serializable {
                 if (heloObj == null) {
                     heloObj = new HELO(helo);
                     putExact(helo, heloObj);
+                } else if (refresh) {
+                    heloObj.refresh(helo);
+                    addQuery(helo, heloObj);
+                    CHANGED = true;
                 } else {
                     addQuery(helo, heloObj);
                     CHANGED = true;
@@ -5721,10 +3405,24 @@ public final class SPF implements Serializable {
     public static void dropExpiredHELO() {
         CacheHELO.dropExpired();
     }
+    
+    public static boolean matchHELO(String ip, String helo, boolean refresh) {
+        return CacheHELO.match(ip, helo, refresh);
+    }
+    
+    public static boolean matchHELO(String ip, String helo) {
+        return CacheHELO.match(ip, helo, false);
+    }
 
     protected static String processPostfixSPF(
-            String client, String ip, String sender, String helo,
-            String recipient) throws ProcessException {
+            InetAddress ipAddress,
+            Client client,
+            User user,
+            String ip,
+            String sender,
+            String helo,
+            String recipient
+            ) throws ProcessException {
         if (sender == null) {
             sender = null;
         } else if (sender.trim().length() == 0) {
@@ -5734,13 +3432,33 @@ public final class SPF implements Serializable {
         }
         
         if (!Subnet.isValidIP(ip)) {
-            return "action=REJECT [RBL] "
-                    + ip + " is not a valid IP.\n\n";
+            return "action=554 5.7.1 SPFBL "
+                    + ip + " is not a valid public IP.\n\n";
+        } else if (
+                Subnet.containsIP("10.0.0.0/8", ip) ||
+                Subnet.containsIP("172.16.0.0/12", ip) ||
+                Subnet.containsIP("192.168.0.0/16", ip) ||
+                Subnet.containsIP("169.254.0.0/16", ip) ||
+                (client != null && client.contains(ip))
+                ) {
+            // Message from LAN.
+            return "action=DUNNO\n\n";
         } else {
             try {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 ip = Subnet.normalizeIP(ip);
                 tokenSet.add(Subnet.normalizeIP(ip));
+                String origin;
+                if (client == null) {
+                    origin = ipAddress.getHostAddress();
+                } else if (client.hasEmail()) {
+                    // Se houver um cliente válido,
+                    // Adicionar no ticket para controle.
+                    tokenSet.add(client.getEmail() + ':');
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
+                } else {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain();
+                }
                 if (Domain.isEmail(recipient)) {
                     // Se houver um remetente válido,
                     // Adicionar no ticket para controle externo.
@@ -5752,7 +3470,7 @@ public final class SPF implements Serializable {
                 // HELO quando apontados para o IP para 
                 // uma nova forma de interpretar dados.
                 String hostname;
-                if (CacheHELO.match(ip, helo)) {
+                if (CacheHELO.match(ip, helo, false)) {
                     helo = Domain.normalizeHostname(helo, true);
                     hostname = helo;
                 } else {
@@ -5776,58 +3494,34 @@ public final class SPF implements Serializable {
                         tokenSet.add(ipv6);
                     }
                 }
-                if (sender == null && !CacheHELO.match(ip, hostname)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] invalid hostname.\n\n";
-                } else if (sender != null && !Domain.isEmail(sender)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + sender + " is not a valid e-mail address.\n\n";
-                } else if (sender != null && Domain.isReserved(sender)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + sender + " has a reserved domain.\n\n";
-                }
                 String result;
                 LinkedList<String> logList = new LinkedList<String>();
-                SPF spf = CacheSPF.get(sender);
-                if (spf == null) {
+                
+                SPF spf;
+                if (sender == null) {
+                    spf = null;
                     result = "NONE";
-                } else if (spf.isDefinitelyInexistent()) {
-                    // O domínio foi dado como inexistente inúmeras vezes.
-                    // Rejeitar e denunciar o host pois há abuso de tentativas.
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + "sender has non-existent internet domain.\n\n";
+                } else if (!Domain.isEmail(sender)) {
+                    spf = null;
+                    result = "NONE";
+                } else if (Domain.isReserved(sender)) {
+                    spf = null;
+                    result = "NONE";
+                } else if ((spf = CacheSPF.get(sender)) == null) {
+                    result = "NONE";
                 } else if (spf.isInexistent()) {
-                    return "action=REJECT [RBL] "
-                            + "sender has non-existent internet domain.\n\n";
+                    result = "NONE";
                 } else {
                     result = spf.getResult(ip, sender, helo, logList);
                 }
                 String origem;
                 String fluxo;
-                if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    // Retornar REJECT somente se não houver 
-                    // liberação literal do remetente com FAIL.
-                    return "action=REJECT "
-                            + "[SPF] " + sender + " is not allowed to "
-                            + "send mail from " + ip + ". "
-                            + "Please see http://www.openspf.org/why.html?"
-                            + "sender=" + sender + "&"
-                            + "ip=" + ip + " for details.\n\n";
-                } else if (result.equals("PASS") || (sender != null && CacheProvider.containsHELO(ip, helo))) {
+                if (result.equals("PASS") || (sender != null && Provider.containsHELO(ip, helo))) {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
                     String mx = Domain.extractHost(sender, true);
-                    if (CacheProvider.containsExact(mx)) {
+                    if (Provider.containsExact(mx)) {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
                         tokenSet.add(sender);
@@ -5845,78 +3539,137 @@ public final class SPF implements Serializable {
                     hostname = helo;
                 } else {
                     String dominio = Domain.extractDomain(hostname, true);
-                    origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
+                    origem = (sender == null ? "" : sender + '>') + (dominio == null ? hostname : dominio.substring(1));
                     fluxo = origem + ">" + recipient;
                 }
-                if (CacheWhite.contains(client, ip, sender, hostname, result, recipient)) {
-                    if (CacheWhite.contains(client, ip, sender, hostname, result, null)) {
+                if (White.contains(client, ip, sender, hostname, result, recipient)) {
+//                    if (result.equals("PASS") && White.containsExact(client + ':' + origem + ";PASS>" + recipient)) {
+//                        // Limpa da lista BLOCK um possível falso positivo.
+//                        Block.clear(null, ip, sender, hostname, result, null);
+//                    } else
+                    if (White.contains(client, ip, sender, hostname, result, null)) {
                         // Limpa da lista BLOCK um possível falso positivo.
-                        CacheBlock.clear(null, ip, sender, hostname, result, null);
+                        Block.clear(null, user, ip, sender, hostname, result, null);
                     }
                     // Calcula frequencia de consultas.
                     String url = Core.getSpamURL(recipient);
                     String ticket = SPF.addQuery(tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " "
-                            + (url == null ? "" : url) + ticket + "\n\n";
-                } else if (CacheTrap.contains(client, recipient)) {
+                            + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n\n";
+                } else if (Block.contains(client, ip, sender, hostname, result, recipient)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=DISCARD [RBL] discarded by spamtrap.\n\n";
+                    CacheComplain.addComplain(origin, ticket);
+                    String url = Core.getUnblockURL(client, ip, sender, hostname, result, recipient);
+                    if (url == null) {
+                        return "action=554 5.7.1 SPFBL "
+                            + "you are permanently blocked in this server.\n\n";
+                    } else {
+                        return "action=554 5.7.1 SPFBL "
+                            + "BLOCKED " + url + "\n\n";
+                    }
+                } else if (spf != null && spf.isDefinitelyInexistent()) {
+                    // O domínio foi dado como inexistente inúmeras vezes.
+                    // Rejeitar e denunciar o host pois há abuso de tentativas.
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + "sender has non-existent internet domain.\n\n";
+                } else if (spf != null && spf.isInexistent()) {
+                    return "action=554 5.7.1 SPFBL "
+                            + "sender has non-existent internet domain.\n\n";
+                } else if (result.equals("FAIL")) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    // Retornar REJECT somente se não houver 
+                    // liberação literal do remetente com FAIL.
+                    return "action=554 5.7.1 SPFBL "
+                            + sender + " is not allowed to "
+                            + "send mail from " + ip + ".\n\n";
+                } else if (sender != null && !Domain.isEmail(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + sender + " is not a valid e-mail address.\n\n";
+                } else if (sender != null && Domain.isReserved(sender)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + sender + " has a reserved domain.\n\n";
+                } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
                 } else if (hostname == null && Core.isReverseRequired()) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
+                    CacheComplain.addComplain(origin, ticket);
+                    if (Block.tryAdd(ip)) {
+                        Server.logDebug("new BLOCK '" + ip + "' added by 'ReverseRequired'.");
+                    }
+                    return "action=554 5.7.1 SPFBL "
                             + ip + " has no reverse.\n\n";
-                } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
-                    // A origem abusou do atraso, portanto será rejeitada.
-                    Server.logDefer(0, fluxo, "DEFER FLOOD");
-                    Defer.end(fluxo);
+                } else if (Trap.contains(client, recipient)) {
+                    // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + "you are permanently blocked in this server.\n\n";
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=DISCARD SPFBL discarded by spamtrap.\n\n";
+                } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
+                    // A origem atingiu o limite de atraso 
+                    // para liberação do destinatário.
+                    long time = System.currentTimeMillis();
+                    Defer.end(fluxo);
+                    Server.logDefer(time, fluxo, "DEFER FLOOD");
+                    String ticket = SPF.addQuery(tokenSet);
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + "you are temporarily blocked in this server.\n\n";
                 } else if (SPF.isBlocked(tokenSet)) {
                     // Calcula frequencia de consultas.
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + "you are permanently blocked in this server.\n\n";
-                } else if (CacheBlock.contains(client, ip, sender, hostname, result, recipient)) {
-                    // Calcula frequencia de consultas.
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL "
+                            + "you are temporarily blocked in this server.\n\n";
+                } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                     String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] "
-                            + "you are permanently blocked in this server.\n\n";
-                } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
-                    String ticket = SPF.addQuery(tokenSet);
-                    CacheComplain.addComplain(client, ticket);
-                    return "action=REJECT [RBL] invalid hostname.\n\n";
+                    CacheComplain.addComplain(origin, ticket);
+                    return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
                 } else if (SPF.isBlacklisted(tokenSet)
-                        && Defer.defer(fluxo, Core.getDeferTimeBLACK())) {
+                        && Defer.defer(fluxo, Core.getDeferTimeBLACK())
+                        ) {
                     // Pelo menos um identificador está listado e com atrazo programado de um dia.
-                    return "action=DEFER [RBL] "
-                            + "you are temporarily blocked on this server.\n\n";
+                    String url = Core.getReleaseURL(fluxo);
+                    if (url == null || Defer.count(fluxo) > 1) {
+                        return "action=451 4.7.2 SPFBL "
+                                + "you are temporarily blocked on this server.\n\n";
+                    } else if (result.equals("PASS") && enviarLiberacao(url, sender, recipient)) {
+                        // Envio da liberação por e-mail se 
+                        // houver validação do remetente por PASS.
+                        return "action=451 4.7.2 SPFBL "
+                                + "you are temporarily blocked on this server.\n\n";
+                    } else {
+                        return "action=451 4.7.2 SPFBL LISTED " + url + "\n\n";
+                    }
                 } else if (SPF.isGreylisted(tokenSet)
                         && Defer.defer(fluxo, Core.getDeferTimeGRAY())
                         ) {
                     // Pelo menos um identificador está em greylisting com atrazo programado de 10min.
-                    return "action=DEFER [RBL] "
+                    return "action=451 4.7.1 SPFBL "
                             + "you are greylisted on this server.\n\n";
                 } else if (SPF.isFlood(tokenSet)
+                        && !Provider.containsHELO(ip, hostname)
                         && Defer.defer(origem, Core.getDeferTimeFLOOD())
                         ) {
                     // Pelo menos um identificador está com frequência superior ao permitido.
                     Server.logTrace("FLOOD " + tokenSet);
-                    return "action=DEFER [RBL] "
+                    return "action=451 4.7.1 SPFBL "
                             + "you are greylisted on this server.\n\n";
                 } else if (result.equals("SOFTFAIL")
-                        && !CacheProvider.containsHELO(ip, hostname)
+                        && !Provider.containsHELO(ip, hostname)
                         && Defer.defer(fluxo, Core.getDeferTimeSOFTFAIL())
                         ) {
                     // SOFTFAIL com atrazo programado de 1min.
-                    return "action=DEFER [RBL] "
+                    return "action=451 4.7.1 SPFBL "
                             + "you are greylisted on this server.\n\n";
                 } else {
                     // Calcula frequencia de consultas.
@@ -5924,7 +3677,7 @@ public final class SPF implements Serializable {
                     String ticket = SPF.addQuery(tokenSet);
                     return "action=PREPEND "
                             + "Received-SPFBL: " + result + " "
-                            + (url == null ? "" : url) + ticket + "\n\n";
+                            + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n\n";
                 }
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: SPF PARSE")) {
@@ -5944,6 +3697,8 @@ public final class SPF implements Serializable {
                             + "preventing a result from being reached. "
                             + "Try again later.\n\n";
                 }
+            } catch (Exception ex) {
+                throw new ProcessException("FATAL", ex);
             }
         }
     }
@@ -5954,17 +3709,30 @@ public final class SPF implements Serializable {
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
      */
-    protected static String processSPF(String client, String query) {
+    protected static String processSPF(
+            InetAddress ipAddress,
+            Client client,
+            User user,
+            String query
+    ) {
         try {
             String result = "";
             if (query.length() == 0) {
                 return "ERROR: QUERY\n";
             } else {
+                String origin;
+                if (client == null) {
+                    origin = ipAddress.getHostAddress();
+                } else if (client.hasEmail()) {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain() + " " + client.getEmail();
+                } else {
+                    origin = ipAddress.getHostAddress() + " " + client.getDomain();
+                }
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.addComplain(client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.addComplain(origin, ticket);
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
                     } else {
@@ -5973,7 +3741,7 @@ public final class SPF implements Serializable {
                     }
                 } else if (firstToken.equals("HAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
-                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(client, ticket);
+                    TreeSet<String> tokenSet = CacheComplain.deleteComplain(origin, ticket);
                     if (tokenSet == null) {
                         result = "ALREADY REMOVED\n";
                     } else {
@@ -5993,6 +3761,7 @@ public final class SPF implements Serializable {
                     }
                 } else if ((firstToken.equals("SPF") && tokenizer.countTokens() >= 4)
                         || tokenizer.countTokens() == 2 || tokenizer.countTokens() == 1
+                        || (firstToken.equals("CHECK") && tokenizer.countTokens() == 4)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 3)
                         || (firstToken.equals("CHECK") && tokenizer.countTokens() == 2)) {
                     try {
@@ -6021,6 +3790,35 @@ public final class SPF implements Serializable {
                                 sender = sender.toLowerCase();
                             }
                             if (!Domain.isEmail(recipient)) {
+                                recipient = null;
+                            }
+                        } else if (firstToken.equals("CHECK") && tokenizer.countTokens() == 4) {
+                            ip = tokenizer.nextToken().toLowerCase();
+                            sender = tokenizer.nextToken().toLowerCase();
+                            helo = tokenizer.nextToken().toLowerCase();
+                            recipient = tokenizer.nextToken().toLowerCase();
+                            if (ip.startsWith("'") && ip.endsWith("'")) {
+                                ip = ip.substring(1, ip.length() - 1);
+                            }
+                            if (sender.startsWith("'") && sender.endsWith("'")) {
+                                sender = sender.substring(1, sender.length() - 1);
+                            }
+                            if (helo.startsWith("'") && helo.endsWith("'")) {
+                                helo = helo.substring(1, helo.length() - 1);
+                            }
+                            if (recipient.startsWith("'") && recipient.endsWith("'")) {
+                                recipient = recipient.substring(1, recipient.length() - 1);
+                            }
+                            if (ip.length() == 0) {
+                                ip = null;
+                            }
+                            if (sender.length() == 0) {
+                                sender = null;
+                            }
+                            if (helo.length() == 0) {
+                                helo = null;
+                            }
+                            if (recipient.length() == 0) {
                                 recipient = null;
                             }
                         } else {
@@ -6054,10 +3852,24 @@ public final class SPF implements Serializable {
                         }
                         if (!Subnet.isValidIP(ip)) {
                             return "INVALID\n";
+                        } else if (
+                                Subnet.containsIP("10.0.0.0/8", ip) ||
+                                Subnet.containsIP("172.16.0.0/12", ip) ||
+                                Subnet.containsIP("192.168.0.0/16", ip) ||
+                                Subnet.containsIP("169.254.0.0/16", ip) ||
+                                (client != null && client.contains(ip))
+                                ) {
+                            // Message from LAN.
+                            return "LAN\n";
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
                             tokenSet.add(ip);
+                            if (client != null && client.hasEmail()) {
+                                // Se houver um cliente válido,
+                                // Adicionar no ticket para controle.
+                                tokenSet.add(client.getEmail() + ':');
+                            }
                             if (Domain.isEmail(recipient)) {
                                 // Se houver um remetente válido,
                                 // Adicionar no ticket para controle.
@@ -6065,11 +3877,12 @@ public final class SPF implements Serializable {
                             } else {
                                 recipient = null;
                             }
+                            
                             // Passar a acompanhar todos os 
                             // HELO quando apontados para o IP para 
                             // uma nova forma de interpretar dados.
                             String hostname;
-                            if (CacheHELO.match(ip, helo)) {
+                            if (CacheHELO.match(ip, helo, false)) {
                                 helo = Domain.normalizeHostname(helo, true);
                                 hostname = helo;
                             } else {
@@ -6093,22 +3906,6 @@ public final class SPF implements Serializable {
                                     tokenSet.add(ipv6);
                                 }
                             }
-                            if (sender == null && !CacheHELO.match(ip, hostname)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // HELO inválido sem remetente.
-                                return "INVALID\n";
-                            } else if (sender != null && !Domain.isEmail(sender)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Endereço inválido do remetente.
-                                return "INVALID\n";
-                            } else if (sender != null && Domain.isReserved(sender)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Endereço inválido do remetente.
-                                return "INVALID\n";
-                            }
                             LinkedList<String> logList = null;
                             if (sender != null && firstToken.equals("CHECK")) {
                                 int index = sender.lastIndexOf('@');
@@ -6121,26 +3918,29 @@ public final class SPF implements Serializable {
                                     logList.add("Using cached SPF registry.");
                                 }
                             }
-                            SPF spf = CacheSPF.get(sender);
-                            if (spf == null) {
+                            SPF spf;
+                            if (sender == null) {
+                                spf = null;
                                 result = "NONE";
-                            } else if (spf.isDefinitelyInexistent()) {
-                                // O domínio foi dado como inexistente inúmeras vezes.
-                                // Rejeitar e denunciar o host pois há abuso de tentativas.
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                return "NXDOMAIN\n";
+                            } else if (!Domain.isEmail(sender)) {
+                                spf = null;
+                                result = "NONE";
+                            } else if (Domain.isReserved(sender)) {
+                                spf = null;
+                                result = "NONE";
+                            } else if ((spf = CacheSPF.get(sender)) == null) {
+                                result = "NONE";
                             } else if (spf.isInexistent()) {
-                                return "NXDOMAIN\n";
+                                result = "NONE";
                             } else {
                                 result = spf.getResult(ip, sender, helo, logList);
                             }
-                            if (result.equals("PASS") || (sender != null && CacheProvider.containsHELO(ip, hostname))) {
+                            if (result.equals("PASS") || (sender != null && Provider.containsHELO(ip, hostname))) {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
                                 String mx = Domain.extractHost(sender, true);
-                                if (CacheProvider.containsExact(mx)) {
+                                if (Provider.containsExact(mx)) {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
                                     tokenSet.add(sender);
@@ -6158,107 +3958,158 @@ public final class SPF implements Serializable {
                                 hostname = helo;
                             } else {
                                 String dominio = Domain.extractDomain(hostname, true);
-                                origem = (sender == null ? "" : sender + '>') + dominio.substring(1);
+                                origem = (sender == null ? "" : sender + '>') + (dominio == null ? hostname : dominio.substring(1));
                                 fluxo = origem + ">" + recipient;
                             }
                             if (firstToken.equals("CHECK")) {
-                                result = "\nSPF resolution results:\n";
+                                String results = "\nSPF resolution results:\n";
                                 if (logList == null || logList.isEmpty()) {
-                                    result += "   NONE\n";
+                                    results += "   NONE\n";
                                 } else {
                                     for (String log : logList) {
-                                        result += "   " + log + "\n";
+                                        results += "   " + log + "\n";
                                     }
                                 }
-                                String block = CacheBlock.find(client, ip, sender, hostname, result, recipient);
-                                if (block != null) {
-                                    result += "\nFirst BLOCK match: " + block + "\n";
+                                String white = White.find(client, ip, sender, hostname, result, recipient);
+                                if (white != null) {
+                                    results += "\nFirst WHITE match: " + white + "\n";
                                 }
-                                result += "\n";
-                                result += "Considered identifiers and status:\n";
+                                String block = Block.find(client, ip, sender, hostname, result, recipient);
+                                if (block != null) {
+                                    results += "\nFirst BLOCK match: " + block + "\n";
+                                }
+                                results += "\n";
+                                results += "Considered identifiers and status:\n";
                                 tokenSet = expandTokenSet(tokenSet);
                                 TreeMap<String,Distribution> distributionMap = CacheDistribution.getMap(tokenSet);
                                 for (String token : tokenSet) {
-                                    float probability;
-                                    Status status;
-                                    if (distributionMap.containsKey(token)) {
-                                        Distribution distribution = distributionMap.get(token);
-                                        probability = distribution.getSpamProbability(token);
-                                        status = distribution.getStatus(token);
-                                    } else {
-                                        probability = 0.0f;
-                                        status = SPF.Status.WHITE;
+                                    if (!token.startsWith(">") && !token.endsWith(":")) {
+                                        float probability;
+                                        Status status;
+                                        if (distributionMap.containsKey(token)) {
+                                            Distribution distribution = distributionMap.get(token);
+                                            probability = distribution.getSpamProbability(token);
+                                            status = distribution.getStatus(token);
+                                        } else {
+                                            probability = 0.0f;
+                                            status = SPF.Status.WHITE;
+                                        }
+                                        results += "   " + token
+                                                + " " + status.name() + " "
+                                                + Core.DECIMAL_FORMAT.format(probability) + "\n";
                                     }
-                                    result += "   " + token
-                                            + " " + status.name() + " "
-                                            + Server.DECIMAL_FORMAT.format(probability) + "\n";
                                 }
-                                result += "\n";
-                                return result;
-                            } else if (result.equals("FAIL") && !CacheWhite.containsSender(client, sender, result, recipient)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                // Retornar FAIL somente se não houver 
-                                // liberação literal do remetente com FAIL.
-                                return "FAIL\n";
-                            } else if (CacheWhite.contains(client, ip, sender, hostname, result, recipient)) {
-                                if (CacheWhite.contains(client, ip, sender, hostname, result, null)) {
-                                    // Limpa da lista BLOCK um possível falso positivo.
-                                    CacheBlock.clear(null, ip, sender, hostname, result, null);
+                                results += "\n";
+                                return results;
+                            } else if (White.contains(client, ip, sender, hostname, result, recipient)) {
+//                                if (result.equals("PASS") && White.containsExact(client + ':' + origem + ";PASS>" + recipient)) {
+//                                    // Limpa da lista BLOCK um possível falso positivo.
+//                                    Block.clear(null, ip, sender, hostname, result, null);
+//                                } else
+                                if (White.contains(client, ip, sender, hostname, result, null)) {
+//                                  // Limpa da lista BLOCK um possível falso positivo.
+                                    Block.clear(null, user, ip, sender, hostname, result, null);
                                 }
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL(recipient);
                                 String ticket = SPF.addQuery(tokenSet);
-                                return result + " " + (url == null ? "" : url) + ticket + "\n";
-                            } else if (CacheTrap.contains(client, recipient)) {
+                                return result + " " + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n";
+                            } else if (Block.contains(client, ip, sender, hostname, result, recipient)) {
                                 // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                return "SPAMTRAP\n";
+                                CacheComplain.addComplain(origin, ticket);
+                                String url = Core.getUnblockURL(client, ip, sender, hostname, result, recipient);
+                                if (url == null) {
+                                    return "BLOCKED\n";
+                                } else {
+                                    return "BLOCKED " + url + "\n";
+                                }
+                            } else if (spf != null && spf.isDefinitelyInexistent()) {
+                                // O domínio foi dado como inexistente inúmeras vezes.
+                                // Rejeitar e denunciar o host pois há abuso de tentativas.
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
+                                return "NXDOMAIN\n";
+                            } else if (spf != null && spf.isInexistent()) {
+                                return "NXDOMAIN\n";
+                            } else if (result.equals("FAIL")) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
+                                // Retornar FAIL somente se não houver 
+                                // liberação literal do remetente com FAIL.
+                                return "FAIL\n";
+                            } else if (sender != null && !Domain.isEmail(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
+                                return "INVALID\n";
+                            } else if (sender != null && Domain.isReserved(sender)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
+                                return "INVALID\n";
+                            } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
+                                // HELO inválido sem remetente.
+                                return "INVALID\n";
                             } else if (hostname == null && Core.isReverseRequired()) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
+                                if (Block.tryAdd(ip)) {
+                                    Server.logDebug("new BLOCK '" + ip + "' added by 'ReverseRequired'.");
+                                }
                                 // Require a valid HELO or reverse.
                                 return "INVALID\n";
-                            } else if (recipient != null && Defer.count(fluxo) > Core.getFloodMaxRetry()) {
-                                // A origem abusou do atraso, portanto será rejeitada.
-                                Server.logDefer(0, fluxo, "DEFER FLOOD");
-                                Defer.end(fluxo);
+                            } else if (Trap.contains(client, recipient)) {
+                                // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
+                                return "SPAMTRAP\n";
+                            } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
+                                // A origem atingiu o limite de atraso 
+                                // para liberação do destinatário.
+                                long time = System.currentTimeMillis();
+                                Defer.end(fluxo);
+                                Server.logDefer(time, fluxo, "DEFER FLOOD");
+                                String ticket = SPF.addQuery(tokenSet);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "BLOCKED\n";
                             } else if (SPF.isBlocked(tokenSet)) {
                                  // Calcula frequencia de consultas.
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "BLOCKED\n";
-                            } else if (CacheBlock.contains(client, ip, sender, hostname, result, recipient)) {
-                                // Calcula frequencia de consultas.
+                            } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                                 String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
-                                return "BLOCKED\n";
-                            } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname)) {
-                                String ticket = SPF.addQuery(tokenSet);
-                                CacheComplain.addComplain(client, ticket);
+                                CacheComplain.addComplain(origin, ticket);
                                 return "INVALID\n";
                             } else if (SPF.isBlacklisted(tokenSet)
                                     && Defer.defer(fluxo, Core.getDeferTimeBLACK())
                                     ) {
                                 // Pelo menos um identificador do conjunto está em lista negra com atrazo de 1 dia.
-                                return "LISTED\n";
+                                String url = Core.getReleaseURL(fluxo);
+                                if (url == null || Defer.count(fluxo) > 1) {
+                                    return "LISTED\n";
+                                } else if (result.equals("PASS") && enviarLiberacao(url, sender, recipient)) {
+                                    // Envio da liberação por e-mail se 
+                                    // houver validação do remetente por PASS.
+                                    return "LISTED\n";
+                                } else {
+                                    return "LISTED " + url + "\n";
+                                }
                             } else if (SPF.isGreylisted(tokenSet)
                                     && Defer.defer(fluxo, Core.getDeferTimeGRAY())
                                     ) {
                                 // Pelo menos um identificador do conjunto está em greylisting com atrazo de 10min.
                                 return "GREYLIST\n";
                             } else if (SPF.isFlood(tokenSet)
+                                    && !Provider.containsHELO(ip, hostname)
                                     && Defer.defer(origem, Core.getDeferTimeFLOOD())
                                     ) {
                                 // Pelo menos um identificador está com frequência superior ao permitido.
                                 Server.logTrace("FLOOD " + tokenSet);
                                 return "GREYLIST\n";
                             } else if (result.equals("SOFTFAIL")
-                                    && !CacheProvider.containsHELO(ip, hostname)
+                                    && !Provider.containsHELO(ip, hostname)
                                     && Defer.defer(fluxo, Core.getDeferTimeSOFTFAIL())
                                     ) {
                                 // SOFTFAIL com atrazo de 1min.
@@ -6267,7 +4118,7 @@ public final class SPF implements Serializable {
                                 // Calcula frequencia de consultas.
                                 String url = Core.getSpamURL(recipient);
                                 String ticket = SPF.addQuery(tokenSet);
-                                return result + " " + (url == null ? "" : url) + ticket + "\n";
+                                return result + " " + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n";
                             }
                         }
                     } catch (ProcessException ex) {
@@ -6290,6 +4141,62 @@ public final class SPF implements Serializable {
             return "ERROR: FATAL\n";
         }
     }
+    
+    private static boolean enviarLiberacao(
+            String url,
+            String remetente,
+            String destinatario
+            ) {
+        if (
+                Core.hasSMTP()
+                && Core.hasAdminEmail()
+                && Domain.isEmail(remetente)
+                && Domain.isEmail(destinatario)
+                && url != null
+                && !NoReply.contains(remetente)
+                ) {
+            try {
+                Server.logDebug("sending liberation by e-mail.");
+                InternetAddress[] recipients = InternetAddress.parse(remetente);
+                Properties props = System.getProperties();
+                Session session = Session.getDefaultInstance(props);
+                MimeMessage message = new MimeMessage(session);
+                message.setHeader("Date", Core.getEmailDate());
+                message.setFrom(Core.getAdminEmail());
+                message.addRecipients(Message.RecipientType.TO, recipients);
+                message.setSubject("Liberação de recebimento");
+                // Corpo da mensagem.
+                StringBuilder builder = new StringBuilder();
+                builder.append("<html>\n");
+                builder.append("  <head>\n");
+                builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>Liberação de recebimento</title>\n");
+                builder.append("  </head>\n");
+                builder.append("  <body>\n");
+                builder.append("       O recebimento da sua mensagem para ");
+                builder.append(destinatario);
+                builder.append(" está sendo atrasado por suspeita de SPAM.<br>\n");
+                builder.append("       Para que sua mensagem seja liberada, ");
+                builder.append("acesse este link e resolva o desafio reCAPTCHA:<br>\n");
+                builder.append("       <a href=\"");
+                builder.append(url);
+                builder.append("\">");
+                builder.append(url);
+                builder.append("</a><br>\n");
+                builder.append("  </body>\n");
+                builder.append("</html>\n");
+                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                message.saveChanges();
+                // Enviar mensagem.
+                return Core.offerMessage(message);
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
 
     public static String createTicket(TreeSet<String> tokenSet) throws ProcessException {
         String ticket = Server.getNewTicketDate();
@@ -6307,7 +4214,7 @@ public final class SPF implements Serializable {
         }
     }
     
-    private static TreeSet<String> expandTokenSet(
+    public static TreeSet<String> expandTokenSet(
             TreeSet<String> tokenSet) {
         TreeSet<String> expandedSet = new TreeSet<String>();
         for (String token : tokenSet) {
@@ -6328,17 +4235,16 @@ public final class SPF implements Serializable {
                 if (expand) {
                     try {
                         String dominio = Domain.extractDomain(token, true);
-                        String subdominio = Domain.extractHost(token, true);
-                        if (subdominio != null) {
-                            while (!subdominio.equals(dominio)) {
-                                expandedSet.add(subdominio);
-                                int index = subdominio.indexOf('.', 1);
-                                subdominio = subdominio.substring(index);
-                            }
-                        }
+//                        String subdominio = Domain.extractHost(token, true);
+//                        if (subdominio != null) {
+//                            while (!subdominio.equals(dominio)) {
+//                                expandedSet.add(subdominio);
+//                                int index = subdominio.indexOf('.', 1);
+//                                subdominio = subdominio.substring(index);
+//                            }
+//                        }
                         expandedSet.add(dominio);
                     } catch (ProcessException ex) {
-                        expandedSet.add(token);
                         Server.logError(ex);
                     }
                 }
@@ -6375,17 +4281,19 @@ public final class SPF implements Serializable {
             return distribution.getComplainTTL() / 1000;
         }
     }
+    
+    public static void createDistribution(String token) {
+        CacheDistribution.get(token, true);
+    }
 
     public static boolean isBlacklisted(String token) {
         if (CacheComplain.isValid(token)) {
-            Distribution distribution = CacheDistribution.get(token, true);
-    //        if (distribution == null) {
-    //            // Distribuição não encontrada.
-    //            // Considerar que não está listado.
-    //            return false;
-    //        } else {
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                return false;
+            } else {
                 return distribution.isBlacklisted(token);
-    //        }
+            }
         } else {
             return false;
         }
@@ -6409,20 +4317,14 @@ public final class SPF implements Serializable {
     public static boolean isBlocked(String token) {
         if (CacheComplain.isValid(token)) {
             Distribution distribution = CacheDistribution.get(token, true);
-    //        if (distribution == null) {
-    //            // Distribuição não encontrada.
-    //            // Considerar que não está listado.
-    //            return false;
-    //        } else {
-                return distribution.isBlocked(token);
-    //        }
+            return distribution.isBlocked(token);
         } else {
             return false;
         }
     }
     
     public static boolean isFlood(String token) {
-        if (CacheIgnore.contains(token)) {
+        if (Ignore.contains(token)) {
             return false;
         } else if (CacheComplain.isValid(token)) {
             Distribution distribution = CacheDistribution.get(token, false);
@@ -6478,7 +4380,7 @@ public final class SPF implements Serializable {
             TreeSet<String> tokenSet
             ) throws ProcessException {
         for (String token : expandTokenSet(tokenSet)) {
-            if (isFlood(token)) {
+            if (isFlood(token) && !Ignore.contains(token)) {
                 return true;
             }
         }
@@ -6493,7 +4395,9 @@ public final class SPF implements Serializable {
         WHITE, // Whitelisted
         GRAY, // Graylisted
         BLACK, // Blacklisted
-        BLOCK; // Blocked
+        BLOCK, // Blocked
+        IGNORE, // Ignored
+        CLOSED; // Closed
     }
     /**
      * Constantes que determinam os limiares de listagem.
@@ -6526,6 +4430,17 @@ public final class SPF implements Serializable {
             frequency = null;
             CacheDistribution.CHANGED = true;
         }
+        
+//        private void add(Distribution other) {
+//            this.complain += other.complain;
+//            this.lastQuery = Math.max(this.lastQuery, other.lastQuery);
+//            this.lastComplain = Math.max(this.lastComplain, other.lastComplain);
+//            if (this.frequency == null) {
+//                this.frequency = other.frequency;
+//            } else {
+//                this.frequency.add(other.frequency);
+//            }
+//        }
 
         public boolean isExpired7() {
             return System.currentTimeMillis() - lastQuery > 604800000;
@@ -6571,18 +4486,18 @@ public final class SPF implements Serializable {
             return lastQuery > 0;
         }
         
-        public int getIdleTimeMillis() {
+        public long getIdleTimeMillis() {
             if (lastQuery == 0) {
                 return 0;
             } else {
-                return (int) (System.currentTimeMillis() - lastQuery);
+                return System.currentTimeMillis() - lastQuery;
             }
         }
 
         public String getFrequencyLiteral() {
             if (hasFrequency()) {
                 int frequencyInt = frequency.getMaximumInt();
-                int idleTimeInt = getIdleTimeMillis();
+                long idleTimeInt = getIdleTimeMillis();
                 if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                     return "DEAD";
                 } else {
@@ -6591,13 +4506,13 @@ public final class SPF implements Serializable {
                         sinal = '>';
                     }
                     if (frequencyInt >= 3600000) {
-                        return sinal + frequencyInt / 3600000 + "h";
+                        return sinal + ((frequencyInt / 3600000) + "h");
                     } else if (frequencyInt >= 60000) {
-                        return sinal + frequencyInt / 60000 + "min";
+                        return sinal + ((frequencyInt / 60000) + "min");
                     } else if (frequencyInt >= 1000) {
-                        return sinal + frequencyInt / 1000 + "s";
+                        return sinal + ((frequencyInt / 1000) + "s");
                     } else {
-                        return sinal + frequencyInt + "ms";
+                        return sinal + (frequencyInt + "ms");
                     }
                 }
             } else {
@@ -6637,7 +4552,7 @@ public final class SPF implements Serializable {
             int[] binomial = getBinomial();
             if (token != null) {
                 for (Peer peer : Peer.getSet()) {
-                    Binomial peerBinomial = peer.getBinomial(token);
+                    Peer.Binomial peerBinomial = peer.getBinomial(token);
                     if (peerBinomial != null) {
                         binomial[0] += peerBinomial.getHAM();
                         binomial[1] += peerBinomial.getSPAM();
@@ -6666,6 +4581,10 @@ public final class SPF implements Serializable {
             }
         }
         
+        public Status getStatus() {
+            return status;
+        }
+        
         /**
          * Máquina de estados para listar em um pico e retirar a listagem
          * somente quando o total cair consideravelmente após este pico.
@@ -6675,16 +4594,16 @@ public final class SPF implements Serializable {
         public Status getStatus(String token) {
             Status statusOld = status;
             float probability = getSpamProbability(token);
-            if (probability == 0.0f) {
+            if (probability < 0.015625f) {
                 status = Status.WHITE;
+            } else if (probability < LIMIAR1) {
+                status = statusOld == Status.BLACK ? Status.GRAY : statusOld;
             } else if (probability > LIMIAR3) {
-                status = Subnet.isValidIP(token) ? Status.BLACK : Status.BLOCK;
+                status = (Subnet.isValidIP(token) ? Status.BLACK : Status.BLOCK);
             } else if (probability > LIMIAR2) {
                 status = Status.BLACK;
             } else if (probability > LIMIAR1) {
-                status = Subnet.isValidIP(token) ? Status.GRAY : Status.BLACK;
-            } else if (statusOld == Status.BLACK && probability < LIMIAR1) {
-                status = Status.GRAY;
+                status = (Subnet.isValidIP(token) ? Status.GRAY : Status.BLACK);
             }
             return status;
         }
@@ -6697,6 +4616,14 @@ public final class SPF implements Serializable {
          */
         public boolean isBlacklisted(String token) {
             return getStatus(token) == Status.BLACK;
+        }
+        
+        public boolean isWhitelisted(String token) {
+            return getStatus(token) == Status.WHITE;
+        }
+        
+        public boolean isNotWhitelisted(String token) {
+            return getStatus(token) != Status.WHITE;
         }
 
         public boolean isGreylisted(String token) {
@@ -6729,6 +4656,14 @@ public final class SPF implements Serializable {
                 return false;
             }
         }
+        
+        private synchronized void resetSpamInterval() {
+            complain = 0;
+        }
+        
+        private synchronized void addSpamInterval() {
+            complain++;
+        }
 
         public synchronized boolean addSpam() {
             if (complain < Integer.MAX_VALUE) {
@@ -6760,10 +4695,164 @@ public final class SPF implements Serializable {
                 return new int[2];
             }
         }
+        
+        public synchronized int[] getBinomial(String token) {
+            int[] result = new int[2];
+            if (token != null) {
+                for (Peer peer : Peer.getSet()) {
+                    Peer.Binomial peerBinomial = peer.getBinomial(token);
+                    if (peerBinomial != null) {
+                        result[0] += peerBinomial.getHAM();
+                        result[1] += peerBinomial.getSPAM();
+                    }
+                }
+            }
+            if (frequency != null && frequency.getMinimum() > 0.0d) {
+                double semana = 60 * 60 * 24 * 7;
+                int total = (int) (semana / frequency.getMinimum());
+                if (total < complain) {
+                    total = complain;
+                }
+                int ham = total - complain;
+                int spam = complain;
+                result[0] += ham;
+                result[1] += spam;
+            }
+            return result;
+        }
 
         @Override
         public String toString() {
             return Float.toString(getSpamProbability(null));
+        }
+    }
+    
+    /**
+     * Classe que representa a distribuição binomial entre HAM e SPAM.
+     */
+    public static final class Binomial implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+        
+        private int ham; // Quantidade total de HAM em sete dias.
+        private int spam; // Quantidade total de SPAM em sete dias
+        private final Status status;
+        private NormalDistribution frequency = null;
+        private long lastQuery = 0;
+        
+        public Binomial(String token, Distribution distribution) {
+            int[] binomial = distribution.getBinomial(token);
+            this.ham = binomial[0];
+            this.spam = binomial[1];
+            this.status = distribution.getStatus(token);
+            this.frequency = distribution.frequency;
+            this.lastQuery = distribution.lastQuery;
+       }
+        
+        public Binomial(Status status) {
+            this.status = status;
+            this.ham = 0;
+            this.spam = 0;
+            this.frequency = null;
+            this.lastQuery = 0;
+        }
+        
+        public void add(String token, Distribution distribution) {
+            int[] binomial = distribution.getBinomial(token);
+            this.ham += binomial[0];
+            this.spam += binomial[1];
+            if (this.frequency == null) {
+                this.frequency = distribution.frequency;
+            } else {
+                this.frequency.add(distribution.frequency);
+            }
+            if (this.lastQuery < distribution.lastQuery) {
+                this.lastQuery = distribution.lastQuery;
+            }
+        }
+        
+        public int getSPAM() {
+            return spam;
+        }
+        
+        public int getHAM() {
+            return ham;
+        }
+        
+        public Status getStatus() {
+            return status;
+        }
+        
+        public boolean clear() {
+            if (spam > 0) {
+                this.ham += spam;
+                this.spam = 0;
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public synchronized float getSpamProbability() {
+            int total = ham + spam;
+            float probability = (float) spam / (float) total;
+            if (total == 0) {
+                return 0.0f;
+            } else if (probability > LIMIAR1 && spam < 3) {
+                // Quantidade pequena para dar precisão.
+                return LIMIAR1;
+            } else if (probability > LIMIAR2 && spam < 5) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio temporário é 
+                // necessário pelo meno cinco denuncias.
+                return LIMIAR2;
+            } else if (probability > LIMIAR3 && spam < 7) {
+                // Quantidade pequena para dar precisão.
+                // Para haver bloqueio definitivo é 
+                // necessário pelo meno sete denuncias.
+                return LIMIAR3;
+            } else {
+                return probability;
+            }
+        }
+        
+        public long getIdleTimeMillis() {
+            if (lastQuery == 0) {
+                return 0;
+            } else {
+                return System.currentTimeMillis() - lastQuery;
+            }
+        }
+        
+        public String getFrequencyLiteral() {
+            if (frequency == null) {
+                return "NEW";
+            } else {
+                int frequencyInt = frequency.getMaximumInt();
+                long idleTimeInt = getIdleTimeMillis();
+                if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 604800000) {
+                    return "DEAD";
+                } else {
+                    char sinal = '~';
+                    if (idleTimeInt > frequencyInt * 3) {
+                        sinal = '>';
+                    }
+                    if (frequencyInt >= 3600000) {
+                        return sinal + ((frequencyInt / 3600000) + "h");
+                    } else if (frequencyInt >= 60000) {
+                        return sinal + ((frequencyInt / 60000) + "min");
+                    } else if (frequencyInt >= 1000) {
+                        return sinal + ((frequencyInt / 1000) + "s");
+                    } else {
+                        return sinal + (frequencyInt + "ms");
+                    }
+                }
+            }
+        }
+        
+        @Override
+        public String toString() {
+            return Float.toString(getSpamProbability());
         }
     }
 }

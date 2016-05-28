@@ -23,6 +23,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -32,6 +33,8 @@ import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.core.Server;
+import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
@@ -93,7 +96,7 @@ public final class Reverse implements Serializable {
         return map;
     }
 
-    private static synchronized Reverse getExact(String ip) {
+    private static Reverse getExact(String ip) {
         return MAP.get(ip);
     }
 
@@ -114,7 +117,7 @@ public final class Reverse implements Serializable {
         CHANGED = true;
     }
     
-    private synchronized boolean contains(String host) {
+    private boolean contains(String host) {
         if (!Domain.isHostname(host)) {
             return false;
         } else if (addressSet == null) {
@@ -125,7 +128,7 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public synchronized TreeSet<String> getAddressSet() {
+    public TreeSet<String> getAddressSet() {
         if (addressSet == null) {
             return new TreeSet<String>();
         } else {
@@ -135,11 +138,35 @@ public final class Reverse implements Serializable {
         }
     }
     
-    private synchronized int getQueryCount() {
+    public static TreeSet<String> getValidSet(String ip, boolean refresh) {
+        Reverse reverse = Reverse.get(ip, refresh);
+        return reverse.getAddressSet(ip, refresh);
+    }
+    
+    public static TreeSet<String> getValidSet(String ip) {
+        Reverse reverse = Reverse.get(ip);
+        return reverse.getAddressSet(ip, false);
+    }
+    
+    public TreeSet<String> getAddressSet(String ip, boolean refresh) {
+        if (addressSet == null) {
+            return new TreeSet<String>();
+        } else {
+            TreeSet<String> resultSet = new TreeSet<String>();
+            for (String hostname : addressSet) {
+                if (SPF.matchHELO(ip, hostname, refresh)) {
+                    resultSet.add(hostname);
+                }
+            }
+            return resultSet;
+        }
+    }
+    
+    private int getQueryCount() {
         return queryCount;
     }
     
-    private synchronized String getAddressOnly() {
+    private String getAddressOnly() {
         try {
             if (addressSet == null) {
                 return null;
@@ -157,6 +184,48 @@ public final class Reverse implements Serializable {
         this.ip = Subnet.normalizeIP(ip);
         refresh();
         this.lastQuery = System.currentTimeMillis();
+    }
+    
+    public static String getListed(String ip, String server, Set<String> valueSet) {
+        String host = Reverse.getHostReverse(ip, server);
+        if (host == null) {
+            return null;
+        } else {
+            try {
+                TreeSet<String> IPv4Set = null;
+                TreeSet<String> IPv6Set = null;
+                for (String value : valueSet) {
+                    if (SubnetIPv4.isValidIPv4(value)) {
+                        if (IPv4Set == null) {
+                            IPv4Set = getIPv4Set(host);
+                        }
+                        if (IPv4Set.contains(value)) {
+                            return value;
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(value)) {
+                        if (IPv6Set == null) {
+                            IPv6Set = getIPv6Set(host);
+                        }
+                        if (IPv6Set.contains(value)) {
+                            return value;
+                        }
+                    }
+                }
+                return null;
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNSBL service '" + server + "' unreachable.");
+                return null;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNSBL service '" + server + "' unavailable.");
+                return null;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return null;
+            } catch (NamingException ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
     }
     
     public static boolean isListed(String ip, String dnsbl, String value) {
@@ -274,7 +343,7 @@ public final class Reverse implements Serializable {
         return ipSet;
     }
     
-    public synchronized void refresh() {
+    public void refresh() {
         long time = System.currentTimeMillis();
         try {
             String reverse;
@@ -306,11 +375,11 @@ public final class Reverse implements Serializable {
         }
     }
 
-    public synchronized boolean isExpired7() {
+    public boolean isExpired7() {
         return System.currentTimeMillis() - lastQuery > 604800000;
     }
 
-    public synchronized boolean isExpired14() {
+    public boolean isExpired14() {
         return System.currentTimeMillis() - lastQuery > 1209600000;
     }
     
@@ -324,6 +393,10 @@ public final class Reverse implements Serializable {
     }
     
     public static Reverse get(String ip) {
+        return get(ip, false);
+    }
+    
+    public static Reverse get(String ip, boolean refresh) {
         if ((ip = Subnet.normalizeIP(ip)) == null) {
             return null;
         } else {
@@ -331,6 +404,8 @@ public final class Reverse implements Serializable {
             if (reverse == null) {
                 reverse = new Reverse(ip);
                 putExact(ip, reverse);
+            } else if (refresh) {
+                reverse.refresh();
             } else if (reverse.isExpired7()) {
                 reverse.refresh();
             } else {
@@ -375,15 +450,15 @@ public final class Reverse implements Serializable {
         }
     }
     
-    private static synchronized boolean isChanged() {
+    private static boolean isChanged() {
         return CHANGED;
     }
     
-    private static synchronized void setStored() {
+    private static void setStored() {
         CHANGED = false;
     }
 
-    protected static void store() {
+    public static void store() {
         if (isChanged()) {
             try {
                 long time = System.currentTimeMillis();
@@ -403,7 +478,7 @@ public final class Reverse implements Serializable {
         }
     }
 
-    protected static void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/reverse.map");
         if (file.exists()) {

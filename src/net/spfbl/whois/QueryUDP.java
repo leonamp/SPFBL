@@ -24,6 +24,7 @@ import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.core.Core;
 
 /**
  * Servidor de consulta em UDP.
@@ -76,7 +77,7 @@ public final class QueryUDP extends Server {
         private long time = 0;
         
         public Connection() {
-            super("WHSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -208,7 +209,7 @@ public final class QueryUDP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating WHSUDP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+            Server.logDebug("creating WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
             connection.start();
             CONNECTION_COUNT++;

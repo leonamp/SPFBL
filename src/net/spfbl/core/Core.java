@@ -16,29 +16,54 @@
  */
 package net.spfbl.core;
 
+import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
 import it.sauronsoftware.junique.MessageHandler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.URLEncoder;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.security.SecureRandom;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.text.SimpleDateFormat;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Locale;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import javax.mail.Address;
+import javax.mail.AuthenticationFailedException;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.dnsbl.QueryDNSBL;
-import net.spfbl.http.ComplainHTTP;
+import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
+import org.apache.commons.codec.binary.Base32;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -48,8 +73,8 @@ import net.spfbl.whois.SubnetIPv6;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 0;
-    private static final byte RELEASE = 0;
+    private static final byte SUBVERSION = 1;
+    private static final byte RELEASE = 3;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -100,13 +125,187 @@ public class Core {
         }
     }
     
-    private static ComplainHTTP complainHTTP = null;
+    private static ServerHTTP complainHTTP = null;
     
     public static String getSpamURL() {
         if (complainHTTP == null) {
             return null;
         } else {
             return complainHTTP.getSpamURL();
+        }
+    }
+    
+    public static String getLoginURL() {
+        if (complainHTTP == null) {
+            return null;
+        } else {
+            return complainHTTP.getLoginURL();
+        }
+    }
+    
+    public static String getReleaseURL(String id) throws ProcessException {
+        if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Defer defer = Defer.getDefer(id);
+            String url = complainHTTP.getReleaseURL();
+            if (defer == null) {
+                return null;
+            } else if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (UnsupportedEncodingException ex) {
+                    throw new ProcessException("ERROR: ENCODE", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getDNSBLURL(String token) throws ProcessException {
+        if (complainHTTP == null) {
+            return null;
+        } else if (token == null) {
+            return null;
+        } else {
+            String url = complainHTTP.getDNSBLURL();
+            if (url == null) {
+                return null;
+            } else {
+                return url + token;
+            }
+        }
+    }
+    
+    public static String getUnblockURL(
+            Client client,
+            String ip,
+            String sender,
+            String hostname,
+            String result,
+            String recipient
+            ) throws ProcessException {
+        if (client == null) {
+            return null;
+        } else if (!client.hasEmail()) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (sender == null) {
+            return null;
+        } else if (result == null) {
+            return null;
+        } else if (!result.equals("PASS")) {
+            return null;
+        } else if (recipient == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getUnblockURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + client.getEmail();
+                    ticket += ' ' + ip;
+                    ticket += ' ' + sender;
+                    ticket += ' ' + recipient;
+                    ticket += hostname == null ? "" : ' ' + hostname;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getUnblockURL(
+            String client,
+            String ip
+            ) throws ProcessException {
+        if (client == null) {
+            return null;
+        } else if (!Domain.isEmail(client)) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getUnblockURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + client;
+                    ticket += ' ' + ip;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getWhiteURL(
+            String white,
+            String client,
+            String ip,
+            String sender,
+            String hostname,
+            String recipient
+            ) throws ProcessException {
+        if (white == null) {
+            return null;
+        } else if (client == null) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (sender == null) {
+            return null;
+        } else if (recipient == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getWhiteURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = Server.getNewTicketDate();
+                    ticket += ' ' + white;
+                    ticket += ' ' + client;
+                    ticket += ' ' + ip;
+                    ticket += ' ' + sender;
+                    ticket += ' ' + recipient;
+                    ticket += hostname == null ? "" : ' ' + hostname;
+                    ticket = Server.encrypt(ticket);
+                    ticket = URLEncoder.encode(ticket, "UTF-8");
+                    return url + ticket;
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
         }
     }
     
@@ -189,7 +388,14 @@ public class Core {
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
                     Core.setHostname(properties.getProperty("hostname"));
+                    Core.setInterface(properties.getProperty("interface"));
                     Core.setAdminEmail(properties.getProperty("admin_email"));
+                    Core.setIsAuthSMTP(properties.getProperty("smtp_auth"));
+                    Core.setStartTLSSMTP(properties.getProperty("smtp_starttls"));
+                    Core.setHostSMTP(properties.getProperty("smtp_host"));
+                    Core.setPortSMTP(properties.getProperty("smpt_port"));
+                    Core.setUserSMTP(properties.getProperty("smtp_user"));
+                    Core.setPasswordSMTP(properties.getProperty("smtp_password"));
                     Core.setPortAdmin(properties.getProperty("admin_port"));
                     Core.setPortWHOIS(properties.getProperty("whois_port"));
                     Core.setPortSPFBL(properties.getProperty("spfbl_port"));
@@ -206,6 +412,9 @@ public class Core {
                     Core.setDeferTimeBLACK(properties.getProperty("defer_time_gray"));
                     Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
+                    Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
+                    Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
+                    Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
@@ -222,11 +431,72 @@ public class Core {
         }
     }
     
+    public static boolean hasAdminEmail() {
+        return ADMIN_EMAIL != null;
+    }
+    
+    public static InternetAddress getAdminInternetAddress() {
+        if (ADMIN_EMAIL == null) {
+            return null;
+        } else {
+            try {
+                return new InternetAddress(ADMIN_EMAIL, "SPFBL Admin");
+            } catch (UnsupportedEncodingException ex) {
+                return null;
+            }
+        }
+    }
+    
     public static String getAdminEmail() {
         return ADMIN_EMAIL;
     }
     
+    public static short getPortAdmin() {
+        return PORT_ADMIN;
+    }
+    
+    public static short getPortWHOIS() {
+        return PORT_WHOIS;
+    }
+    
+    public static boolean hasPortWHOIS() {
+        return PORT_WHOIS > 0;
+    }
+    
+    public static short getPortSPFBL() {
+        return PORT_SPFBL;
+    }
+    
+    public static short getPortDNSBL() {
+        return PORT_DNSBL;
+    }
+    
+    public static boolean hasPortDNSBL() {
+        return PORT_DNSBL > 0;
+    }
+    
+    public static short getPortHTTP() {
+        return PORT_HTTP;
+    }
+    
+    public static boolean hasPortHTTP() {
+        return PORT_HTTP > 0;
+    }
+    
+    public static boolean hasInterface() {
+        return INTERFACE != null;
+    }
+    
+    public static String getInterface() {
+        return INTERFACE;
+    }
+    
+    public static String getHostname() {
+        return HOSTNAME;
+    }
+    
     private static String HOSTNAME = null;
+    private static String INTERFACE = null;
     private static String ADMIN_EMAIL = null;
     private static short PORT_ADMIN = 9875;
     private static short PORT_WHOIS = 0;
@@ -294,6 +564,30 @@ public class Core {
                 Server.logError("unrouteable hostname '" + hostame + "'.");
             } else {
                 Core.HOSTNAME = Domain.extractHost(hostame, false);
+            }
+        }
+    }
+    
+    private static boolean hasInterface(String netInterface) {
+        try {
+            Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+            for (NetworkInterface netint : Collections.list(nets)) {
+                if (netInterface.equals(netint.getName())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (SocketException ex) {
+            return false;
+        }
+    }
+    
+    public static synchronized void setInterface(String netInterface) {
+        if (netInterface != null && netInterface.length() > 0) {
+            if (hasInterface(netInterface)) {
+                Core.INTERFACE = netInterface;
+            } else {
+                Server.logError("network interface '" + netInterface + "' not found.");
             }
         }
     }
@@ -658,6 +952,192 @@ public class Core {
     public static synchronized void setReverseRequired(boolean required) {
         Core.REVERSE_REQUIRED = required;
     }
+    
+    private static String RECAPTCHA_KEY_SITE = null;
+    private static String RECAPTCHA_KEY_SECRET = null;
+    
+    public static boolean hasRecaptchaKeys() {
+        return RECAPTCHA_KEY_SITE != null && RECAPTCHA_KEY_SECRET != null;
+    }
+    
+    public static String getRecaptchaKeySite() {
+        return RECAPTCHA_KEY_SITE;
+    }
+    
+    public static void setRecaptchaKeySite(String key) {
+        if (key != null && key.length() > 0) {
+            RECAPTCHA_KEY_SITE = key;
+        }
+    }
+    
+    public static String getRecaptchaKeySecret() {
+        return RECAPTCHA_KEY_SECRET;
+    }
+    
+    public static void setRecaptchaKeySecret(String key) {
+        if (key != null && key.length() > 0) {
+            RECAPTCHA_KEY_SECRET = key;
+        }
+    }
+    
+    private static boolean SMTP_IS_AUTH = true;
+    private static boolean SMTP_STARTTLS = true;
+    private static String SMTP_HOST = null;
+    private static short SMTP_PORT = 465;
+    private static String SMTP_USER = null;
+    private static String SMTP_PASSWORD = null;
+    
+    public static void setPortSMTP(String port) {
+        if (port != null && port.length() > 0) {
+            try {
+                setPortSMTP(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP port '" + port + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPortSMTP(int port) {
+        if (port < 1 || port > Short.MAX_VALUE) {
+            Server.logError("invalid SMTP port '" + port + "'.");
+        } else {
+            Core.SMTP_PORT = (short) port;
+        }
+    }
+    
+    public static void setIsAuthSMTP(String auth) {
+        if (auth != null && auth.length() > 0) {
+            try {
+                setIsAuthSMTP(Boolean.parseBoolean(auth));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP is auth '" + auth + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setIsAuthSMTP(boolean auth) {
+        Core.SMTP_IS_AUTH = auth;
+    }
+    
+    public static void setStartTLSSMTP(String startTLS) {
+        if (startTLS != null && startTLS.length() > 0) {
+            try {
+                setStartTLSSMTP(Boolean.parseBoolean(startTLS));
+            } catch (Exception ex) {
+                Server.logError("invalid SMTP start TLS '" + startTLS + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setStartTLSSMTP(boolean startTLS) {
+        Core.SMTP_STARTTLS = startTLS;
+    }
+    
+    public static synchronized void setHostSMTP(String host) {
+        if (host != null && host.length() > 0) {
+            if (Domain.isHostname(host)) {
+                Core.SMTP_HOST = host.toLowerCase();
+            } else {
+                Server.logError("invalid SMTP hostname '" + host + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setUserSMTP(String user) {
+        if (user != null && user.length() > 0) {
+            if (Domain.isEmail(user) || Domain.isHostname(user)) {
+                Core.SMTP_USER = user;
+            } else {
+                Server.logError("invalid SMTP user '" + user + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPasswordSMTP(String password) {
+        if (password != null && password.length() > 0) {
+            if (password.contains(" ")) {
+                Server.logError("invalid SMTP password '" + password + "'.");
+            } else {
+                Core.SMTP_PASSWORD = password;
+            }
+        }
+    }
+    
+    public static final DecimalFormat CENTENA_FORMAT = new DecimalFormat("000");
+    
+    public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
+    
+    public static final NumberFormat PERCENT_FORMAT = NumberFormat.getPercentInstance();
+    
+    public static final SimpleDateFormat SQL_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
+    
+    /**
+     * Constante para formatar datas com hora no padrão de e-mail.
+     */
+    private static final SimpleDateFormat DATE_EMAIL_FORMAT = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US);
+    
+    public static synchronized String getEmailDate() {
+        return DATE_EMAIL_FORMAT.format(new Date());
+    }
+    
+    public static boolean hasSMTP() {
+        if (SMTP_HOST == null) {
+            return false;
+        } else if (SMTP_IS_AUTH && SMTP_USER == null) {
+            return false;
+        } else if (SMTP_IS_AUTH && SMTP_PASSWORD == null) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    
+    private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
+    
+    public static void sendNextMessage() {
+        Message message = MESSAGE_QUEUE.poll();
+        try {
+            sendMessage(message);
+        } catch (Exception ex) {
+            MESSAGE_QUEUE.offer(message);
+            Server.logError(ex);
+        }
+    }
+    
+    public static boolean offerMessage(Message message) {
+        return MESSAGE_QUEUE.offer(message);
+    }
+    
+    private static void sendMessage(Message message) throws Exception {
+        if (message != null && hasSMTP()) {
+            Server.logDebug("sending e-mail message.");
+            Server.logTrace("SMTP authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
+            Server.logTrace("SMTP start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
+            Properties props = System.getProperties();
+            props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
+            props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
+            Address[] recipients = message.getRecipients(Message.RecipientType.TO);
+            Session session = Session.getDefaultInstance(props);
+            Transport transport = session.getTransport("smtp");
+            try {
+                Server.logTrace("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
+                transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
+                Server.logTrace("SMTP sending message.");
+                transport.sendMessage(message, recipients);
+                Server.logTrace("SMTP message sent.");
+            } catch (AuthenticationFailedException ex) {
+                throw new ProcessException("Falha de autenticação STMP.", ex);
+            } catch (MailConnectException ex) {
+                throw new ProcessException("Falha de conexão STMP.", ex);
+            } catch (MessagingException ex) {
+                throw new ProcessException("Falha de conexão STMP.", ex);
+            } finally {
+                transport.close();
+                Server.logTrace("SMTP connection closed.");
+            }
+        }
+    }
+    
     /**
      * @param args the command line arguments
      */
@@ -675,11 +1155,11 @@ public class Core {
             }
             if (alreadyRunning) {
                 JUnique.sendMessage(appId, "register");
+                System.exit(1);
             } else {
                 loadConfiguration();
                 Server.logInfo("starting server...");
                 Server.loadCache();
-                SPF.dropExpiredComplain();
                 administrationTCP = new AdministrationTCP(PORT_ADMIN);
                 administrationTCP.start();
                 if (PORT_WHOIS > 0) {
@@ -696,7 +1176,7 @@ public class Core {
                     queryDNSBL.start();
                 }
                 if (PORT_HTTP > 0 ) {
-                    complainHTTP = new ComplainHTTP(HOSTNAME, PORT_HTTP);
+                    complainHTTP = new ServerHTTP(HOSTNAME, PORT_HTTP);
                     complainHTTP.load();
                     complainHTTP.start();
                 }
@@ -717,6 +1197,7 @@ public class Core {
     private static final Timer TIMER10 = new Timer("BCKGRND10");
     private static final Timer TIMER30 = new Timer("BCKGRND30");
     private static final Timer TIMER60 = new Timer("BCKGRND60");
+    private static final Timer TIMERST = new Timer("BCKGRNDST");
 
     public static void cancelTimer() {
         TIMER00.cancel();
@@ -724,6 +1205,19 @@ public class Core {
         TIMER10.cancel();
         TIMER30.cancel();
         TIMER60.cancel();
+        TIMERST.cancel();
+    }
+    
+    private static class TimerSendMessage extends TimerTask {
+        public TimerSendMessage() {
+            super();
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+        }
+        @Override
+        public void run() {
+            // Enviar próxima mensagem de e-mail.
+            Core.sendNextMessage();
+        }
     }
     
     private static class TimerExpiredComplain extends TimerTask {
@@ -906,7 +1400,28 @@ public class Core {
         }
     }
     
+    private static long CACHE_TIME_STORE = 3600000; // Frequência de 1 hora.
+    
+    public static void setCacheTimeStore(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setCacheTimeStore(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid cache time store '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setCacheTimeStore(int time) {
+        if (time < 0 || time > 1440) {
+            Server.logError("invalid cache time store '" + time + "'.");
+        } else {
+            Core.CACHE_TIME_STORE = time * 60000;
+        }
+    }
+    
     public static void startTimer() {
+        TIMER00.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
         TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
         TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
         TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
@@ -920,8 +1435,10 @@ public class Core {
         TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerStoreCache(), 3000000, 3600000); // Frequência de 1 hora.
         TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
+        if (CACHE_TIME_STORE > 0) {
+            TIMERST.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
+        }
     }
     
     public static String removerAcentuacao(String text) {
@@ -985,6 +1502,83 @@ public class Core {
                 builder.append(character);
             }
             return builder.toString();
+        }
+    }
+    
+    public static boolean isValidOTP(String secret, int code) {
+        if (secret == null) {
+            return false;
+        } else {
+            byte[] buffer = new Base32().decode(secret);
+            long index = getTimeIndexOTP();
+            if (code == getCodeOTP(buffer, index - 1)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index + 1)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    public static String generateSecretOTP() {
+        byte[] buffer = new byte[10];
+        new SecureRandom().nextBytes(buffer);
+        return new String(new Base32().encode(buffer));
+    }
+ 
+    private static long getTimeIndexOTP() {
+        return System.currentTimeMillis() / 1000 / 30;
+    }
+
+    private static long getCodeOTP(byte[] secret, long timeIndex) {
+        try {
+            SecretKeySpec signKey = new SecretKeySpec(secret, "HmacSHA1");
+            ByteBuffer buffer = ByteBuffer.allocate(8);
+            buffer.putLong(timeIndex);
+            byte[] timeBytes = buffer.array();
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(signKey);
+            byte[] hash = mac.doFinal(timeBytes);
+            int offset = hash[19] & 0xf;
+            long truncatedHash = hash[offset] & 0x7f;
+            for (int i = 1; i < 4; i++) {
+                truncatedHash <<= 8;
+                truncatedHash |= hash[offset + i] & 0xff;
+            }
+            return (truncatedHash %= 1000000);
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+    
+    public static boolean isOpenSMTP(String host, int port, int timeout) {
+        try {
+            Properties props = new Properties();
+            props.put("mail.smtp.starttls.enable", "false");
+            props.put("mail.smtp.auth", "false");
+            props.put("mail.smtp.timeout", timeout);
+            Session session = Session.getInstance(props, null);
+            Transport transport = session.getTransport("smtp");
+            transport.connect(host, port, null, null);
+            transport.close();
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+    
+    public static Integer getInteger(String text) {
+        if (text == null) {
+            return null;
+        } else {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
         }
     }
 }

@@ -199,6 +199,15 @@ public final class SubnetIPv6 extends Subnet {
                 String.format("%4s", Integer.toHexString(p8)).replace(' ', '0');
     }
     
+    public static String expandCIDRv6(String cidr) {
+        int index = cidr.indexOf('/');
+        String ip = cidr.substring(0, index);
+        String mask = cidr.substring(index);
+        ip = expandIPv6(ip);
+        cidr = ip + mask;
+        return cidr;
+    }
+    
     /**
      * Meio mais seguro de padronizar os endereços IP.
      * @param ip o endereço IPv6.
@@ -303,20 +312,33 @@ public final class SubnetIPv6 extends Subnet {
      * @return verdadeiro se um IP é válido na notação de IPv6.
      */
     public static boolean isValidIPv6(String ip) {
-        ip = ip.trim();
-        ip = ip.toLowerCase();
-        return Pattern.matches("^"
-                + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
-                + "$", ip);
+        if (ip == null) {
+            return false;
+        } else {
+            ip = ip.trim();
+            ip = ip.toLowerCase();
+            return Pattern.matches("^"
+                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
+                    + "$", ip
+                    );
+        }
+    }
+    
+    public static String getNextIPv6(String ip) {
+        if (ip == null) {
+            return null;
+        } else {
+            throw new UnsupportedOperationException("NOT IMPLEMENTED YET");
+        }
     }
     
     /**
@@ -325,14 +347,25 @@ public final class SubnetIPv6 extends Subnet {
      * @return verdadeiro se um CIDR é válido na notação de IPv6.
      */
     public static boolean isValidCIDRv6(String cidr) {
-        cidr = cidr.trim();
-        cidr = cidr.toLowerCase();
-        return Pattern.matches("^"
-                + "([\\da-f]{1,4}:|((?=.*(::))(?!.*\\3.+\\3))\\3?)"
-                + "([\\da-f]{1,4}(\\3|:\\b)|\\2){5}"
-                + "(([\\da-f]{1,4}(\\3|:\\b|$)|\\2){2}|(((2[0-4]|1\\d|[1-9])?\\d|25[0-5])\\.?\\b){4})"
-                + "/[0-9]{1,3}"
-                + "$", cidr);
+        if (cidr == null) {
+            return false;
+        } else {
+            cidr = cidr.trim();
+            cidr = cidr.toLowerCase();
+            return Pattern.matches("^"
+                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+                    + "/[0-9]{1,3}$", cidr
+                    );
+        }
     }
     
     public static boolean isReverseIPv6(String reverse) {
@@ -458,26 +491,21 @@ public final class SubnetIPv6 extends Subnet {
                 Integer.toHexString(p8);
     }
     
-    /**
-     * Corrige o endereço da notação CIDR para sem abreviação.
-     * @param inetnum o endereço com notação CIDR sem abreviação.
-     * @return o endereço da notação CIDR sem abreviação.
-     */
-    protected static String normalizeCIDRv6(String inetnum) {
+    protected static String getLastIPv6(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String size = inetnum.substring(index+1);
         int sizeInt = Integer.parseInt(size);
         short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
         short[] address = SubnetIPv6.split(ip, mask);
-        int p1 = address[0] & 0xFFFF;
-        int p2 = address[1] & 0xFFFF;
-        int p3 = address[2] & 0xFFFF;
-        int p4 = address[3] & 0xFFFF;
-        int p5 = address[4] & 0xFFFF;
-        int p6 = address[5] & 0xFFFF;
-        int p7 = address[6] & 0xFFFF;
-        int p8 = address[7] & 0xFFFF;
+        int p1 = (address[0] & 0xFFFF) ^ (~mask[0] & 0xFFFF);
+        int p2 = (address[1] & 0xFFFF) ^ (~mask[1] & 0xFFFF);
+        int p3 = (address[2] & 0xFFFF) ^ (~mask[2] & 0xFFFF);
+        int p4 = (address[3] & 0xFFFF) ^ (~mask[3] & 0xFFFF);
+        int p5 = (address[4] & 0xFFFF) ^ (~mask[4] & 0xFFFF);
+        int p6 = (address[5] & 0xFFFF) ^ (~mask[5] & 0xFFFF);
+        int p7 = (address[6] & 0xFFFF) ^ (~mask[6] & 0xFFFF);
+        int p8 = (address[7] & 0xFFFF) ^ (~mask[7] & 0xFFFF);
         return Integer.toHexString(p1) + ":" +
                 Integer.toHexString(p2) + ":" +
                 Integer.toHexString(p3) + ":" +
@@ -485,7 +513,45 @@ public final class SubnetIPv6 extends Subnet {
                 Integer.toHexString(p5) + ":" +
                 Integer.toHexString(p6) + ":" +
                 Integer.toHexString(p7) + ":" +
-                Integer.toHexString(p8) + "/" + sizeInt;
+                Integer.toHexString(p8);
+    }
+    
+    /**
+     * Corrige o endereço da notação CIDR para sem abreviação.
+     * @param inetnum o endereço com notação CIDR sem abreviação.
+     * @return o endereço da notação CIDR sem abreviação.
+     */
+    public static String normalizeCIDRv6(String inetnum) {
+        if (inetnum == null) {
+            return null;
+        } else {
+            int index = inetnum.indexOf('/');
+            String ip = inetnum.substring(0, index);
+            String size = inetnum.substring(index+1);
+            int sizeInt = Integer.parseInt(size);
+            if (sizeInt < 0 || sizeInt > 128) {
+                return null;
+            } else {
+                short[] mask = SubnetIPv6.getMaskIPv6(sizeInt);
+                short[] address = SubnetIPv6.split(ip, mask);
+                int p1 = address[0] & 0xFFFF;
+                int p2 = address[1] & 0xFFFF;
+                int p3 = address[2] & 0xFFFF;
+                int p4 = address[3] & 0xFFFF;
+                int p5 = address[4] & 0xFFFF;
+                int p6 = address[5] & 0xFFFF;
+                int p7 = address[6] & 0xFFFF;
+                int p8 = address[7] & 0xFFFF;
+                return Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8) + "/" + sizeInt;
+            }
+        }
     }
     
     public static String getInetnum(String ip) {

@@ -16,6 +16,12 @@
  */
 package net.spfbl.core;
 
+import net.spfbl.data.Provider;
+import net.spfbl.data.NoReply;
+import net.spfbl.data.Block;
+import net.spfbl.data.White;
+import net.spfbl.data.Trap;
+import net.spfbl.data.Ignore;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.spf.SPF.Status;
@@ -27,28 +33,24 @@ import net.spfbl.whois.Owner;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -61,14 +63,17 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
+import net.spfbl.core.Client.Permission;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.dnsbl.ServerDNSBL;
+import net.spfbl.spf.SPF.Binomial;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -118,7 +123,13 @@ public abstract class Server extends Thread {
         NameServer.load();
         Peer.load();
         Reverse.load();
+        Block.load();
+        White.load();
+        Trap.load();
+        Ignore.load();
+        Provider.load();
         SPF.load();
+        NoReply.load();
         Defer.load();
         QueryDNSBL.load();
     }
@@ -138,7 +149,13 @@ public abstract class Server extends Thread {
         NameServer.store();
         Peer.store();
         Reverse.store();
+        Block.store();
+        White.store();
+        Trap.store();
+        Ignore.store();
+        Provider.store();
         SPF.store();
+        NoReply.store();
         Defer.store();
         QueryDNSBL.store();
     }
@@ -316,20 +333,22 @@ public abstract class Server extends Thread {
     public static void log(long time, Core.Level level, String type, String message, String result) {
         if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
             int latencia = (int) (System.currentTimeMillis() - time);
-            if (latencia > 9999) {
+            if (latencia > 99999) {
                 // Para manter a formatação correta no LOG,
-                // Registrar apenas latências até 9999, que tem 4 digitos.
-                latencia = 9999;
+                // Registrar apenas latências até 99999, que tem 5 digitos.
+                latencia = 99999;
             } else if (latencia < 0) {
                 latencia = 0;
             }
             if (message != null) {
                 message = message.replace("\r", "\\r");
                 message = message.replace("\n", "\\n");
+                message = message.replace("\t", "\\t");
             }
             if (result != null) {
                 result = result.replace("\r", "\\r");
                 result = result.replace("\n", "\\n");
+                result = result.replace("\t", "\\t");
             }
             Date date = new Date(time);
             String text = FORMAT_DATE_LOG.format(date)
@@ -437,7 +456,7 @@ public abstract class Server extends Thread {
      * e para encontrar com mais facilidade códigos
      * do programa que não estão bem escritos.
      */
-    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("0000");
+    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("00000");
     
     private static void log(
             long time,
@@ -751,6 +770,8 @@ public abstract class Server extends Thread {
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
+        Server.logInfo("interrupting analises...");
+        Analise.interrupt();
         Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {
@@ -947,15 +968,20 @@ public abstract class Server extends Thread {
     
     static {
         try {
-            Hashtable env = new Hashtable();
-            env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
-            env.put("com.sun.jndi.dns.timeout.initial", "3000");
-            env.put("com.sun.jndi.dns.timeout.retries", "1");
-            INITIAL_DIR_CONTEXT = new InitialDirContext(env);
+            initDNS();
         } catch (Exception ex) {
             Server.logError(ex);
             System.exit(1);
         }
+    }
+    
+    @SuppressWarnings("unchecked")
+    public static void initDNS() throws NamingException {
+        Hashtable env = new Hashtable();
+        env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
+        env.put("com.sun.jndi.dns.timeout.initial", "3000");
+        env.put("com.sun.jndi.dns.timeout.retries", "1");
+        INITIAL_DIR_CONTEXT = new InitialDirContext(env);
     }
     
     /**
@@ -1025,10 +1051,8 @@ public abstract class Server extends Thread {
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             if (Domain.backgroundRefresh()) {
                 return true;
-            } else if (Subnet.backgroundRefresh()) {
-                return true;
             } else {
-                return false;
+                return Subnet.backgroundRefresh();
             }
         } else {
             return false;
@@ -1100,1212 +1124,4 @@ public abstract class Server extends Thread {
         }
     }
     
-    public static final DecimalFormat CENTENA_FORMAT = new DecimalFormat("000");
-    
-    public static final NumberFormat DECIMAL_FORMAT = NumberFormat.getNumberInstance();
-    
-    /**
-     * Processa o comando e retorna o resultado.
-     * @param command a expressão do comando.
-     * @return o resultado do processamento.
-     */
-    protected String processCommand(String command) {
-        try {
-            String result = "";
-            if (command.length() == 0) {
-                result = "ERROR: COMMAND\n";
-            } else {
-                StringTokenizer tokenizer = new StringTokenizer(command, " ");
-                String token = tokenizer.nextToken();
-                if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
-                    return Core.getAplication() + "\n";
-                } else if (token.equals("DUMP") && !tokenizer.hasMoreTokens()) {
-                    StringBuilder builder = new StringBuilder();
-                    builder.append("BLOCK DROP ALL\n");
-                    for (String block : SPF.getAllBlockSet()) {
-                        builder.append("BLOCK ADD ");
-                        builder.append(block);
-                        builder.append('\n');
-                    }
-                    builder.append("CLIENT DROP ALL\n");
-                    for (Client client : Client.getSet()) {
-                        builder.append("CLIENT ADD ");
-                        builder.append(client.getCIDR());
-                        builder.append(' ');
-                        builder.append(client.getDomain());
-                        builder.append(' ');
-                        builder.append(client.getPermission().name());
-                        if (client.hasEmail()) {
-                            builder.append(' ');
-                            builder.append(client.getEmail());
-                        }
-                        builder.append('\n');
-                    }
-                    builder.append("DNSBL DROP ALL\n");
-                    for (ServerDNSBL server : QueryDNSBL.getValues()) {
-                        builder.append("DNSBL ADD ");
-                        builder.append(server.getHostName());
-                        builder.append(' ');
-                        builder.append(server.getMessage());
-                        builder.append('\n');
-                    }
-                    builder.append("GUESS DROP ALL\n");
-                    HashMap<String,String> guessMap = SPF.getGuessMap();
-                    for (String domain : guessMap.keySet()) {
-                        String guess = guessMap.get(domain);
-                        builder.append("GUESS ADD ");
-                        builder.append(domain);
-                        builder.append(" \"");
-                        builder.append(guess);
-                        builder.append("\"\n");
-                    }
-                    builder.append("IGNORE DROP ALL\n");
-                    for (String ignore : SPF.getIgnoreSet()) {
-                        builder.append("IGNORE ADD ");
-                        builder.append(ignore);
-                        builder.append('\n');
-                    }
-                    builder.append("PEER DROP ALL\n");
-                    for (Peer peer : Peer.getSet()) {
-                        builder.append("PEER ADD ");
-                        builder.append(peer.getAddress());
-                        builder.append(':');
-                        builder.append(peer.getPort());
-                        builder.append(' ');
-                        builder.append(peer.getSendStatus().name());
-                        builder.append(' ');
-                        builder.append(peer.getReceiveStatus().name());
-                        if (peer.hasEmail()) {
-                            builder.append(' ');
-                            builder.append(peer.getEmail());
-                        }
-                        builder.append('\n');
-                    }
-                    builder.append("PROVIDER DROP ALL\n");
-                    for (String provider : SPF.getProviderSet()) {
-                        builder.append("PROVIDER ADD ");
-                        builder.append(provider);
-                        builder.append('\n');
-                    }
-                    builder.append("TLD DROP ALL\n");
-                    for (String tld : Domain.getTLDSet()) {
-                        builder.append("TLD ADD ");
-                        builder.append(tld);
-                        builder.append('\n');
-                    }
-                    builder.append("TRAP DROP ALL\n");
-                    for (String trap : SPF.getAllTrapSet()) {
-                        builder.append("TRAP ADD ");
-                        builder.append(trap);
-                        builder.append('\n');
-                    }
-                    builder.append("USER DROP ALL\n");
-                    for (User user : User.getSet()) {
-                        builder.append("USER ADD ");
-                        builder.append(user.getEmail());
-                        builder.append(' ');
-                        builder.append(user.getName());
-                        builder.append('\n');
-                    }
-                    builder.append("WHITE DROP ALL\n");
-                    for (String white : SPF.getAllWhiteSet()) {
-                        builder.append("WHITE ADD ");
-                        builder.append(white);
-                        builder.append('\n');
-                    }
-                    builder.append("STORE\n");
-                    result = builder.toString();
-                } else if (token.equals("LOG") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("LEVEL") && tokenizer.countTokens() == 1) {
-                        token = tokenizer.nextToken();
-                        try {
-                            Core.Level level = Core.Level.valueOf(token);
-                            if (Core.setLevelLOG(level)) {
-                                result += "CHANGED\n";
-                            } else {
-                                result += "SAME\n";
-                            }
-                        } catch (Exception ex) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("RELOAD") && !tokenizer.hasMoreTokens()) {
-                    if (Core.loadConfiguration()) {
-                        result = "RELOADED\n";
-                    } else {
-                        result = "FAILED\n";
-                    }
-                } else if (token.equals("URL") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.countTokens() == 2) {
-                        String domain = tokenizer.nextToken();
-                        String url = tokenizer.nextToken();
-                        if (Core.addURL(domain, url)) {
-                            result = "ADDED\n";
-                            Core.storeURL();
-                        } else {
-                            result = "INVALID\n";
-                        }
-                    } else if (token.equals("DROP") && tokenizer.countTokens() == 1) {
-                        String domain = tokenizer.nextToken();
-                        String url = Core.dropURL(domain);
-                        if (url == null) {
-                            result = "NOT FOUND\n";
-                        } else {
-                            result = "DROPED " + url + "\n";
-                            Core.storeURL();
-                        }
-                    } else if (token.equals("SHOW") && tokenizer.countTokens() == 0) {
-                        HashMap<String,String> map = Core.getMapURL();
-                        for (String domain : map.keySet()) {
-                            String url = map.get(domain);
-                            result += domain + " " + (url == null ? "NONE" : url) + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
-                    // Comando para finalizar o serviço.
-                    if (shutdown()) {
-                        // Fechamento de processos realizado com sucesso.
-                        result = "OK\n";
-                    } else {
-                        // Houve falha no fechamento dos processos.
-                        result = "ERROR: SHUTDOWN\n";
-                    }
-                } else if (token.equals("STORE") && !tokenizer.hasMoreTokens()) {
-                    // Comando para gravar o cache em disco.
-                    result = "OK\n";
-                    storeCache();
-                } else if (token.equals("TLD") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar TLDs.
-                        while (tokenizer.hasMoreTokens()) {
-                            try {
-                                String tld = tokenizer.nextToken();
-                                if (Domain.addTLD(tld)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> tldSet = Domain.dropAllTLD();
-                            if (tldSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String tld : tldSet) {
-                                    result += "DROPED " + tld + "\n";
-                                }
-                            }
-                        } else {
-                            try {
-                                if (Domain.removeTLD(token)) {
-                                    result = "DROPED\n";
-                                } else {
-                                    result = "NOT FOUND\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
-                        }
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (String tld : Domain.getTLDSet()) {
-                            result += tld + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("DNSBL") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.countTokens() >= 2) {
-                        String hostname = tokenizer.nextToken();
-                        String message = tokenizer.nextToken();
-                        while (tokenizer.hasMoreTokens()) {
-                            message += ' ' + tokenizer.nextToken();
-                        }
-                        if (QueryDNSBL.add(hostname, message)) {
-                            result = "ADDED\n";
-                        } else {
-                            result = "ALREADY EXISTS\n";
-                        }
-                        QueryDNSBL.store();
-                    } else if (token.equals("SET") && tokenizer.countTokens() >= 2) {
-                        String hostname = tokenizer.nextToken();
-                        String message = tokenizer.nextToken();
-                        while (tokenizer.hasMoreTokens()) {
-                            message += ' ' + tokenizer.nextToken();
-                        }
-                        if (QueryDNSBL.set(hostname, message)) {
-                            result = "UPDATED\n";
-                        } else {
-                            result = "NOT FOUND\n";
-                        }
-                        QueryDNSBL.store();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreTokens()) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                for (ServerDNSBL server : QueryDNSBL.dropAll()) {
-                                    result += "DROPED " + server + "\n";
-                                }
-                            } else {
-                                ServerDNSBL server = QueryDNSBL.drop(token);
-                                if (server == null) {
-                                    result += "NOT FOUND\n";
-                                } else {
-                                    result += "DROPED " + server + "\n";
-                                }
-                            }
-                        }
-                        QueryDNSBL.store();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        HashMap<String,ServerDNSBL> map = QueryDNSBL.getMap();
-                        if (map.isEmpty()) {
-                            result = "EMPTY\n";
-                        } else {
-                            for (String key : map.keySet()) {
-                                ServerDNSBL server = map.get(key);
-                                result += server + " " + server.getMessage() + "\n";
-                            }
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar provedor de e-mail.
-                        while (tokenizer.hasMoreTokens()) {
-                            try {
-                                String provider = tokenizer.nextToken();
-                                if (SPF.addProvider(provider)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeProvider();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> providerSet = SPF.dropAllProvider();
-                            if (providerSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String provider : providerSet) {
-                                    result += "DROPED " + provider + "\n";
-                                }
-                            }
-                        } else {
-                            try {
-                                if (SPF.dropProvider(token)) {
-                                    result = "DROPED\n";
-                                } else {
-                                    result = "NOT FOUND\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeProvider();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        // Mecanismo de visualização de provedores.
-                        for (String provider : SPF.getProviderSet()) {
-                            result += provider + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("IGNORE") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar provedor de e-mail.
-                        while (tokenizer.hasMoreTokens()) {
-                            try {
-                                String ignore = tokenizer.nextToken();
-                                if (SPF.addIgnore(ignore)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeIgnore();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> ignoreSet = SPF.dropAllIgnore();
-                            if (ignoreSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String ignore : ignoreSet) {
-                                    result += "DROPED " + ignore + "\n";
-                                }
-                            }
-                        } else {
-                            try {
-                                if (SPF.dropIgnore(token)) {
-                                    result += "DROPED\n";
-                                } else {
-                                    result += "NOT FOUND\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeIgnore();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        // Mecanismo de visualização de provedores.
-                        TreeSet<String> ignoreSet = SPF.getIgnoreSet();
-                        for (String ignore : ignoreSet) {
-                            result += ignore + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreElements()) {
-                            try {
-                                String blockedToken = tokenizer.nextToken();
-                                int index = blockedToken.indexOf(':');
-                                String client = null;
-                                if (index != -1) {
-                                    String prefix = blockedToken.substring(0, index);
-                                    if (Domain.isEmail(prefix)) {
-                                        client = prefix;
-                                        blockedToken = blockedToken.substring(index+1);
-                                    }
-                                }
-                                if (client == null && (blockedToken = SPF.addBlock(blockedToken)) != null) {
-                                    Peer.sendBlockToAll(blockedToken);
-                                    result += "ADDED\n";
-                                } else if (client != null && SPF.addBlock(client, blockedToken)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeBlock();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            if (tokenizer.hasMoreTokens()) {
-                                result = "ERROR: COMMAND\n";
-                            } else {
-                                try {
-                                    if (SPF.dropAllBlock()) {
-                                        result += "DROPED\n";
-                                    } else {
-                                        result += "EMPTY\n";
-                                    }
-                                } catch (ProcessException ex) {
-                                    result += ex.getMessage() + "\n";
-                                }
-                            }
-                        } else {
-                            do {
-                                try {
-                                    int index = token.indexOf(':');
-                                    String client = null;
-                                    if (index != -1) {
-                                        String prefix = token.substring(0, index);
-                                        if (Domain.isEmail(prefix)) {
-                                            client = prefix;
-                                            token = token.substring(index+1);
-                                        }
-                                    }
-                                    if (client == null && SPF.dropBlock(token)) {
-                                        result += "DROPED\n";
-                                    } else if (client != null && SPF.dropBlock(client, token)) {
-                                        result += "DROPED\n";
-                                    } else {
-                                        result += "NOT FOUND\n";
-                                    }
-                                } catch (ProcessException ex) {
-                                    result += ex.getMessage() + "\n";
-                                }
-                            } while (tokenizer.hasMoreElements());
-                            if (result.length() == 0) {
-                                result = "ERROR: COMMAND\n";
-                            }
-                        }
-                        SPF.storeBlock();
-                    } else if (token.equals("SHOW")) {
-                        if (!tokenizer.hasMoreTokens()) {
-                            // Mecanismo de visualização 
-                            // de bloqueios de remetentes.
-                            for (String sender : SPF.getBlockSet()) {
-                                result += sender + "\n";
-                            }
-                            if (result.length() == 0) {
-                                result = "EMPTY\n";
-                            }
-                        } else if (tokenizer.countTokens() == 1) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                // Mecanismo de visualização de 
-                                // todos os bloqueios de remetentes.
-                                for (String sender : SPF.getAllBlockSet()) {
-                                    result += sender + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            }
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("WHITE") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreElements()) {
-                            try {
-                                String whiteToken = tokenizer.nextToken();
-                                int index = whiteToken.indexOf(':');
-                                String client = null;
-                                if (index != -1) {
-                                    String prefix = whiteToken.substring(0, index);
-                                    if (Domain.isEmail(prefix)) {
-                                        client = prefix;
-                                        whiteToken = whiteToken.substring(index+1);
-                                    }
-                                }
-                                if (client == null && SPF.addWhite(whiteToken)) {
-                                    result += "ADDED\n";
-                                } else if (client != null && SPF.addWhite(client, whiteToken)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeWhite();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> whiteSet = SPF.dropAllWhite();
-                            if (whiteSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String white : whiteSet) {
-                                    result += "DROPED " + white + "\n";
-                                }
-                            }
-                        } else {
-                            try {
-                                int index = token.indexOf(':');
-                                String client = null;
-                                if (index != -1) {
-                                    String prefix = token.substring(0, index);
-                                    if (Domain.isEmail(prefix)) {
-                                        client = prefix;
-                                        token = token.substring(index+1);
-                                    }
-                                }
-                                if (client == null && SPF.dropWhite(token)) {
-                                    result = "DROPED\n";
-                                } else if (client != null && SPF.dropWhite(client, token)) {
-                                    result = "DROPED\n";
-                                } else {
-                                    result = "NOT FOUND\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeWhite();
-                    } else if (token.equals("SHOW")) {
-                        if (!tokenizer.hasMoreTokens()) {
-                            // Mecanismo de visualização 
-                            // de liberação de remetentes.
-                            for (String sender : SPF.getWhiteSet()) {
-                                result += sender + "\n";
-                            }
-                            if (result.length() == 0) {
-                                result = "EMPTY\n";
-                            }
-                        } else if (tokenizer.countTokens() == 1) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                // Mecanismo de visualização de 
-                                // todos os liberação de remetentes.
-                                for (String sender : SPF.getAllWhiteSet()) {
-                                    result += sender + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            }
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("TRAP") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        while (tokenizer.hasMoreElements()) {
-                            try {
-                                String trapToken = tokenizer.nextToken();
-                                int index = trapToken.indexOf(':');
-                                String client = null;
-                                if (index != -1) {
-                                    String prefix = trapToken.substring(0, index);
-                                    if (Domain.isEmail(prefix)) {
-                                        client = prefix;
-                                        trapToken = trapToken.substring(index+1);
-                                    }
-                                }
-                                if (client == null && SPF.addTrap(trapToken)) {
-                                    result += "ADDED\n";
-                                } else if (client != null && SPF.addTrap(client, trapToken)) {
-                                    result += "ADDED\n";
-                                } else {
-                                    result += "ALREADY EXISTS\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeTrap();
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> trapSet = SPF.dropAllTrap();
-                            if (trapSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String trap : trapSet) {
-                                    result += "DROPED " + trap + "\n";
-                                }
-                            }
-                        } else {
-                            try {
-                                int index = token.indexOf(':');
-                                String client = null;
-                                if (index != -1) {
-                                    String prefix = token.substring(0, index);
-                                    if (Domain.isEmail(prefix)) {
-                                        client = prefix;
-                                        token = token.substring(index+1);
-                                    }
-                                }
-                                if (client == null && SPF.dropTrap(token)) {
-                                    result = "DROPED\n";
-                                } else if (client != null && SPF.dropTrap(client, token)) {
-                                    result = "DROPED\n";
-                                } else {
-                                    result = "NOT FOUND\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result += ex.getMessage() + "\n";
-                            }
-                        }
-                        if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        SPF.storeTrap();
-                    } else if (token.equals("SHOW")) {
-                        if (!tokenizer.hasMoreTokens()) {
-                            // Mecanismo de visualização 
-                            // de liberação de remetentes.
-                            for (String sender : SPF.getTrapSet()) {
-                                result += sender + "\n";
-                            }
-                            if (result.length() == 0) {
-                                result = "EMPTY\n";
-                            }
-                        } else if (tokenizer.countTokens() == 1) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                // Mecanismo de visualização de 
-                                // todos os liberação de remetentes.
-                                for (String sender : SPF.getAllTrapSet()) {
-                                    result += sender + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            }
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("CLIENT") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        String cidr = tokenizer.nextToken();
-                        if (tokenizer.hasMoreTokens()) {
-                            String domain = tokenizer.nextToken();
-                            if (tokenizer.hasMoreTokens()) {
-                                String permission = tokenizer.nextToken();
-                                String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                try {
-                                    Client client = Client.create(
-                                            cidr, domain, permission, email
-                                    );
-                                    if (client == null) {
-                                        result = "ALREADY EXISTS\n";
-                                    } else {
-                                        result = "ADDED " + client + "\n";
-                                    }
-                                } catch (ProcessException ex) {
-                                    result = ex.getMessage() + "\n";
-                                }
-                                Client.store();
-                            } else {
-                                result = "ERROR: COMMAND\n";
-                            }
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<Client> clientSet = Client.dropAll();
-                            if (clientSet.isEmpty()) {
-                                result += "EMPTY\n";
-                            } else {
-                                for (Client client : clientSet) {
-                                    result += "DROPED " + client + "\n";
-                                }
-                            }
-                            Client.store();
-                        } else if (Subnet.isValidCIDR(token)) {
-                            Client client = Client.drop(token);
-                            if (client == null) {
-                                result += "NOT FOUND\n";
-                            } else {
-                                result += "DROPED " + client + "\n";
-                            }
-                            Client.store();
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                        
-                    } else if (token.equals("SHOW")) {
-                        if (tokenizer.hasMoreTokens()) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("DNSBL")) {
-                                for (Client client : Client.getSet(Client.Permission.DNSBL)) {
-                                    result += client + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (token.equals("SPFBL")) {
-                                for (Client client : Client.getSet(Client.Permission.SPFBL)) {
-                                    result += client + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (token.equals("NONE")) {
-                                for (Client client : Client.getSet(Client.Permission.NONE)) {
-                                    result += client + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (token.equals("ALL")) {
-                                for (Client client : Client.getSet(Client.Permission.ALL)) {
-                                    result += client + "\n";
-                                }
-                                if (result.length() == 0) {
-                                    result = "EMPTY\n";
-                                }
-                            } else if (Subnet.isValidIP(token)) {
-                                Client client = Client.getByIP(token);
-                                if (client == null) {
-                                    result += "NOT FOUND\n";
-                                } else {
-                                    result += client + "\n";
-                                }
-                            } else {
-                                result = "ERROR: COMMAND\n";
-                            }
-                        } else {
-                            for (Client client : Client.getSet()) {
-                                result += client + "\n";
-                            }
-                            if (result.length() == 0) {
-                                result = "EMPTY\n";
-                            }
-                        }
-                    } else if (token.equals("SET") && tokenizer.hasMoreTokens()) {
-                        String cidr = tokenizer.nextToken();
-                        if (tokenizer.hasMoreTokens()) {
-                            String domain = tokenizer.nextToken();
-                            if (tokenizer.hasMoreTokens()) {
-                                String permission = tokenizer.nextToken();
-                                String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                if (tokenizer.hasMoreTokens()) {
-                                    result = "ERROR: COMMAND\n";
-                                } else if (!Domain.isHostname(domain)) {
-                                    result = "ERROR: INVALID DOMAIN\n";
-                                } else if (email != null && !Domain.isEmail(email)) {
-                                    result = "ERROR: INVALID EMAIL\n";
-                                } else {
-                                    Client client = Client.getByCIDR(cidr);
-                                    if (client == null) {
-                                        result += "NOT FOUND\n";
-                                    } else {
-                                        client.setPermission(permission);
-                                        client.setDomain(domain);
-                                        client.setEmail(email);
-                                        result += "UPDATED " + client + "\n";
-                                    }
-                                    Client.store();
-                                }
-                            } else {
-                                result = "ERROR: COMMAND\n";
-                            }
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("USER") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
-                        String email = tokenizer.nextToken();
-                        if (tokenizer.hasMoreTokens()) {
-                            String name = tokenizer.nextToken();
-                            while (tokenizer.hasMoreElements()) {
-                                name += ' ' + tokenizer.nextToken();
-                            }
-                            try {
-                                User user = User.create(email, name);
-                                if (user == null) {
-                                    result = "ALREADY EXISTS\n";
-                                } else {
-                                    result = "ADDED " + user + "\n";
-                                }
-                            } catch (ProcessException ex) {
-                                result = ex.getMessage() + "\n";
-                            }
-                            User.store();
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<User> userSet = User.dropAll();
-                            if (userSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (User user : userSet) {
-                                    result += "DROPED " + user + "\n";
-                                }
-                            }
-                        } else {
-                            User user = User.drop(token);
-                            if (user == null) {
-                                result = "NOT FOUND\n";
-                            } else {
-                                result = "DROPED " + user + "\n";
-                            }
-                        }
-                        User.store();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (User user : User.getSet()) {
-                            result += user + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
-                        String service = tokenizer.nextToken();
-                        String email = null;
-                        if (tokenizer.hasMoreElements()) {
-                            email = tokenizer.nextToken();
-                        }
-                        int index = service.indexOf(':');
-                        if (index == -1) {
-                            result = "ERROR: COMMAND\n";
-                        } else if (email != null && !Domain.isEmail(email)) {
-                            result = "ERROR: INVALID EMAIL\n";
-                        } else {
-                            String address = service.substring(0, index);
-                            String port = service.substring(index + 1);
-                            Peer peer = Peer.create(address, port);
-                            if (peer == null) {
-                                result = "ALREADY EXISTS\n";
-                            } else {
-                                peer.setEmail(email);
-                                peer.sendHELO();
-                                result = "ADDED " + peer + "\n";
-                            }
-                            Peer.store();
-                        }
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<Peer> peerSet = Peer.dropAll();
-                            if (peerSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (Peer peer : peerSet) {
-                                    result += "DROPED " + peer + "\n";
-                                }
-                            }
-                        } else {
-                            Peer peer = Peer.drop(token);
-                            result = (peer == null ? "NOT FOUND" : "DROPED " + peer) + "\n";
-                        }
-                        Peer.store();
-                    } else if (token.equals("SHOW")) {
-                        if (!tokenizer.hasMoreTokens()) {
-                            for (Peer peer : Peer.getSet()) {
-                                result += peer + "\n";
-                            }
-                            if (result.length() == 0) {
-                                result = "EMPTY\n";
-                            }
-                        } else if (tokenizer.countTokens() == 1) {
-                            String address = tokenizer.nextToken();
-                            Peer peer = Peer.get(address);
-                            if (peer == null) {
-                                result = "NOT FOUND " + address + "\n";
-                            } else {
-                                result = peer + "\n";
-                                for (String confirm : peer.getRetationSet()) {
-                                    result += confirm + "\n";
-                                }
-                            }
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else if (token.equals("SET") && tokenizer.countTokens() == 3) {
-                        String address = tokenizer.nextToken();
-                        String send = tokenizer.nextToken();
-                        String receive = tokenizer.nextToken();
-                        Peer peer = Peer.get(address);
-                        if (peer == null) {
-                            result = "NOT FOUND " + address + "\n";
-                        } else {
-                            result = peer + "\n";
-                            try {
-                                result += (peer.setSendStatus(send) ? "UPDATED" : "ALREADY") + " SEND=" + send + "\n";
-                            } catch (ProcessException ex) {
-                                result += "NOT RECOGNIZED '" + send + "'\n";
-                            }
-                            try {
-                                result += (peer.setReceiveStatus(receive) ? "UPDATED" : "ALREADY") + " RECEIVE=" + receive + "\n";
-                            } catch (ProcessException ex) {
-                                result += "NOT RECOGNIZED '" + receive + "'\n";
-                            }
-                            Peer.store();
-                        }
-                    } else if (token.equals("PING") && tokenizer.countTokens() == 1) {
-                        String address = tokenizer.nextToken();
-                        Peer peer = Peer.get(address);
-                        if (peer == null) {
-                            result = "NOT FOUND " + address + "\n";
-                        } else if (peer.sendHELO()) {
-                            result = "HELO SENT TO " + address + "\n";
-                        } else {
-                            result = "HELO NOT SENT local hostname is invalid\n";
-                        }
-                    } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
-                        String address = tokenizer.nextToken();
-                        Peer peer = Peer.get(address);
-                        if (peer == null) {
-                            result = "NOT FOUND " + address + "\n";
-                        } else {
-                            peer.sendAll();
-                            result = "SENT TO " + address + "\n";
-                        }
-                    } else if (token.equals("RETENTION") && tokenizer.hasMoreElements()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("SHOW") && tokenizer.countTokens() == 1) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> retationSet = Peer.getAllRetationSet();
-                                if (retationSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String tokenRetained : retationSet) {
-                                        result += tokenRetained + '\n';
-                                    }
-                                }
-                            } else if (Domain.isHostname(token)) {
-                                Peer peer = Peer.get(token);
-                                if (peer == null) {
-                                    result = "PEER '" + token + "' NOT FOUND\n";
-                                } else {
-                                    TreeSet<String> retationSet = peer.getRetationSet();
-                                    if (retationSet.isEmpty()) {
-                                        result = "EMPTY\n";
-                                    } else {
-                                        for (String tokenRetained : retationSet) {
-                                            result += tokenRetained + '\n';
-                                        }
-                                    }
-                                }
-                            } else {
-                                result = "ERROR: COMMAND\n";
-                            }
-                        } else if (token.equals("RELEASE")) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> returnSet = Peer.releaseAll();
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            } else {
-                                TreeSet<String> returnSet = Peer.releaseAll(token);
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            }
-                        } else if (token.equals("REJECT")) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> returnSet = Peer.rejectAll();
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            } else {
-                                TreeSet<String> returnSet = Peer.rejectAll(token);
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            }
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
-                    token = tokenizer.nextToken();
-                    if (token.equals("ADD") &&  tokenizer.hasMoreTokens()) {
-                        // Comando para adicionar um palpite SPF.
-                        String domain = tokenizer.nextToken();
-                        int beginIndex = command.indexOf('"') + 1;
-                        int endIndex = command.lastIndexOf('"');
-                        if (beginIndex > 0 && endIndex > beginIndex) {
-                            String spf = command.substring(beginIndex, endIndex);
-                            boolean added = SPF.addGuess(domain, spf);
-                            result = (added ? "ADDED" : "REPLACED") + "\n";
-                            SPF.storeGuess();
-                            SPF.storeSPF();
-                        } else {
-                            result = "ERROR: COMMAND\n";
-                        }
-                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            TreeSet<String> guessSet = SPF.dropAllGuess();
-                            if (guessSet.isEmpty()) {
-                                result = "EMPTY\n";
-                            } else {
-                                for (String guess : guessSet) {
-                                    result += "DROPED " + guess + "\n";
-                                }
-                            }
-                        } else {
-                            boolean droped = SPF.dropGuess(token);
-                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
-                        }
-                        SPF.storeGuess();
-                        SPF.storeSPF();
-                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
-                        for (String guess : SPF.getGuessSet()) {
-                            result += guess + "\n";
-                        }
-                        if (result.length() == 0) {
-                            result = "EMPTY\n";
-                        }
-                    } else {
-                        result = "ERROR: COMMAND\n";
-                    }
-                } else if (token.equals("REPUTATION")) {
-                    // Comando para verificar a reputação dos tokens.
-                    StringBuilder stringBuilder = new StringBuilder();
-                    TreeMap<String,Distribution> distributionMap;
-                    if (tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("ALL")) {
-                            distributionMap = SPF.getDistributionMap();
-                        } else if (token.equals("IPV4")) {
-                            distributionMap = SPF.getDistributionMapIPv4();
-                        } else if (token.equals("IPV6")) {
-                            distributionMap = SPF.getDistributionMapIPv6();
-                        } else {
-                            distributionMap = null;
-                        }
-                    } else {
-                        distributionMap = SPF.getDistributionMap();
-                    }
-                    if (distributionMap == null) {
-                        result = "ERROR: COMMAND\n";
-                    } else if (distributionMap.isEmpty()) {
-                        result = "EMPTY\n";
-                    } else {
-                        for (String tokenReputation : distributionMap.keySet()) {
-                            Distribution distribution = distributionMap.get(tokenReputation);
-                            float probability = distribution.getSpamProbability(tokenReputation);
-                            if (probability >= 0.01f) {
-                                Status status = distribution.getStatus(tokenReputation);
-                                stringBuilder.append(tokenReputation);
-                                stringBuilder.append(' ');
-                                stringBuilder.append(status);
-                                stringBuilder.append(' ');
-                                stringBuilder.append(DECIMAL_FORMAT.format(probability));
-                                stringBuilder.append('\n');
-                            }
-                        }
-                        result = stringBuilder.toString();
-                    }
-                } else if (token.equals("CLEAR") && tokenizer.countTokens() == 1) {
-                    try {
-                        token = tokenizer.nextToken();
-                        TreeSet<String> clearSet = SPF.clear(token);
-                        if (clearSet.isEmpty()) {
-                            result += "NOT FOUND\n";
-                        } else {
-                            for (String value : clearSet) {
-                                result += value + '\n';
-                            }
-                        }
-                    } catch (Exception ex) {
-                        result += ex.getMessage() + "\n";
-                    }
-                    SPF.storeDistribution();
-                    SPF.storeBlock();
-                } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
-                    // Comando para apagar registro em cache.
-                    while (tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (Owner.isOwnerID(token)) {
-                            Owner.removeOwner(token);
-                            result += "OK\n";
-                        } else if (SubnetIPv4.isValidIPv4(token)) {
-                            SubnetIPv4.removeSubnet(token);
-                            result += "OK\n";
-                        } else if (SubnetIPv6.isValidIPv6(token)) {
-                            SubnetIPv6.removeSubnet(token);
-                            result += "OK\n";
-                        } else if (Domain.containsDomain(token)) {
-                            Domain.removeDomain(token);
-                            result += "OK\n";
-                        } else {
-                            result += "UNDEFINED\n";
-                        }
-                    }
-                } else if (token.equals("REFRESH") && tokenizer.hasMoreTokens()) {
-                    // Comando para atualizar registro em cache.
-                    while (tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (Owner.isOwnerID(token)) {
-                            Owner.refreshOwner(token);
-                            result += "OK\n";
-                        } else if (SubnetIPv4.isValidIPv4(token)) {
-                            SubnetIPv4.refreshSubnet(token);
-                            result += "OK\n";
-                        } else if (SubnetIPv6.isValidIPv6(token)) {
-                            SubnetIPv6.refreshSubnet(token);
-                        } else if (Domain.containsDomain(token)) {
-                            Domain.refreshDomain(token);
-                            result += "OK\n";
-                        } else {
-                            result += "UNDEFINED\n";
-                        }
-                    }
-                } else {
-                    result = "ERROR: COMMAND\n";
-                }
-            }
-            return result;
-        } catch (ProcessException ex) {
-            Server.logError(ex.getCause());
-            return ex.getMessage() + "\n";
-         } catch (Exception ex) {
-            Server.logError(ex);
-            return "ERROR: FATAL\n";
-        }
-    }
 }

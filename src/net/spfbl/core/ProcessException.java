@@ -30,6 +30,14 @@ public class ProcessException extends Exception {
     public ProcessException(String message, Throwable cause) {
         super(message, cause);
     }
+    
+    public boolean isErrorMessage(String message) {
+        if (message == null) {
+            return false;
+        } else {
+            return message.equals(getErrorMessage());
+        }
+    }
 
     public String getErrorMessage() {
         String message = getMessage();

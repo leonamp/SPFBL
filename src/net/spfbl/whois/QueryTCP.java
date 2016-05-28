@@ -31,6 +31,7 @@ import java.util.LinkedList;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import net.spfbl.core.Core;
 
 /**
  * Servidor de consulta em TCP.
@@ -77,7 +78,7 @@ public final class QueryTCP extends Server {
         
         
         public Connection() {
-            super("WHSTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("WHSTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
         }
@@ -219,7 +220,7 @@ public final class QueryTCP extends Server {
         } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
             // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating WHSTCP" + Server.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+            Server.logDebug("creating WHSTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
             Connection connection = new Connection();
             connection.start();
             CONNECTION_COUNT++;

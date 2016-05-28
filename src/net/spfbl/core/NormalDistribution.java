@@ -39,6 +39,13 @@ public class NormalDistribution implements Serializable {
         return clone;
     }
     
+    public void add(NormalDistribution other) {
+        if (other != null) {
+            this.xiSum = 1.0f / ((1.0f / this.xiSum) + (1.0f / other.xiSum));
+            this.xi2Sum = 1.0f / ((1.0f / this.xi2Sum) + (1.0f / other.xi2Sum));
+        }
+    }
+    
     /**
      * Inicia uma distribuição normal com população cheia com média zero.
      */
@@ -118,7 +125,7 @@ public class NormalDistribution implements Serializable {
     
     @Override
     public String toString() {
-        return Server.DECIMAL_FORMAT.format(getAverage()) +
-                "±" + Server.DECIMAL_FORMAT.format(getStandardError());
+        return Core.DECIMAL_FORMAT.format(getAverage()) +
+                "±" + Core.DECIMAL_FORMAT.format(getStandardError());
     }
 }

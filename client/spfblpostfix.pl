@@ -15,7 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
-# Última alteração: 21/10/2015 10:00
+# Última alteração: 5/04/2016 15:16
 
 use strict;
 use warnings;
@@ -66,39 +66,54 @@ while ( my $line = <STDIN> ) {
     STDOUT->autoflush(1);
 
     # parse the result
-    if ( $result =~ /^LISTED/ ) {
+    if ( $result =~ /^LISTED / ) {
         STDOUT->print(
-            "action=DEFER [RBL] you are temporarily blocked on this server.\n\n"
+            "action=451 4.7.2 SPFBL $result\n\n"
+        );
+    }
+    elsif ( $result =~ /^LISTED/ ) {
+        STDOUT->print(
+            "action=451 4.7.2 SPFBL you are temporarily blocked on this server.\n\n"
         );
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {
         STDOUT->print(
-            "action=REJECT [RBL] sender has non-existent internet domain.\n\n"
+            "action=554 5.7.1 SPFBL sender has non-existent internet domain.\n\n"
+        );
+    }
+    elsif ( $result =~ /^BLOCKED / ) {
+        STDOUT->print(
+            "action=554 5.7.1 SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
-            "action=REJECT [RBL] you are permanently blocked in this server.\n\n"
+            "action=554 5.7.1 SPFBL you are permanently blocked in this server.\n\n"
         );
     }
     elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
-            "action=REJECT [SPF] IP or sender is invalid.\n\n"
+            "action=554 5.7.1 SPFBL IP or sender is invalid.\n\n"
+        );
+    }
+    elsif ( $result =~ /^LAN/ ) {
+        STDOUT->print(
+            "action=DUNNO\n\n"
         );
     }
     elsif ( $result =~ /^GREYLIST/ ) {
         STDOUT->print(
-            "action=DEFER [RBL] you are greylisted on this server.\n\n"
+            "action=451 4.7.1 SPFBL you are greylisted on this server.\n\n"
         );
     }
     elsif ( $result =~ /^SPAMTRAP/ ) {
         STDOUT->print(
-            "action=DISCARD [RBL] discarded by spamtrap.\n\n"
+            "action=DISCARD SPFBL discarded by spamtrap.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
         STDOUT->print(
-            "action=REJECT [RBL] $params->{sender} is not a valid e-mail address.\n\n"
+            "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: HOST NOT FOUND/ ) {
@@ -134,7 +149,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-             "action=REJECT [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}. Please see http://www.openspf.org/why.html?sender=$params->{sender}&ip=$params->{client_address} for details.\n\n"
+             "action=554 5.7.1 SPFBL $params->{sender} is not allowed to send mail from $params->{client_address}.\n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {

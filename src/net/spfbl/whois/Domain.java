@@ -31,6 +31,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
@@ -62,7 +63,7 @@ import org.apache.commons.lang3.SerializationUtils;
 public class Domain implements Serializable, Comparable<Domain> {
     
     private static final long serialVersionUID = 1L;
-    
+
     private final String domain; // Domínio real indicado pelo WHOIS.
     private String owner; // Nome do dono do domínio.
     private String ownerid; // Identificação do dono do domínio.
@@ -337,6 +338,11 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static void main(String[] args) {
+        System.out.println(isEmail(""));
+        System.out.println(isEmail(""));
+    }
+    
     /**
      * Verifica se o endereço é um e-mail válido.
      * @param address o endereço a ser verificado.
@@ -604,7 +610,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                         handle.setChanged(changed2);
                     } else if (line.startsWith("% No match for domain")) {
                         throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-                    } else if (line.startsWith("% release process: waiting")) {
+                    } else if (line.startsWith("% release process: ")) {
                         throw new ProcessException("ERROR: WAITING");
                     } else if (line.startsWith("% reserved:    CG")) {
                         throw new ProcessException("ERROR: RESERVED");
@@ -1124,7 +1130,9 @@ public class Domain implements Serializable, Comparable<Domain> {
                 // Atualizando campos do registro.
                 return domainMax.refresh();
             } catch (ProcessException ex) {
-                if (ex.getErrorMessage().equals("WAITING")) {
+                if (ex.isErrorMessage("WAITING")) {
+                    domainMax.drop();
+                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     domainMax.drop();
                 } else {
                     Server.logError(ex);
@@ -1235,6 +1243,19 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         } else {
             return null;
+        }
+    }
+    
+    public static String revert(String hostname) {
+        if (hostname == null) {
+            return null;
+        } else {
+            StringTokenizer tokenizer = new StringTokenizer(hostname, ".");
+            String result = tokenizer.nextToken();
+            while (tokenizer.hasMoreTokens()) {
+                result = tokenizer.nextToken() + '.' + result;
+            }
+            return '.' + result;
         }
     }
     

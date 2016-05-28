@@ -16,6 +16,8 @@
  */
 package net.spfbl.core;
 
+import net.spfbl.data.Block;
+import net.spfbl.data.Ignore;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -29,6 +31,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
+import net.spfbl.spf.SPF.Status;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv6;
@@ -65,7 +68,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
         this.receive = other.receive;
         this.email = other.email;
         this.limit = other.limit;
-        this.frequency = other.frequency.cloneDistribution();
+        if (other.frequency == null) {
+            this.frequency = null;
+        } else {
+            this.frequency = other.frequency.cloneDistribution();
+        }
         this.last = other.last;
         this.reputationMap2.putAll(other.reputationMap2);
     }
@@ -309,18 +316,22 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String release(String token) {
         if (dropExact(token)) {
-            if (SPF.isIgnore(token)) {
-                return "IGNORED";
-            } else if (SPF.addBlockExact(token)) {
-                if (isReceiveRepass()) {
-                    sendToOthers(token);
-                    return "REPASSED";
+            try {
+                if (Ignore.contains(token)) {
+                    return "IGNORED";
+                } else if (Block.addExact(token)) {
+                    if (isReceiveRepass()) {
+                        sendToOthers(token);
+                        return "REPASSED";
+                    } else {
+                        sendToRepass(token);
+                        return "ADDED";
+                    }
                 } else {
-                    sendToRepass(token);
-                    return "ADDED";
+                    return "EXISTS";
                 }
-            } else {
-                return "EXISTS";
+            } catch (ProcessException ex) {
+                return ex.getErrorMessage();
             }
         } else {
             return "NOT FOUND";
@@ -533,22 +544,22 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return map;
     }
     
-    public void sendAll() {
-        if (Core.hasPeerConnection()) {
-            TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
-            for (String token : distributionSet.keySet()) {
-                Distribution distribution = distributionSet.get(token);
-                if (distribution.isBlocked(token)) {
-                    send(token);
-                }
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException ex) {
-                    // Interrompido.
-                }
-            }
-        }
-    }
+//    public void sendAll() {
+//        if (Core.hasPeerConnection()) {
+//            TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
+//            for (String token : distributionSet.keySet()) {
+//                Distribution distribution = distributionSet.get(token);
+//                if (distribution.isBlocked(token)) {
+//                    send(token);
+//                }
+//                try {
+//                    Thread.sleep(100);
+//                } catch (InterruptedException ex) {
+//                    // Interrompido.
+//                }
+//            }
+//        }
+//    }
     
     public void send(String token) {
         if (Core.hasPeerConnection()) {
@@ -598,21 +609,23 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static void sendBlockToAll(String token) {
-        long time = System.currentTimeMillis();
-        if (Core.hasPeerConnection()) {
-            String origin = null;
-            String result = "SENT";
-            String command = "BLOCK " + token;
-            try {
-                for (Peer peer : getSendAllSet()) {
-                    String address = peer.getAddress();
-                    int port = peer.getPort();
-                    Core.sendCommandToPeer(command, address, port);
+        if (isValid(token)) {
+            long time = System.currentTimeMillis();
+            if (Core.hasPeerConnection()) {
+                String origin = null;
+                String result = "SENT";
+                String command = "BLOCK " + token;
+                try {
+                    for (Peer peer : getSendAllSet()) {
+                        String address = peer.getAddress();
+                        int port = peer.getPort();
+                        Core.sendCommandToPeer(command, address, port);
+                    }
+                } catch (Exception ex) {
+                    result = ex.getMessage();
                 }
-            } catch (Exception ex) {
-                result = ex.getMessage();
+                Server.logPeerSend(time, origin, command, result);
             }
-            Server.logPeerSend(time, origin, command, result);
         }
     }
     
@@ -724,22 +737,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    private static boolean isValid2(String token) {
-        if (token == null || token.length() == 0) {
-            return false;
-        } else if (Subnet.isValidIP(token)) {
-            return true;
-        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
-            return true;
-        } else if (token.contains("@") && Domain.isEmail(token)) {
-            return true;
-        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
     public static void sendToMirros(String command) {
         long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
@@ -784,7 +781,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "INVALID";
             } else if (Domain.isReserved(token)) {
                 return "RESERVED";
-            } else if (SPF.isIgnore(token)) {
+            } else if (Ignore.contains(token)) {
                 return "IGNORED";
             } else if (isReceiveReject()) {
                 return "REJECTED";
@@ -796,7 +793,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 } else {
                     return "DROPED";
                 }
-            } else if (SPF.addBlockExact(token)) {
+            } else if (Block.addExact(token)) {
                 if (isReceiveRepass()) {
                     sendToOthers(token);
                     return "REPASSED";
@@ -817,13 +814,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
         try {
             if ((token = SPF.normalizeTokenFull(token)) == null) {
                 return "INVALID";
-            } else if (SPF.isIgnore(token)) {
+            } else if (Ignore.contains(token)) {
                 return "IGNORED";
             } else if (isReceiveReject()) {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
                 return "DROPED";
-            } else if (SPF.containsBlock(token)) {
+            } else if (Block.containsExact(token)) {
                 return "EXISTS";
             } else if (isReceiveRetain()) {
                 if (addRetain(token)) {
@@ -831,7 +828,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 } else {
                     return "DROPED";
                 }
-            } else if (SPF.addBlockExact(token)) {
+            } else if (Block.addExact(token)) {
                 if (isReceiveRepass()) {
                     sendToOthers(token);
                     return "REPASSED";
@@ -937,18 +934,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return frequency != null;
     }
     
-    public int getIdleTimeMillis() {
+    public long getIdleTimeMillis() {
         if (last == 0) {
             return 0;
         } else {
-            return (int) (System.currentTimeMillis() - last);
+            return System.currentTimeMillis() - last;
         }
     }
     
     public String getFrequencyLiteral() {
         if (hasFrequency()) {
             int frequencyInt = frequency.getMaximumInt();
-            int idleTimeInt = getIdleTimeMillis();
+            long idleTimeInt = getIdleTimeMillis();
             if (idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000) {
                 return "DEAD";
             } else {
@@ -960,13 +957,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     sinal = '>';
                 }
                 if (frequencyInt >= 3600000) {
-                    return sinal + frequencyInt / 3600000 + "h";
+                    return sinal + ((frequencyInt / 3600000) + "h");
                 } else if (frequencyInt >= 60000) {
-                    return sinal + frequencyInt / 60000 + "min";
+                    return sinal + ((frequencyInt / 60000) + "min");
                 } else if (frequencyInt >= 1000) {
-                    return sinal + frequencyInt / 1000 + "s";
+                    return sinal + ((frequencyInt / 1000) + "s");
                 } else {
-                    return sinal + frequencyInt + "ms";
+                    return sinal + (frequencyInt + "ms");
                 }
             }
         } else {
@@ -1047,7 +1044,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String spam
     ) {
         try {
-            if (!isValid2(key)) {
+            if (!isValid(key)) {
                 return "INVALID";
             } else if (Domain.isReserved(key)) {
                 return "RESERVED";
@@ -1070,7 +1067,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 } else if ((binomial = reputationMap2.get(key)) == null) {
                     binomial = new Binomial(hamInt, spamInt);
                     reputationMap2.put(key, binomial);
-                    if (SPF.isIgnore(key)) {
+                    if (Ignore.contains(key)) {
                         binomial.clear();
                         return "IGNORED";
                     } else {
@@ -1078,7 +1075,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     }
                 } else {
                     binomial.set(hamInt, spamInt);
-                    if (SPF.isIgnore(key)) {
+                    if (Ignore.contains(key)) {
                         binomial.clear();
                         return "IGNORED";
                     } else {
@@ -1203,9 +1200,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
         private int ham; // Quantidade total de HAM em sete dias.
         private int spam; // Quantidade total de SPAM em sete dias
         private long last = System.currentTimeMillis();
+        private final Status status;
         
         public Binomial(int ham, int spam) throws ProcessException {
+            this.status = null;
             set(ham, spam);
+        }
+        
+        public Binomial(Status status) throws ProcessException {
+            this.status = status;
+            set(0, 0);
         }
         
         public synchronized void set(int ham, int spam) throws ProcessException {
@@ -1227,6 +1231,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
         
         public synchronized int getHAM() {
             return ham;
+        }
+        
+        public synchronized Status getStatus() {
+            return status;
         }
         
         public synchronized boolean clear() {

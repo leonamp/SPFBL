@@ -102,18 +102,41 @@ public final class SubnetIPv4 extends Subnet {
     }
     
     protected static String getFirstIPv4(String inetnum) {
-        inetnum = normalizeCIDRv4(inetnum);
-        int index = inetnum.indexOf('/');
-        String ip = inetnum.substring(0, index);
-        String size = inetnum.substring(index+1);
-        int sizeInt = Integer.parseInt(size);
-        byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
-        byte[] address = SubnetIPv4.split(ip, mask);
-        int octet1 = address[0] & 0xFF;
-        int octet2 = address[1] & 0xFF;
-        int octet3 = address[2] & 0xFF;
-        int octet4 = address[3] & 0xFF;
-        return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        if (inetnum == null) {
+            return null;
+        } else {
+            inetnum = normalizeCIDRv4(inetnum);
+            int index = inetnum.indexOf('/');
+            String ip = inetnum.substring(0, index);
+            String size = inetnum.substring(index+1);
+            int sizeInt = Integer.parseInt(size);
+            byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+            byte[] address = SubnetIPv4.split(ip, mask);
+            int octet1 = address[0] & 0xFF;
+            int octet2 = address[1] & 0xFF;
+            int octet3 = address[2] & 0xFF;
+            int octet4 = address[3] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        }
+    }
+    
+    protected static String getLastIPv4(String inetnum) {
+        if (inetnum == null) {
+            return null;
+        } else {
+            inetnum = normalizeCIDRv4(inetnum);
+            int index = inetnum.indexOf('/');
+            String ip = inetnum.substring(0, index);
+            String size = inetnum.substring(index+1);
+            int sizeInt = Integer.parseInt(size);
+            byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+            byte[] address = SubnetIPv4.split(ip, mask);
+            int octet1 = (address[0] & 0xFF) ^ (~mask[0] & 0xFF);
+            int octet2 = (address[1] & 0xFF) ^ (~mask[1] & 0xFF);
+            int octet3 = (address[2] & 0xFF) ^ (~mask[2] & 0xFF);
+            int octet4 = (address[3] & 0xFF) ^ (~mask[3] & 0xFF);
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        }
     }
     
     /**
@@ -121,18 +144,26 @@ public final class SubnetIPv4 extends Subnet {
      * @param inetnum o endereço com notação CIDR sem abreviação.
      * @return o endereço da notação CIDR sem abreviação.
      */
-    protected static String normalizeCIDRv4(String inetnum) {
-        int index = inetnum.indexOf('/');
-        String ip = inetnum.substring(0, index);
-        String size = inetnum.substring(index+1);
-        int sizeInt = Integer.parseInt(size);
-        byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
-        byte[] address = SubnetIPv4.split(ip, mask);
-        int octet1 = address[0] & 0xFF;
-        int octet2 = address[1] & 0xFF;
-        int octet3 = address[2] & 0xFF;
-        int octet4 = address[3] & 0xFF;
-        return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
+    public static String normalizeCIDRv4(String inetnum) {
+        if (inetnum == null) {
+            return null;
+        } else {
+            int index = inetnum.indexOf('/');
+            String ip = inetnum.substring(0, index);
+            String size = inetnum.substring(index+1);
+            int sizeInt = Integer.parseInt(size);
+            if (sizeInt < 0 || sizeInt > 32) {
+                return null;
+            } else {
+                byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
+                byte[] address = SubnetIPv4.split(ip, mask);
+                int octet1 = address[0] & 0xFF;
+                int octet2 = address[1] & 0xFF;
+                int octet3 = address[2] & 0xFF;
+                int octet4 = address[3] & 0xFF;
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
+            }
+        }
     }
     
     /**
@@ -218,6 +249,15 @@ public final class SubnetIPv4 extends Subnet {
                 + "." + String.format("%3s", octet4).replace(' ', '0');
     }
     
+    public static String expandCIDRv4(String cidr) {
+        int index = cidr.indexOf('/');
+        String ip = cidr.substring(0, index);
+        String mask = cidr.substring(index);
+        ip = expandIPv4(ip);
+        cidr = ip + mask;
+        return cidr;
+    }
+    
     /**
      * Retorna o endereço IP em inteiro de 32 bits da notação IP.
      * @param ip endereço de IP em notação IP.
@@ -258,6 +298,26 @@ public final class SubnetIPv4 extends Subnet {
         return 0xFFFFFFFF << 32 - mask;
     }
     
+    public static String getNextIPv4(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (isValidIPv4(ip)) {
+            int address = getAddressIP(ip);
+            if (address == 0xFFFFFFFF) {
+                return null;
+            } else {
+                address++;
+                int octet1 = (address >> 24 & 0xFF);
+                int octet2 = (address >> 16 & 0xFF);
+                int octet3 = (address >> 8 & 0xFF);
+                int octet4 = (address & 0xFF);
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+            }
+        } else {
+            return null;
+        }
+    }
+    
     /**
      * Verifica se um IP é válido na notação de IP.
      * @param ip o IP a ser verificado.
@@ -271,7 +331,8 @@ public final class SubnetIPv4 extends Subnet {
             return Pattern.matches("^"
                     + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
                     + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-                    + "$", ip);
+                    + "$", ip
+                    );
         }
     }
     
@@ -292,11 +353,16 @@ public final class SubnetIPv4 extends Subnet {
      * @return verdadeiro se um CIDR é válido na notação de IPv4.
      */
     public static boolean isValidCIDRv4(String cidr) {
-        cidr = cidr.trim();
-        return Pattern.matches("^"
-                + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){1,3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
-                + "$", cidr);
+        if (cidr == null) {
+            return false;
+        } else {
+            cidr = cidr.trim();
+            return Pattern.matches("^"
+                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
+                    + "$", cidr
+                    );
+        }
     }
     
     /**
