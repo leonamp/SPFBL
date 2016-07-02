@@ -786,12 +786,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } else if (isReceiveReject()) {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
-                return "DROPED";
+                return "DROPPED";
             } else if (isReceiveRetain()) {
                 if (addRetain(token)) {
                     return "RETAINED";
                 } else {
-                    return "DROPED";
+                    return "DROPPED";
                 }
             } else if (Block.addExact(token)) {
                 if (isReceiveRepass()) {
@@ -819,14 +819,14 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } else if (isReceiveReject()) {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
-                return "DROPED";
+                return "DROPPED";
             } else if (Block.containsExact(token)) {
                 return "EXISTS";
             } else if (isReceiveRetain()) {
                 if (addRetain(token)) {
                     return "RETAINED";
                 } else {
-                    return "DROPED";
+                    return "DROPPED";
                 }
             } else if (Block.addExact(token)) {
                 if (isReceiveRepass()) {
@@ -967,7 +967,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 }
             }
         } else {
-            return "NEW";
+            return "UNDEFINED";
         }
     }
     
@@ -1051,7 +1051,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } else if (isReceiveReject()) {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
-                return "DROPED";
+                return "DROPPED";
             } else {
                 int hamInt = Integer.parseInt(ham);
                 int spamInt = Integer.parseInt(spam);
@@ -1062,7 +1062,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                         return "NOT FOUND";
                     } else {
                         CHANGED = true;
-                        return "DROPED";
+                        return "DROPPED";
                     }
                 } else if ((binomial = reputationMap2.get(key)) == null) {
                     binomial = new Binomial(hamInt, spamInt);

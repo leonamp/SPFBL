@@ -29,18 +29,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.HttpCookie;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -69,7 +66,6 @@ import net.tanesha.recaptcha.ReCaptchaFactory;
 import net.tanesha.recaptcha.ReCaptchaResponse;
 import org.apache.commons.lang3.LocaleUtils;
 import org.apache.commons.lang3.SerializationUtils;
-import org.apache.commons.lang3.StringEscapeUtils;
 
 /**
  * Servidor de consulta em SPF.
@@ -351,7 +347,6 @@ public final class ServerHTTP extends Server {
                     Language language = new Language(tokenizer.nextToken());
                     languageSet.add(language);
                 } catch (Exception ex) {
-                    Server.logError(ex);
                 }
             }
             for (Language language : languageSet) {
@@ -894,6 +889,16 @@ public final class ServerHTTP extends Server {
                                     if (valid) {
                                         String message;
                                         if (Block.clearCIDR(ip, clientTicket)) {
+                                            TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
+                                            tokenSet.add(clientTicket);
+                                            String block;
+                                            for (String token : tokenSet) {
+                                                while ((block = Block.find(null, token)) != null) {
+                                                    if (Block.dropExact(block)) {
+                                                        Server.logDebug("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
+                                                    }
+                                                }
+                                            }
                                             if (locale.getLanguage().toLowerCase().equals("pt")) {
                                                 message = "O IP " + ip + " foi desbloqueado com sucesso.";
                                             } else {
@@ -1437,7 +1442,7 @@ public final class ServerHTTP extends Server {
                                 }
                             }
                         } catch (Exception ex) {
-                            ex.printStackTrace();
+                            Server.logError(ex);
                             type = "BLOCK";
                             code = 500;
                             String message;
@@ -2074,7 +2079,9 @@ public final class ServerHTTP extends Server {
         builder.append("  </head>\n");
         builder.append("  <body>\n");
         builder.append("    ");
-        builder.append(message.replace("\n", "<br>\n"));
+        if (message != null) {
+            builder.append(message.replace("\n", "<br>\n"));
+        }
 //        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
 //        while (tokenizer.hasMoreTokens()) {
 //            String line = tokenizer.nextToken();
@@ -2195,9 +2202,9 @@ public final class ServerHTTP extends Server {
                         }
                         if (domain == null) {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("inválido.</li>\n");
+                                builder.append("FCrDNS inválido.</li>\n");
                             } else {
-                                builder.append("invalid.</li>\n");
+                                builder.append("invalid FCrDNS.</li>\n");
                             }
                         } else {
                             String subdominio = hostname;
@@ -2207,16 +2214,16 @@ public final class ServerHTTP extends Server {
                                 subdominio = subdominio.substring(index);
                             }
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("válido.</li>\n");
+                                builder.append("FCrDNS válido.</li>\n");
                             } else {
-                                builder.append("valid.</li>\n");
+                                builder.append("valid FCrDNS.</li>\n");
                             }
                         }
                     } else {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("inválido.</li>\n");
+                            builder.append("FCrDNS inválido.</li>\n");
                         } else {
-                            builder.append("invalid.</li>\n");
+                            builder.append("invalid FCrDNS.</li>\n");
                         }
                     }
                 } while ((hostname = reverseSet.pollFirst()) != null);
@@ -2226,12 +2233,24 @@ public final class ServerHTTP extends Server {
             if (emailSet.isEmpty()) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
+                    if (Block.containsCIDR(query)) {
+                        builder.append("    O DNS reverso deve estar sob seu próprio domínio para que a liberação seja efetivada.<br>\n");
+                    } else {
+                        builder.append("    Qualquer IP com FCrDNS inválido pode ser incluido em qualquer momento nesta lista.<br>\n");
+                    }
+                    builder.append("    Deve existir meios em que seja possível identificar o dono do domínio usado no reverso.<br>\n");
                 } else {
                     builder.append("    Register a valid rDNS for this IP, which point to the same IP.<br>\n");
+                    if (Block.containsCIDR(query)) {
+                        builder.append("    The rDNS should be registered under your own domain to the release take effect.<br>\n");
+                    } else {
+                        builder.append("    Any IP with invalid FCrDNS can be included at any time in this list.<br>\n");
+                    }
+                    builder.append("    There must be a way to identify the owner of the domain used in rDNS.<br>\n");
                 }
             } else if ((distribution = SPF.getDistribution(query, true)).isNotWhitelisted(query)) {
                 float probability = distribution.getSpamProbability(query);
-                if (distribution.isBlacklisted(query) || Block.containsIP(query)) {
+                if (distribution.isBlacklisted(query) || Block.containsCIDR(query)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         builder.append("    Este IP está listado por má reputação com ");
                         builder.append(Core.PERCENT_FORMAT.format(probability));
@@ -2292,7 +2311,7 @@ public final class ServerHTTP extends Server {
                         builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                     }
                 }
-            } else if (Block.containsIP(query)) {
+            } else if (Block.containsCIDR(query)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    E-mails para envio de chave de desbloqueio:<br>\n");
                 } else {
@@ -2350,6 +2369,14 @@ public final class ServerHTTP extends Server {
                         builder.append(send);
                         builder.append("<br>\n");
                     }
+                    builder.append("      <br>\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("      O DNS reverso do IP deve estar sob seu prório domínio.<br>\n");
+                        builder.append("      Não aceitamos DNS reversos com domínios de terceiros.<br>\n");
+                    } else {
+                        builder.append("      The rDNS should be registered under your own domain.<br>\n");
+                        builder.append("      We do not accept rDNS with third-party domains.<br>\n");
+                    }
                     if (Core.hasRecaptchaKeys()) {
                         builder.append("      <br>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -2379,8 +2406,14 @@ public final class ServerHTTP extends Server {
             } else {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
+                    builder.append("    Se este IP estiver sendo rejeitado por algum MTA,<br>\n");
+                    builder.append("    aguarde a propagação de DNS deste serviço.<br>\n");
+                    builder.append("    O tempo de propagação pode levar alguns dias.<br>\n");
                 } else {
                     builder.append("    No block was found for this IP.<br>\n");
+                    builder.append("    If this IP is being rejected by some MTA,<br>\n");
+                    builder.append("    wait for the DNS propagation of this service.<br>\n");
+                    builder.append("    The propagation time can take a few days.<br>\n");
                 }
             }
         } else if (Domain.isHostname(query)) {
@@ -2415,7 +2448,7 @@ public final class ServerHTTP extends Server {
                     builder.append("    <br>\n");
                     builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                 }
-            } else if (Block.containsHost(query)) {
+            } else if (Block.containsDomain(query)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Este domínio está listado por bloqueio manual.<br>\n");
                     if (Core.hasAdminEmail()) {

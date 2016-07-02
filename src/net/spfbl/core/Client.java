@@ -542,7 +542,7 @@ public class Client implements Serializable, Comparable<Client> {
                 }
             }
         } else {
-            return "NEW";
+            return "UNDEFINED";
         }
     }
     

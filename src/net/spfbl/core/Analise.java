@@ -16,19 +16,31 @@
  */
 package net.spfbl.core;
 
+import com.sun.mail.smtp.SMTPTransport;
+import com.sun.mail.util.MailConnectException;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Properties;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.naming.CommunicationException;
+import javax.naming.NameNotFoundException;
+import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import net.spfbl.data.Block;
 import net.spfbl.data.Ignore;
+import net.spfbl.data.Provider;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
-import net.spfbl.spf.SPF.Status;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
+import net.spfbl.whois.SubnetIPv4;
 
 /**
  * Análise de listas de IP.
@@ -46,17 +58,41 @@ public class Analise implements Comparable<Analise> {
         this.name = name;
     }
     
-    public synchronized boolean add(String ip) {
-        if (!Subnet.isValidIP(ip)) {
+    public synchronized boolean contains(String token) {
+        if (Subnet.isValidIP(token)) {
+            token = Subnet.normalizeIP(token);
+        } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+            token = "@" + Domain.normalizeHostname(token.substring(1), false);
+        } else {
             return false;
-        } else if (ipSet.contains(ip = Subnet.normalizeIP(ip))) {
+        }
+        if (ipSet.contains(token)) {
+            return true;
+        } else if (processSet.contains(token)) {
+            return true;
+        } else if (resultMap.containsKey(token)) {
+            return true;
+        } else {
             return false;
-        } else if (processSet.contains(ip)) {
+        }
+    }
+    
+    public synchronized boolean add(String token) {
+        if (Subnet.isValidIP(token)) {
+            token = Subnet.normalizeIP(token);
+        } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+            token = "@" + Domain.normalizeHostname(token.substring(1), false);
+        } else {
             return false;
-        } else if (resultMap.containsKey(ip)) {
+        }
+        if (ipSet.contains(token)) {
+            return false;
+        } else if (processSet.contains(token)) {
+            return false;
+        } else if (resultMap.containsKey(token)) {
             return false;
         } else {
-            ipSet.add(ip);
+            ipSet.add(token);
             if (SEMAPHORE.tryAcquire()) {
                 Process process = new Process();
                 process.start();
@@ -113,15 +149,15 @@ public class Analise implements Comparable<Analise> {
     }
     
     private boolean process() {
-        String ip = pollFirst();
-        if (ip == null) {
+        String token = pollFirst();
+        if (token == null) {
             return false;
         } else {
             StringBuilder builder = new StringBuilder();
-            Analise.process(ip, builder);
+            Analise.process(token, builder, 10000);
             String result = builder.toString();
-            if (addResult(ip, result)) {
-                Server.logTrace(ip + ' ' + result);
+            if (addResult(token, result)) {
+                Server.logTrace(token + ' ' + result);
             }
             return true;
         }
@@ -177,16 +213,12 @@ public class Analise implements Comparable<Analise> {
         return queue;
     }
     
-    public synchronized static Analise get(String name, boolean first) {
+    public synchronized static Analise get(String name, boolean create) {
         Analise analise = MAP.get(name);
-        if (analise == null) {
+        if (analise == null && create) {
             analise = new Analise(name);
             MAP.put(name, analise);
-            if (first) {
-                QUEUE.addFirst(analise);
-            } else {
-                QUEUE.addLast(analise);
-            }
+            QUEUE.addLast(analise);
         }
         return analise;
     }
@@ -216,75 +248,384 @@ public class Analise implements Comparable<Analise> {
     }
     
     public static void processToday(String ip) {
-        Date today = new Date();
-        String name = Core.SQL_FORMAT.format(today);
-        Analise analise = Analise.get(name, true);
-        analise.add(ip);
-    }     
+        GregorianCalendar calendar = new GregorianCalendar();
+        Date today = calendar.getTime();
+        calendar.add(Calendar.DAY_OF_YEAR, -1);
+        Date yesterday = calendar.getTime();
+        String name = Core.SQL_FORMAT.format(yesterday);
+        Analise analise = Analise.get(name, false);
+        if (analise == null || !analise.contains(ip)) {
+            name = Core.SQL_FORMAT.format(today);
+            analise = Analise.get(name, true);
+            analise.add(ip);
+        }
+    }
+    
+    /**
+     * Enumeração do status da analise.
+     */
+    public enum Status {
+
+        WHITE, // Whitelisted
+        GRAY, // Graylisted
+        BLACK, // Blacklisted
+        BLOCK, // Blocked
+        DNSBL, // DNS blacklist
+        PROVIDER, // Provedor
+        IGNORE, // Ignored
+        CLOSED, // Closed
+//        NOTLS, // Sem TLS
+        TIMEOUT, // Timeout
+        UNAVAILABLE, // Indisponível
+        INVALID, // Reverso inválido
+        NXDOMAIN, // Domínio inexistente
+        ERROR, // Erro de processamento
+        NONE, // Nenhum reverso
+        RESERVED, // Domínio reservado
+        ;
+        
+    }
+    
+    private static Object getResponseSMTP(String host, int port, int timeout) {
+        try {
+            Properties props = new Properties();
+            props.put("mail.smtp.starttls.enable", "false");
+            props.put("mail.smtp.auth", "false");
+            props.put("mail.smtp.timeout", timeout);
+            Session session = Session.getInstance(props, null);
+            SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
+            try {
+                transport.setLocalHost(Core.getHostname());
+                transport.connect(host, port, null, null);
+                String response = transport.getLastServerResponse();
+                int beginIndex = 4;
+                int endIndex;
+                for (endIndex = beginIndex; endIndex < response.length(); endIndex++) {
+                    if (response.charAt(endIndex) == ' ') {
+                        break;
+                    } else if (response.charAt(endIndex) == '\n') {
+                        break;
+                    }
+                }
+                String helo = response.substring(beginIndex, endIndex);
+                if (Domain.isHostname(helo)) {
+                    return Domain.normalizeHostname(helo, true);
+                } else {
+                    return null;
+                }
+            } finally {
+                if (transport.isConnected()) {
+                    transport.close();
+                }
+            }
+        } catch (MailConnectException ex) {
+            if (ex.getMessage().contains("timeout -1")) {
+                return Status.CLOSED;
+            } else {
+                return Status.TIMEOUT;
+            }
+        } catch (MessagingException ex) {
+//            if (ex.getMessage().contains("TLS")) {
+//                return Status.NOTLS;
+//            } else {
+                return Status.UNAVAILABLE;
+//            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
     
     public static void process(
-            String ip,
-            StringBuilder builder
+            String token,
+            StringBuilder builder,
+            int timeout
             ) {
+        if (Subnet.isValidIP(token)) {
+            processIP(token, builder, timeout);
+        } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+            processMX(token, builder, timeout);
+        }
+    }
+    
+    public static void processMX(
+            String address,
+            StringBuilder builder,
+            int timeout
+            ) {
+        String host = address.substring(1);
+        String tokenAddress = '@' + Domain.normalizeHostname(host, false);
+        String tokenMX = Domain.normalizeHostname(host, true);
+        Status statusAddress = Status.ERROR;
+        Status statusMX = Status.NONE;
+        float probability = 0.0f;
+        String frequency = "UNDEFINED";
         try {
-            Distribution distribution1 = SPF.getDistribution(ip, true);
-            float probability1 = distribution1.getSpamProbability(ip);
-            Status status1;
-            Status status3 = distribution1.getStatus(ip);
-            if (Block.containsIP(ip)) {
-                status1 = Status.BLOCK;
-                status3 = Status.BLOCK;
-            } else if (Ignore.contains(ip)) {
-                status1 = Status.IGNORE;
-            } else if (Core.isOpenSMTP(ip, 25, 30000)) {
-                status1 = status3;
-            } else {
-                status1 = Status.CLOSED;
-            }
-            builder.append(status1);
-            String token = ip;
-            for (String reverse : Reverse.getValidSet(ip, true)) {
-                reverse = Domain.normalizeHostname(reverse, true);
-                Distribution distribution2 = SPF.getDistribution(reverse, true);
-                float probability2 = distribution2.getSpamProbability(reverse);
-                Status status2 = distribution2.getStatus(reverse);
-                if (probability2 > probability1) {
-                    probability1 = probability2;
-                    distribution1 = distribution2;
-                }
-                if (probability2 >= probability1 || Subnet.isValidIP(token)) {
-                    token = reverse;
-                    status3 = status2 == Status.BLOCK ? Status.BLACK : status2;
-                    if (Block.containsHost(reverse)) {
-                        status3 = Status.BLOCK;
-                    } else if (Block.containsREGEX(reverse)) {
-                        status3 = Status.BLOCK;
-                    } else if (Ignore.contains(reverse)) {
-                        status3 = Status.IGNORE;
+            Distribution dist;
+            Object response;
+            for (String mx : Reverse.getMXSet(host)) {
+                if (Subnet.isValidIP(mx)) {
+                    tokenMX = mx;
+                    if (Block.containsCIDR(mx)) {
+                        statusMX = Status.BLOCK;
+                        break;
+                    } else if (Provider.containsCIDR(mx)) {
+                        statusMX = Status.PROVIDER;
+                        break;
+                    } else if (Ignore.containsCIDR(mx)) {
+                        statusMX = Status.IGNORE;
+                        break;
+                    } else if ((response = getResponseSMTP(mx, 25, timeout)) instanceof Status) {
+                        statusMX = (Status) response;
+                    } else if ((dist = SPF.getDistribution(mx, false)) == null) {
+                        tokenMX = (String) response;
+                        statusMX = Status.WHITE;
+                        break;
+                    } else {
+                        tokenMX = (String) response;
+                        statusMX = Status.valueOf(dist.getStatus(mx).name());
+                        break;
+                    }
+                } else if (Domain.isHostname(mx)) {
+                    tokenMX = mx;
+                    if (Block.containsDomain(mx)) {
+                        statusMX = Status.BLOCK;
+                        break;
+                    } else if (Provider.containsDomain(mx)) {
+                        statusMX = Status.PROVIDER;
+                        break;
+                    } else if (Ignore.contains(mx)) {
+                        statusMX = Status.IGNORE;
+                        break;
+                    } else if ((response = getResponseSMTP(mx.substring(1), 25, timeout)) instanceof Status) {
+                        statusMX = (Status) response;
+                    } else if ((dist = SPF.getDistribution(mx, false)) == null) {
+                        statusMX = Status.WHITE;
+                        break;
+                    } else {
+                        statusMX = Status.valueOf(dist.getStatus(mx).name());
+                        break;
                     }
                 }
             }
-            builder.append(' ');
-            builder.append(token);
-            builder.append(' ');
-            builder.append(status3);
-            builder.append(' ');
-            builder.append(Core.DECIMAL_FORMAT.format(distribution1.getSpamProbability(ip)));
-            builder.append(' ');
-            builder.append(distribution1.getFrequencyLiteral());
-            builder.append(' ');
-            if (Subnet.isValidIP(token)) {
-                builder.append(Subnet.expandIP(token));
+            if (Block.containsExact(tokenAddress)) {
+                statusAddress = Status.BLOCK;
+            } else if (Block.containsDomain(host)) {
+                statusAddress = Status.BLOCK;
+            } else if (Provider.containsExact(tokenAddress)) {
+                statusAddress = Status.PROVIDER;
+            } else if (Ignore.contains(tokenAddress)) {
+                statusAddress = Status.IGNORE;
+            } else if ((dist = SPF.getDistribution(tokenAddress, false)) == null) {
+                probability = 0.0f;
+                statusAddress = Status.WHITE;
+                frequency = "UNDEFINED";
             } else {
-                builder.append(Domain.revert(token));
+                probability = dist.getSpamProbability(tokenAddress);
+                statusAddress = Status.valueOf(dist.getStatus().name());
+                frequency = dist.getFrequencyLiteral();
             }
-        } catch (ProcessException ex) {
+        } catch (CommunicationException ex) {
+            statusAddress = Status.TIMEOUT;
+        } catch (ServiceUnavailableException ex) {
+            statusAddress = Status.UNAVAILABLE;
+        } catch (NameNotFoundException ex) {
+            statusAddress = Status.NXDOMAIN;
+        } catch (NamingException ex) {
+            Server.logError(ex);
+        } finally {
+            builder.append(statusAddress);
+            builder.append(' ');
+            builder.append(tokenMX);
+            builder.append(' ');
+            builder.append(statusMX);
+            builder.append(' ');
+            builder.append(Core.DECIMAL_FORMAT.format(probability));
+            builder.append(' ');
+            builder.append(frequency);
+            builder.append(' ');
+            if (Subnet.isValidIP(tokenMX)) {
+                builder.append(Subnet.expandIP(tokenMX));
+            } else {
+                builder.append(Domain.revert(tokenMX));
+            }
+        }
+    }
+    
+    public static void processIP(
+            String ip,
+            StringBuilder builder,
+            int timeout
+            ) {
+        try {
+            ip = Subnet.normalizeIP(ip);
+            Distribution dist = SPF.getDistribution(ip, false);
+            float probability = dist == null ? 0.0f : dist.getSpamProbability(ip);
+            Object response = null;
+            Status statusIP;
+            if (Block.containsCIDR(ip)) {
+                statusIP = Status.BLOCK;
+            } else if (Provider.containsCIDR(ip)) {
+                statusIP = Status.PROVIDER;
+            } else if (Ignore.containsCIDR(ip)) {
+                statusIP = Status.IGNORE;
+            } else if (Block.containsDNSBL(ip)) {
+                statusIP = Status.DNSBL;
+            } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+                statusIP = (Status) response;
+            } else if (dist == null) {
+                statusIP = Status.WHITE;
+            } else {
+                statusIP = Status.valueOf(dist.getStatus(ip).name());
+            }
+            LinkedList<String> nameList = new LinkedList<String>();
+            try {
+                nameList.addAll(Reverse.getPointerSet(ip));
+            } catch (NamingException ex) {
+                // Fazer nada.
+            }
+            String tokenName;
+            Status statusName;
+            if (nameList.isEmpty()) {
+                if (response instanceof String) {
+                    tokenName = (String) response;
+                    statusName = Status.INVALID;
+                    nameList.addLast(tokenName);
+                } else{
+                    tokenName = ip;
+                    statusName = Status.NONE;
+                }
+            } else {
+                tokenName = nameList.getFirst();
+                statusName = Status.INVALID;
+            }
+            for (String name : nameList) {
+                if (Block.containsDomain(name)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else if (Block.containsREGEX(name)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else if (Block.containsWHOIS(name)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else {
+                    try {
+                        if (Reverse.getAddressSet(name).contains(ip)) {
+                            if (Provider.containsDomain(name)) {
+                                tokenName = name;
+                                statusName = Status.PROVIDER;
+                                break;
+                            } else if (Ignore.contains(name)) {
+                                tokenName = name;
+                                statusName = Status.IGNORE;
+                                break;
+                            } else {
+                                tokenName = name;
+                                Distribution distribution2 = SPF.getDistribution(name, false);
+                                if (distribution2 == null) {
+                                    statusName = Status.WHITE;
+                                } else {
+                                    statusName = Status.valueOf(distribution2.getStatus(name).name());
+                                    statusName = statusName == Status.BLOCK ? Status.BLACK : statusName;
+                                }
+                            }
+                        }
+                    } catch (NamingException ex) {
+                        // Fazer nada.
+                    }
+                }
+            }
+            if (statusName == Status.INVALID) {
+                try {
+                    String domain = Domain.extractDomain(tokenName, true);
+                    if (!Reverse.hasValidNameServers(domain)) {
+                        if (Block.addExact(domain)) {
+                            statusName = Status.BLOCK;
+                            Server.logDebug("new BLOCK '" + domain + "' added by NXDOMAIN.");
+                        }
+                    }
+                } catch (NamingException ex) {
+                    // Fazer nada.
+                } catch (ProcessException ex) {
+                    if (ex.isErrorMessage("RESERVED")) {
+                        statusName = Status.RESERVED;
+                    } else {
+                        Server.logError(ex);
+                    }
+                }
+            }
+            if (statusIP != Status.BLOCK && statusIP != Status.DNSBL && (statusName == Status.BLOCK || statusName == Status.NONE || statusName == Status.RESERVED)) {
+                String block;
+                if ((block = Block.add(ip)) != null) {
+                    statusIP = Status.BLOCK;
+                    Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+            } else if (statusIP == Status.BLOCK && (statusName == Status.PROVIDER || statusName == Status.IGNORE)) {
+                String cidr;
+                int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                if ((cidr = Block.clearCIDR(ip, mask)) != null) {
+                    Server.logDebug("false positive BLOCK '" + cidr + "' detected by '" + tokenName + ";" + statusName + "'.");
+                }
+                if (Provider.containsCIDR(ip)) {
+                    statusIP = Status.PROVIDER;
+                } else if (Ignore.containsCIDR(ip)) {
+                    statusIP = Status.IGNORE;
+                } else if (Block.containsDNSBL(ip)) {
+                    statusIP = Status.DNSBL;
+                } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+                    statusIP = (Status) response;
+                } else if (dist == null) {
+                    statusIP = Status.WHITE;
+                } else {
+                    statusIP = Status.valueOf(dist.getStatus(ip).name());
+                }
+            } else if (statusIP == Status.BLOCK && statusName == Status.WHITE && probability == 0.0f) {
+                String result = Reverse.getResult(ip, "list.dnswl.org");
+                if (result != null && !result.equals("127.0.0.255")) {
+                    String cidr;
+                    int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                    if ((cidr = Block.clearCIDR(ip, mask)) != null) {
+                        Server.logDebug("false positive BLOCK '" + cidr + "' detected by 'list.dnswl.org;" + result + "'.");
+                    }
+                    if (Provider.containsCIDR(ip)) {
+                        statusIP = Status.PROVIDER;
+                    } else if (Ignore.containsCIDR(ip)) {
+                        statusIP = Status.IGNORE;
+                    } else if (Block.containsDNSBL(ip)) {
+                        statusIP = Status.DNSBL;
+                    } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+                        statusIP = (Status) response;
+                    } else {
+                        statusIP = Status.WHITE;
+                    }
+                }
+            }
+            builder.append(statusIP);
+            builder.append(' ');
+            builder.append(tokenName);
+            builder.append(' ');
+            builder.append(statusName);
+            builder.append(' ');
+            builder.append(Core.DECIMAL_FORMAT.format(probability));
+            builder.append(' ');
+            builder.append(dist == null ? "UNDEFINED" : dist.getFrequencyLiteral());
+            builder.append(' ');
+            if (Subnet.isValidIP(tokenName)) {
+                builder.append(Subnet.expandIP(tokenName));
+            } else {
+                builder.append(Domain.revert(tokenName));
+            }
+        } catch (Exception ex) {
             builder.append("ERROR");
             Server.logError(ex);
         }
     }
 
-    private static final int MAX = 128;
+    private static final int MAX = 256;
     private static final Semaphore SEMAPHORE = new Semaphore(MAX);
     private static boolean run = true;
     

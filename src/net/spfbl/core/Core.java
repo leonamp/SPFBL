@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
@@ -52,11 +53,11 @@ import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
-import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.data.Block;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -74,7 +75,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 1;
-    private static final byte RELEASE = 3;
+    private static final byte RELEASE = 4;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -88,7 +89,7 @@ public class Core {
      * O nível do LOG.
      */
     public static Level LOG_LEVEL = Level.INFO;
-    
+
     public enum Level {
         ERROR,
         WARN,
@@ -1118,22 +1119,25 @@ public class Core {
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
             Address[] recipients = message.getRecipients(Message.RecipientType.TO);
             Session session = Session.getDefaultInstance(props);
-            Transport transport = session.getTransport("smtp");
+            SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
+                transport.setLocalHost(HOSTNAME);
                 Server.logTrace("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
                 Server.logTrace("SMTP sending message.");
                 transport.sendMessage(message, recipients);
                 Server.logTrace("SMTP message sent.");
             } catch (AuthenticationFailedException ex) {
-                throw new ProcessException("Falha de autenticação STMP.", ex);
+                throw new ProcessException("Falha de autenticação SMTP.", ex);
             } catch (MailConnectException ex) {
-                throw new ProcessException("Falha de conexão STMP.", ex);
+                throw new ProcessException("Falha de conexão SMTP.", ex);
             } catch (MessagingException ex) {
-                throw new ProcessException("Falha de conexão STMP.", ex);
+                throw new ProcessException("Falha de conexão SMTP.", ex);
             } finally {
-                transport.close();
-                Server.logTrace("SMTP connection closed.");
+                if (transport.isConnected()) {
+                    transport.close();
+                    Server.logTrace("SMTP connection closed.");
+                }
             }
         }
     }
@@ -1511,11 +1515,15 @@ public class Core {
         } else {
             byte[] buffer = new Base32().decode(secret);
             long index = getTimeIndexOTP();
-            if (code == getCodeOTP(buffer, index - 1)) {
+            if (code == getCodeOTP(buffer, index - 2)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index - 1)) {
                 return true;
             } else if (code == getCodeOTP(buffer, index)) {
                 return true;
             } else if (code == getCodeOTP(buffer, index + 1)) {
+                return true;
+            } else if (code == getCodeOTP(buffer, index + 2)) {
                 return true;
             } else {
                 return false;
@@ -1554,22 +1562,6 @@ public class Core {
         }
     }
     
-    public static boolean isOpenSMTP(String host, int port, int timeout) {
-        try {
-            Properties props = new Properties();
-            props.put("mail.smtp.starttls.enable", "false");
-            props.put("mail.smtp.auth", "false");
-            props.put("mail.smtp.timeout", timeout);
-            Session session = Session.getInstance(props, null);
-            Transport transport = session.getTransport("smtp");
-            transport.connect(host, port, null, null);
-            transport.close();
-            return true;
-        } catch (Exception ex) {
-            return false;
-        }
-    }
-    
     public static Integer getInteger(String text) {
         if (text == null) {
             return null;
@@ -1579,6 +1571,14 @@ public class Core {
             } catch (NumberFormatException ex) {
                 return null;
             }
+        }
+    }
+    
+    public static boolean equals(String text1, String text2) {
+        if (text1 == null) {
+            return text2 == null;
+        } else {
+            return text1.equals(text2);
         }
     }
 }

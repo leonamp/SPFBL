@@ -568,12 +568,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         String first = Subnet.getFirstIP(cidr);
         String last = Subnet.getLastIP(cidr);
         byte mask = Subnet.getMask(cidr);
-        byte max;
-        if (SubnetIPv4.isValidIPv4(first)) {
-            max = 32;
-        } else {
-            max = 64;
-        }
+        int max = SubnetIPv4.isValidIPv4(first) ? 32 : 64;
         if (mask < max) {
             mask++;
             String cidr1 = first + "/" + mask;

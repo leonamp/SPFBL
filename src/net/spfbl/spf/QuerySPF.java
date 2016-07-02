@@ -35,8 +35,10 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.User;
+import net.spfbl.data.Provider;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
+import net.spfbl.whois.Domain;
 
 /**
  * Servidor de consulta em SPF.
@@ -248,9 +250,9 @@ public final class QuerySPF extends Server {
                                             String sender = tokenizer.nextToken();
                                             boolean droped = Block.drop(client, sender);
                                             if (result == null) {
-                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             } else {
-                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result += (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             }
                                         } catch (ProcessException ex) {
                                             if (result == null) {
@@ -352,9 +354,9 @@ public final class QuerySPF extends Server {
                                             String recipient = tokenizer.nextToken();
                                             boolean droped = Trap.drop(client, recipient);
                                             if (result == null) {
-                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             } else {
-                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result += (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             }
                                         } catch (ProcessException ex) {
                                             if (result == null) {
@@ -417,9 +419,9 @@ public final class QuerySPF extends Server {
                                             String recipient = tokenizer.nextToken();
                                             boolean droped = White.drop(client, recipient);
                                             if (result == null) {
-                                                result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             } else {
-                                                result += (droped ? "DROPED" : "NOT FOUND") + "\n";
+                                                result += (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                             }
                                         } catch (ProcessException ex) {
                                             if (result == null) {
@@ -431,6 +433,24 @@ public final class QuerySPF extends Server {
                                     }
                                     if (result == null) {
                                         result = "ERROR: COMMAND";
+                                    }
+                                } else if (line.startsWith("WHITE SENDER ")) {
+                                    query = line.substring(13).trim();
+                                    type = "WHITE";
+                                    if (Domain.isEmail(query)) {
+                                        String domain = Domain.extractHost(query, true);
+                                        if (Provider.containsExact(domain)) {
+                                            token = query;
+                                        } else {
+                                            token = domain;
+                                        }
+                                        if (White.add(client, token)) {
+                                            result = "ADDED " + token + "\n";
+                                        } else {
+                                            result = "ALREADY EXISTS " + token + "\n";
+                                        }
+                                    } else {
+                                        result = "ERROR: COMMAND\n";
                                     }
                                 } else if (line.equals("WHITE SHOW ALL")) {
                                     query = line.substring(6).trim();

@@ -134,9 +134,13 @@ public class NoReply {
     public static boolean contains(String address) {
         if (!Domain.isEmail(address)) {
             return false;
-        } else if (address.startsWith("bounce+")) {
+        } else if (address.contains("bounce+")) {
+            return true;
+        } else if (address.contains("bounce-")) {
             return true;
         } else if (address.startsWith("prvs=")) {
+            return true;
+        } else if (address.startsWith("msprvs1=")) {
             return true;
         } else if (containsExact(address)) {
             return true;

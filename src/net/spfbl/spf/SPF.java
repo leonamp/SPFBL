@@ -800,11 +800,14 @@ public final class SPF implements Serializable {
      * @return o resultado SPF para um IP especifico.
      * @throws ProcessException se houver falha no processamento.
      */
-    public String getResult(String ip, String sender, String helo,
-            LinkedList<String> logList) throws ProcessException {
+    public String getResult(
+            String ip, String sender, String helo,
+            LinkedList<String> logList
+    ) throws ProcessException {
         Qualifier qualifier = getQualifier(
                 ip, sender, helo, 0,
-                new TreeSet<String>(), logList
+                new TreeSet<String>(),
+                logList
         );
         if (qualifier == null) {
             return "NONE";
@@ -852,24 +855,28 @@ public final class SPF implements Serializable {
      * @return o qualificador da consulta SPF.
      * @throws ProcessException se houver falha no processamento.
      */
-    private Qualifier getQualifier(String ip, String sender, String helo,
+    private Qualifier getQualifier(
+            String ip, String sender, String helo,
             int deep, TreeSet<String> hostVisitedSet,
-            LinkedList<String> logList) throws ProcessException {
+            LinkedList<String> logList
+    ) throws ProcessException {
         if (deep > 10) {
             return null; // Evita excesso de consultas.
         } else if (hostVisitedSet.contains(getHostname())) {
             return null; // Evita looping infinito.
         } else if (mechanismList == null) {
             throw new ProcessException("ERROR: HOST NOT FOUND");
-        } else //            if (redirect == null)
-        {
+        } else {
+            boolean hostNotFound = false;
             hostVisitedSet.add(getHostname());
             for (Mechanism mechanism : mechanismList) {
                 if (mechanism instanceof MechanismInclude) {
                     try {
                         MechanismInclude include = (MechanismInclude) mechanism;
                         Qualifier qualifier = include.getQualifierSPF(
-                                ip, sender, helo, deep + 1, hostVisitedSet, logList);
+                                ip, sender, helo, deep + 1,
+                                hostVisitedSet, logList
+                        );
                         if (qualifier == null) {
                             // Nenhum qualificador foi definido
                             // então continuar busca.
@@ -880,7 +887,9 @@ public final class SPF implements Serializable {
                         if (ex.getMessage().equals("ERROR: HOST NOT FOUND")) {
                             // Não foi possível fazer o include.
                             // O hostname mencionado não existe.
-                            // Continuar a verificação dos demais mecanismos.
+                            // Continuar a verificação dos demais 
+                            // mecanismos antes de efetivar o erro.
+                            hostNotFound = true;
                         } else {
                             throw ex;
                         }
@@ -904,21 +913,19 @@ public final class SPF implements Serializable {
                 }
             }
             if (redirect != null) {
-//                hostVisitedSet.add(getHostname());
                 SPF spf = CacheSPF.get(redirect);
                 if (spf == null) {
                     logRedirect(redirect, "NOT FOUND", logList);
                     return null;
                 } else {
-                    Qualifier qualifier = spf.getQualifier(ip, sender, helo, 0, hostVisitedSet, logList);
+                    Qualifier qualifier = spf.getQualifier(
+                            ip, sender, helo, 0,
+                            hostVisitedSet, logList
+                    );
                     logRedirect(redirect, qualifier, logList);
                     return qualifier;
                 }
-            } else if (error) {
-//                // Foi encontrado um erro em algum mecanismos
-//                // na qual os demais não tiveram macth.
-//                throw new ProcessException("ERROR: SPF PARSE");
-
+            } else if (error || hostNotFound) {
                 // Nova interpretação SPF para erro de sintaxe.
                 // Em caso de erro, retornar SOFTFAIL.
                 logError(Qualifier.SOFTFAIL, logList);
@@ -933,10 +940,6 @@ public final class SPF implements Serializable {
                 logAll(all, logList);
                 return all;
             }
-//        } else {
-//            hostVisitedSet.add(getHostname());
-//            SPF spf = CacheSPF.get(redirect);
-//            return spf.getQualifier(ip, sender, helo, 0, hostVisitedSet);
         }
     }
 
@@ -1589,7 +1592,10 @@ public final class SPF implements Serializable {
             if (spf == null) {
                 return null;
             } else {
-                return spf.getQualifier(ip, sender, helo, deep, hostVisitedSet, logList);
+                return spf.getQualifier(
+                        ip, sender, helo, deep,
+                        hostVisitedSet, logList
+                );
             }
 
         }
@@ -1647,13 +1653,13 @@ public final class SPF implements Serializable {
             return ret;
         }
         
-        private static TreeSet<String> keySet() {
+        private static synchronized TreeSet<String> keySet() {
             TreeSet<String> keySet = new TreeSet<String>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
         
-        private static HashMap<String,SPF> getMap() {
+        private static synchronized HashMap<String,SPF> getMap() {
             HashMap<String,SPF> map = new HashMap<String,SPF>();
             map.putAll(MAP);
             return map;
@@ -2324,6 +2330,11 @@ public final class SPF implements Serializable {
             return MAP.subMap(fromKey, false, toKey, false);
         }
         
+        private static synchronized NavigableMap<String,Distribution> getInclusiveSubMap(
+                String fromKey, String toKey) {
+            return MAP.subMap(fromKey, true, toKey, true);
+        }
+        
         private static Distribution getExact(String host) {
             return MAP.get(host);
         }
@@ -2376,11 +2387,11 @@ public final class SPF implements Serializable {
                         Object value = map.get(key);
                         if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
-//                            if (!distribution.isExpired14()) {
+                            if (distribution.complain > 0 || distribution.frequency != null) {
 //                                distribution.getStatus(key);
 //                                distribution.resetSpamInterval();
                                 putExact(key.toLowerCase(), distribution);
-//                            }
+                            }
                         }
                     }
                     setLoaded();
@@ -2429,7 +2440,13 @@ public final class SPF implements Serializable {
                 }
             } else if (Subnet.isValidCIDR(value)) {
                 String cidr = Subnet.normalizeCIDR(value);
-                subMap = getSubMap("0", ":");
+                String ipFirst = Subnet.getFirstIP(cidr);
+                String ipLast = Subnet.getLastIP(cidr);
+                if (ipFirst.compareTo(ipLast) > 0) {
+                    subMap = getInclusiveSubMap(ipLast, ipFirst);
+                } else {
+                    subMap = getInclusiveSubMap(ipFirst, ipLast);
+                }
                 for (String ip : subMap.keySet()) {
                     if (Subnet.containsIP(cidr, ip)) {
                         distribution = getExact(ip);
@@ -2438,36 +2455,17 @@ public final class SPF implements Serializable {
                         }
                     }
                 }
-                subMap = getSubMap("a", "g");
-                for (String ip : subMap.keySet()) {
-                    if (SubnetIPv6.containsIP(cidr, ip)) {
-                        distribution = getExact(ip);
-                        if (distribution != null) {
-                            map.put(ip, distribution);
-                        }
+            } else if (Domain.isHostname(value)) {
+                String host = Domain.normalizeHostname(value, true);
+                do {
+                    int index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    if ((distribution = getExact('.' + host)) != null) {
+                        map.put('.' + host, distribution);
+                    } else if ((distribution = getExact('@' + host)) != null) {
+                        map.put('@' + host, distribution);
                     }
-                }
-            } else if (value.startsWith(".")) {
-                String hostname = value;
-                subMap = getSubMap(".", "/");
-                for (String key : subMap.keySet()) {
-                    if (key.endsWith(hostname)) {
-                        distribution = getExact(key);
-                        if (distribution != null) {
-                            map.put(key, distribution);
-                        }
-                    }
-                }
-                subMap = getSubMap("@", "A");
-                for (String mx : subMap.keySet()) {
-                    String hostKey = '.' + mx.substring(1);
-                    if (hostKey.endsWith(hostname)) {
-                        distribution = getExact(mx);
-                        if (distribution != null) {
-                            map.put(mx, distribution);
-                        }
-                    }
-                }
+                } while (host.contains("."));
             } else {
                 distribution = getExact(value);
                 if (distribution != null) {
@@ -2776,8 +2774,8 @@ public final class SPF implements Serializable {
         for (String key : distribuitonMap.keySet()) {
             Distribution distribution = distribuitonMap.get(key);
             if (distribution != null) {
-                clearSet.add(key);
                 if (distribution.clear()) {
+                    clearSet.add(key);
                     Peer.sendToAll(key, distribution);
                 }
             }
@@ -3076,7 +3074,7 @@ public final class SPF implements Serializable {
             return keySet;
         }
         
-        private static HashMap<String,HELO> getMap() {
+        private static synchronized HashMap<String,HELO> getMap() {
             HashMap<String,HELO> map = new HashMap<String,HELO>();
             map.putAll(MAP);
             return map;
@@ -3698,7 +3696,8 @@ public final class SPF implements Serializable {
                             + "Try again later.\n\n";
                 }
             } catch (Exception ex) {
-                throw new ProcessException("FATAL", ex);
+                Server.logError(ex);
+                return "action=WARN SPFBL fatal error.\n\n";
             }
         }
     }
@@ -3963,7 +3962,9 @@ public final class SPF implements Serializable {
                             }
                             if (firstToken.equals("CHECK")) {
                                 String results = "\nSPF resolution results:\n";
-                                if (logList == null || logList.isEmpty()) {
+                                if (spf != null && spf.isInexistent()) {
+                                    results += "   NXDOMAIN\n";
+                                } else if (logList == null || logList.isEmpty()) {
                                     results += "   NONE\n";
                                 } else {
                                     for (String log : logList) {
@@ -4395,9 +4396,7 @@ public final class SPF implements Serializable {
         WHITE, // Whitelisted
         GRAY, // Graylisted
         BLACK, // Blacklisted
-        BLOCK, // Blocked
-        IGNORE, // Ignored
-        CLOSED; // Closed
+        BLOCK; // Blocked.
     }
     /**
      * Constantes que determinam os limiares de listagem.
@@ -4516,7 +4515,7 @@ public final class SPF implements Serializable {
                     }
                 }
             } else {
-                return "NEW";
+                return "UNDEFINED";
             }
         }
 
@@ -4826,7 +4825,7 @@ public final class SPF implements Serializable {
         
         public String getFrequencyLiteral() {
             if (frequency == null) {
-                return "NEW";
+                return "UNDEFINED";
             } else {
                 int frequencyInt = frequency.getMaximumInt();
                 long idleTimeInt = getIdleTimeMillis();

@@ -335,6 +335,10 @@ public class Ignore {
             return false;
         }
     }
+    
+    public static boolean containsCIDR(String ip) {
+        return CIDR.get(null, ip) != null;
+    }
 
     public static boolean contains(String token) {
         if (token == null) {

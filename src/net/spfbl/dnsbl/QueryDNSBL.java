@@ -24,8 +24,6 @@ import net.spfbl.spf.SPF;
 import net.spfbl.whois.SubnetIPv4;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.HashMap;
@@ -39,7 +37,6 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
 import net.spfbl.core.Core;
-import net.spfbl.core.Reverse;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
@@ -431,9 +428,9 @@ public final class QueryDNSBL extends Server {
                                 } else if (clientQuery.equals("127.0.0.2")) {
                                     // Consulta de teste para positivio.
                                     result = "127.0.0.2";
-                                } else if (Block.containsIP(clientQuery)) {
+                                } else if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
+                                    ttl = 259200; // Três dias.
                                 } else if (SPF.isBlacklisted(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
@@ -443,9 +440,10 @@ public final class QueryDNSBL extends Server {
                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                 // A consulta é um IPv6.
                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-                                if (Block.containsIP(clientQuery)) {
+//                                Analise.processToday(clientQuery);
+                                if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
+                                    ttl = 259200; // Três dias.
                                 } else if (SPF.isBlacklisted(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
@@ -453,9 +451,9 @@ public final class QueryDNSBL extends Server {
                                     result = "NXDOMAIN";
                                 }
                             } else if ((clientQuery = server.extractDomain(host)) != null) {
-                                if (Block.containsHost(clientQuery)) {
+                                if (Block.containsDomain(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
+                                    ttl = 259200; // Três dias.
                                 } else if (SPF.isBlacklisted(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
@@ -489,7 +487,7 @@ public final class QueryDNSBL extends Server {
                                 long refresh = 1800;
                                 long retry = 900;
                                 long expire = 604800;
-                                long minimum = 86400;
+                                long minimum = 300;
                                 name = new Name(server.getHostName().substring(1) + '.');
                                 SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
                                         name, SERIAL, refresh, retry, expire, minimum);

@@ -339,6 +339,26 @@ public class Provider {
             return false;
         }
     }
+    
+    public static boolean containsCIDR(String ip) {
+        return CIDR.get(null, ip) != null;
+    }
+    
+    public static boolean containsDomain(String helo) {
+        helo = Domain.normalizeHostname(helo, true);
+        if (helo == null) {
+            return false;
+        } else {
+            do {
+                int index = helo.indexOf('.') + 1;
+                helo = helo.substring(index);
+                if (SET.contains('.' + helo)) {
+                    return true;
+                }
+            } while (helo.contains("."));
+            return false;
+        }
+    }
 
     public static boolean containsHELO(String ip, String helo) {
         if (SPF.matchHELO(ip, helo)) {

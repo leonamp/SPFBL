@@ -614,12 +614,12 @@ public abstract class Server extends Thread {
      * @param ex a exceção a ser registrada.
      */
     public static void logError(Throwable ex) {
-        if (ex instanceof ProcessException) {
-            ProcessException pex = (ProcessException) ex;
-            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
-        } else if (ex instanceof Exception) {
+//        if (ex instanceof ProcessException) {
+//            ProcessException pex = (ProcessException) ex;
+//            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
+//        } else if (ex instanceof Exception) {
             log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
-        }
+//        }
     }
     
     /**
@@ -772,6 +772,8 @@ public abstract class Server extends Thread {
         // Inicia finalização dos servidores.
         Server.logInfo("interrupting analises...");
         Analise.interrupt();
+        Server.logInfo("interrupting simplifies...");
+        Block.interrupt();
         Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {

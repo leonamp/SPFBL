@@ -466,7 +466,7 @@ public final class SubnetIPv6 extends Subnet {
         CHANGED = true;
     }
     
-    protected static String getFirstIPv6(String inetnum) {
+    public static String getFirstIPv6(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String size = inetnum.substring(index+1);
@@ -491,7 +491,7 @@ public final class SubnetIPv6 extends Subnet {
                 Integer.toHexString(p8);
     }
     
-    protected static String getLastIPv6(String inetnum) {
+    public static String getLastIPv6(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
         String size = inetnum.substring(index+1);

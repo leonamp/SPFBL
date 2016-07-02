@@ -209,10 +209,12 @@ public class Domain implements Serializable, Comparable<Domain> {
                     beginIndex = endIndex + 1;
                 }
             }
+            beginIndex = address.lastIndexOf('.');
+            int endIndex = address.length();
             if (pontuacao) {
-                return address;
+                return address.substring(beginIndex, endIndex);
             } else {
-                return address.substring(1);
+                return address.substring(beginIndex + 1, endIndex);
             }
         }
     }
@@ -861,6 +863,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return null;
                 } else if (ex.getMessage().equals("ERROR: RESERVED")) {
                     return null;
+                } else if (ex.getMessage().equals("ERROR: WHOIS CONNECTION FAIL")) {
+                    return null;
                 } else {
                     Server.logError(ex);
                     return null;
@@ -1134,6 +1138,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                     domainMax.drop();
                 } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     domainMax.drop();
+                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                    // Fazer nada.
                 } else {
                     Server.logError(ex);
                 }

@@ -101,7 +101,7 @@ public final class SubnetIPv4 extends Subnet {
         return isInetnum;
     }
     
-    protected static String getFirstIPv4(String inetnum) {
+    public static String getFirstIPv4(String inetnum) {
         if (inetnum == null) {
             return null;
         } else {
@@ -120,7 +120,7 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
-    protected static String getLastIPv4(String inetnum) {
+    public static String getLastIPv4(String inetnum) {
         if (inetnum == null) {
             return null;
         } else {
