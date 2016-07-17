@@ -275,7 +275,8 @@ public final class AdministrationTCP extends Server {
                         if (tokenizer.hasMoreTokens()) {
                             name = tokenizer.nextToken();
                         } else {
-                            name = cidr;
+                            name = cidr.replace(':', '.');
+                            name = name.replace('/', '-');
                         }
                         String last = Subnet.getLastIP(cidr);
                         String ip = Subnet.getFirstIP(cidr);
@@ -978,12 +979,6 @@ public final class AdministrationTCP extends Server {
                         token = tokenizer.nextToken();
                         String block = Block.find(null, token);
                         result = (block == null ? "NONE" : block) + "\n";
-                    } else if (token.equals("SIMPLIFY") && !tokenizer.hasMoreTokens()) {
-                        if (Block.simplify()) {
-                            result = "STARTED\n";
-                        } else {
-                            result = "ALREADY RUNNING\n";
-                        }
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 

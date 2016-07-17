@@ -21,15 +21,12 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -37,7 +34,6 @@ import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
-import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
@@ -454,7 +450,16 @@ public final class Reverse implements Serializable {
         Attributes atributes = Server.getAttributesDNS(
                 host, new String[]{"MX"}
         );
-        if (atributes != null) {
+        if (atributes == null || atributes.size() == 0) {
+            atributes = Server.getAttributesDNS(
+                    host, new String[]{"CNAME"}
+            );
+            Attribute attribute = atributes.get("CNAME");
+            if (attribute != null) {
+                String cname = (String) attribute.get(0);
+                return getMXSet(cname);
+            }
+        } else {
             Attribute attribute = atributes.get("MX");
             if (attribute != null) {
                 for (int index = 0; index < attribute.size(); index++) {
@@ -481,11 +486,16 @@ public final class Reverse implements Serializable {
             }
         }
         ArrayList<String> mxList = new ArrayList<String>();
-        for (int priority : mxMap.keySet()) {
-            TreeSet<String> mxSet = mxMap.get(priority);
-            for (String mx : mxSet) {
-                if (!mxList.contains(mx)) {
-                    mxList.add(mx);
+        if (mxMap.isEmpty()) {
+            // https://tools.ietf.org/html/rfc5321#section-5
+            mxList.add(Domain.normalizeHostname(host, true));
+        } else {
+            for (int priority : mxMap.keySet()) {
+                TreeSet<String> mxSet = mxMap.get(priority);
+                for (String mx : mxSet) {
+                    if (!mxList.contains(mx)) {
+                        mxList.add(mx);
+                    }
                 }
             }
         }

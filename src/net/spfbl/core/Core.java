@@ -74,8 +74,8 @@ import org.apache.commons.codec.binary.Base32;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 1;
-    private static final byte RELEASE = 4;
+    private static final byte SUBVERSION = 2;
+    private static final byte RELEASE = 0;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
@@ -419,6 +419,9 @@ public class Core {
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
+                    Analise.setAnaliseExpires(properties.getProperty("analise_expires"));
+                    Analise.setAnaliseIP(properties.getProperty("analise_ip"));
+                    Analise.setAnaliseMX(properties.getProperty("analise_mx"));
                     return true;
                 } finally {
                     confIS.close();
@@ -1186,6 +1189,7 @@ public class Core {
                 }
                 Peer.sendHeloToAll();
                 Core.startTimer();
+                Analise.initProcess();
             }
         } catch (Exception ex) {
             Server.logError(ex);
@@ -1401,6 +1405,8 @@ public class Core {
         public void run() {
             // Apaga todos os arquivos de LOG vencidos.
             Server.deleteLogExpired();
+            // Apaga todos as listas de analise vencidas.
+            Analise.dropExpired();
         }
     }
     

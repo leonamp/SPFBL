@@ -440,7 +440,7 @@ public final class QueryDNSBL extends Server {
                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                 // A consulta é um IPv6.
                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-//                                Analise.processToday(clientQuery);
+                                Analise.processToday(clientQuery);
                                 if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 259200; // Três dias.

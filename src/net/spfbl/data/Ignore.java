@@ -397,7 +397,7 @@ public class Ignore {
         }
     }
 
-    private static boolean containsHost(String host) {
+    public static boolean containsHost(String host) {
         do {
             int index = host.indexOf('.') + 1;
             host = host.substring(index);

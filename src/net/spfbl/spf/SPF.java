@@ -3445,6 +3445,7 @@ public final class SPF implements Serializable {
             try {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 ip = Subnet.normalizeIP(ip);
+                Analise.processToday(ip);
                 tokenSet.add(Subnet.normalizeIP(ip));
                 String origin;
                 if (client == null) {
@@ -3494,7 +3495,6 @@ public final class SPF implements Serializable {
                 }
                 String result;
                 LinkedList<String> logList = new LinkedList<String>();
-                
                 SPF spf;
                 if (sender == null) {
                     spf = null;
@@ -3514,11 +3514,12 @@ public final class SPF implements Serializable {
                 }
                 String origem;
                 String fluxo;
+                String mx = Domain.extractHost(sender, true);
+                Analise.processToday(mx);
                 if (result.equals("PASS") || (sender != null && Provider.containsHELO(ip, helo))) {
                     // Quando fo PASS, significa que o domínio
                     // autorizou envio pelo IP, portanto o dono dele
                     // é responsavel pelas mensagens.
-                    String mx = Domain.extractHost(sender, true);
                     if (Provider.containsExact(mx)) {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
@@ -3863,6 +3864,7 @@ public final class SPF implements Serializable {
                         } else {
                             TreeSet<String> tokenSet = new TreeSet<String>();
                             ip = Subnet.normalizeIP(ip);
+                            Analise.processToday(ip);
                             tokenSet.add(ip);
                             if (client != null && client.hasEmail()) {
                                 // Se houver um cliente válido,
@@ -3934,11 +3936,12 @@ public final class SPF implements Serializable {
                             } else {
                                 result = spf.getResult(ip, sender, helo, logList);
                             }
+                            String mx = Domain.extractHost(sender, true);
+                            Analise.processToday(mx);
                             if (result.equals("PASS") || (sender != null && Provider.containsHELO(ip, hostname))) {
                                 // Quando fo PASS, significa que o domínio
                                 // autorizou envio pelo IP, portanto o dono dele
                                 // é responsavel pelas mensagens.
-                                String mx = Domain.extractHost(sender, true);
                                 if (Provider.containsExact(mx)) {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.

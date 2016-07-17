@@ -122,6 +122,7 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         Peer.load();
+        Analise.load();
         Reverse.load();
         Block.load();
         White.load();
@@ -148,6 +149,7 @@ public abstract class Server extends Thread {
         Handle.store();
         NameServer.store();
         Peer.store();
+        Analise.store();
         Reverse.store();
         Block.store();
         White.store();
@@ -158,6 +160,7 @@ public abstract class Server extends Thread {
         NoReply.store();
         Defer.store();
         QueryDNSBL.store();
+        System.gc();
     }
     
     private static SecretKey privateKey = null;
@@ -399,7 +402,7 @@ public abstract class Server extends Thread {
     
     public static synchronized void setLogExpires(int expires) {
         if (expires < 1 || expires > Short.MAX_VALUE) {
-            Server.logError("invalid expires integer value '" + expires + "'.");
+            Server.logError("invalid LOG expires integer value '" + expires + "'.");
         } else {
             Server.logExpires = (short) expires;
         }
@@ -772,8 +775,6 @@ public abstract class Server extends Thread {
         // Inicia finalização dos servidores.
         Server.logInfo("interrupting analises...");
         Analise.interrupt();
-        Server.logInfo("interrupting simplifies...");
-        Block.interrupt();
         Server.logInfo("shutting down server...");
         boolean closed = true;
         for (Server server : SERVER_LIST) {

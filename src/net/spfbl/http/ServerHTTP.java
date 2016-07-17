@@ -1165,7 +1165,7 @@ public final class ServerHTTP extends Server {
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resutado da checagem DNSBL do domínio '" + query + "'.";
+                                message = "Resultado da checagem DNSBL do domínio '" + query + "'.";
                             } else {
                                 message = "DNSBL checking the result of domain " + query + ".";
                             }
