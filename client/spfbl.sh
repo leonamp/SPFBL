@@ -1554,7 +1554,7 @@ case $1 in
                         if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1647,9 +1647,9 @@ case $1 in
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
-	            # O parâmentro é uma URL de denúncia SPFBL.
-	            url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
+	                        # O parâmentro é uma URL de denúncia SPFBL.
+	                        url=$2
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1753,6 +1753,7 @@ case $1 in
 		#    NONE <ticket>: permitir o recebimento da mensagem.
 		#    LISTED: atrasar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 		#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
+		#    FLAG: aceita o recebimento e redirecione a mensagem para a pasta SPAM.
 		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#    NXDOMAIN: o domínio do remetente é inexistente.
@@ -1776,6 +1777,7 @@ case $1 in
 		#    13: domínio inexistente.
 		#    14: IP ou remetente inválido.
 		#    15: mensagem originada de uma rede local.
+		#    16: mensagem marcada como SPAM.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -1804,6 +1806,8 @@ case $1 in
 				exit 14
 			elif [[ $qualifier == "LAN" ]]; then
 				exit 15
+			elif [[ $qualifier == "FLAG" ]]; then
+				exit 16
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED"* ]]; then

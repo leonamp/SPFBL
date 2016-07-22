@@ -60,7 +60,7 @@ Se o administrador registrar vários registros SPF para um determinado domínio,
 
 ##### Mecanismos permissivos demais
 
-O SPF convencional não permite o registro de alguns mecanismos que são permissivos demais ao ponto de retornar sempre PASS para qualquer parâmetro utilizado na consulta.
+O SPF convencional permite o registro de alguns mecanismos que são permissivos demais ao ponto de retornar sempre PASS para qualquer parâmetro utilizado na consulta.
 
 Um destes mecanismos é o +all, que no SPFBL foi abolido e substituido por ?all sempre que encontrado.
 
@@ -266,6 +266,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
 * LISTED [&lt;ticket&gt;]: atrasa o recebimento da mensagem, informa à origem a listagem temporária em blacklist e envia e-mail com URL de liberação quando for o caso.
 * BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
+* FLAG: aceita o recebimento e redirecione a mensagem para a pasta SPAM.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 * NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remtente não existe.
@@ -384,7 +385,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG)}{}}
   deny
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -435,6 +436,10 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
+    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
+    add_header = X-Spam-Flag: YES
+  warn
+    condition = ${if eq {$acl_c_spfreceived}{13}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
@@ -460,8 +465,8 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
   deny
     condition = ${if < {$message_size}{16m}{true}{false}}
     malware = *
-    message = 5.7.1 SPFBL this message was detected as possible malware ($malware_name).
-    log_message = malware detected. ${run{/usr/local/bin/exim4/spfblticket.sh $acl_c_spfblticket}{$value}{SPFBL ERROR}}.
+    message = 5.7.1 SPFBL this message was detected as possible malware.
+    log_message = SPFBL malware detected. ${run{/usr/local/bin/exim4/spfblticket.sh $acl_c_spfblticket}{$value}{ERROR}}.
 ```
 
 ##### Integração com Exim do cPanel
@@ -471,7 +476,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED )}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG)}{}}
   deny
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -522,6 +527,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
+    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
+    add_header = X-Spam-Flag: YES
+  warn
+    condition = ${if eq {$acl_c_spfreceived}{13}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 

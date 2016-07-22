@@ -76,6 +76,11 @@ while ( my $line = <STDIN> ) {
             "action=451 4.7.2 SPFBL you are temporarily blocked on this server.\n\n"
         );
     }
+    elsif ( $result =~ /^FLAG/ ) {
+        STDOUT->print(
+            "action=PREPEND X-Spam-Flag: YES\n\n"
+        );
+    }
     elsif ( $result =~ /^NXDOMAIN/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL sender has non-existent internet domain.\n\n"
