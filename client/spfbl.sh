@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.2"
+version="2.3"
 
 head()
 {
@@ -680,6 +680,41 @@ case $1 in
 					fi
 
 					echo "$response"
+				fi
+			;;
+			'sender')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser liberado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
+				else
+					sender=$3
+
+					response=$(echo "WHITE SENDER $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "OK" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
 				fi
 			;;
 			'drop')
