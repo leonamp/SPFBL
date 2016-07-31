@@ -207,8 +207,8 @@ public final class QueryUDP extends Server {
                     CONNECION_SEMAPHORE.release();
                 }
                 return connection;
-            } else if (Core.hasLowMemory()) {
-                return null;
+//            } else if (Core.hasLowMemory()) {
+//                return null;
             } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.

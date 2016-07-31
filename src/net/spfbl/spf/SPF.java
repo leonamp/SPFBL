@@ -42,9 +42,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.NoSuchElementException;
 import java.util.Properties;
-import java.util.SortedSet;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -4465,6 +4463,7 @@ public final class SPF implements Serializable {
             if (isValid(token)) {
                 Distribution distribution = CacheDistribution.get(token, true);
                 distribution.addQuerySpam(time);
+                Peer.sendToAll(token, distribution);
             }
         }
     }

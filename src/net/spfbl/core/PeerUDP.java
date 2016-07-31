@@ -402,8 +402,8 @@ public final class PeerUDP extends Server {
                     use(connection);
                 }
                 return connection;
-            } else if (Core.hasLowMemory()) {
-                return null;
+//            } else if (Core.hasLowMemory()) {
+//                return null;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.

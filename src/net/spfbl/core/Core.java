@@ -57,7 +57,6 @@ import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
-import net.spfbl.data.Block;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -75,7 +74,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 3;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     
     public static String getAplication() {
         return "SPFBL-" + getVersion();
