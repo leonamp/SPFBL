@@ -333,6 +333,40 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
+    public static boolean isReservedIPv6(String ip) {
+        if (ip == null) {
+            return false;
+        } else if (SubnetIPv6.containsIP("::/128", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("::1/128", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("::ffff:0:0/96", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("100::/64", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("64:ff9b::/96", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("2001::/32", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("2001:10::/28", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("2001:20::/28", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("2001:db8::/32", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("2002::/16", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("fc00::/7", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("fe80::/10", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("ff00::/8", ip)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     public static String getNextIPv6(String ip) {
         if (ip == null) {
             return null;

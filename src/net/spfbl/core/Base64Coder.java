@@ -18,6 +18,7 @@ package net.spfbl.core;
  * encodeString(String).<br> &nbsp; Method decode(String) renamed to
  * decodeString(String).<br> &nbsp; New method encode(byte[],int) added.<br>
  * &nbsp; New method decode(String) added.<br>
+ * 
  */
 public class Base64Coder {
 

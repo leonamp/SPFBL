@@ -281,17 +281,25 @@ public abstract class Server extends Thread {
      */
     private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
     
-    private static long LAST_TICKET_TIME = 0;
+    private static long LAST_UNIQUE_TIME = 0;
     
-    public static synchronized String getNewTicketDate() {
+    public static synchronized long getNewUniqueTime() {
         long time = System.currentTimeMillis();
-        if (time <= LAST_TICKET_TIME) {
+        if (time <= LAST_UNIQUE_TIME) {
             // Não permite criar dois tickets 
             // exatamente com a mesma data para 
             // que o hash fique sempre diferente.
-            time = LAST_TICKET_TIME + 1;
+            time = LAST_UNIQUE_TIME + 1;
         }
-        LAST_TICKET_TIME = time;
+        return LAST_UNIQUE_TIME = time;
+    }
+    
+    public static String getNewTicketDate() {
+        long time = getNewUniqueTime();
+        return formatTicketDate(time);
+    }
+    
+    public static synchronized String formatTicketDate(long time) {
         return FORMAT_DATE_TICKET.format(new Date(time));
     }
     

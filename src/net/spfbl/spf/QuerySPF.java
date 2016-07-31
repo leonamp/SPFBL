@@ -300,7 +300,7 @@ public final class QuerySPF extends Server {
                                     while (tokenizer.hasMoreElements()) {
                                         try {
                                             token = tokenizer.nextToken();
-                                            String block = Block.find(client, token);
+                                            String block = Block.find(client, token, false);
                                             if (result == null) {
                                                 result = (block == null ? "NONE" : block) + "\n";
                                             } else {
@@ -612,8 +612,8 @@ public final class QuerySPF extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire(10, TimeUnit.MILLISECONDS)) {
-                // Espera aceitável para conexão de 10ms.
+            if (CONNECION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
+                // Espera aceitável para conexão de 100ms.
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
@@ -621,6 +621,8 @@ public final class QuerySPF extends Server {
                     use(connection);
                 }
                 return connection;
+            } else if (Core.hasLowMemory()) {
+                return null;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
@@ -710,7 +712,7 @@ public final class QuerySPF extends Server {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS);
                 } else {
                     connection.close();
                 }

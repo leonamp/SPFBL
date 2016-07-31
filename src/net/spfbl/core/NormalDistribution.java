@@ -32,13 +32,6 @@ public class NormalDistribution implements Serializable {
     
     private static final int POPULATION = 32;
     
-    public NormalDistribution cloneDistribution() {
-        NormalDistribution clone = new NormalDistribution();
-        clone.xiSum = this.xiSum;
-        clone.xi2Sum = this.xi2Sum;
-        return clone;
-    }
-    
     public void add(NormalDistribution other) {
         if (other != null) {
             this.xiSum = 1.0f / ((1.0f / this.xiSum) + (1.0f / other.xiSum));

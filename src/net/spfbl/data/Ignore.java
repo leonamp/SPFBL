@@ -357,7 +357,7 @@ public class Ignore {
                     return true;
                 } else if (containsExact(senderDomain)) {
                     return true;
-                } else if (containsHost(senderDomain.substring(1))) {
+                } else if (containsHost('.' + senderDomain.substring(1))) {
                     return true;
                 } else {
                     int index3 = senderDomain.length();

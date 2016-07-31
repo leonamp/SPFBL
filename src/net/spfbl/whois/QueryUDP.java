@@ -200,20 +200,27 @@ public final class QueryUDP extends Server {
      * @return uma conexão ociosa ou nova se não houver ociosa.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            Connection connection = poll();
-            if (connection == null) {
-                CONNECION_SEMAPHORE.release();
-            }
-            return connection;
-        } else {
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                }
+                return connection;
+            } else if (Core.hasLowMemory()) {
+                return null;
+            } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
-            Connection connection = new Connection();
-            connection.start();
-            CONNECTION_COUNT++;
-            return connection;
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("creating WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Connection connection = new Connection();
+                connection.start();
+                CONNECTION_COUNT++;
+                return connection;
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return null;
         }
     }
     
@@ -264,7 +271,7 @@ public final class QueryUDP extends Server {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else if (connection.isAlive()) {
                     connection.close();
                 }

@@ -112,6 +112,15 @@ public class Analise implements Serializable, Comparable<Analise> {
         this.name = normalizeName(name);
     }
     
+    private synchronized Analise duplicate() {
+        Analise clone = new Analise(this.name);
+        clone.ipSet.addAll(this.ipSet);
+        clone.processSet.addAll(this.processSet);
+        clone.resultSet.addAll(this.resultSet);
+        clone.last = this.last;
+        return clone;
+    }
+    
     public String getName(){
         try {
             return URLDecoder.decode(name, "UTF-8");
@@ -155,7 +164,7 @@ public class Analise implements Serializable, Comparable<Analise> {
         } else if (resultSet.contains(token)) {
             return false;
         } else if (run && ipSet.add(token)) {
-            if (SEMAPHORE.tryAcquire()) {
+            if (!Core.hasLowMemory() && SEMAPHORE.tryAcquire()) {
                 Process process = new Process();
                 process.start();
             }
@@ -168,18 +177,9 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static void initProcess() {
-        int count = 0;
-        for (Analise analise : getAnaliseSet()) {
-            count += analise.ipSet.size();
-            if (count >= MAX) {
-                break;
-            }
-        }
-        count = Math.min(count, MAX);
-        while (count > 0) {
+        while (!Core.hasLowMemory() && SEMAPHORE.tryAcquire()) {
             Process process = new Process();
             process.start();
-            count--;
         }
     }
     
@@ -188,12 +188,15 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public synchronized TreeSet<String> getResultSet() {
-        TreeSet<String> set = new TreeSet<String>();
+        TreeMap<String,String> map = new TreeMap<String,String>();
         for (String ip: ipSet) {
-            set.add(ip + " WAITING");
+            map.put(ip, "WAITING");
         }
         for (String ip: processSet) {
-            set.add(ip + " PROCESSING");
+            map.put(ip, "PROCESSING");
+        }
+        for (String ip: resultSet) {
+            map.put(ip, "LOST");
         }
         File resultFile = getResultFile();
         if (resultFile.exists()) {
@@ -203,7 +206,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                 try {
                     String line;
                     while ((line = bufferedReader.readLine()) != null) {
-                        set.add(line);
+                        int index = line.indexOf(' ');
+                        String ip = line.substring(0, index);
+                        if (resultSet.contains(ip)) {
+                            String result = line.substring(index+1);
+                            map.put(ip, result);
+                        }
                     }
                 } finally {
                     bufferedReader.close();
@@ -212,10 +220,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                 Server.logError(ex);
             }
         }
-//        for (String ip : resultMap.keySet()) {
-//            String result = resultMap.get(ip);
-//            set.add(ip + " " + result);
-//        }
+        TreeSet<String> set = new TreeSet<String>();
+        for (String ip : map.keySet()) {
+            String result = map.get(ip);
+            set.add(ip + " " + result);
+        }
         return set;
     }
     
@@ -243,6 +252,10 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
+    private synchronized boolean dropProcess(String token) {
+        return processSet.remove(token);
+    }
+    
     public static void dropExpired() {
         for (String name : getNameSet()) {
             Analise analise = get(name, false);
@@ -258,7 +271,7 @@ public class Analise implements Serializable, Comparable<Analise> {
      */
     public boolean isExpired() {
         int time = (int) (System.currentTimeMillis() - last) / Server.DAY_TIME;
-        return time > ANALISE_EXPIRES;
+        return time >= ANALISE_EXPIRES;
     }
     
     private boolean isWait() {
@@ -295,12 +308,15 @@ public class Analise implements Serializable, Comparable<Analise> {
             String token = pollFirst();
             if (token == null) {
                 return false;
+            } else if (Subnet.isValidIP(token) && Subnet.isReservedIP(token)) {
+                dropProcess(token);
+                return false;
             } else {
                 StringBuilder builder = new StringBuilder();
                 Analise.process(token, builder, 20000);
                 String result = builder.toString();
                 if (addResult(token, result)) {
-                    Server.logTrace(token + ' ' + result);
+//                    Server.logTrace(token + ' ' + result);
                 }
                 return true;
             }
@@ -350,6 +366,17 @@ public class Analise implements Serializable, Comparable<Analise> {
     public synchronized static TreeSet<Analise> getAnaliseSet() {
         TreeSet<Analise> queue = new TreeSet<Analise>();
         queue.addAll(QUEUE);
+        return queue;
+    }
+    
+    public static TreeSet<Analise> getAnaliseCloneSet() {
+        TreeSet<Analise> queue = new TreeSet<Analise>();
+        for (String name : getNameSet()) {
+            Analise analise = get(name, false);
+            if (analise != null) {
+                queue.add(analise.duplicate());
+            }
+        }
         return queue;
     }
     
@@ -442,7 +469,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static void processToday(String token) {
-        if (ANALISE_EXPIRES > 0) {
+        if (ANALISE_EXPIRES > 0 && !Core.hasLowMemory()) {
             boolean process;
             if (token == null) {
                 process = false;
@@ -476,9 +503,12 @@ public class Analise implements Serializable, Comparable<Analise> {
      */
     public enum Status {
 
-        WHITE, // Whitelisted
-        GRAY, // Graylisted
-        BLACK, // Blacklisted
+        WHITE, // Obsoleto.
+        GRAY, // Obsoleto.
+        BLACK, // Obsoleto.
+        GREEN,
+        YELLOW,
+        RED,
         BLOCK, // Blocked
         DNSBL, // DNS blacklist
         PROVIDER, // Provedor
@@ -599,7 +629,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     } else if ((response = getResponseSMTP(mx, 25, timeout, 3)) instanceof Status) {
                         statusMX = (Status) response;
                     } else if ((dist = SPF.getDistribution(mx, false)) == null) {
-                        statusMX = Status.WHITE;
+                        statusMX = Status.GREEN;
                         break;
                     } else {
                         statusMX = Status.valueOf(dist.getStatus(mx).name());
@@ -619,7 +649,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     } else if ((response = getResponseSMTP(mx.substring(1), 25, timeout, 3)) instanceof Status) {
                         statusMX = (Status) response;
                     } else if ((dist = SPF.getDistribution(mx, false)) == null) {
-                        statusMX = Status.WHITE;
+                        statusMX = Status.GREEN;
                         break;
                     } else {
                         statusMX = Status.valueOf(dist.getStatus(mx).name());
@@ -640,7 +670,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusAddress = Status.BLOCK;
             } else if ((dist = SPF.getDistribution(tokenAddress, false)) == null) {
                 probability = 0.0f;
-                statusAddress = Status.WHITE;
+                statusAddress = Status.GREEN;
                 frequency = "UNDEFINED";
             } else {
                 probability = dist.getSpamProbability(tokenAddress);
@@ -674,8 +704,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else {
                     statusAddress = Status.NXDOMAIN;
                     String domain = Domain.extractDomain(tokenMX, true);
-                    if (Reverse.hasValidNameServers(domain)) {
-                        domain = tokenMX;
+                    try {
+                        if (Reverse.hasValidNameServers(domain)) {
+                            domain = tokenMX;
+                        }
+                    } catch (CommunicationException ex2) {
+                        // Fazer nada.
                     }
                     if (Block.addExact(domain)) {
                         Server.logDebug("new BLOCK '" + domain + "' added by NXDOMAIN.");
@@ -740,7 +774,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                 statusIP = (Status) response;
             } else if (dist == null) {
-                statusIP = Status.WHITE;
+                statusIP = Status.GREEN;
             } else {
                 statusIP = Status.valueOf(dist.getStatus(ip).name());
             }
@@ -793,10 +827,10 @@ public class Analise implements Serializable, Comparable<Analise> {
                                 tokenName = name;
                                 Distribution distribution2 = SPF.getDistribution(name, false);
                                 if (distribution2 == null) {
-                                    statusName = Status.WHITE;
+                                    statusName = Status.GREEN;
                                 } else {
                                     statusName = Status.valueOf(distribution2.getStatus(name).name());
-                                    statusName = statusName == Status.BLOCK ? Status.BLACK : statusName;
+                                    statusName = statusName == Status.BLOCK ? Status.RED : statusName;
                                 }
                             }
                         }
@@ -830,7 +864,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
-            } else if ((statusIP == Status.CLOSED || statusIP == Status.BLACK) && statusName == Status.INVALID) {
+            } else if ((statusIP == Status.CLOSED || statusIP == Status.RED) && statusName == Status.INVALID) {
                 String block;
                 if ((block = Block.add(ip)) != null) {
                     Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusName + "'.");
@@ -851,7 +885,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                     statusIP = (Status) response;
                 } else if (dist == null) {
-                    statusIP = Status.WHITE;
+                    statusIP = Status.GREEN;
                 } else {
                     statusIP = Status.valueOf(dist.getStatus(ip).name());
                 }
@@ -859,11 +893,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                 if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                     statusIP = (Status) response;
                 } else if (dist == null) {
-                    statusIP = Status.WHITE;
+                    statusIP = Status.GREEN;
                 } else {
                     statusIP = Status.valueOf(dist.getStatus(ip).name());
                 }
-            } else if (statusIP == Status.BLOCK && statusName == Status.WHITE && probability == 0.0f) {
+            } else if (statusIP == Status.BLOCK && statusName == Status.GREEN && probability == 0.0f) {
                 String result = Reverse.getResult(ip, "list.dnswl.org");
                 if (result != null && !result.equals("127.0.0.255")) {
                     String cidr;
@@ -880,7 +914,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                         statusIP = (Status) response;
                     } else {
-                        statusIP = Status.WHITE;
+                        statusIP = Status.GREEN;
                     }
                 }
             }
@@ -940,12 +974,11 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
-    public static synchronized void store() {
+    public static void store() {
         if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                TreeSet<Analise> set = new TreeSet<Analise>();
-                set.addAll(QUEUE);
+                TreeSet<Analise> set = getAnaliseCloneSet();
                 File file = new File("./data/analise.set");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
@@ -976,6 +1009,8 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
                 for (Analise analise : set) {
                     try {
+                        analise.ipSet.addAll(analise.processSet);
+                        analise.processSet.clear();
                         if (analise.resultMap != null) {
                             // Conversão para o modo de gravação em disco.
                             analise.resultSet = new TreeSet<String>();
@@ -986,10 +1021,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                                 analise.resultSet.add(ip);
                                 analise.resultWriter.write(ip + " " + result + "\n");
                             }
-                            if (analise.ipSet.isEmpty() && analise.processSet.isEmpty()) {
+                            if (analise.ipSet.isEmpty()) {
                                 analise.resultWriter.close();
                                 analise.resultWriter = null;
                             }
+                            analise.resultMap.clear();
                             analise.resultMap = null;
                         }
                         add(analise);

@@ -977,7 +977,7 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
-                        String block = Block.find(null, token);
+                        String block = Block.find(null, token, false);
                         result = (block == null ? "NONE" : block) + "\n";
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
@@ -1380,14 +1380,34 @@ public final class AdministrationTCP extends Server {
                         if (Subnet.isValidCIDR(token) && tokenizer.hasMoreTokens()) {
                             String cidr = Subnet.normalizeCIDR(token);
                             token = tokenizer.nextToken();
-                            if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
-                                Client clientLocal = Client.getByCIDR(cidr);
-                                if (clientLocal == null) {
-                                    result += "NOT FOUND\n";
+                            Client clientLocal = Client.getByCIDR(cidr);
+                            if (clientLocal == null) {
+                                result = "NOT FOUND\n";
+                            } else if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
+                                String limit = tokenizer.nextToken();
+                                if (clientLocal.setLimit(limit)) {
+                                    result = "UPDATED " + clientLocal + "\n";
                                 } else {
-                                    String limit = tokenizer.nextToken();
-                                    clientLocal.setLimit(limit);
-                                    result += "UPDATED " + clientLocal + "\n";
+                                    result = "ALREADY THIS VALUE\n";
+                                }
+                            } else if (token.equals("ACTION") && tokenizer.hasMoreTokens()) {
+                                token = tokenizer.nextToken();
+                                if (token.equals("BLOCK") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionBLOCK(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else if (token.equals("RED") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionRED(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else {
+                                    result = "ERROR: COMMAND\n";
                                 }
                             } else if (Domain.isHostname(token) && tokenizer.hasMoreTokens()) {
                                 String domain = Domain.extractDomain(token, false);
@@ -1398,15 +1418,10 @@ public final class AdministrationTCP extends Server {
                                 } else if (email != null && !Domain.isEmail(email)) {
                                     result = "ERROR: INVALID EMAIL\n";
                                 } else {
-                                    Client clientLocal = Client.getByCIDR(cidr);
-                                    if (clientLocal == null) {
-                                        result += "NOT FOUND\n";
-                                    } else {
-                                        clientLocal.setPermission(permission);
-                                        clientLocal.setDomain(domain);
-                                        clientLocal.setEmail(email);
-                                        result += "UPDATED " + clientLocal + "\n";
-                                    }
+                                    clientLocal.setPermission(permission);
+                                    clientLocal.setDomain(domain);
+                                    clientLocal.setEmail(email);
+                                    result = "UPDATED " + clientLocal + "\n";
                                     Client.store();
                                 }
                             } else {

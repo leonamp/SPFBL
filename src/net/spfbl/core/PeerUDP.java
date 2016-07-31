@@ -239,8 +239,8 @@ public final class PeerUDP extends Server {
                                 address = peer.getAddress();
                                 peer.addNotification();
                                 result = peer.setReputation(key, ham, spam);
+                                SPF.createDistribution(key);
                             }
-                            SPF.createDistribution(key);
                         } else {
                             address = ipAddress.getHostAddress();
                             result = "INVALID";
@@ -394,7 +394,7 @@ public final class PeerUDP extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire()) {
+            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
@@ -402,6 +402,8 @@ public final class PeerUDP extends Server {
                     use(connection);
                 }
                 return connection;
+            } else if (Core.hasLowMemory()) {
+                return null;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
@@ -415,7 +417,7 @@ public final class PeerUDP extends Server {
                 CONNECION_SEMAPHORE.acquire();
                 return CONNECTION_POLL.poll();
             }
-        } catch (InterruptedException ex) {
+        } catch (Exception ex) {
             Server.logError(ex);
             return null;
         }
@@ -479,7 +481,7 @@ public final class PeerUDP extends Server {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else {
                     connection.close();
                 }

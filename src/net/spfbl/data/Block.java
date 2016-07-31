@@ -187,7 +187,11 @@ public class Block {
 //            }
 //        }
         
-        private static String get(Client client, Set<String> tokenSet) {
+        private static String get(
+                Client client,
+                Set<String> tokenSet,
+                boolean autoBlock
+        ) {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
@@ -240,7 +244,7 @@ public class Block {
                                     if (value != null) {
                                         if (signal == '=') {
                                             if (criterion.equals(value)) {
-                                                if ((token = addDomain(user, token)) != null) {
+                                                if (autoBlock && (token = addDomain(user, token)) != null) {
                                                     if (user == null) {
                                                         Server.logDebug("new BLOCK '" + token + "' added by 'WHOIS/" + whois + "'.");
                                                         Peer.sendBlockToAll(token);
@@ -255,7 +259,7 @@ public class Block {
                                             int criterionInt = parseIntWHOIS(criterion);
                                             int valueInt = parseIntWHOIS(value);
                                             if (signal == '<' && valueInt < criterionInt) {
-                                                if ((token = addDomain(user, token)) != null) {
+                                                if (autoBlock && (token = addDomain(user, token)) != null) {
                                                     if (user == null) {
                                                         Server.logDebug("new BLOCK '" + token + "' added by 'WHOIS/" + whois + "'.");
                                                         Peer.sendBlockToAll(token);
@@ -266,7 +270,7 @@ public class Block {
                                                 logTrace(time, "WHOIS lookup for " + tokenSet + ".");
                                                 return whois;
                                             } else if (signal == '>' && valueInt > criterionInt) {
-                                                if ((token = addDomain(user, token)) != null) {
+                                                if (autoBlock && (token = addDomain(user, token)) != null) {
                                                     if (user == null) {
                                                         Server.logDebug("new BLOCK '" + token + "' added by 'WHOIS/" + whois + "'.");
                                                         Peer.sendBlockToAll(token);
@@ -553,7 +557,8 @@ public class Block {
         
         private static String get(
                 Client client,
-                Collection<String> tokenList
+                Collection<String> tokenList,
+                boolean autoBlock
                 ) throws ProcessException {
             if (tokenList.isEmpty()) {
                 return null;
@@ -569,7 +574,7 @@ public class Block {
                                 Matcher matcher = pattern.matcher(token);
                                 if (matcher.matches()) {
                                     String regex = "REGEX=" + pattern.pattern();
-                                    if (Block.addExact(token)) {
+                                    if (autoBlock && Block.addExact(token)) {
                                         Server.logDebug("new BLOCK '" + token + "' added by '" + regex + "'.");
                                         if (client == null) {
                                             Peer.sendBlockToAll(token);
@@ -593,7 +598,7 @@ public class Block {
                                     if (matcher.matches()) {
                                         String regex = "REGEX=" + pattern.pattern();
                                         token = client + ":" + token;
-                                        if (addExact(token)) {
+                                        if (autoBlock && addExact(token)) {
                                             Server.logDebug("new BLOCK '" + token + "' added by '" + client + ":" + regex + "'.");
                                         }
                                         result = client + ":" + regex;
@@ -1244,7 +1249,7 @@ public class Block {
     public static void clear(String token, String name) {
         try {
             String block;
-            while ((block = Block.find(null, token)) != null) {
+            while ((block = Block.find(null, token, false)) != null) {
                 if (Block.drop(block)) {
                     Server.logDebug("false positive BLOCK '" + block + "' detected by '" + name + "'.");
                 }
@@ -1284,10 +1289,11 @@ public class Block {
             }
         }
     }
-
+    
     public static String find(
             Client client,
-            String token
+            String token,
+            boolean autoBlock
             ) throws ProcessException {
         TreeSet<String> whoisSet = new TreeSet<String>();
         LinkedList<String> regexList = new LinkedList<String>();
@@ -1363,7 +1369,7 @@ public class Block {
             Reverse reverse = Reverse.get(token);
             if (reverse != null) {
                 for (String host : reverse.getAddressSet()) {
-                    String block = find(client, host);
+                    String block = find(client, host, autoBlock);
                     if (block != null) {
                         return block;
                     }
@@ -1393,7 +1399,7 @@ public class Block {
         try {
             // Verifica um critério do REGEX.
             String regex;
-            if ((regex = REGEX.get(client, regexList)) != null) {
+            if ((regex = REGEX.get(client, regexList, autoBlock)) != null) {
                 return regex;
             }
         } catch (Exception ex) {
@@ -1402,7 +1408,7 @@ public class Block {
         try {
             // Verifica critérios do WHOIS.
             String whois;
-            if ((whois = WHOIS.get(client, whoisSet)) != null) {
+            if ((whois = WHOIS.get(client, whoisSet, autoBlock)) != null) {
                 return whois;
             }
         } catch (Exception ex) {
@@ -1666,7 +1672,7 @@ public class Block {
             Reverse reverse = Reverse.get(ip);
             if (reverse != null) {
                 for (String host : reverse.getAddressSet()) {
-                    String block = find(client, host);
+                    String block = find(client, host, true);
                     if (block != null) {
                         return block;
                     }
@@ -1677,7 +1683,7 @@ public class Block {
         try {
             // Verifica um critério do REGEX.
             String regex;
-            if ((regex = REGEX.get(client, regexSet)) != null) {
+            if ((regex = REGEX.get(client, regexSet, true)) != null) {
                 return regex;
             }
         } catch (Exception ex) {
@@ -1686,7 +1692,7 @@ public class Block {
         try {
             // Verifica critérios do WHOIS.
             String whois;
-            if ((whois = WHOIS.get(client, whoisSet)) != null) {
+            if ((whois = WHOIS.get(client, whoisSet, true)) != null) {
                 return whois;
             }
         } catch (Exception ex) {
@@ -1777,7 +1783,7 @@ public class Block {
                 String token = '.' + host;
                 tokenList.addFirst(token);
             } while (host.contains("."));
-            return REGEX.get(null, tokenList) != null;
+            return REGEX.get(null, tokenList, true) != null;
         }
     }
     
@@ -1791,7 +1797,7 @@ public class Block {
             try {
                 TreeSet<String> tokenSet = new TreeSet<String>();
                 tokenSet.add(host);
-                return WHOIS.get(null, tokenSet) != null;
+                return WHOIS.get(null, tokenSet, true) != null;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;

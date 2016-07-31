@@ -47,6 +47,9 @@ public class Client implements Serializable, Comparable<Client> {
     private NormalDistribution frequency = null;
     private long last = 0;
     
+    private Action actionBLOCK = Action.REJECT;
+    private Action actionRED = Action.FLAG;
+    
     public enum Permission {
         NONE,
         DNSBL,
@@ -120,20 +123,60 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public void setLimit(String limit) throws ProcessException {
+    public boolean setActionBLOCK(String action) throws ProcessException {
         try {
-            setLimit(Integer.parseInt(limit));
+            return setActionBLOCK(Action.valueOf(action));
+        } catch (Exception ex) {
+            throw new ProcessException("ERROR: INVALID BLOCK ACTION");
+        }
+    }
+    
+    public boolean setActionBLOCK(Action action) throws ProcessException {
+        if (action == null || action == Action.DEFER) {
+            throw new ProcessException("ERROR: INVALID BLOCK ACTION");
+        } else if (this.actionBLOCK == action) {
+            return false;
+        } else {
+            this.actionBLOCK = action;
+            return CHANGED = true;
+        }
+    }
+    
+    public boolean setActionRED(String action) throws ProcessException {
+        try {
+            return setActionRED(Action.valueOf(action));
+        } catch (Exception ex) {
+            throw new ProcessException("ERROR: INVALID RED ACTION");
+        }
+    }
+    
+    public boolean setActionRED(Action action) throws ProcessException {
+        if (action == null) {
+            throw new ProcessException("ERROR: INVALID RED ACTION");
+        } else if (this.actionRED == action) {
+            return false;
+        } else {
+            this.actionRED = action;
+            return CHANGED = true;
+        }
+    }
+    
+    public boolean setLimit(String limit) throws ProcessException {
+        try {
+            return setLimit(Integer.parseInt(limit));
         } catch (NumberFormatException ex) {
             throw new ProcessException("ERROR: INVALID LIMIT", ex);
         }
     }
     
-    public void setLimit(int limit) throws ProcessException {
+    public boolean setLimit(int limit) throws ProcessException {
         if (limit <= 0 || limit > 3600000) {
             throw new ProcessException("ERROR: INVALID LIMIT");
-        } else if (this.limit != limit) {
+        } else if (this.limit == limit) {
+            return false;
+        } else {
             this.limit = limit;
-            CHANGED = true;
+            return CHANGED = true;
         }
     }
     
@@ -190,6 +233,14 @@ public class Client implements Serializable, Comparable<Client> {
         } else {
             return this.permission == permission;
         }
+    }
+    
+    public Action getActionBLOCK() {
+        return actionBLOCK;
+    }
+    
+    public Action getActionRED() {
+        return actionRED;
     }
     
     /**
@@ -478,6 +529,12 @@ public class Client implements Serializable, Comparable<Client> {
                         Client client = (Client) value;
                         if (client.limit == 0) {
                             client.limit = 100;
+                        }
+                        if (client.actionBLOCK == null) {
+                            client.actionBLOCK = Action.REJECT;
+                        }
+                        if (client.actionRED == null) {
+                            client.actionRED = Action.FLAG;
                         }
                         MAP.put(key, client);
                     }

@@ -71,7 +71,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (other.frequency == null) {
             this.frequency = null;
         } else {
-            this.frequency = other.frequency.cloneDistribution();
+            this.frequency = other.frequency.replicate();
         }
         this.last = other.last;
         this.reputationMap2.putAll(other.reputationMap2);
@@ -1098,7 +1098,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             long time = System.currentTimeMillis();
             if (peer.isExpired7()) {
                 if (peer.drop()) {
-                    Server.log(time, Core.Level.DEBUG, "PEERH", origin, peer.getAddress(), "EXPIRED");
+                    Server.log(time, Core.Level.INFO, "PEERH", origin, peer.getAddress(), "EXPIRED");
                 }
             } else {
                 TreeMap<String,Binomial> reputationMap = peer.getReputationMap();
@@ -1108,7 +1108,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     if (binomial.isExpired3()) {
                         binomial = peer.dropReputation(key);
                         if (binomial != null) {
-                            Server.log(time, Core.Level.DEBUG, "PEERR", peer.getAddress(), key, "EXPIRED");
+                            Server.log(time, Core.Level.INFO, "PEERR", peer.getAddress(), key, "EXPIRED");
                         }
                     }
                 }

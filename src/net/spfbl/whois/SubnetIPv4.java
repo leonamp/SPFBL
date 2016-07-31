@@ -336,6 +336,46 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
+    public static boolean isReservedIPv4(String ip) {
+        if (ip == null) {
+            return false;
+        } else if (SubnetIPv4.containsIP("0.0.0.0/8", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("10.0.0.0/8", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("100.64.0.0/10", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("127.0.0.0/8", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("169.254.0.0/16", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("172.16.0.0/12", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("192.0.0.0/24", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("192.0.2.0/24", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("192.88.99.0/24", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("192.168.0.0/16", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("198.18.0.0/15", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("198.51.100.0/24", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("203.0.113.0/24", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("224.0.0.0/4", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("240.0.0.0/4", ip)) {
+            return true;
+        } else if (SubnetIPv4.containsIP("255.255.255.255/32", ip)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     public static String reverseToIPv4(String reverse) {
         byte[] address = SubnetIPv4.split(reverse);
         byte octeto = address[0];

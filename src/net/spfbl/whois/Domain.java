@@ -30,7 +30,6 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -338,11 +337,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                 return Core.removerAcentuacao(address.substring(1)).toLowerCase();
             }
         }
-    }
-    
-    public static void main(String[] args) {
-        System.out.println(isEmail(""));
-        System.out.println(isEmail(""));
     }
     
     /**

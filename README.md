@@ -11,7 +11,7 @@ Uma vez iniciado o serviço, as consultas podem ser feitas por programas cliente
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
 ```
-user:~# ./spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
+user:~# spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
 PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
 ```
 
@@ -19,7 +19,7 @@ Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para u
 
 Caso o serviço seja configurado para trabalhar com HTTP, os tickets serão enviados com seus respectivos prefixos da URL de quem gerou o ticket:
 ```
-user:~# ./spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
+user:~# spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
 PASS http://<hostname>[:<port>]/spam/cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
 ```
 
@@ -28,7 +28,7 @@ Este último método de denuncia com URL facilita o desenvolvimento de novas fer
 Caso a mensagem seja considerada SPAM pelo usuário, a mensagem deve ser processada pelo comando "spfbl.sh spam", que vai extrair o ticket contido no campo "Received-SPFBL" e enviá-lo ao serviço SPFBL:
 
 ```
-user:~# ./spfbl.sh spam <caminho da mensagem SPAM>
+user:~# spfbl.sh spam <caminho da mensagem SPAM>
 Reclamação SPFBL enviada com sucesso.
 ```
 
@@ -114,19 +114,19 @@ As opções de bloqueio são:
 
 Para visualizar a lista de bloqueios arbitrários:
 ```
-user:~# ./spfbl.sh block show
+user:~# spfbl.sh block show
 EMPTY
 ```
 
 Para adicionar um bloqueio arbitrário:
 ```
-user:~# ./spfbl.sh block add <remetente>
+user:~# spfbl.sh block add <remetente>
 ADDED
 ```
 
 Para remover um bloqueio arbitrário:
 ```
-user:~# ./spfbl.sh block drop <remetente>
+user:~# spfbl.sh block drop <remetente>
 DROPED
 ```
 
@@ -146,7 +146,7 @@ Os elementos que podem ser adicionados nesta lista são:
 * WHOIS/&lt;field&gt;[/&lt;field&gt;...]\(=\|&lt;\|&gt;\)&lt;value&gt;
 * DNSBL=&lt;server&gt;;&lt;value&gt;
 
-Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
+Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFTFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
 No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representan a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
 
@@ -162,19 +162,19 @@ Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL real
 
 Para visualizar a lista de spamtrap:
 ```
-user:~# ./spfbl.sh trap show
+user:~# spfbl.sh trap show
 EMPTY
 ```
 
 Para adicionar um spamtrap:
 ```
-user:~# ./spfbl.sh trap add <destinatário>
+user:~# spfbl.sh trap add <destinatário>
 ADDED
 ```
 
 Para remover um spamtrap:
 ```
-user:~# ./spfbl.sh trap drop <destinatário>
+user:~# spfbl.sh trap drop <destinatário>
 DROPED
 ```
 
@@ -192,19 +192,19 @@ Os elementos que podem ser adicionados nesta lista são:
 
 Para visualizar a lista branca:
 ```
-user:~# ./spfbl.sh white show
+user:~# spfbl.sh white show
 EMPTY
 ```
 
 Para adicionar um remetente:
 ```
-user:~# ./spfbl.sh white add <remetente>
+user:~# spfbl.sh white add <remetente>
 ADDED
 ```
 
 Para remover um remetente:
 ```
-user:~# ./spfbl.sh white drop <remetente>
+user:~# spfbl.sh white drop <remetente>
 DROPED
 ```
 
@@ -227,13 +227,43 @@ Internamente esta lista aceita somente identificação de remetentes com qualifi
 
 Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
 
+Existe uma forma de incluir remetentes na whitelist onde o próprio SPFBL descobre se melhor incluir o remetente pelo domínio ou pelo endereço completo.
+
+Esta forma de inclusão, com operador "sender" invés de "add", o SPFBL verifica se o domínio deste remetente é um provedor de caixa postal e inclui o endereço completo se for, ou inclui o domínio se for email corporativo:
+```
+user:~# spfbl white sender leandro@spfbl.net
+ADDED @spfbl.net
+user:~# spfbl white sender user@gmail.com
+ADDED user@gmail.com
+```
+
+Este script abaixo ajuda no processo de eliminação de falsos positivos usando o comando acima para incluir endereços onde os usuários do Postfix enviaram alguma mensagem para estes endereços:
+```
+# Autor: Kleber Rodrigues
+SHELL=/bin/bash
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+mes=$(date +%b)
+dia=$(date +%d)
+hora=$(date +%H)
+echo "$mes $dia $hora" > /usr/local/sbin/hora
+grep "$mes $dia $hora" /var/log/maillog | grep "status=sent (250 2.6.0" | grep -o "to=<.*.>," | cut -d '<' -f 2 | cut -d '>' -f 1 | sort -u > /usr/local/sbin/tmp
+awk '{print "/opt/spfbl/spfbl.sh white sender "$0""}' /usr/local/sbin/tmp > /usr/local/sbin/domain-analise.sh
+chmod a+x /usr/local/sbin/domain-analise.sh
+bash /usr/local/sbin/domain-analise.sh
+rm /usr/local/sbin/tmp
+```
+
+O script deve ser rodado em uma certa frequência.
+
+A ideia é antecipar as respostas dos futuros remetentes destes usuários e já avisar o SPFBL que estes casos podem ser aceitos sem preocupação.
+
 ##### Greylisting
 
-A mensagem será atrasada 25min sempre que o responsável estiver com status GRAY.
+A mensagem será atrasada 25min sempre que o responsável estiver com status YELLOW.
 
 ##### Blacklisted
 
-A mensagem será atrasada 1 dia sempre que o responsável estiver com status BLACK.
+A mensagem será marcada como SPAM usando o padrão "X-Spam-Flag: YES" do Spamassassin.
 
 ##### Serviço DNSBL
 
@@ -274,15 +304,13 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 
 ##### Método de listagem
 
-O SPFBL mantém uma flag para cada responsável. Esta flag tem quatro estados: WHITE, GRAY, BLACK e BLOCK. A seguinte máquina de estado é utlizada para manipular estas flags, sendo Pmin e Pmax probabilidades mínima e máxima da mensagem ser SPAM:
+O SPFBL mantém uma flag de reputação para cada identificador. Esta flag tem três estados: GREEN, YELLOW e RED. A seguinte máquina de estado é utlizada para manipular estas flags, sendo P a probabilidade da mensagem ser SPAM segundo sua reputação atual na rede P2P:
 
 ![flagFSM.png](https://github.com/leonamp/SPFBL/blob/master/doc/flagFSM.png "flagFSM.png")
 
-Quando a flag estiver no estado BLACK para o responsável, então o SPFBL retorna LISTED. O LISTED pode vir acompanhado de uma URL de liberação. Se for o caso, o MTA deve ser capaz de extrair a URL e enviar um e-mail de retorno com o link ao remetente informando o atraso e a possibilidade de liberação através do link.
+Quando a flag estiver no estado RED para o identificador, então o SPFBL retorna FLAG. Quando o MTA receber este retorno FLAG, deve incluir no cabeçalho a flag padrão do Spamassassin "X-Spam-Flag: YES" de modo ao MTA seguir o roteamento da mensagem para a pasta SPAM do usuário.
 
-Quando a flag passar para o estado BLOCK, o responsável é colocado em bloqueio permanente, retornando BLOCKED. Esta transição é utilizada para disseminar a lista de bloqueio entre pools via P2P. Deve haver concenso total dentro do mesmo pool para passar a diante o bloqueio para outros pools associados.
-
-Os identificadores por IP não passam para o estado BLOCK. O estado BLOCK só é usado pelo HELO e pelo remetente.
+Quando a flag estiver no estado YELLOW para o identificador, então o SPFBL retorna GREYLISTED para que o MTA atrase a mensagem até a finalização do greylisting.
 
 ##### Fluxo do SPFBL
 
@@ -303,7 +331,7 @@ Responsabilizar o HELO, quando um hostname for válido e aponta para o IP, é mo
 É possível fazer uma consulta de checagem SPFBL. Este tipo de consulta não retorna ticket, mas mostra a checagem SPF completa, os bloqueios e também todos os responsáveis considerados pelo SPFBL, de modo que o administrador possa entender melhor a resposta de uma consulta normal SPFBL.
 
 ```
-user:~# ./spfbl.sh check 191.243.197.31 op4o@adsensum.com.br smtp-197-31.adsensum.com.br
+user:~# spfbl.sh check 191.243.197.31 op4o@adsensum.com.br smtp-197-31.adsensum.com.br
 
 SPF resolution results:
    adsensum.com.br:ip4:74.63.197.130 => NOT MATCH
@@ -312,9 +340,9 @@ SPF resolution results:
 First BLOCK match: WHOIS/owner-c=SIR51
 
 Considered identifiers and status:
-   .smtp-197-31.adsensum.com.br UNDEFINED WHITE 0
-   191.243.197.31 32351±1368s BLACK 0.512
-   @adsensum.com.br UNDEFINED WHITE 0
+   .smtp-197-31.adsensum.com.br UNDEFINED GREEN 0
+   191.243.197.31 ~32351s RED 0.512
+   @adsensum.com.br UNDEFINED GREEN 0
 ```
 
 Na primeira seção, temos todos os passos de checagem SPF, sendo que o último sempre mostra o qualificador considerado.
@@ -436,10 +464,10 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
-    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
     add_header = X-Spam-Flag: YES
   warn
-    condition = ${if eq {$acl_c_spfreceived}{13}{false}{true}}
+    condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
@@ -527,10 +555,10 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
-    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
     add_header = X-Spam-Flag: YES
   warn
-    condition = ${if eq {$acl_c_spfreceived}{13}{false}{true}}
+    condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
 ```
 
@@ -542,18 +570,20 @@ Copie também e as pastas "./lib" e "./data/" do projeto em "/opt/spfbl/".
 
 Crie a pasta "/var/log/spfbl", se esta não existir, com permissões de leitura e escrita para o usuário que rodará o serviço.
 
+O script client "./client/spfbl.sh" deve ser copiado na pasta "/usr/local/bin" com permissão de execução.
+
 Quando todos os arquivos e pastas estiverem copiados, configure o serviço editando o arquivo "/opt/spfbl/spfbl.conf".
 
 Após a configuração, rode o serviço utilizando o seguinte comando na mesma pasta:
 
 ```
-java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
+user:~# java -jar /opt/spfbl/SPFBL.jar &
 ```
 
 Caso seja necessário iniciar o serviço com DNSBL, é importante lembrar que o sistema operacional pode requerer permissão especial:
 
 ```
-sudo java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log &
+user:~# sudo java -jar /opt/spfbl/SPFBL.jar &
 ```
 
 O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
@@ -568,7 +598,7 @@ Esta lista de bloqueios pode ser usada por conta e risco do novo administrador d
 
 Este este comando pode ser usado para parar o SPFBL:
 ```
-./spfbl.sh shutdown
+user:~# spfbl.sh shutdown
 ```
 
 O script de inicio e parada do SPFBL na inicialização do sistema operacional está sendo desenvolvido.
@@ -613,7 +643,7 @@ O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completame
 
 Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
 ```
-./spfbl.sh peer add sub.domain2.tld:9877 <send> <receive>
+spfbl.sh peer add sub.domain2.tld:9877 <send> <receive>
 sub.domain2.tld:9877 <send> <receive> 0 DEAD >100ms UNDEFINED
 ```
 
@@ -633,13 +663,13 @@ Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de
 
 Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não. A visualização da lista de peers pode ser feita executando o seguinte comando:
 ```
-./spfbl.sh peer show
+user:~# spfbl.sh peer show
 sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
 Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para &lt;send&gt; e &lt;receive&gt;:
 ```
-./spfbl.sh peer set sub.domain.tld <send> <receive>
+user:~# spfbl.sh peer set sub.domain.tld <send> <receive>
 sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 UPDATED SEND=<send>
 UPDATED RECEIVE=<receive>
@@ -647,7 +677,7 @@ UPDATED RECEIVE=<receive>
 
 Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
 ```
-./spfbl.sh peer show
+user:~# spfbl.sh peer show
 sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
 ```
 
@@ -657,11 +687,11 @@ Sempre que o status <receive> do peer for RETAIN, o SPFBL vai criar uma lista se
 
 Quando os peers tiverem identificadores retidos, a lista deles poderão ser vistas através deste comando:
 ```
-user:~# ./spfbl.sh retention show (<peer>|all)
+user:~# spfbl.sh retention show (<peer>|all)
 ```
 Exemplo:
 ```
-user:~# ./spfbl.sh retention show all
+user:~# spfbl.sh retention show all
 <peer1_hostame>:.br.netunoserver.net.br
 <peer1_hostame>:.carrosvermelhos.top
 <peer1_hostame>:.rdns-3.k7mail.com.br
@@ -683,11 +713,11 @@ user:~# ./spfbl.sh retention show all
 
 Para liberar todas as retenções, fazendo com que o SPFBL considere todos para BLOCK, utilie este comando:
 ```
-user:~# ./spfbl.sh retention release (all|<identificador>)
+user:~# spfbl.sh retention release (all|<identificador>)
 ```
 Exemplo:
 ```
-user:~# ./spfbl.sh retention release all
+user:~# spfbl.sh retention release all
 <peer1_hostame>:.br.netunoserver.net.br => ADDED
 <peer1_hostame>:.carrosvermelhos.top => EXISTS
 <peer1_hostame>:.rdns-3.k7mail.com.br => ADDED
@@ -709,7 +739,7 @@ user:~# ./spfbl.sh retention release all
 
 Para rejeitar os identificadores retidos, utilize este comando:
 ```
-user:~# ./spfbl.sh retention reject (ALL|<identificador>)
+user:~# spfbl.sh retention reject (ALL|<identificador>)
 ```
 
 ### Pools conhecidos em funcionamento
@@ -718,13 +748,20 @@ Aqui vemos alguns pools em funcionamento para que novos membros possam se cadast
 
 Abertos:
 * MatrixDefense: leandro@spfbl.net
-* MX-Protection: gian@spfbl.net
+* MX-Protection: gianspfbl@gmail.com
+* Spamlet: noc@lhost.net.br
+* Papuda: antispam@stoppay.net
+
+Para se conectar, basta entrar em contato com cada administrador pelo endereço de e-mail e fazer a solicitação.
 
 ### Noticias sobre o SPFBL
 
-<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL)</a></br>
+<a href="https://suporte.icewarp.com.br/index.php?/News/NewsItem/View/59/nova-dnsbl-brasileira-spfbl">07/12/2015 IceWarp Brasil: Nova DNSBL Brasileira (SPFBL).</a></br>
 
-<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 EEC: Painel sobre entregabilidade com representantes da SPFBL, UOL e Return Path</a></br>
+<a href="http://abemd.org.br/noticias/eec-brasil016">27/04/2016 EEC: Painel sobre entregabilidade com representantes da SPFBL, UOL e Return Path.</a></br>
+
+<a href="https://www.base64.com.br/suporte/multirbl">25/07/2016 Base64: O SPFBL.net entra na lista MultiRBL da Base64.</a></br>
+
 
 ### Forum de discussão SPFBL
 

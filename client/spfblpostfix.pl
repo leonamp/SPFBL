@@ -15,7 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
-# Última alteração: 5/04/2016 15:16
+# Última alteração: 31/07/2016 10:50
 
 use strict;
 use warnings;
@@ -58,7 +58,7 @@ while ( my $line = <STDIN> ) {
 
     shutdown $socket, 1;
 
-    my $result = '';
+    my $result = 'TIMEOUT';
     $socket->recv( $result, 4096 );
     $socket->close();
     $result =~ s/\s+$//;
@@ -121,19 +121,19 @@ while ( my $line = <STDIN> ) {
             "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address.\n\n"
         );
     }
-    elsif ( $result =~ /^ERROR: HOST NOT FOUND/ ) {
+    elsif ( $result =~ /^TIMEOUT/ ) {
         STDOUT->print(
-            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=DEFER [SPF] A transient error occurred when checking SPF record. Try again later.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: QUERY/ ) {
         STDOUT->print(
-            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=WARN SPFBL INVALID QUERY\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: / ) {
         STDOUT->print(
-             "action=REJECT [SPF] One or more SPF records from $params->{sender} could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.\n\n"
+             "action=WARN SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^NONE / ) {
@@ -169,7 +169,7 @@ while ( my $line = <STDIN> ) {
     }
     else {
         STDOUT->print(
-            "action=DEFER [SPF] A transient error occurred when checking SPF record from $params->{sender}, preventing a result from being reached. Try again later.\n\n"
+            "action=WARN SPFBL UNKNOWN ERROR\n\n"
         );
     }
 }

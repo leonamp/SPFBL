@@ -74,7 +74,7 @@ import org.apache.commons.codec.binary.Base32;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 2;
+    private static final byte SUBVERSION = 3;
     private static final byte RELEASE = 0;
     
     public static String getAplication() {
@@ -1114,9 +1114,9 @@ public class Core {
     
     private static void sendMessage(Message message) throws Exception {
         if (message != null && hasSMTP()) {
-            Server.logDebug("sending e-mail message.");
-            Server.logTrace("SMTP authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
-            Server.logTrace("SMTP start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
+            Server.logInfo("sending e-mail message.");
+            Server.logDebug("SMTP authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
+            Server.logDebug("SMTP start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
             Properties props = System.getProperties();
             props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
@@ -1125,11 +1125,11 @@ public class Core {
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
                 transport.setLocalHost(HOSTNAME);
-                Server.logTrace("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
+                Server.logDebug("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
-                Server.logTrace("SMTP sending message.");
+                Server.logDebug("SMTP sending message.");
                 transport.sendMessage(message, recipients);
-                Server.logTrace("SMTP message sent.");
+                Server.logDebug("SMTP message sent.");
             } catch (AuthenticationFailedException ex) {
                 throw new ProcessException("Falha de autenticação SMTP.", ex);
             } catch (MailConnectException ex) {
@@ -1139,7 +1139,7 @@ public class Core {
             } finally {
                 if (transport.isConnected()) {
                     transport.close();
-                    Server.logTrace("SMTP connection closed.");
+                    Server.logDebug("SMTP connection closed.");
                 }
             }
         }
@@ -1200,209 +1200,154 @@ public class Core {
     /**
      * Timer que controla os processos em background.
      */
-    private static final Timer TIMER00 = new Timer("BCKGRND00");
-    private static final Timer TIMER01 = new Timer("BCKGRND01");
-    private static final Timer TIMER10 = new Timer("BCKGRND10");
-    private static final Timer TIMER30 = new Timer("BCKGRND30");
-    private static final Timer TIMER60 = new Timer("BCKGRND60");
-    private static final Timer TIMERST = new Timer("BCKGRNDST");
+    private static final Timer TIMER = new Timer("BCKGROUND");
+//    private static final Timer TIMER00 = new Timer("BCKGRND00");
+//    private static final Timer TIMER01 = new Timer("BCKGRND01");
+//    private static final Timer TIMER10 = new Timer("BCKGRND10");
+//    private static final Timer TIMER30 = new Timer("BCKGRND30");
+//    private static final Timer TIMER60 = new Timer("BCKGRND60");
+//    private static final Timer TIMERST = new Timer("BCKGRNDST");
 
     public static void cancelTimer() {
-        TIMER00.cancel();
-        TIMER01.cancel();
-        TIMER10.cancel();
-        TIMER30.cancel();
-        TIMER60.cancel();
-        TIMERST.cancel();
+        TIMER.cancel();
+//        TIMER00.cancel();
+//        TIMER01.cancel();
+//        TIMER10.cancel();
+//        TIMER30.cancel();
+//        TIMER60.cancel();
+//        TIMERST.cancel();
     }
     
     private static class TimerSendMessage extends TimerTask {
-        public TimerSendMessage() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Enviar próxima mensagem de e-mail.
             Core.sendNextMessage();
         }
     }
     
-    private static class TimerExpiredComplain extends TimerTask {
-        public TimerExpiredComplain() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
-        @Override
-        public void run() {
-            // Verificar reclamações vencidas.
-            SPF.dropExpiredComplain();
-        }
-    }
-    
     private static class TimerInterruptTimeout extends TimerTask {
-        public TimerInterruptTimeout() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Interromper conexões vencidas.
             Core.interruptTimeout();
         }
     }
     
     private static class TimerRefreshSPF extends TimerTask {
-        public TimerRefreshSPF() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Atualiza registro SPF mais consultado.
             SPF.refreshSPF();
         }
     }
     
     private static class TimerRefreshHELO extends TimerTask {
-        public TimerRefreshHELO() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Atualiza registro HELO mais consultado.
             SPF.refreshHELO();
         }
     }
     
     private static class TimerRefreshReverse extends TimerTask {
-        public TimerRefreshReverse() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Atualiza registro de IP reverso mais consultado.
             Reverse.refreshLast();
         }
     }
     
     private static class TimerRefreshWHOIS extends TimerTask {
-        public TimerRefreshWHOIS() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Atualiza registros WHOIS expirando.
             Server.tryRefreshWHOIS();
         }
     }
     
     private static class TimerDropExpiredSPF extends TimerTask {
-        public TimerDropExpiredSPF() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Remoção de registros SPF expirados. 
             SPF.dropExpiredSPF();
         }
     }
     
     private static class TimerSendHeloToAll extends TimerTask {
-        public TimerSendHeloToAll() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Envio de PING para os peers cadastrados.
             Peer.sendHeloToAll();
         }
     }
     
     private static class TimerDropExpiredPeer extends TimerTask {
-        public TimerDropExpiredPeer() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Remoção de registros de reputação expirados. 
             Peer.dropExpired();
         }
     }
     
     private static class TimerDropExpiredHELO extends TimerTask {
-        public TimerDropExpiredHELO() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Apagar todas os registros de DNS de HELO vencidos.
             SPF.dropExpiredHELO();
         }
     }
     
     private static class TimerDropExpiredReverse extends TimerTask {
-        public TimerDropExpiredReverse() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Apagar todas os registros de IP reverso vencidos.
             Reverse.dropExpired();
         }
     }
     
     private static class TimerDropExpiredDistribution extends TimerTask {
-        public TimerDropExpiredDistribution() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Apagar todas as distribuições vencidas.
             SPF.dropExpiredDistribution();
         }
     }
     
     private static class TimerDropExpiredDefer extends TimerTask {
-        public TimerDropExpiredDefer() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Apagar todas os registros de atrazo programado vencidos.
             Defer.dropExpired();
         }
     }
     
     private static class TimerStoreCache extends TimerTask {
-        public TimerStoreCache() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Armazena todos os registros atualizados durante a consulta.
             Server.storeCache();
         }
     }
     
     private static class TimerDeleteLogExpired extends TimerTask {
-        public TimerDeleteLogExpired() {
-            super();
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-        }
         @Override
         public void run() {
+            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Apaga todos os arquivos de LOG vencidos.
             Server.deleteLogExpired();
             // Apaga todos as listas de analise vencidas.
@@ -1431,23 +1376,40 @@ public class Core {
     }
     
     public static void startTimer() {
-        TIMER00.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
-        TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
-        TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
-        TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
-        TIMER01.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
-        TIMER01.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
-        TIMER10.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
-        TIMER30.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
-        TIMER30.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
-        TIMER60.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
+//        TIMER00.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
+////        TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
+//        TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
+//        TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
+//        TIMER01.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
+//        TIMER01.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
+//        TIMER10.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
+//        TIMER30.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
+//        TIMER30.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
+//        TIMER60.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
+//        TIMER60.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
+//        TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
+//        TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
+//        TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
+//        TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
+//        if (CACHE_TIME_STORE > 0) {
+//            TIMERST.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
+//        }
+        TIMER.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
+        TIMER.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
+        TIMER.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
+        TIMER.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
+        TIMER.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
+        TIMER.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
+        TIMER.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
+        TIMER.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
+        TIMER.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
         if (CACHE_TIME_STORE > 0) {
-            TIMERST.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
+            TIMER.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
         }
     }
     
@@ -1587,4 +1549,15 @@ public class Core {
             return text1.equals(text2);
         }
     }
+    
+    private static final Runtime RUNTIME = Runtime.getRuntime();
+    
+    public static float relativeFreeMemory() {
+        return (float) RUNTIME.freeMemory() / (float) RUNTIME.maxMemory();
+    }
+    
+    public static boolean hasLowMemory() {
+        return relativeFreeMemory() < 0.0625f;
+    }
+
 }

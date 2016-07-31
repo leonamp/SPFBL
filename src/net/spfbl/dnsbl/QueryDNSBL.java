@@ -431,7 +431,7 @@ public final class QueryDNSBL extends Server {
                                 } else if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 259200; // Três dias.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -444,7 +444,7 @@ public final class QueryDNSBL extends Server {
                                 if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 259200; // Três dias.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -454,7 +454,7 @@ public final class QueryDNSBL extends Server {
                                 if (Block.containsDomain(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 259200; // Três dias.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -621,26 +621,33 @@ public final class QueryDNSBL extends Server {
      * @return uma conexão ociosa ou nova se não houver ociosa.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            Connection connection = poll();
-            if (connection == null) {
-                CONNECION_SEMAPHORE.release();
-            } else {
-                use(connection);
-            }
-            return connection;
-        } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                } else {
+                    use(connection);
+                }
+                return connection;
+            } else if (Core.hasLowMemory()) {
+                return null;
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
-            Connection connection = new Connection();
-            connection.start();
-            CONNECTION_COUNT++;
-            return connection;
-        } else {
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Connection connection = new Connection();
+                connection.start();
+                CONNECTION_COUNT++;
+                return connection;
+            } else {
             // Se não houver liberação, ignorar consulta DNS.
-            // O MX que fizer a consulta terá um TIMEOUT
-            // considerando assim o IP como não listado.
+                // O MX que fizer a consulta terá um TIMEOUT
+                // considerando assim o IP como não listado.
+                return null;
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
             return null;
         }
     }
@@ -699,7 +706,7 @@ public final class QueryDNSBL extends Server {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else {
                     connection.close();
                 }
