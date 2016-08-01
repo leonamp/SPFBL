@@ -2526,7 +2526,7 @@ public final class ServerHTTP extends Server {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("      Para consultar uma reputação no serviço DNSBL, digite um IP ou um domínio:<br>\n");
             } else {
-                builder.append("      For a reputation in the DNSBL service, type an IP or domain:<br>\n");
+                builder.append("      For query a reputation in the DNSBL service, type an IP or domain:<br>\n");
             }
             builder.append("      <input type=\"text\" name=\"query\" value=\"");
             builder.append(value);

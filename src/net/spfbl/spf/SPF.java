@@ -2479,8 +2479,8 @@ public final class SPF implements Serializable {
                         if (distribution != null) {
                             Server.log(time, Core.Level.DEBUG, "REPTN", token, "EXPIRED");
                         }
-                    } else {
-                        distribution.dropExpiredQuery();
+                    } else if (distribution.dropExpiredQuery()) {
+                        Peer.sendToAll(token, distribution);
                     }
                 }
             }

@@ -710,7 +710,7 @@ case $1 in
 
 					if [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					elif [[ $response == "OK" ]]; then
+					elif [[ $response == "ADDED "* ]]; then
 						exit 0
 					else
 						exit 1
