@@ -252,10 +252,38 @@ chmod a+x /usr/local/sbin/domain-analise.sh
 bash /usr/local/sbin/domain-analise.sh
 rm /usr/local/sbin/tmp
 ```
-
 O script deve ser rodado em uma certa frequência.
 
 A ideia é antecipar as respostas dos futuros remetentes destes usuários e já avisar o SPFBL que estes casos podem ser aceitos sem preocupação.
+
+Para EXIM e servidores com cPanel/WHM, você poderá utilizar o script abaixo. Ele faz automaticamente a detecção de auto-repliers, então você não terá problemas com spammers sendo inseridos na whitelist caso o cliente tenha uma mensagem automático.
+
+```
+SECTION: PREROUTERS
+whitelister:
+  driver    = accept
+  domains    = !+local_domains
+  condition = ${if match_domain{$sender_address_domain}{+local_domains}} 
+  condition = ${if or {{ !eq{$h_list-id:$h_list-post:$h_list-subscribe:}{} }{ match{$h_precedence:}{(?i)bulk|list|junk|auto_reply} } { match{$h_auto-submitted:}{(?i)auto-generated|auto-replied} } } {no}{yes}}
+  transport = whlist
+unseen
+
+SECTION: TRANSPORTSTART
+whlist:
+  driver  = pipe
+  command = /var/spool/exim/autoWH $local_part@$domain 
+  return_fail_output = true
+
+ARQUIVO /var/spool/exim/autoWH
+#!/bin/sh
+# Debug:
+echo "Args recebidos: \$1 = $1" >> /var/spool/exim/log-transport.log
+# Magica:
+#/var/spool/exim/spfbl.sh white sender $1 >/dev/null 2>&1
+echo "WHITE SENDER $1" | nc IP-DO-SEU-POOL-SPFBL 9877
+####
+```
+Lembre-se de substituir 'IP-DO-SEU-POOL-SPFBL' pelo seu pool de SPFBL. No caso do matrix defense, seria 'matrix.spfbl.net'.
 
 ##### Greylisting
 
