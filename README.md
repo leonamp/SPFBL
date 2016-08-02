@@ -243,15 +243,16 @@ Este script abaixo ajuda no processo de eliminação de falsos positivos usando 
 SHELL=/bin/bash
 PATH=/bin:/sbin:/usr/bin:/usr/sbin
 mes=$(date +%b)
-dia=$(date +%d)
+dia=$(date +%_d)
 hora=$(date +%H)
 echo "$mes $dia $hora" > /usr/local/sbin/hora
-grep "$mes $dia $hora" /var/log/maillog | grep "status=sent (250 2.6.0" | grep -o "to=<.*.>," | cut -d '<' -f 2 | cut -d '>' -f 1 | sort -u > /usr/local/sbin/tmp
+grep "$mes $dia $hora" /var/log/maillog | grep "status=sent (250 2.6.0" | grep -o "to=<.*.>," | grep -o '@[^:]*' | cut -d '<' -f 2 | cut -d '>' -f 1 | sort -u > /usr/local/sbin/tmp
 awk '{print "/opt/spfbl/spfbl.sh white sender "$0""}' /usr/local/sbin/tmp > /usr/local/sbin/domain-analise.sh
 chmod a+x /usr/local/sbin/domain-analise.sh
 bash /usr/local/sbin/domain-analise.sh
 rm /usr/local/sbin/tmp
 ```
+
 O script deve ser rodado em uma certa frequência.
 
 A ideia é antecipar as respostas dos futuros remetentes destes usuários e já avisar o SPFBL que estes casos podem ser aceitos sem preocupação.
@@ -492,6 +493,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
+    log_message = SPFBL check flag.
     condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
     add_header = X-Spam-Flag: YES
   warn
@@ -583,6 +585,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
+    log_message = SPFBL check flag.
     condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
     add_header = X-Spam-Flag: YES
   warn

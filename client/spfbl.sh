@@ -712,6 +712,8 @@ case $1 in
 						exit 2
 					elif [[ $response == "ADDED "* ]]; then
 						exit 0
+					elif [[ $response == "ALREADY "* ]]; then
+						exit 0
 					else
 						exit 1
 					fi
