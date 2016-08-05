@@ -502,6 +502,16 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = X-Spam-Flag: NO
 ```
 
+Para que o Exim faça o roteamento para a pasta ".Junk" do destinatário, é necessário fazer uma pequena alteração no "directory" do transporte "maildir_home" da seção "transports":
+```
+begin transports
+...
+maildir_home:
+  ...
+  directory = $home/Maildir${if eq {$h_X-Spam-Flag:}{YES}{/.Junk}{}}
+  ...
+```
+
 Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar esta configuração na seção "acl_check_data":
 ```
   # Deny if From or Reply-To is blocked in SPFBL.
@@ -594,6 +604,8 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     add_header = Received-SPFBL: $acl_c_spfbl
     add_header = X-Spam-Status: No
 ```
+
+Para que a mensagem seja roteada pelo cPanel para a pasta ".Junk" do destinatário, é necessário criar o arquivo ".spamassassinboxenable" dentro da pasta home deste mesmo destinatário.
 
 ### Como iniciar o serviço SPFBL
 
