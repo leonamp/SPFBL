@@ -499,6 +499,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
+    add_header = X-Spam-Flag: NO
 ```
 
 Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar esta configuração na seção "acl_check_data":
@@ -587,10 +588,11 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   warn
     log_message = SPFBL check flag.
     condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
-    add_header = X-Spam-Flag: YES
+    add_header = X-Spam-Status: Yes
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
     add_header = Received-SPFBL: $acl_c_spfbl
+    add_header = X-Spam-Status: No
 ```
 
 ### Como iniciar o serviço SPFBL
