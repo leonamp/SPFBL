@@ -12,7 +12,7 @@ A listagem é realizada através do ticket SPFBL, que é enviado juntamente com 
 
 ```
 user:~# spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
-PASS cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
+PASS u2QbRApbumU-hCrf-vhKQd7NInkDRkwlrKnz9WaJBlatLpxXWR8C8Qwbw5LEe4bGz91CMbTzv_2nNS0LQv3C18z9oWgP6t7jr1N0qLmsuEk
 ```
 
 Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para uma possível denúncia de SPAM futura.
@@ -20,7 +20,7 @@ Este ticket deve ser incluído no cabeçalho "Received-SPFBL" da mensagem para u
 Caso o serviço seja configurado para trabalhar com HTTP, os tickets serão enviados com seus respectivos prefixos da URL de quem gerou o ticket:
 ```
 user:~# spfbl.sh query "200.160.7.130" "gter-bounces@eng.registro.br" "eng.registro.br" "destinatario@destino.com.br"
-PASS http://<hostname>[:<port>]/spam/cPo6NAde1euHf6A2oT13sNlzCqnCH+PIuY/ClbDH2RJrV08UwvNblJPJiVo0E0SwAiO/lzSW+5BKdXXxDovqQPNqcfrvpBx5wPWgEC7EJ54=
+PASS http://<hostname>[:<port>]/u2QbRApbumU-hCrf-vhKQd7NInkDRkwlrKnz9WaJBlatLpxXWR8C8Qwbw5LEe4bGz91CMbTzv_2nNS0LQv3C18z9oWgP6t7jr1N0qLmsuEk
 ```
 
 Este último método de denuncia com URL facilita o desenvolvimento de novas ferramentas, como plugins de mail client por exemplo, para que as denúncias sejam feitas diretamente pelo destinatário, aonde quer que ele esteja.
@@ -508,7 +508,7 @@ begin transports
 ...
 maildir_home:
   ...
-  directory = $home/Maildir${if eq {$h_X-Spam-Flag:}{YES}{/.Junk}{}}
+  directory = $home/Maildir${if eq {$h_X-Spam-Flag:}{YES}{/.Junk/new}{}}
   ...
 ```
 
@@ -535,7 +535,7 @@ Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automatica
     condition = ${if < {$message_size}{16m}{true}{false}}
     malware = *
     message = 5.7.1 SPFBL this message was detected as possible malware.
-    log_message = SPFBL malware detected. ${run{/usr/local/bin/exim4/spfblticket.sh $acl_c_spfblticket}{$value}{ERROR}}.
+    log_message = SPFBL malware detected. ${run{/usr/local/bin/spfbl.sh spam $acl_c_spfblticket}{$value}{ERROR}}.
 ```
 
 ##### Integração com Exim do cPanel
