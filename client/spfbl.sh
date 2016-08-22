@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.3"
+version="2.4"
 
 head()
 {
@@ -152,7 +152,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 tld add tld\n"
+					printf "Invalid Parameters. Syntax: $0 tld add tld\n"
 				else
 					tld=$3
 
@@ -178,7 +178,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 tld drop tld\n"
+					printf "Invalid Parameters. Syntax: $0 tld drop tld\n"
 				else
 					tld=$3
 
@@ -201,7 +201,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 tld show\n"
+					printf "Invalid Parameters. Syntax: $0 tld show\n"
 				else
 
 					response=$(echo $OTP_CODE"TLD SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -234,7 +234,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 provider add sender\n"
+					printf "Invalid Parameters. Syntax: $0 provider add sender\n"
 				else
 					provider=$3
 
@@ -260,7 +260,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 provider drop sender\n"
+					printf "Invalid Parameters. Syntax: $0 provider drop sender\n"
 				else
 					provider=$3
 
@@ -283,7 +283,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 provider show\n"
+					printf "Invalid Parameters. Syntax: $0 provider show\n"
 				else
 
 					response=$(echo $OTP_CODE"PROVIDER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -317,7 +317,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 ignore add sender\n"
+					printf "Invalid Parameters. Syntax: $0 ignore add sender\n"
 				else
 					ignore=$3
 
@@ -344,7 +344,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 ignore drop sender\n"
+					printf "Invalid Parameters. Syntax: $0 ignore drop sender\n"
 				else
 					ignore=$3
 
@@ -367,7 +367,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 ignore show\n"
+					printf "Invalid Parameters. Syntax: $0 ignore show\n"
 				else
 
 					response=$(echo $OTP_CODE"IGNORE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -403,7 +403,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 block add sender\n"
+					printf "Invalid Parameters. Syntax: $0 block add sender\n"
 				else
 					sender=$3
 
@@ -432,7 +432,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 block drop sender\n"
+					printf "Invalid Parameters. Syntax: $0 block drop sender\n"
 				else
 					sender=$3
 
@@ -457,7 +457,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 block show [all]\n"
+					printf "Invalid Parameters. Syntax: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
 						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -484,7 +484,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 block find token\n"
+					printf "Invalid Parameters. Syntax: $0 block find token\n"
 				else
  					token=$3
 					response=$(echo $OTP_CODE"BLOCK FIND $token" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
@@ -520,7 +520,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superblock add sender\n"
+					printf "Invalid Parameters. Syntax: $0 superblock add sender\n"
 				else
 					sender=$3
 
@@ -549,7 +549,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superblock split CIDR\n"
+					printf "Invalid Parameters. Syntax: $0 superblock split CIDR\n"
 				else
 					sender=$3
 
@@ -578,7 +578,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superblock overlap CIDR\n"
+					printf "Invalid Parameters. Syntax: $0 superblock overlap CIDR\n"
 				else
 					sender=$3
 
@@ -607,7 +607,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superblock drop sender\n"
+					printf "Invalid Parameters. Syntax: $0 superblock drop sender\n"
 				else
 					sender=$3
 
@@ -632,7 +632,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superblock show [all]\n"
+					printf "Invalid Parameters. Syntax: $0 superblock show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
 						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -649,7 +649,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock show\n"
+				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock overlap cidr    $0 superblock show\n"
 			;;
 		esac
 	;;
@@ -669,7 +669,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 white add recipient\n"
 				else
 					recipient=$3
 
@@ -696,7 +696,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 white add recipient\n"
 				else
 					sender=$3
 
@@ -733,7 +733,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 white drop recipient\n"
+					printf "Invalid Parameters. Syntax: $0 white drop recipient\n"
 				else
 					recipient=$3
 
@@ -757,7 +757,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 white show\n"
+					printf "Invalid Parameters. Syntax: $0 white show\n"
 				else
 					response=$(echo $OTP_CODE"WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
@@ -790,7 +790,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superwhite add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 superwhite add recipient\n"
 				else
 					recipient=$3
 
@@ -817,7 +817,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superwhite drop recipient\n"
+					printf "Invalid Parameters. Syntax: $0 superwhite drop recipient\n"
 				else
 					recipient=$3
 
@@ -841,7 +841,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 superwhite show [all]\n"
+					printf "Invalid Parameters. Syntax: $0 superwhite show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
 						response=$(echo $OTP_CODE"WHITE SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -880,7 +880,7 @@ case $1 in
 
 				if [ $# -lt "5" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client add cidr domain option [email]\n"
+					printf "Invalid Parameters. Syntax: $0 client add cidr domain option [email]\n"
 				else
 					cidr=$3
 					domain=$4
@@ -916,7 +916,7 @@ case $1 in
 
 				if [ $# -lt "4" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client set cidr domain option [email]\n"
+					printf "Invalid Parameters. Syntax: $0 client set cidr domain option [email]\n"
 				else
 					cidr=$3
 					domain=$4
@@ -949,7 +949,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client drop cidr\n"
+					printf "Invalid Parameters. Syntax: $0 client drop cidr\n"
 				else
 					cidr=$3
 
@@ -972,7 +972,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 client show\n"
+					printf "Invalid Parameters. Syntax: $0 client show\n"
 				else
 
 					response=$(echo $OTP_CODE"CLIENT SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -1006,7 +1006,7 @@ case $1 in
 
 				if [ $# -lt "4" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 user add email nome\n"
+					printf "Invalid Parameters. Syntax: $0 user add email nome\n"
 				else
 					email=$3
 					nome="${@:4}"
@@ -1033,7 +1033,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 user drop email\n"
+					printf "Invalid Parameters. Syntax: $0 user drop email\n"
 				else
 					email=$3
 
@@ -1056,7 +1056,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 user show\n"
+					printf "Invalid Parameters. Syntax: $0 user show\n"
 				else
 
 					response=$(echo $OTP_CODE"USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
@@ -1090,7 +1090,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer add host email\n"
+					printf "Invalid Parameters. Syntax: $0 peer add host email\n"
 				else
 					host=$3
 
@@ -1121,7 +1121,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer drop { host | all }\n"
+					printf "Invalid Parameters. Syntax: $0 peer drop { host | all }\n"
 				else
 					host=$3
 
@@ -1148,7 +1148,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer show [host]\n"
+					printf "Invalid Parameters. Syntax: $0 peer show [host]\n"
 				else
 
 					if [ -f "$3" ]; then
@@ -1180,7 +1180,7 @@ case $1 in
 
 				if [ $# -lt "5" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer set host send receive\n"
+					printf "Invalid Parameters. Syntax: $0 peer set host send receive\n"
 				else
 					host=$3
 					send=$4
@@ -1208,7 +1208,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer ping host\n"
+					printf "Invalid Parameters. Syntax: $0 peer ping host\n"
 				else
 					host=$3
 
@@ -1234,7 +1234,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 peer send host\n"
+					printf "Invalid Parameters. Syntax: $0 peer send host\n"
 				else
 					host=$3
 
@@ -1268,7 +1268,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 retention show { host | all }\n"
+					printf "Invalid Parameters. Syntax: $0 retention show { host | all }\n"
 				else
 
 					host=$3
@@ -1299,7 +1299,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 retention release { sender | all }\n"
+					printf "Invalid Parameters. Syntax: $0 retention release { sender | all }\n"
 				else
 
 					sender=$3
@@ -1330,7 +1330,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 retention reject { sender | all }\n"
+					printf "Invalid Parameters. Syntax: $0 retention reject { sender | all }\n"
 				else
 
 					sender=$3
@@ -1390,7 +1390,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 superclear hostname\n"
+			printf "Invalid Parameters. Syntax: $0 superclear hostname\n"
 		else
 			hostname=$2
 
@@ -1418,7 +1418,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 refresh hostname\n"
+			printf "Invalid Parameters. Syntax: $0 refresh hostname\n"
 		else
 			hostname=$2
 
@@ -1446,11 +1446,10 @@ case $1 in
 
 		if [ $# -lt "1" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 analise <ip>\n"
+			printf "Invalid Parameters. Syntax: $0 analise <ip>\n"
 		else
 			case $2 in
 				'show')
-		
 					response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 					
 					if [[ $response == "" ]]; then
@@ -1469,9 +1468,9 @@ case $1 in
 					echo "$response"
 				;;
 				'drop')
-		
+
 					response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
+
 					if [[ $response == "" ]]; then
 						response="TIMEOUT"
 					fi
@@ -1524,7 +1523,7 @@ case $1 in
 
 		if [ $# -lt "4" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 check ip email helo\n"
+			printf "Invalid Parameters. Syntax: $0 check ip email helo\n"
 		else
 			ip=$2
 			email=$3
@@ -1586,7 +1585,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 spam ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 spam ticketid/file\n"
 		else
                         if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
@@ -1681,7 +1680,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
 	                        # O parâmentro é uma URL de denúncia SPFBL.
@@ -1818,7 +1817,7 @@ case $1 in
 
 		if [ $# -lt "5" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 query ip email helo recipient\n"
+			printf "Invalid Parameters. Syntax: $0 query ip email helo recipient\n"
 		else
 			ip=$2
 			email=$3
@@ -1891,7 +1890,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 trap add recipient\n"
 				else
 					recipient=$3
 
@@ -1918,7 +1917,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
+					printf "Invalid Parameters. Syntax: $0 trap drop recipient\n"
 				else
 					recipient=$3
 
@@ -1942,7 +1941,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
+					printf "Invalid Parameters. Syntax: $0 trap show\n"
 				else
 					response=$(echo $OTP_CODE"TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
@@ -1975,7 +1974,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 trap add recipient\n"
 				else
 					recipient=$3
 
@@ -2002,7 +2001,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap drop recipient\n"
+					printf "Invalid Parameters. Syntax: $0 trap drop recipient\n"
 				else
 					recipient=$3
 
@@ -2026,7 +2025,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Faltando parametro(s).\nSintaxe: $0 trap show\n"
+					printf "Invalid Parameters. Syntax: $0 trap show\n"
 				else
 					response=$(echo $OTP_CODE"NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
@@ -2062,7 +2061,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 load path\n"
+			printf "Invalid Parameters. Syntax: $0 load path\n"
 		else
 			file=$1
 			if [ -f $file ]; then
@@ -2077,10 +2076,11 @@ case $1 in
 	;;
 	*)
 		head
-		printf "Help:\n"
+		printf "Help\n\n"
+		printf "User Commands:\n"
 		printf "    $0 version\n"
-		printf "    $0 block { add sender | drop sender | show [all] }\n"
-		printf "    $0 white { add sender | drop sender | show }\n"
+		printf "    $0 block { add sender | drop sender | show [all] | find }\n"
+		printf "    $0 white { add sender | drop sender | show | sender }\n"
 		printf "    $0 reputation\n"
 		printf "    $0 clear hostname\n"
 		printf "    $0 refresh hostname\n"
@@ -2089,6 +2089,7 @@ case $1 in
 		printf "    $0 ham ticketid/file\n"
 		printf "    $0 query ip email helo recipient\n"
 		printf "    $0 trap { add recipient | drop recipient | show }\n"
+		printf "    $0 noreply { add recipient | drop recipient | show }\n"
 		printf "\n"
 		printf "Admin Commands:\n"
 		printf "    $0 shutdown\n"
@@ -2101,7 +2102,7 @@ case $1 in
 		printf "    $0 ignore { add sender | drop sender | show }\n"
 		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"
 		printf "    $0 user { add email nome | drop email | show }\n"
-		printf "    $0 superblock { add sender | drop sender | show [all] }\n"
+		printf "    $0 superblock { add sender | drop sender | show [all] | split | overlap }\n"
 		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
 		printf "    $0 analise <ip> or { show | dump | drop }\n"
 		printf "    $0 dump\n"
