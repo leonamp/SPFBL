@@ -15,7 +15,7 @@
 #    policy-spfbl  unix  -       n       n       -       -       spawn
 #        user=nobody argv=/usr/bin/spfblquery.pl
 #
-# Última alteração: 31/07/2016 10:50
+# Última alteração: 22/08/2016 11:07
 
 use strict;
 use warnings;
@@ -50,7 +50,7 @@ while ( my $line = <STDIN> ) {
 
     # connecting
     my $socket = IO::Socket::INET->new( %{ $CONFIG->{socket} } )
-      or die "Can't connect to SPFBL server!\n";
+      or die "action=WARN SPFBL NO CONNECTION\n\n";
 
     # build and send query
     my $query = "SPF '$params->{client_address}' '$params->{sender}' '$params->{helo_name}' '$params->{recipient}'\n";
