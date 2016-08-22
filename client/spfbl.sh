@@ -536,16 +536,12 @@ case $1 in
 			'split')
 				# Parâmetros de entrada:
 				#
-				#    1. sender: o remetente que deve ser bloqueado, com endereço completo.
-				#    1. domínio: o domínio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
-				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
-				#
+				#    1. cidr: o bloco que deve ser utilizado.
 				#
 				# Códigos de saída:
 				#
-				#    0: adicionado com sucesso.
-				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conexão.
+				#    Nenhum: Observar o retorno do servidor.
+				#
 
 				if [ $# -lt "3" ]; then
 					head
@@ -565,16 +561,13 @@ case $1 in
 			'overlap')
 				# Parâmetros de entrada:
 				#
-				#    1. sender: o remetente que deve ser bloqueado, com endereço completo.
-				#    1. domínio: o domínio que deve ser bloqueado, com arroba (ex: @dominio.com.br)
-				#    1. caixa postal: a caixa postal que deve ser bloqueada, com arroba (ex: www-data@)
-				#
+				#    1. cidr: o bloco que deve ser utilizado.
 				#
 				# Códigos de saída:
 				#
-				#    0: adicionado com sucesso.
-				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conexão.
+				#    Nenhum: Observar o retorno do servidor.
+				#
+				
 
 				if [ $# -lt "3" ]; then
 					head
@@ -649,7 +642,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock overlap cidr    $0 superblock show\n"
+				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock split cidr\n    $0 superblock overlap cidr\n    $0 superblock show\n"
 			;;
 		esac
 	;;
@@ -1974,7 +1967,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 trap add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 noreply add recipient\n"
 				else
 					recipient=$3
 
@@ -2001,7 +1994,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 trap drop recipient\n"
+					printf "Invalid Parameters. Syntax: $0 noreply drop recipient\n"
 				else
 					recipient=$3
 
@@ -2025,7 +2018,7 @@ case $1 in
 
 				if [ $# -lt "2" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 trap show\n"
+					printf "Invalid Parameters. Syntax: $0 noreply show\n"
 				else
 					response=$(echo $OTP_CODE"NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
