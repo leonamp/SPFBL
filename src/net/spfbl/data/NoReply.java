@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 package net.spfbl.data;
 
 import java.io.File;
@@ -134,9 +135,13 @@ public class NoReply {
     public static boolean contains(String address) {
         if (!Domain.isEmail(address)) {
             return false;
-        } else if (address.startsWith("bounce+")) {
+        } else if (address.contains("bounce+")) {
+            return true;
+        } else if (address.contains("bounce-")) {
             return true;
         } else if (address.startsWith("prvs=")) {
+            return true;
+        } else if (address.startsWith("msprvs1=")) {
             return true;
         } else if (containsExact(address)) {
             return true;

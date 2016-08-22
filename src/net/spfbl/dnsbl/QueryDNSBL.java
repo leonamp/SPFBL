@@ -24,8 +24,6 @@ import net.spfbl.spf.SPF;
 import net.spfbl.whois.SubnetIPv4;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.HashMap;
@@ -39,7 +37,6 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
 import net.spfbl.core.Core;
-import net.spfbl.core.Reverse;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
@@ -431,10 +428,10 @@ public final class QueryDNSBL extends Server {
                                 } else if (clientQuery.equals("127.0.0.2")) {
                                     // Consulta de teste para positivio.
                                     result = "127.0.0.2";
-                                } else if (Block.containsIP(clientQuery)) {
+                                } else if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                    ttl = 259200; // Três dias.
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -443,20 +440,21 @@ public final class QueryDNSBL extends Server {
                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                 // A consulta é um IPv6.
                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-                                if (Block.containsIP(clientQuery)) {
+                                Analise.processToday(clientQuery);
+                                if (Block.containsCIDR(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                    ttl = 259200; // Três dias.
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
                                     result = "NXDOMAIN";
                                 }
                             } else if ((clientQuery = server.extractDomain(host)) != null) {
-                                if (Block.containsHost(clientQuery)) {
+                                if (Block.containsDomain(clientQuery)) {
                                     result = "127.0.0.2";
-                                    ttl = 604800; // Uma semana.
-                                } else if (SPF.isBlacklisted(clientQuery)) {
+                                    ttl = 259200; // Três dias.
+                                } else if (SPF.isRed(clientQuery)) {
                                     result = "127.0.0.2";
                                     ttl = 86400; // Um dia.
                                 } else {
@@ -489,7 +487,7 @@ public final class QueryDNSBL extends Server {
                                 long refresh = 1800;
                                 long retry = 900;
                                 long expire = 604800;
-                                long minimum = 86400;
+                                long minimum = 300;
                                 name = new Name(server.getHostName().substring(1) + '.');
                                 SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
                                         name, SERIAL, refresh, retry, expire, minimum);
@@ -623,26 +621,33 @@ public final class QueryDNSBL extends Server {
      * @return uma conexão ociosa ou nova se não houver ociosa.
      */
     private Connection pollConnection() {
-        if (CONNECION_SEMAPHORE.tryAcquire()) {
-            Connection connection = poll();
-            if (connection == null) {
-                CONNECION_SEMAPHORE.release();
-            } else {
-                use(connection);
-            }
-            return connection;
-        } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
+        try {
+            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                Connection connection = poll();
+                if (connection == null) {
+                    CONNECION_SEMAPHORE.release();
+                } else {
+                    use(connection);
+                }
+                return connection;
+//            } else if (Core.hasLowMemory()) {
+//                return null;
+            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
             // Cria uma nova conexão se não houver conecxões ociosas.
-            // O servidor aumenta a capacidade conforme a demanda.
-            Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
-            Connection connection = new Connection();
-            connection.start();
-            CONNECTION_COUNT++;
-            return connection;
-        } else {
+                // O servidor aumenta a capacidade conforme a demanda.
+                Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Connection connection = new Connection();
+                connection.start();
+                CONNECTION_COUNT++;
+                return connection;
+            } else {
             // Se não houver liberação, ignorar consulta DNS.
-            // O MX que fizer a consulta terá um TIMEOUT
-            // considerando assim o IP como não listado.
+                // O MX que fizer a consulta terá um TIMEOUT
+                // considerando assim o IP como não listado.
+                return null;
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
             return null;
         }
     }
@@ -701,7 +706,7 @@ public final class QueryDNSBL extends Server {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(100, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else {
                     connection.close();
                 }

@@ -335,6 +335,10 @@ public class Ignore {
             return false;
         }
     }
+    
+    public static boolean containsCIDR(String ip) {
+        return CIDR.get(null, ip) != null;
+    }
 
     public static boolean contains(String token) {
         if (token == null) {
@@ -353,7 +357,7 @@ public class Ignore {
                     return true;
                 } else if (containsExact(senderDomain)) {
                     return true;
-                } else if (containsHost(senderDomain.substring(1))) {
+                } else if (containsHost('.' + senderDomain.substring(1))) {
                     return true;
                 } else {
                     int index3 = senderDomain.length();
@@ -393,7 +397,7 @@ public class Ignore {
         }
     }
 
-    private static boolean containsHost(String host) {
+    public static boolean containsHost(String host) {
         do {
             int index = host.indexOf('.') + 1;
             host = host.substring(index);

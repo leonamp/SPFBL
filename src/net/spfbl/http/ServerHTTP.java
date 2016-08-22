@@ -29,18 +29,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.HttpCookie;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -69,7 +66,6 @@ import net.tanesha.recaptcha.ReCaptchaFactory;
 import net.tanesha.recaptcha.ReCaptchaResponse;
 import org.apache.commons.lang3.LocaleUtils;
 import org.apache.commons.lang3.SerializationUtils;
-import org.apache.commons.lang3.StringEscapeUtils;
 
 /**
  * Servidor de consulta em SPF.
@@ -351,7 +347,6 @@ public final class ServerHTTP extends Server {
                     Language language = new Language(tokenizer.nextToken());
                     languageSet.add(language);
                 } catch (Exception ex) {
-                    Server.logError(ex);
                 }
             }
             for (Language language : languageSet) {
@@ -894,6 +889,16 @@ public final class ServerHTTP extends Server {
                                     if (valid) {
                                         String message;
                                         if (Block.clearCIDR(ip, clientTicket)) {
+                                            TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
+                                            tokenSet.add(clientTicket);
+                                            String block;
+                                            for (String token : tokenSet) {
+                                                while ((block = Block.find(null, token, false)) != null) {
+                                                    if (Block.dropExact(block)) {
+                                                        Server.logDebug("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
+                                                    }
+                                                }
+                                            }
                                             if (locale.getLanguage().toLowerCase().equals("pt")) {
                                                 message = "O IP " + ip + " foi desbloqueado com sucesso.";
                                             } else {
@@ -1160,7 +1165,7 @@ public final class ServerHTTP extends Server {
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resutado da checagem DNSBL do domínio '" + query + "'.";
+                                message = "Resultado da checagem DNSBL do domínio '" + query + "'.";
                             } else {
                                 message = "DNSBL checking the result of domain " + query + ".";
                             }
@@ -1437,7 +1442,7 @@ public final class ServerHTTP extends Server {
                                 }
                             }
                         } catch (Exception ex) {
-                            ex.printStackTrace();
+                            Server.logError(ex);
                             type = "BLOCK";
                             code = 500;
                             String message;
@@ -2074,7 +2079,9 @@ public final class ServerHTTP extends Server {
         builder.append("  </head>\n");
         builder.append("  <body>\n");
         builder.append("    ");
-        builder.append(message.replace("\n", "<br>\n"));
+        if (message != null) {
+            builder.append(message.replace("\n", "<br>\n"));
+        }
 //        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
 //        while (tokenizer.hasMoreTokens()) {
 //            String line = tokenizer.nextToken();
@@ -2163,230 +2170,264 @@ public final class ServerHTTP extends Server {
         builder.append("    <br>\n");
         TreeSet<String> emailSet = new TreeSet<String>();
         if (Subnet.isValidIP(query)) {
-            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("    Reversos encontrados:");
+            if (Subnet.isReservedIP(query)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    Este é um IP reservado e por este motivo não é abordado nesta lista.<br>\n");
+                } else {
+                    builder.append("    This is a reserved IP and for this reason is not addressed in this list.<br>\n");
+                }
             } else {
-                builder.append("    rDNS found:");
-            }
-            Reverse reverse = Reverse.get(query, true);
-            TreeSet<String> reverseSet = reverse.getAddressSet();
-            if (reverseSet.isEmpty()) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append(" nenhum<br>\n");
+                    builder.append("    Reversos encontrados:");
                 } else {
-                    builder.append(" none<br>\n");
+                    builder.append("    rDNS found:");
                 }
-                builder.append("    <br>\n");
-            } else {
-                builder.append("<br>\n");
-                builder.append("    <ul>\n");
-                String hostname = reverseSet.pollFirst();
-                do  {
-                    hostname = Domain.normalizeHostname(hostname, false);
-                    builder.append("      <li>&lt;");
-                    builder.append(hostname);
-                    builder.append("&gt; ");
-                    if (SPF.matchHELO(query, hostname, true)) {
-                        String domain;
-                        try {
-                            domain = Domain.extractDomain(hostname, false);
-                        } catch (ProcessException ex) {
-                            domain = null;
-                        }
-                        if (domain == null) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("inválido.</li>\n");
+                Reverse reverse = Reverse.get(query, true);
+                TreeSet<String> reverseSet = reverse.getAddressSet();
+                if (reverseSet.isEmpty()) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append(" nenhum<br>\n");
+                    } else {
+                        builder.append(" none<br>\n");
+                    }
+                    builder.append("    <br>\n");
+                } else {
+                    builder.append("<br>\n");
+                    builder.append("    <ul>\n");
+                    String hostname = reverseSet.pollFirst();
+                    do  {
+                        hostname = Domain.normalizeHostname(hostname, false);
+                        builder.append("      <li>&lt;");
+                        builder.append(hostname);
+                        builder.append("&gt; ");
+                        if (SPF.matchHELO(query, hostname, true)) {
+                            String domain;
+                            try {
+                                domain = Domain.extractDomain(hostname, false);
+                            } catch (ProcessException ex) {
+                                domain = null;
+                            }
+                            if (domain == null) {
+                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                    builder.append("FCrDNS inválido.</li>\n");
+                                } else {
+                                    builder.append("invalid FCrDNS.</li>\n");
+                                }
                             } else {
-                                builder.append("invalid.</li>\n");
+                                String subdominio = hostname;
+                                while (subdominio.endsWith(domain)) {
+                                    emailSet.add("postmaster@" + subdominio);
+                                    int index = subdominio.indexOf('.', 1) + 1;
+                                    subdominio = subdominio.substring(index);
+                                }
+                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                    builder.append("FCrDNS válido.</li>\n");
+                                } else {
+                                    builder.append("valid FCrDNS.</li>\n");
+                                }
                             }
                         } else {
-                            String subdominio = hostname;
-                            while (subdominio.endsWith(domain)) {
-                                emailSet.add("postmaster@" + subdominio);
-                                int index = subdominio.indexOf('.', 1) + 1;
-                                subdominio = subdominio.substring(index);
-                            }
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("válido.</li>\n");
+                                builder.append("FCrDNS inválido.</li>\n");
                             } else {
-                                builder.append("valid.</li>\n");
+                                builder.append("invalid FCrDNS.</li>\n");
                             }
                         }
-                    } else {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("inválido.</li>\n");
+                    } while ((hostname = reverseSet.pollFirst()) != null);
+                    builder.append("    </ul>\n");
+                }
+                Distribution distribution;
+                if (emailSet.isEmpty()) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
+                        if (Block.containsCIDR(query)) {
+                            builder.append("    O DNS reverso deve estar sob seu próprio domínio para que a liberação seja efetivada.<br>\n");
                         } else {
-                            builder.append("invalid.</li>\n");
+                            builder.append("    Qualquer IP com FCrDNS inválido pode ser incluido em qualquer momento nesta lista.<br>\n");
                         }
-                    }
-                } while ((hostname = reverseSet.pollFirst()) != null);
-                builder.append("    </ul>\n");
-            }
-            Distribution distribution;
-            if (emailSet.isEmpty()) {
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
-                } else {
-                    builder.append("    Register a valid rDNS for this IP, which point to the same IP.<br>\n");
-                }
-            } else if ((distribution = SPF.getDistribution(query, true)).isNotWhitelisted(query)) {
-                float probability = distribution.getSpamProbability(query);
-                if (distribution.isBlacklisted(query) || Block.containsIP(query)) {
-                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    Este IP está listado por má reputação com ");
-                        builder.append(Core.PERCENT_FORMAT.format(probability));
-                        builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
-                        builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-                        builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
-                        builder.append("    onde este ponto expira em uma semana.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                        builder.append("    Devem existir meios em que seja possível identificar o dono do domínio usado no reverso.<br>\n");
                     } else {
-                        builder.append("    This IP is listed by poor reputation in ");
-                        builder.append(Core.PERCENT_FORMAT.format(probability));
-                        builder.append(" of negative points of total sending.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    In order for this IP can be removed from this list,<br>\n");
-                        builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
-                        builder.append("    whose SMTP rejection has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
-                        builder.append("    where this point expires in a week.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
-                    }
-                } else {
-                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
-                        builder.append(Core.PERCENT_FORMAT.format(probability));
-                        builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
-                        builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
-                        builder.append("    tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Cada rejeição SMTP com este prefixo");
-                        builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
-                    } else {
-                        builder.append("    This IP is not listed in this system but its reputation is with ");
-                        builder.append(Core.PERCENT_FORMAT.format(probability));
-                        builder.append(" of negative points of total sending.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    If this reputation have significant increase in the number of negative points,");
-                        builder.append("    this IP will automatically be listed in the system.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
-                        builder.append("    has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    Each SMTP rejection with this prefix");
-                        builder.append("    automatically generates a new negative point in this system.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
-                    }
-                }
-            } else if (Block.containsIP(query)) {
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    E-mails para envio de chave de desbloqueio:<br>\n");
-                } else {
-                    builder.append("    E-mails to send unblock key:<br>\n");
-                }
-                builder.append("    <ul>\n");
-                if (
-                        client != null &&
-                        client.hasPermission(DNSBL) &&
-                        client.hasEmail()
-                        ) {
-                    emailSet.add(client.getEmail());
-                }
-                TreeSet<String> sendSet = new TreeSet<String>();
-                String email = emailSet.pollFirst();
-                do  {
-                    builder.append("      <li>&lt;");
-                    builder.append(email);
-                    builder.append("&gt; ");
-                    if (NoReply.contains(email)) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("não permitido.</li>\n");
+                        builder.append("    Register a valid rDNS for this IP, which point to the same IP.<br>\n");
+                        if (Block.containsCIDR(query)) {
+                            builder.append("    The rDNS should be registered under your own domain to the release take effect.<br>\n");
                         } else {
-                            builder.append("not permitted.</li>\n");
+                            builder.append("    Any IP with invalid FCrDNS can be included at any time in this list.<br>\n");
+                        }
+                        builder.append("    There must be a way to identify the owner of the domain used in rDNS.<br>\n");
+                    }
+                } else if ((distribution = SPF.getDistribution(query, true)).isNotGreen(query)) {
+                    float probability = distribution.getSpamProbability(query);
+                    if (distribution.isRed(query) || Block.containsCIDR(query)) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            builder.append("    Este IP está listado por má reputação com ");
+                            builder.append(Core.PERCENT_FORMAT.format(probability));
+                            builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
+                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
+                            builder.append("    cuja rejeição SMTP tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
+                            builder.append("    onde este ponto expira em uma semana.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                        } else {
+                            builder.append("    This IP is listed by poor reputation in ");
+                            builder.append(Core.PERCENT_FORMAT.format(probability));
+                            builder.append(" of negative points of total sending.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    In order for this IP can be removed from this list,<br>\n");
+                            builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
+                            builder.append("    whose SMTP rejection has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
+                            builder.append("    where this point expires in a week.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                         }
                     } else {
-                        sendSet.add(email);
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("permitido.</li>\n");
+                            builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
+                            builder.append(Core.PERCENT_FORMAT.format(probability));
+                            builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
+                            builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
+                            builder.append("    tenha prefixo '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Cada rejeição SMTP com este prefixo");
+                            builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                         } else {
-                            builder.append("permitted.</li>\n");
+                            builder.append("    This IP is not listed in this system but its reputation is with ");
+                            builder.append(Core.PERCENT_FORMAT.format(probability));
+                            builder.append(" of negative points of total sending.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    If this reputation have significant increase in the number of negative points,");
+                            builder.append("    this IP will automatically be listed in the system.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
+                            builder.append("    has prefix '5XX 5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    Each SMTP rejection with this prefix");
+                            builder.append("    automatically generates a new negative point in this system.<br>\n");
+                            builder.append("    <br>\n");
+                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                         }
                     }
-                } while ((email = emailSet.pollFirst()) != null);
-                builder.append("    </ul>\n");
-                if (sendSet.isEmpty()) {
+                } else if (Block.containsCIDR(query)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    Nenhum e-mail do responsável pelo IP é permitido neste sistema.<br>\n");
+                        builder.append("    E-mails para envio de chave de desbloqueio:<br>\n");
                     } else {
-                        builder.append("    None of the responsible for IP has e-mail permitted under this system.<br>\n");
+                        builder.append("    E-mails to send unblock key:<br>\n");
                     }
-                } else {
-                    builder.append("    <form method=\"POST\">\n");
-                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("      Para que a chave de desbloqueio seja enviada,<br>\n");
-                        builder.append("      selecione o endereço de e-mail do responsável pelo IP:<br>\n");
+                    builder.append("    <ul>\n");
+                    if (
+                            client != null &&
+                            client.hasPermission(DNSBL) &&
+                            client.hasEmail()
+                            ) {
+                        emailSet.add(client.getEmail());
+                    }
+                    TreeSet<String> sendSet = new TreeSet<String>();
+                    String email = emailSet.pollFirst();
+                    do  {
+                        builder.append("      <li>&lt;");
+                        builder.append(email);
+                        builder.append("&gt; ");
+                        if (NoReply.contains(email)) {
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("não permitido.</li>\n");
+                            } else {
+                                builder.append("not permitted.</li>\n");
+                            }
+                        } else {
+                            sendSet.add(email);
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("permitido.</li>\n");
+                            } else {
+                                builder.append("permitted.</li>\n");
+                            }
+                        }
+                    } while ((email = emailSet.pollFirst()) != null);
+                    builder.append("    </ul>\n");
+                    if (sendSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            builder.append("    Nenhum e-mail do responsável pelo IP é permitido neste sistema.<br>\n");
+                        } else {
+                            builder.append("    None of the responsible for IP has e-mail permitted under this system.<br>\n");
+                        }
                     } else {
-                        builder.append("      For the release key is sent,<br>\n");
-                        builder.append("      select the responsible e-mail address of the IP:<br>\n");
-                    }
-                    for (String send : sendSet) {
-                        builder.append("      <input type=\"radio\" name=\"identifier\" value=\"");
-                        builder.append(send);
-                        builder.append("\">");
-                        builder.append(send);
-                        builder.append("<br>\n");
-                    }
-                    if (Core.hasRecaptchaKeys()) {
+                        builder.append("    <form method=\"POST\">\n");
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            builder.append("      Para que a chave de desbloqueio seja enviada,<br>\n");
+                            builder.append("      selecione o endereço de e-mail do responsável pelo IP:<br>\n");
+                        } else {
+                            builder.append("      For the release key is sent,<br>\n");
+                            builder.append("      select the responsible e-mail address of the IP:<br>\n");
+                        }
+                        for (String send : sendSet) {
+                            builder.append("      <input type=\"radio\" name=\"identifier\" value=\"");
+                            builder.append(send);
+                            builder.append("\">");
+                            builder.append(send);
+                            builder.append("<br>\n");
+                        }
                         builder.append("      <br>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("      Para que sua solicitação seja aceita,<br>\n");
-                            builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                            builder.append("      O DNS reverso do IP deve estar sob seu prório domínio.<br>\n");
+                            builder.append("      Não aceitamos DNS reversos com domínios de terceiros.<br>\n");
                         } else {
-                            builder.append("      For your request is accepted,<br>\n");
-                            builder.append("      solve the reCAPTCHA below.<br>\n");
+                            builder.append("      The rDNS should be registered under your own domain.<br>\n");
+                            builder.append("      We do not accept rDNS with third-party domains.<br>\n");
                         }
-                        String recaptchaKeySite = Core.getRecaptchaKeySite();
-                        String recaptchaKeySecret = Core.getRecaptchaKeySecret();
-                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
-                        builder.append("      ");
-                        builder.append(captcha.createRecaptchaHtml(null, null).replace("\r", ""));
-                        // novo reCAPCHA
-            //            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
-            //            builder.append(recaptchaKeySite);
-            //            builder.append("\"></div>\n");
+                        if (Core.hasRecaptchaKeys()) {
+                            builder.append("      <br>\n");
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("      Para que sua solicitação seja aceita,<br>\n");
+                                builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                            } else {
+                                builder.append("      For your request is accepted,<br>\n");
+                                builder.append("      solve the reCAPTCHA below.<br>\n");
+                            }
+                            String recaptchaKeySite = Core.getRecaptchaKeySite();
+                            String recaptchaKeySecret = Core.getRecaptchaKeySecret();
+                            ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
+                            builder.append("      ");
+                            builder.append(captcha.createRecaptchaHtml(null, null).replace("\r", ""));
+                            // novo reCAPCHA
+                //            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
+                //            builder.append(recaptchaKeySite);
+                //            builder.append("\"></div>\n");
+                        }
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            builder.append("      <input type=\"submit\" value=\"Solicitar\">\n");
+                        } else {
+                            builder.append("      <input type=\"submit\" value=\"Request\">\n");
+                        }
+                        builder.append("    </form>\n");
                     }
-                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("      <input type=\"submit\" value=\"Solicitar\">\n");
-                    } else {
-                        builder.append("      <input type=\"submit\" value=\"Request\">\n");
-                    }
-                    builder.append("    </form>\n");
-                }
-            } else {
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
                 } else {
-                    builder.append("    No block was found for this IP.<br>\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
+                        builder.append("    Se este IP estiver sendo rejeitado por algum MTA,<br>\n");
+                        builder.append("    aguarde a propagação de DNS deste serviço.<br>\n");
+                        builder.append("    O tempo de propagação pode levar alguns dias.<br>\n");
+                    } else {
+                        builder.append("    No block was found for this IP.<br>\n");
+                        builder.append("    If this IP is being rejected by some MTA,<br>\n");
+                        builder.append("    wait for the DNS propagation of this service.<br>\n");
+                        builder.append("    The propagation time can take a few days.<br>\n");
+                    }
                 }
             }
         } else if (Domain.isHostname(query)) {
             Distribution distribution;
             query = Domain.normalizeHostname(query, true);
-            if ((distribution = SPF.getDistribution(query, true)).isNotWhitelisted(query)) {
+            if ((distribution = SPF.getDistribution(query, true)).isNotGreen(query)) {
                 float probability = distribution.getSpamProbability(query);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Este domínio está listado por má reputação com ");
@@ -2415,7 +2456,7 @@ public final class ServerHTTP extends Server {
                     builder.append("    <br>\n");
                     builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                 }
-            } else if (Block.containsHost(query)) {
+            } else if (Block.containsDomain(query)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    Este domínio está listado por bloqueio manual.<br>\n");
                     if (Core.hasAdminEmail()) {
@@ -2485,7 +2526,7 @@ public final class ServerHTTP extends Server {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("      Para consultar uma reputação no serviço DNSBL, digite um IP ou um domínio:<br>\n");
             } else {
-                builder.append("      For a reputation in the DNSBL service, type an IP or domain:<br>\n");
+                builder.append("      For query a reputation in the DNSBL service, type an IP or domain:<br>\n");
             }
             builder.append("      <input type=\"text\" name=\"query\" value=\"");
             builder.append(value);

@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.2"
+version="2.3"
 
 head()
 {
@@ -680,6 +680,43 @@ case $1 in
 					fi
 
 					echo "$response"
+				fi
+			;;
+			'sender')
+				# Parâmetros de entrada:
+				#
+				#    1. sender: o remetente que deve ser liberado, com endereço completo.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar bloqueio.
+				#    2: timeout de conexão.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 white add recipient\n"
+				else
+					sender=$3
+
+					response=$(echo "WHITE SENDER $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+
+					if [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ADDED "* ]]; then
+						exit 0
+					elif [[ $response == "ALREADY "* ]]; then
+						exit 0
+					else
+						exit 1
+					fi
 				fi
 			;;
 			'drop')
@@ -1554,7 +1591,7 @@ case $1 in
                         if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,512}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1647,9 +1684,9 @@ case $1 in
 			printf "Faltando parametro(s).\nSintaxe: $0 ham ticketid/file\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
-	            # O parâmentro é uma URL de denúncia SPFBL.
-	            url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+]{44,512}$ ]]; then
+	                        # O parâmentro é uma URL de denúncia SPFBL.
+	                        url=$2
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1753,6 +1790,7 @@ case $1 in
 		#    NONE <ticket>: permitir o recebimento da mensagem.
 		#    LISTED: atrasar o recebimento da mensagem e informar à origem a listagem em blacklist por sete dias.
 		#    BLOCKED: rejeitar o recebimento da mensagem e informar à origem o bloqueio permanente.
+		#    FLAG: aceita o recebimento e redirecione a mensagem para a pasta SPAM.
 		#    SPAMTRAP: discaratar silenciosamente a mensagem e informar à origem que a mensagem foi recebida com sucesso.
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#    NXDOMAIN: o domínio do remetente é inexistente.
@@ -1776,6 +1814,7 @@ case $1 in
 		#    13: domínio inexistente.
 		#    14: IP ou remetente inválido.
 		#    15: mensagem originada de uma rede local.
+		#    16: mensagem marcada como SPAM.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -1804,6 +1843,8 @@ case $1 in
 				exit 14
 			elif [[ $qualifier == "LAN" ]]; then
 				exit 15
+			elif [[ $qualifier == "FLAG" ]]; then
+				exit 16
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED"* ]]; then

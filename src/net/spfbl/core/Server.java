@@ -122,6 +122,7 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         Peer.load();
+        Analise.load();
         Reverse.load();
         Block.load();
         White.load();
@@ -148,6 +149,7 @@ public abstract class Server extends Thread {
         Handle.store();
         NameServer.store();
         Peer.store();
+        Analise.store();
         Reverse.store();
         Block.store();
         White.store();
@@ -158,6 +160,7 @@ public abstract class Server extends Thread {
         NoReply.store();
         Defer.store();
         QueryDNSBL.store();
+        System.gc();
     }
     
     private static SecretKey privateKey = null;
@@ -278,17 +281,25 @@ public abstract class Server extends Thread {
      */
     private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
     
-    private static long LAST_TICKET_TIME = 0;
+    private static long LAST_UNIQUE_TIME = 0;
     
-    public static synchronized String getNewTicketDate() {
+    public static synchronized long getNewUniqueTime() {
         long time = System.currentTimeMillis();
-        if (time <= LAST_TICKET_TIME) {
+        if (time <= LAST_UNIQUE_TIME) {
             // Não permite criar dois tickets 
             // exatamente com a mesma data para 
             // que o hash fique sempre diferente.
-            time = LAST_TICKET_TIME + 1;
+            time = LAST_UNIQUE_TIME + 1;
         }
-        LAST_TICKET_TIME = time;
+        return LAST_UNIQUE_TIME = time;
+    }
+    
+    public static String getNewTicketDate() {
+        long time = getNewUniqueTime();
+        return formatTicketDate(time);
+    }
+    
+    public static synchronized String formatTicketDate(long time) {
         return FORMAT_DATE_TICKET.format(new Date(time));
     }
     
@@ -399,7 +410,7 @@ public abstract class Server extends Thread {
     
     public static synchronized void setLogExpires(int expires) {
         if (expires < 1 || expires > Short.MAX_VALUE) {
-            Server.logError("invalid expires integer value '" + expires + "'.");
+            Server.logError("invalid LOG expires integer value '" + expires + "'.");
         } else {
             Server.logExpires = (short) expires;
         }
@@ -614,12 +625,12 @@ public abstract class Server extends Thread {
      * @param ex a exceção a ser registrada.
      */
     public static void logError(Throwable ex) {
-        if (ex instanceof ProcessException) {
-            ProcessException pex = (ProcessException) ex;
-            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
-        } else if (ex instanceof Exception) {
+//        if (ex instanceof ProcessException) {
+//            ProcessException pex = (ProcessException) ex;
+//            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
+//        } else if (ex instanceof Exception) {
             log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
-        }
+//        }
     }
     
     /**

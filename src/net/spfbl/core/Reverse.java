@@ -14,26 +14,27 @@
  * You should have received a copy of the GNU General Public License
  * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 package net.spfbl.core;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
+import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
-import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
@@ -128,6 +129,19 @@ public final class Reverse implements Serializable {
         }
     }
     
+    public TreeSet<String> getAddressSet(boolean refresh) {
+        if (addressSet == null) {
+            return new TreeSet<String>();
+        } else {
+            if (refresh) {
+                refresh();
+            }
+            TreeSet<String> resultSet = new TreeSet<String>();
+            resultSet.addAll(addressSet);
+            return resultSet;
+        }
+    }
+    
     public TreeSet<String> getAddressSet() {
         if (addressSet == null) {
             return new TreeSet<String>();
@@ -148,10 +162,21 @@ public final class Reverse implements Serializable {
         return reverse.getAddressSet(ip, false);
     }
     
+    public static TreeSet<String> getSet(String ip, boolean refresh) {
+        Reverse reverse = Reverse.get(ip);
+        if (refresh) {
+            reverse.refresh();
+        }
+        return reverse.getAddressSet();
+    }
+    
     public TreeSet<String> getAddressSet(String ip, boolean refresh) {
         if (addressSet == null) {
             return new TreeSet<String>();
         } else {
+            if (refresh) {
+                refresh();
+            }
             TreeSet<String> resultSet = new TreeSet<String>();
             for (String hostname : addressSet) {
                 if (SPF.matchHELO(ip, hostname, refresh)) {
@@ -257,6 +282,34 @@ public final class Reverse implements Serializable {
         }
     }
     
+    public static String getResult(String ip, String dnsbl) {
+        String host = Reverse.getHostReverse(ip, dnsbl);
+        if (host == null) {
+            return null;
+        } else {
+            try {
+                for (String result : getIPv4Set(host)) {
+                    if (result.startsWith("127.0.")) {
+                        return result;
+                    }
+                }
+                return null;
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNSBL service '" + dnsbl + "' unreachable.");
+                return null;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNSBL service '" + dnsbl + "' unavailable.");
+                return null;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return null;
+            } catch (NamingException ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
     public static String getHostReverse(String ip, String domain) {
         if (SubnetIPv4.isValidIPv4(ip)) {
             String reverse = domain;
@@ -283,24 +336,171 @@ public final class Reverse implements Serializable {
         }
     }
     
-    private static TreeSet<String> getPointerSet(String host) throws NamingException {
-        TreeSet<String> reverseSet = new TreeSet<String>();
+    public static boolean hasValidNameServers(
+            String hostname
+    ) throws NamingException {
+        if ((hostname = Domain.normalizeHostname(hostname, false)) == null) {
+            return false;
+        } else {
+            try {
+                Attributes attributesNS = Server.getAttributesDNS(
+                        hostname, new String[]{"NS"});
+                if (attributesNS != null) {
+                    Enumeration enumerationNS = attributesNS.getAll();
+                    while (enumerationNS.hasMoreElements()) {
+                        Attribute attributeNS = (Attribute) enumerationNS.nextElement();
+                        NamingEnumeration enumeration = attributeNS.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String ns = (String) enumeration.next();
+                            if (Domain.isHostname(ns)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            } catch (NameNotFoundException ex) {
+                return false;
+            }
+        }
+    }
+    
+    public static TreeSet<String> getAddressSet(
+            String hostname
+    ) throws NamingException {
+        if ((hostname = Domain.normalizeHostname(hostname, false)) == null) {
+            return null;
+        } else {
+            TreeSet<String> ipSet = new TreeSet<String>();
+            Attributes attributesA = Server.getAttributesDNS(
+                    hostname, new String[]{"A"});
+            if (attributesA != null) {
+                Enumeration enumerationA = attributesA.getAll();
+                while (enumerationA.hasMoreElements()) {
+                    Attribute attributeA = (Attribute) enumerationA.nextElement();
+                    NamingEnumeration enumeration = attributeA.getAll();
+                    while (enumeration.hasMoreElements()) {
+                        String address = (String) enumeration.next();
+                        if (SubnetIPv4.isValidIPv4(address)) {
+                            address = SubnetIPv4.normalizeIPv4(address);
+                            ipSet.add(address);
+                        }
+                    }
+                }
+            }
+            Attributes attributesAAAA = Server.getAttributesDNS(
+                    hostname, new String[]{"AAAA"});
+            if (attributesAAAA != null) {
+                Enumeration enumerationAAAA = attributesAAAA.getAll();
+                while (enumerationAAAA.hasMoreElements()) {
+                    Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
+                    NamingEnumeration enumeration = attributeAAAA.getAll();
+                    while (enumeration.hasMoreElements()) {
+                        String address = (String) enumeration.next();
+                        if (SubnetIPv6.isValidIPv6(address)) {
+                            address = SubnetIPv6.normalizeIPv6(address);
+                            ipSet.add(address);
+                        }
+                    }
+                }
+            }
+            return ipSet;
+        }
+    }
+    
+    public static TreeSet<String> getPointerSet(String host) throws NamingException {
+        if (host == null) {
+            return null;
+        } else {
+            TreeSet<String> reverseSet = new TreeSet<String>();
+            if (Subnet.isValidIP(host)) {
+                if (SubnetIPv4.isValidIPv4(host)) {
+                    host = getHostReverse(host, "in-addr.arpa");
+                } else if (SubnetIPv6.isValidIPv6(host)) {
+                    host = getHostReverse(host, "ip6.arpa");
+                }
+            }
+            Attributes atributes = Server.getAttributesDNS(
+                    host, new String[]{"PTR"}
+            );
+            if (atributes != null) {
+                Attribute attribute = atributes.get("PTR");
+                if (attribute != null) {
+                    for (int index = 0; index < attribute.size(); index++) {
+                        host = (String) attribute.get(index);
+                        if (host != null) {
+                            host = host.trim();
+                            if (host.endsWith(".")) {
+                                int endIndex = host.length() - 1;
+                                host = host.substring(0, endIndex);
+                            }
+                            if (Domain.isHostname(host)) {
+                                host = Domain.normalizeHostname(host, true);
+                                reverseSet.add(host);
+                            }
+                        }
+                    }
+                }
+            }
+            return reverseSet;
+        }
+    }
+    
+    public static ArrayList<String> getMXSet(String host) throws NamingException {
+        TreeMap<Integer,TreeSet<String>> mxMap = new TreeMap<Integer,TreeSet<String>>();
         Attributes atributes = Server.getAttributesDNS(
-                host, new String[]{"PTR"}
+                host, new String[]{"MX"}
         );
-        if (atributes != null) {
-            Attribute attribute = atributes.get("PTR");
+        if (atributes == null || atributes.size() == 0) {
+            atributes = Server.getAttributesDNS(
+                    host, new String[]{"CNAME"}
+            );
+            Attribute attribute = atributes.get("CNAME");
+            if (attribute != null) {
+                String cname = (String) attribute.get(0);
+                return getMXSet(cname);
+            }
+        } else {
+            Attribute attribute = atributes.get("MX");
             if (attribute != null) {
                 for (int index = 0; index < attribute.size(); index++) {
-                    host = (String) attribute.get(index);
-                    host = Domain.normalizeHostname(host, true);
-                    if (host != null) {
-                        reverseSet.add(host);
+                    try {
+                        String mx = (String) attribute.get(index);
+                        int space = mx.indexOf(' ');
+                        String value = mx.substring(0, space);
+                        int priority = Integer.parseInt(value);
+                        mx = mx.substring(space + 1);
+                        int last = mx.length() - 1;
+                        TreeSet<String> mxSet = mxMap.get(priority);
+                        if (mxSet == null) {
+                            mxSet = new TreeSet<String>();
+                            mxMap.put(priority, mxSet);
+                        }
+                        if (Subnet.isValidIP(mx.substring(0, last))) {
+                            mxSet.add(Subnet.normalizeIP(mx.substring(0, last)));
+                        } else if (Domain.isHostname(mx)) {
+                            mxSet.add(Domain.normalizeHostname(mx, true));
+                        }
+                    } catch (NumberFormatException ex) {
                     }
                 }
             }
         }
-        return reverseSet;
+        ArrayList<String> mxList = new ArrayList<String>();
+        if (mxMap.isEmpty()) {
+            // https://tools.ietf.org/html/rfc5321#section-5
+            mxList.add(Domain.normalizeHostname(host, true));
+        } else {
+            for (int priority : mxMap.keySet()) {
+                TreeSet<String> mxSet = mxMap.get(priority);
+                for (String mx : mxSet) {
+                    if (!mxList.contains(mx)) {
+                        mxList.add(mx);
+                    }
+                }
+            }
+        }
+        return mxList;
     }
     
     private static TreeSet<String> getIPv4Set(String host) throws NamingException {

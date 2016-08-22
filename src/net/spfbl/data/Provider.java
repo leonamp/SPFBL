@@ -21,7 +21,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Set;
 import java.util.TreeSet;
 import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
@@ -336,6 +335,26 @@ public class Provider {
         } else if (dropExact(address)) {
             return true;
         } else {
+            return false;
+        }
+    }
+    
+    public static boolean containsCIDR(String ip) {
+        return CIDR.get(null, ip) != null;
+    }
+    
+    public static boolean containsDomain(String helo) {
+        helo = Domain.normalizeHostname(helo, true);
+        if (helo == null) {
+            return false;
+        } else {
+            do {
+                int index = helo.indexOf('.') + 1;
+                helo = helo.substring(index);
+                if (SET.contains('.' + helo)) {
+                    return true;
+                }
+            } while (helo.contains("."));
             return false;
         }
     }

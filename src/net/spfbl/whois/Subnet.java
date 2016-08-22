@@ -563,17 +563,24 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public static boolean isReservedIP(String ip) {
+        if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.isReservedIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.isReservedIPv6(ip);
+        } else {
+            return false;
+        }
+    }
+    
+
+    
     public static String splitCIDR(String cidr) {
         String result = "";
         String first = Subnet.getFirstIP(cidr);
         String last = Subnet.getLastIP(cidr);
         byte mask = Subnet.getMask(cidr);
-        byte max;
-        if (SubnetIPv4.isValidIPv4(first)) {
-            max = 32;
-        } else {
-            max = 64;
-        }
+        int max = SubnetIPv4.isValidIPv4(first) ? 32 : 64;
         if (mask < max) {
             mask++;
             String cidr1 = first + "/" + mask;

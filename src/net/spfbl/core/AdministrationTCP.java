@@ -212,7 +212,7 @@ public final class AdministrationTCP extends Server {
                         if (token.equals("ALL")) {
                             Analise.dumpAll(builder);
                         } else {
-                            Analise analise = Analise.get(token, true);
+                            Analise analise = Analise.get(token, false);
                             if (analise == null) {
                                 builder.append("NOT FOUND\n");
                             } else {
@@ -241,7 +241,7 @@ public final class AdministrationTCP extends Server {
                                 builder.append(token);
                                 builder.append("\n");
                             } else {
-                                builder.append("DROPED ");
+                                builder.append("DROPPED ");
                                 builder.append(analise);
                                 builder.append("\n");
                             }
@@ -253,17 +253,21 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (Subnet.isValidIP(token)) {
                         String ip = Subnet.normalizeIP(token);
-                        String name;
                         if (tokenizer.hasMoreTokens()) {
-                            name = tokenizer.nextToken();
+                            String name = tokenizer.nextToken();
+                            Analise analise = Analise.get(name, true);
+                            if (analise.add(ip)) {
+                                result = "QUEUED\n";
+                            } else {
+                                result = "ALREADY EXISTS\n";
+                            }
                         } else {
-                            name = "UNDEFINED";
-                        }
-                        Analise analise = Analise.get(name, true);
-                        if (analise.add(ip)) {
-                            result = "QUEUED\n";
-                        } else {
-                            result = "ALREADY EXISTS\n";
+                            StringBuilder builder = new StringBuilder();
+                            builder.append(ip);
+                            builder.append(' ');
+                            Analise.process(ip, builder, 3000);
+                            builder.append('\n');
+                            result = builder.toString();
                         }
                     } else if (Subnet.isValidCIDR(token)) {
                         String cidr = Subnet.normalizeCIDR(token);
@@ -271,7 +275,8 @@ public final class AdministrationTCP extends Server {
                         if (tokenizer.hasMoreTokens()) {
                             name = tokenizer.nextToken();
                         } else {
-                            name = cidr;
+                            name = cidr.replace(':', '.');
+                            name = name.replace('/', '-');
                         }
                         String last = Subnet.getLastIP(cidr);
                         String ip = Subnet.getFirstIP(cidr);
@@ -284,6 +289,24 @@ public final class AdministrationTCP extends Server {
                             analise.add(last);
                         }
                         result = "QUEUED\n";
+                    } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                        String address = "@" + Domain.normalizeHostname(token.substring(1), false);
+                        if (tokenizer.hasMoreTokens()) {
+                            String name = tokenizer.nextToken();
+                            Analise analise = Analise.get(name, true);
+                            if (analise.add(address)) {
+                                result = "QUEUED\n";
+                            } else {
+                                result = "ALREADY EXISTS\n";
+                            }
+                        } else {
+                            StringBuilder builder = new StringBuilder();
+                            builder.append(address);
+                            builder.append(' ');
+                            Analise.process(address, builder, 3000);
+                            builder.append('\n');
+                            result = builder.toString();
+                        }
                     } else {
                         result = "INVALID PARAMETERS\n";
                     }
@@ -532,7 +555,7 @@ public final class AdministrationTCP extends Server {
                     if (Subnet.isValidCIDR(token)) {
                         String cidr = token;
                         if (Block.drop(cidr)) {
-                            result += "DROPED " + cidr + "\n";
+                            result += "DROPPED " + cidr + "\n";
                             result += Subnet.splitCIDR(cidr);
                         } else {
                             result = "NOT FOUND\n";
@@ -580,7 +603,7 @@ public final class AdministrationTCP extends Server {
                         if (url == null) {
                             result = "NOT FOUND\n";
                         } else {
-                            result = "DROPED " + url + "\n";
+                            result = "DROPPED " + url + "\n";
                             Core.storeURL();
                         }
                     } else if (token.equals("SHOW") && tokenizer.countTokens() == 0) {
@@ -632,13 +655,13 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String tld : tldSet) {
-                                    result += "DROPED " + tld + "\n";
+                                    result += "DROPPED " + tld + "\n";
                                 }
                             }
                         } else {
                             try {
                                 if (Domain.removeTLD(token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
                                 }
@@ -687,14 +710,14 @@ public final class AdministrationTCP extends Server {
                             token = tokenizer.nextToken();
                             if (token.equals("ALL")) {
                                 for (ServerDNSBL server : QueryDNSBL.dropAll()) {
-                                    result += "DROPED " + server + "\n";
+                                    result += "DROPPED " + server + "\n";
                                 }
                             } else {
                                 ServerDNSBL server = QueryDNSBL.drop(token);
                                 if (server == null) {
                                     result += "NOT FOUND\n";
                                 } else {
-                                    result += "DROPED " + server + "\n";
+                                    result += "DROPPED " + server + "\n";
                                 }
                             }
                         }
@@ -740,13 +763,13 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String provider : providerSet) {
-                                    result += "DROPED " + provider + "\n";
+                                    result += "DROPPED " + provider + "\n";
                                 }
                             }
                         } else {
                             try {
                                 if (Provider.drop(token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
                                 }
@@ -765,6 +788,18 @@ public final class AdministrationTCP extends Server {
                         }
                         if (result.length() == 0) {
                             result = "EMPTY\n";
+                        }
+                    } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Domain.isEmail(token)) {
+                            String domain = Domain.extractHost(token, true);
+                            if (Provider.containsExact(domain)) {
+                                result = domain + "\n";
+                            } else {
+                                result = "NOT FOUND " + domain + "\n";
+                            }
+                        } else {
+                            result = "ERROR: COMMAND\n";
                         }
                     } else {
                         result = "ERROR: COMMAND\n";
@@ -797,13 +832,13 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String ignore : ignoreSet) {
-                                    result += "DROPED " + ignore + "\n";
+                                    result += "DROPPED " + ignore + "\n";
                                 }
                             }
                         } else {
                             try {
                                 if (Ignore.drop(token)) {
-                                    result += "DROPED\n";
+                                    result += "DROPPED\n";
                                 } else {
                                     result += "NOT FOUND\n";
                                 }
@@ -867,7 +902,7 @@ public final class AdministrationTCP extends Server {
                                 result = "ERROR: COMMAND\n";
                             } else {
                                 if (Block.dropAll()) {
-                                    result += "DROPED\n";
+                                    result += "DROPPED\n";
                                 } else {
                                     result += "EMPTY\n";
                                 }
@@ -885,9 +920,9 @@ public final class AdministrationTCP extends Server {
                                         }
                                     }
                                     if (clientLocal == null && Block.drop(token)) {
-                                        result += "DROPED\n";
+                                        result += "DROPPED\n";
                                     } else if (clientLocal != null && Block.drop(clientLocal, token)) {
-                                        result += "DROPED\n";
+                                        result += "DROPPED\n";
                                     } else {
                                         result += "NOT FOUND\n";
                                     }
@@ -911,12 +946,28 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
+                    } else if (token.equals("EXTRACT") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (Subnet.isValidIP(token)) {
+                            String ip = Subnet.normalizeIP(token);
+                            int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                            if ((token = Block.clearCIDR(ip, mask)) == null) {
+                                result = "NOT FOUND\n";
+                            } else {
+                                int beginIndex = token.indexOf('=') + 1;
+                                int endIndex = token.length();
+                                token = token.substring(beginIndex, endIndex);
+                                result = "EXTRACTED " + token + "\n";
+                            }
+                        } else{
+                            result = "ERROR: COMMAND\n";
+                        }
                     } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (Subnet.isValidCIDR(token)) {
                             String cidr = token;
                             if (Block.drop(cidr)) {
-                                result += "DROPED " + cidr + "\n";
+                                result += "DROPPED " + cidr + "\n";
                                 result += Subnet.splitCIDR(cidr);
                             } else {
                                 result = "NOT FOUND\n";
@@ -924,6 +975,10 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = "ERROR: COMMAND\n";
                         }
+                    } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        String block = Block.find(null, token, false);
+                        result = (block == null ? "NONE" : block) + "\n";
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
@@ -994,7 +1049,7 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String white : whiteSet) {
-                                    result += "DROPED " + white + "\n";
+                                    result += "DROPPED " + white + "\n";
                                 }
                             }
                         } else {
@@ -1009,9 +1064,9 @@ public final class AdministrationTCP extends Server {
                                     }
                                 }
                                 if (clientLocal == null && White.drop(token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else if (clientLocal != null && White.drop(clientLocal, token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
                                 }
@@ -1093,7 +1148,7 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String trap : trapSet) {
-                                    result += "DROPED " + trap + "\n";
+                                    result += "DROPPED " + trap + "\n";
                                 }
                             }
                         } else {
@@ -1108,9 +1163,9 @@ public final class AdministrationTCP extends Server {
                                     }
                                 }
                                 if (clientLocal == null && Trap.drop(token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else if (clientLocal != null && Trap.drop(clientLocal, token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
                                 }
@@ -1156,7 +1211,7 @@ public final class AdministrationTCP extends Server {
                     if (Subnet.isValidCIDR(token)) {
                         String cidr = token;
                         if (Block.drop(cidr)) {
-                            result += "DROPED " + cidr + "\n";
+                            result += "DROPPED " + cidr + "\n";
                             result += Subnet.splitCIDR(cidr);
                         } else {
                             result = "NOT FOUND\n";
@@ -1191,13 +1246,13 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String noreplay : noreplaySet) {
-                                    result += "DROPED " + noreplay + "\n";
+                                    result += "DROPPED " + noreplay + "\n";
                                 }
                             }
                         } else {
                             try {
                                 if (NoReply.drop(token)) {
-                                    result = "DROPED\n";
+                                    result = "DROPPED\n";
                                 } else {
                                     result = "NOT FOUND\n";
                                 }
@@ -1255,7 +1310,7 @@ public final class AdministrationTCP extends Server {
                                 result += "EMPTY\n";
                             } else {
                                 for (Client clientLocal : clientSet) {
-                                    result += "DROPED " + clientLocal + "\n";
+                                    result += "DROPPED " + clientLocal + "\n";
                                 }
                             }
                             Client.store();
@@ -1264,7 +1319,7 @@ public final class AdministrationTCP extends Server {
                             if (clientLocal == null) {
                                 result += "NOT FOUND\n";
                             } else {
-                                result += "DROPED " + clientLocal + "\n";
+                                result += "DROPPED " + clientLocal + "\n";
                             }
                             Client.store();
                         } else {
@@ -1325,14 +1380,34 @@ public final class AdministrationTCP extends Server {
                         if (Subnet.isValidCIDR(token) && tokenizer.hasMoreTokens()) {
                             String cidr = Subnet.normalizeCIDR(token);
                             token = tokenizer.nextToken();
-                            if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
-                                Client clientLocal = Client.getByCIDR(cidr);
-                                if (clientLocal == null) {
-                                    result += "NOT FOUND\n";
+                            Client clientLocal = Client.getByCIDR(cidr);
+                            if (clientLocal == null) {
+                                result = "NOT FOUND\n";
+                            } else if (token.equals("LIMIT") && tokenizer.countTokens() == 1) {
+                                String limit = tokenizer.nextToken();
+                                if (clientLocal.setLimit(limit)) {
+                                    result = "UPDATED " + clientLocal + "\n";
                                 } else {
-                                    String limit = tokenizer.nextToken();
-                                    clientLocal.setLimit(limit);
-                                    result += "UPDATED " + clientLocal + "\n";
+                                    result = "ALREADY THIS VALUE\n";
+                                }
+                            } else if (token.equals("ACTION") && tokenizer.hasMoreTokens()) {
+                                token = tokenizer.nextToken();
+                                if (token.equals("BLOCK") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionBLOCK(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else if (token.equals("RED") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionRED(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else {
+                                    result = "ERROR: COMMAND\n";
                                 }
                             } else if (Domain.isHostname(token) && tokenizer.hasMoreTokens()) {
                                 String domain = Domain.extractDomain(token, false);
@@ -1343,15 +1418,10 @@ public final class AdministrationTCP extends Server {
                                 } else if (email != null && !Domain.isEmail(email)) {
                                     result = "ERROR: INVALID EMAIL\n";
                                 } else {
-                                    Client clientLocal = Client.getByCIDR(cidr);
-                                    if (clientLocal == null) {
-                                        result += "NOT FOUND\n";
-                                    } else {
-                                        clientLocal.setPermission(permission);
-                                        clientLocal.setDomain(domain);
-                                        clientLocal.setEmail(email);
-                                        result += "UPDATED " + clientLocal + "\n";
-                                    }
+                                    clientLocal.setPermission(permission);
+                                    clientLocal.setDomain(domain);
+                                    clientLocal.setEmail(email);
+                                    result = "UPDATED " + clientLocal + "\n";
                                     Client.store();
                                 }
                             } else {
@@ -1394,7 +1464,7 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (User userLocal : userSet) {
-                                    result += "DROPED " + userLocal + "\n";
+                                    result += "DROPPED " + userLocal + "\n";
                                 }
                             }
                         } else {
@@ -1402,7 +1472,7 @@ public final class AdministrationTCP extends Server {
                             if (userLocal == null) {
                                 result = "NOT FOUND\n";
                             } else {
-                                result = "DROPED " + userLocal + "\n";
+                                result = "DROPPED " + userLocal + "\n";
                             }
                         }
                         User.store();
@@ -1450,12 +1520,12 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (Peer peer : peerSet) {
-                                    result += "DROPED " + peer + "\n";
+                                    result += "DROPPED " + peer + "\n";
                                 }
                             }
                         } else {
                             Peer peer = Peer.drop(token);
-                            result = (peer == null ? "NOT FOUND" : "DROPED " + peer) + "\n";
+                            result = (peer == null ? "NOT FOUND" : "DROPPED " + peer) + "\n";
                         }
                         Peer.store();
                     } else if (token.equals("SHOW")) {
@@ -1622,12 +1692,12 @@ public final class AdministrationTCP extends Server {
                                 result = "EMPTY\n";
                             } else {
                                 for (String guess : guessSet) {
-                                    result += "DROPED " + guess + "\n";
+                                    result += "DROPPED " + guess + "\n";
                                 }
                             }
                         } else {
                             boolean droped = SPF.dropGuess(token);
-                            result = (droped ? "DROPED" : "NOT FOUND") + "\n";
+                            result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
                         }
                         SPF.storeGuess();
                         SPF.storeSPF();
@@ -1715,7 +1785,7 @@ public final class AdministrationTCP extends Server {
                         token = tokenizer.nextToken();
                         TreeSet<String> clearSet = SPF.clear(token);
                         if (clearSet.isEmpty()) {
-                            result += "NOT FOUND\n";
+                            result += "NONE\n";
                         } else {
                             for (String value : clearSet) {
                                 result += value + '\n';

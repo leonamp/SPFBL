@@ -46,7 +46,7 @@ stop()
         sleep 5
         if [[ $response == "" ]]; then
             # Encerro o processo via kill pois certamente esta trancado
-            ps aux | grep SPFBL | grep java | grep -v grep | awk '{print $2}'
+            kill $(ps aux | grep SPFBL | grep java | grep -v grep | awk '{print $2}')
             ret=0
         elif [[ $response == "OK" ]]; then
             ret=0
