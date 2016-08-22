@@ -584,6 +584,32 @@ case $1 in
 					echo "$response"
 				fi
 			;;
+			'extract')
+				# Parâmetros de entrada:
+				#
+				#    1. cidr: o bloco que deve ser utilizado.
+				#
+				# Códigos de saída:
+				#
+				#    Nenhum: Observar o retorno do servidor.
+				#
+				
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 superblock extract IP\n"
+				else
+					sender=$3
+
+					response=$(echo $OTP_CODE"BLOCK EXTRACT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						response="TIMEOUT"
+					fi
+
+					echo "$response"
+				fi
+			;;
 			'drop')
 				# Parâmetros de entrada:
 				#
@@ -642,7 +668,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock split cidr\n    $0 superblock overlap cidr\n    $0 superblock show\n"
+				printf "Syntax:\n    $0 superblock add recipient\n    $0 superblock drop recipient\n    $0 superblock split cidr\n    $0 superblock overlap cidr\n    $0 superblock extract cidr\n    $0 superblock show\n"
 			;;
 		esac
 	;;
