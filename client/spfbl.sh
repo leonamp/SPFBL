@@ -593,8 +593,6 @@ case $1 in
 				#
 				#    Nenhum: Observar o retorno do servidor.
 				#
-				
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 superblock extract IP\n"
@@ -808,7 +806,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 generic add recipient\n    $0 generic drop recipient\n    $0 generic show\n"
+				printf "Syntax:\n    $0 generic add recipient\n    $0 generic drop recipient\n    $0 generic show [all]\n"
 			;;
 		esac
 	;;
@@ -855,7 +853,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 white add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 white sender recipient\n"
 				else
 					sender=$3
 
@@ -929,7 +927,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 white add recipient\n    $0 white drop recipient\n    $0 white show\n"
+				printf "Syntax:\n    $0 white add recipient\n    $0 white sender recipient\n    $0 white drop recipient\n    $0 white show\n"
 			;;
 		esac
 	;;
@@ -1073,7 +1071,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 
-				if [ $# -lt "4" ]; then
+				if [ $# -lt "5" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 client set cidr domain option [email]\n"
 				else
@@ -1122,7 +1120,6 @@ case $1 in
 				fi
 			;;
 			'show')
-
 				# Códigos de saída:
 				#
 				#    0: visualizado com sucesso.
@@ -1212,12 +1209,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "2" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 user show\n"
 				else
-
 					response=$(echo $OTP_CODE"USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
@@ -1249,7 +1244,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 peer add host email\n"
+					printf "Invalid Parameters. Syntax: $0 peer add host [email]\n"
 				else
 					host=$3
 
@@ -1424,12 +1419,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention show { host | all }\n"
 				else
-
 					host=$3
 
 					if [ "$host" == "all" ]; then
@@ -1455,12 +1448,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention release { sender | all }\n"
 				else
-
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
@@ -1486,12 +1477,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention reject { sender | all }\n"
 				else
-
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
@@ -1521,7 +1510,6 @@ case $1 in
 		#    0: listado com sucesso.
 		#    1: lista vazia.
 		#    2: timeout de conexão.
-
 		if [[ $2 == "cidr" ]]; then
 			response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
 		else
@@ -1546,7 +1534,6 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
-
 		if [ $# -lt "2" ]; then
 			head
 			printf "Invalid Parameters. Syntax: $0 superclear hostname\n"
@@ -1602,53 +1589,51 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
+		case $2 in
+			'show')
+				response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-		if [ $# -lt "1" ]; then
-			head
-			printf "Invalid Parameters. Syntax: $0 analise <ip>\n"
-		else
-			case $2 in
-				'show')
-					response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			'dump')
+				response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					echo "$response"
-				;;
-				'dump')
-					response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			'drop')
 
-					echo "$response"
-				;;
-				'drop')
+				response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
-					response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			[0-9]*)
+				ip=$2
 
-					echo "$response"
-				;;
-				[0-9]*)
-					ip=$2
+				response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
-					response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
-
-					echo "$response"
-				;;
-			esac
-		fi
+				echo "$response"
+			;;
+			*)
+				head
+				printf "Invalid Parameters. Syntax: $0 analise <ip> or {show | dump | drop} \n"
+			;;
+		esac
 	;;
 	'check')
 		# Parâmetros de entrada:
@@ -1744,7 +1729,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Invalid Parameters. Syntax: $0 spam ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 spam [ticketid or file]\n"
 		else
                         if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
@@ -1839,7 +1824,7 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Invalid Parameters. Syntax: $0 ham ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 ham [ticketid or file]\n"
 		else
 			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
 	                        # O parâmentro é uma URL de denúncia SPFBL.
