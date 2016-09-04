@@ -37,7 +37,7 @@
 #	check_policy_service unix:private/policy-spfbl,
 #	permit
 #
-# Última alteração: 03/09/2016 12:45
+# Última alteração: 03/09/2016 23:45
 
 use strict;
 use warnings;
@@ -90,12 +90,12 @@ while ( my $line = <STDIN> ) {
     # parse the result
     if ( $result =~ /^LISTED / ) {
         STDOUT->print(
-            "action=451 4.7.2 SPFBL: $result\n\n"
+            "action=451 4.7.2 SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^LISTED/ ) {
         STDOUT->print(
-            "action=451 4.7.2 SPFBL: You are temporarily blocked on this server.\n\n"
+            "action=451 4.7.2 SPFBL You are temporarily blocked on this server.\n\n"
         );
     }
     elsif ( $result =~ /^FLAG/ ) {
@@ -105,22 +105,22 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL: Sender has non-existent internet domain or invalid TLD.\n\n"
+            "action=554 5.7.1 SPFBL Sender has non-existent internet domain or invalid TLD.\n\n"
         );
     }
     elsif ( $result =~ /^BLOCKED / ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL: $result\n\n"
+            "action=554 5.7.1 SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL: You are permanently blocked in this server.\n\n"
+            "action=554 5.7.1 SPFBL You are permanently blocked in this server.\n\n"
         );
     }
     elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL: Your IP or sender domain is invalid.\n\n"
+            "action=554 5.7.1 SPFBL Your IP or sender domain is invalid.\n\n"
         );
     }
     elsif ( $result =~ /^LAN/ ) {
@@ -130,17 +130,17 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^GREYLIST/ ) {
         STDOUT->print(
-            "action=451 4.7.1 SPFBL: You are greylisted on this server, check your SPF record and try again.\n\n"
+            "action=451 4.7.1 SPFBL You are greylisted on this server, check your SPF record and try again.\n\n"
         );
     }
     elsif ( $result =~ /^SPAMTRAP/ ) {
         STDOUT->print(
-            "action=DISCARD SPFBL: Discarded by spamtrap.\n\n"
+            "action=DISCARD SPFBL Discarded by spamtrap.\n\n"
         );
     }
     elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL: $params->{sender} is not a valid e-mail address.\n\n"
+            "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address.\n\n"
         );
     }
     elsif ( $result =~ /^TIMEOUT/ ) {
@@ -155,7 +155,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^ERROR: / ) {
         STDOUT->print(
-             "action=WARN SPFBL: $result\n\n"
+             "action=WARN SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^NONE / ) {
@@ -176,7 +176,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-             "action=554 5.7.1 SPFBL: [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}.\n\n"
+             "action=554 5.7.1 SPFBL [SPF] $params->{sender} is not allowed to send mail from $params->{client_address}.\n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {
