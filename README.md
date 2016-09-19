@@ -499,8 +499,12 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = X-Spam-Flag: YES
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
-    add_header = Received-SPFBL: $acl_c_spfbl
     add_header = X-Spam-Flag: NO
+    add_header = Received-SPFBL: $acl_c_spfbl
+  warn
+    set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{http://.+/([0-9a-zA-Z_-]+)\\n}{\$1}}
+  accept
+    condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
 ```
 
 Para que o Exim faça o roteamento para a pasta ".Junk" do destinatário, é necessário fazer uma pequena alteração no "directory" do transporte "maildir_home" da seção "transports":
@@ -602,8 +606,12 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     add_header = X-Spam-Status: Yes
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
-    add_header = Received-SPFBL: $acl_c_spfbl
     add_header = X-Spam-Status: No
+    add_header = Received-SPFBL: $acl_c_spfbl
+  warn
+    set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{http://.+/([0-9a-zA-Z_-]+)\\n}{\$1}}
+  accept
+    condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
 ```
 
 Para que a mensagem seja roteada pelo cPanel para a pasta ".Junk" do destinatário, é necessário criar o arquivo ".spamassassinboxenable" dentro da pasta home deste mesmo destinatário.
