@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.4"
+version="2.5"
 
 head()
 {
@@ -1743,12 +1743,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1838,12 +1838,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1915,7 +1915,7 @@ case $1 in
 		# A informação que precede o qualificador é o ticket da consulta SPFBL.
 		# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL,
 		# onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
-		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
+		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL, NONE e WHITE.
 		#
 		# Parâmetros de entrada:
 		#
@@ -1938,6 +1938,7 @@ case $1 in
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#    NXDOMAIN: o domínio do remetente é inexistente.
 		#    INVALID: o endereço do remetente é inválido.
+		#    WHITE: aceitar imediatamente a mensagem.
 		#
 		# Códigos de saída:
 		#
@@ -1958,6 +1959,7 @@ case $1 in
 		#    14: IP ou remetente inválido.
 		#    15: mensagem originada de uma rede local.
 		#    16: mensagem marcada como SPAM.
+		#    17: remetente em lista branca.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -1984,6 +1986,8 @@ case $1 in
 				exit 12
 			elif [[ $qualifier == "INVALID" ]]; then
 				exit 14
+			elif [[ $qualifier == "INVALID "* ]]; then
+				exit 7
 			elif [[ $qualifier == "LAN" ]]; then
 				exit 15
 			elif [[ $qualifier == "FLAG" ]]; then
@@ -2002,6 +2006,8 @@ case $1 in
 				exit 5
 			elif [[ $qualifier == "PASS "* ]]; then
 				exit 2
+			elif [[ $qualifier == "WHITE "* ]]; then
+				exit 17
 			elif [[ $qualifier == "FAIL "* ]]; then
 			        # Retornou FAIL com ticket então
 			        # significa que está em whitelist.
