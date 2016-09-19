@@ -1731,10 +1731,10 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 spam [ticketid or file]\n"
 		else
-                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
+                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1826,10 +1826,10 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 ham [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
+			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
 	                        # O parâmentro é uma URL de denúncia SPFBL.
 	                        url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then

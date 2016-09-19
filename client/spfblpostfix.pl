@@ -103,7 +103,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^INVALID / ) {
         STDOUT->print(
-            "action=WARN SPFBL $result\n\n";
+            "action=WARN SPFBL $result\n\n"
         );
     }
     elsif ( $result =~ /^LAN/ ) {
