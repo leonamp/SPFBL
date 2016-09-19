@@ -1990,7 +1990,7 @@ case $1 in
 				exit 7
 			elif [[ $qualifier == "LAN" ]]; then
 				exit 15
-			elif [[ $qualifier == "FLAG" ]]; then
+			elif [[ $qualifier == "FLAG"* ]]; then
 				exit 16
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
