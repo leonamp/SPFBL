@@ -94,6 +94,8 @@ moveArquivos(){
         mkdir -p /opt/spfbl/lib
         mkdir -p /opt/spfbl/data
         mkdir -p /etc/spfbl/
+        mv SPFBL/client/spfbl.sh /etc/spfbl/
+        ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
         mv SPFBL/dist/* /opt/spfbl/
         mv SPFBL/run/spfbl.conf /opt/spfbl/
         ln -sf /opt/spfbl/spfbl.conf /etc/spfbl/spfbl.conf
