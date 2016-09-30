@@ -27,9 +27,9 @@ if [ "$1" == "--uninstall" ]; then
     echo "Removendo /etc/spfbl"
     rm -rf /etc/spfbl
     [ ! -d /etc/spfbl ] && success || failure
-    echo "Removendo /usr/src/SPFBL"
-    rm -rf /usr/src/SPFBL
-    [ ! -d /usr/src/SPFBL ] && success || failure
+    #echo "Removendo /usr/src/SPFBL"
+    #rm -rf /usr/src/SPFBL
+    #[ ! -d /usr/src/SPFBL ] && success || failure
     echo "Removendo /etc/logrotate.d/spfbl"
     rm -rf /etc/logrotate.d/spfbl
     [ ! -f /etc/logrotate.d/spfbl ] && success || failure
