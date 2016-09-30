@@ -27,9 +27,9 @@ if [ "$1" == "--uninstall" ]; then
     echo "Removendo /etc/spfbl"
     rm -rf /etc/spfbl
     [ ! -d /etc/spfbl ] && success || failure
-    echo "Removendo /usr/src/SPFBL"
-    rm -rf /usr/src/SPFBL
-    [ ! -d /usr/src/SPFBL ] && success || failure
+    #echo "Removendo /usr/src/SPFBL"
+    #rm -rf /usr/src/SPFBL
+    #[ ! -d /usr/src/SPFBL ] && success || failure
     echo "Removendo /etc/logrotate.d/spfbl"
     rm -rf /etc/logrotate.d/spfbl
     [ ! -f /etc/logrotate.d/spfbl ] && success || failure
@@ -94,6 +94,8 @@ moveArquivos(){
         mkdir -p /opt/spfbl/lib
         mkdir -p /opt/spfbl/data
         mkdir -p /etc/spfbl/
+        mv SPFBL/client/spfbl.sh /etc/spfbl/
+        ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
         mv SPFBL/dist/* /opt/spfbl/
         mv SPFBL/run/spfbl.conf /opt/spfbl/
         ln -sf /opt/spfbl/spfbl.conf /etc/spfbl/spfbl.conf
