@@ -50,7 +50,7 @@ while ( my $line = <STDIN> ) {
 
     # connecting
     my $socket = IO::Socket::INET->new( %{ $CONFIG->{socket} } )
-      or die "action=WARN SPFBL NO CONNECTION\n\n";
+       or die "action=WARN SPFBL NO CONNECTION\n\n";
 
     # build and send query
     my $query = "SPF '$params->{client_address}' '$params->{sender}' '$params->{helo_name}' '$params->{recipient}'\n";
@@ -101,6 +101,11 @@ while ( my $line = <STDIN> ) {
             "action=554 5.7.1 SPFBL IP or sender is invalid.\n\n"
         );
     }
+    elsif ( $result =~ /^INVALID / ) {
+        STDOUT->print(
+            "action=WARN SPFBL $result\n\n"
+        );
+    }
     elsif ( $result =~ /^LAN/ ) {
         STDOUT->print(
             "action=DUNNO\n\n"
@@ -142,6 +147,11 @@ while ( my $line = <STDIN> ) {
         );
     }
     elsif ( $result =~ /^PASS / ) {
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
+    }
+    elsif ( $result =~ /^WHITE / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );

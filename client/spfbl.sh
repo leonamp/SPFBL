@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.4"
+version="2.5"
 
 head()
 {
@@ -593,8 +593,6 @@ case $1 in
 				#
 				#    Nenhum: Observar o retorno do servidor.
 				#
-				
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 superblock extract IP\n"
@@ -808,7 +806,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 generic add recipient\n    $0 generic drop recipient\n    $0 generic show\n"
+				printf "Syntax:\n    $0 generic add recipient\n    $0 generic drop recipient\n    $0 generic show [all]\n"
 			;;
 		esac
 	;;
@@ -855,7 +853,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 white add recipient\n"
+					printf "Invalid Parameters. Syntax: $0 white sender recipient\n"
 				else
 					sender=$3
 
@@ -929,7 +927,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 white add recipient\n    $0 white drop recipient\n    $0 white show\n"
+				printf "Syntax:\n    $0 white add recipient\n    $0 white sender recipient\n    $0 white drop recipient\n    $0 white show\n"
 			;;
 		esac
 	;;
@@ -1073,7 +1071,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 
-				if [ $# -lt "4" ]; then
+				if [ $# -lt "5" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 client set cidr domain option [email]\n"
 				else
@@ -1122,7 +1120,6 @@ case $1 in
 				fi
 			;;
 			'show')
-
 				# Códigos de saída:
 				#
 				#    0: visualizado com sucesso.
@@ -1212,12 +1209,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "2" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 user show\n"
 				else
-
 					response=$(echo $OTP_CODE"USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 					if [[ $response == "" ]]; then
@@ -1249,7 +1244,7 @@ case $1 in
 
 				if [ $# -lt "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 peer add host email\n"
+					printf "Invalid Parameters. Syntax: $0 peer add host [email]\n"
 				else
 					host=$3
 
@@ -1424,12 +1419,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention show { host | all }\n"
 				else
-
 					host=$3
 
 					if [ "$host" == "all" ]; then
@@ -1455,12 +1448,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention release { sender | all }\n"
 				else
-
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
@@ -1486,12 +1477,10 @@ case $1 in
 				#    0: visualizado com sucesso.
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
-
 				if [ $# -lt "3" ]; then
 					head
 					printf "Invalid Parameters. Syntax: $0 retention reject { sender | all }\n"
 				else
-
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
@@ -1521,7 +1510,6 @@ case $1 in
 		#    0: listado com sucesso.
 		#    1: lista vazia.
 		#    2: timeout de conexão.
-
 		if [[ $2 == "cidr" ]]; then
 			response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
 		else
@@ -1546,7 +1534,6 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
-
 		if [ $# -lt "2" ]; then
 			head
 			printf "Invalid Parameters. Syntax: $0 superclear hostname\n"
@@ -1602,53 +1589,51 @@ case $1 in
 		#    1: registro não encontrado em cache.
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
+		case $2 in
+			'show')
+				response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-		if [ $# -lt "1" ]; then
-			head
-			printf "Invalid Parameters. Syntax: $0 analise <ip>\n"
-		else
-			case $2 in
-				'show')
-					response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			'dump')
+				response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					echo "$response"
-				;;
-				'dump')
-					response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			'drop')
 
-					echo "$response"
-				;;
-				'drop')
+				response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
-					response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
+				echo "$response"
+			;;
+			[0-9]*)
+				ip=$2
 
-					echo "$response"
-				;;
-				[0-9]*)
-					ip=$2
+				response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
-					response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				if [[ $response == "" ]]; then
+					response="TIMEOUT"
+				fi
 
-					if [[ $response == "" ]]; then
-						response="TIMEOUT"
-					fi
-
-					echo "$response"
-				;;
-			esac
-		fi
+				echo "$response"
+			;;
+			*)
+				head
+				printf "Invalid Parameters. Syntax: $0 analise <ip> or {show | dump | drop} \n"
+			;;
+		esac
 	;;
 	'check')
 		# Parâmetros de entrada:
@@ -1744,12 +1729,12 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Invalid Parameters. Syntax: $0 spam ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 spam [ticketid or file]\n"
 		else
-                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
+                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1758,12 +1743,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1839,12 +1824,12 @@ case $1 in
 
 		if [ $# -lt "2" ]; then
 			head
-			printf "Invalid Parameters. Syntax: $0 ham ticketid/file\n"
+			printf "Invalid Parameters. Syntax: $0 ham [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%]{44,1024}$ ]]; then
+			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
 	                        # O parâmentro é uma URL de denúncia SPFBL.
 	                        url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=]{44,1024}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -1853,12 +1838,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1930,7 +1915,7 @@ case $1 in
 		# A informação que precede o qualificador é o ticket da consulta SPFBL.
 		# Com o ticket da consulta, é possível realizar uma reclamação ao serviço SPFBL,
 		# onde esta reclamação vai contabilizar a reclamação nos contadores do responsável pelo envio da mensagem.
-		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL e NONE.
+		# O ticket da consulta só é gerado nas saídas cujos qualificadores sejam: PASS, SOFTFAIL, NEUTRAL, NONE e WHITE.
 		#
 		# Parâmetros de entrada:
 		#
@@ -1953,6 +1938,7 @@ case $1 in
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#    NXDOMAIN: o domínio do remetente é inexistente.
 		#    INVALID: o endereço do remetente é inválido.
+		#    WHITE: aceitar imediatamente a mensagem.
 		#
 		# Códigos de saída:
 		#
@@ -1973,6 +1959,7 @@ case $1 in
 		#    14: IP ou remetente inválido.
 		#    15: mensagem originada de uma rede local.
 		#    16: mensagem marcada como SPAM.
+		#    17: remetente em lista branca.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -1999,9 +1986,11 @@ case $1 in
 				exit 12
 			elif [[ $qualifier == "INVALID" ]]; then
 				exit 14
+			elif [[ $qualifier == "INVALID "* ]]; then
+				exit 7
 			elif [[ $qualifier == "LAN" ]]; then
 				exit 15
-			elif [[ $qualifier == "FLAG" ]]; then
+			elif [[ $qualifier == "FLAG"* ]]; then
 				exit 16
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
@@ -2017,6 +2006,8 @@ case $1 in
 				exit 5
 			elif [[ $qualifier == "PASS "* ]]; then
 				exit 2
+			elif [[ $qualifier == "WHITE "* ]]; then
+				exit 17
 			elif [[ $qualifier == "FAIL "* ]]; then
 			        # Retornou FAIL com ticket então
 			        # significa que está em whitelist.

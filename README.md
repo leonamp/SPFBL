@@ -148,7 +148,7 @@ Os elementos que podem ser adicionados nesta lista são:
 
 Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFTFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
 
-No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representan a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
+No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representam a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
 
 Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
 
@@ -323,13 +323,14 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * SOFTFAIL &lt;ticket&gt;: permite o recebimento da mensagem mas marca como suspeita.
 * NEUTRAL &lt;ticket&gt;: permite o recebimento da mensagem.
 * NONE &lt;ticket&gt;: permite o recebimento da mensagem.
-* LISTED [&lt;ticket&gt;]: atrasa o recebimento da mensagem, informa à origem a listagem temporária em blacklist e envia e-mail com URL de liberação quando for o caso.
-* BLOCKED: rejeita o recebimento da mensagem e informa à origem o bloqueio permanente.
+* LISTED [&lt;url&gt;]: atrasa o recebimento da mensagem, informa à origem a listagem temporária em blacklist e envia e-mail com URL de liberação quando for o caso.
+* BLOCKED [&lt;url&gt;]: rejeita o recebimento da mensagem e informa à origem o seu bloqueio manual, com possibilidade de solicitar desbloqueio diretamente ao destinatário com auxílio da URL.
 * FLAG: aceita o recebimento e redirecione a mensagem para a pasta SPAM.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
-* NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remtente não existe.
-* INVALID: rejeita o recebimento e informa à origem que o endereço do remetente não é válido.
+* NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remetente não existe.
+* INVALID: rejeita o recebimento e informa à origem que o IP ou o endereço do remetente não é válido.
+* WHITE: aceita a mensagem e a encaminha imediatamente para roteamento sem passar por outros filtros.
 
 ##### Método de listagem
 
@@ -442,7 +443,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG)}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG |WHITE )}{}}
   deny
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -498,8 +499,12 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     add_header = X-Spam-Flag: YES
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
-    add_header = Received-SPFBL: $acl_c_spfbl
     add_header = X-Spam-Flag: NO
+    add_header = Received-SPFBL: $acl_c_spfbl
+  warn
+    set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{http://.+/([0-9a-zA-Z_-]+)\\n}{\$1}}
+  accept
+    condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
 ```
 
 Para que o Exim faça o roteamento para a pasta ".Junk" do destinatário, é necessário fazer uma pequena alteração no "directory" do transporte "maildir_home" da seção "transports":
@@ -508,7 +513,7 @@ begin transports
 ...
 maildir_home:
   ...
-  directory = $home/Maildir${if eq {$h_X-Spam-Flag:}{YES}{/.Junk/new}{}}
+  directory = $home/Maildir${if eq {$h_X-Spam-Flag:}{YES}{/.Junk}{}}
   ...
 ```
 
@@ -545,7 +550,7 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
-    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG)}{}}
+    set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG |WHITE )}{}}
   deny
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address.
     log_message = SPFBL check failed.
@@ -601,8 +606,12 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
     add_header = X-Spam-Status: Yes
   warn
     condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
-    add_header = Received-SPFBL: $acl_c_spfbl
     add_header = X-Spam-Status: No
+    add_header = Received-SPFBL: $acl_c_spfbl
+  warn
+    set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{http://.+/([0-9a-zA-Z_-]+)\\n}{\$1}}
+  accept
+    condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
 ```
 
 Para que a mensagem seja roteada pelo cPanel para a pasta ".Junk" do destinatário, é necessário criar o arquivo ".spamassassinboxenable" dentro da pasta home deste mesmo destinatário.
@@ -807,6 +816,9 @@ Para se conectar, basta entrar em contato com cada administrador pelo endereço 
 
 <a href="https://www.base64.com.br/suporte/multirbl">25/07/2016 Base64: O SPFBL.net entra na lista MultiRBL da Base64.</a></br>
 
+<a href="http://www.abrahosting.org.br/Evento/RodadadeNegocios.html">01/09/2016 Abrahosting: participação do SPFBL.net na Rodada de Negócios.</a></br>
+
+<a href="http://multirbl.valli.org/lookup/">14/09/2016 Valli.org: O SPFBL.net entra na lista MultiRBL da valli.org.</a></br>
 
 ### Forum de discussão SPFBL
 
