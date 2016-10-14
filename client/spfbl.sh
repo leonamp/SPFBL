@@ -1536,7 +1536,7 @@ case $1 in
 		#    3: timeout de conexão.
 		if [ $# -lt "2" ]; then
 			head
-			printf "Invalid Parameters. Syntax: $0 superclear hostname\n"
+			printf "Invalid Parameters. Syntax: $0 clear hostname\n"
 		else
 			hostname=$2
 
