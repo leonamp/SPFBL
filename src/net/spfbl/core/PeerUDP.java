@@ -216,6 +216,8 @@ public final class PeerUDP extends Server {
                                     result = "NOT MATCH";
                                 }
                             }
+                        } catch (UnknownHostException ex) {
+                            result = "INVALID";
                         } catch (Exception ex) {
                             Server.logError(ex);
                             result = "ERROR " + ex.getMessage();

@@ -1,0 +1,54 @@
+30/10/2016 correções e melhorias da versão 2.4.0:
+
+*) método de separação dos segmentos IPv6;
+
+*) validação de endereço de e-mail decarta hostname composto por IPv4;
+
+*) flexibilização do SPF para adotar regra de derminação do host MX da entrega de e-mail no mecanismo "mx" onde, na ausencia de hosts MX, considerar o A;
+
+*) método de limpeza de falsos positivos continha uma falha, que causava loop infinito em alguns casos, que foi corrigida;
+
+*) correção da validação CIDR;
+
+*) abolição da regra whitelist com qualificador FAIL com substituto pela zona da origem ou IP;
+
+*) implementação da validação whitelist pela zona do IP de origem ou pelo próprio IP;
+
+*) implementação do registro de consultas do usuário;
+
+*) auto bloqueio de IP com reputação vermelha e enviando FAIL;
+
+*) auto bloqueio de IP sem remetente válido e com FCrDNS inválido quando reputação não for verde;
+
+*) auto bloqueio de indentificadores válidos no envio para spamtrap e sem reputação verde;
+
+*) inplementação do formato seguro de URL, na qual possa ser enviado por qualquer meio sem corrompimento do mesmo;
+
+*) implementação do comando LINK, cujos parâmetros são o ticket sem URL seguido de todos os hrefs do HTML encontrados para vericicação de bloqueio;
+
+*) implementação do comando MALWARE, cujos parâmetros são o ticket sem URL seguido do nome do malware;
+
+*) implementação do comando FROM, cujos parâmetros são o ticket sem URL seguido dos cabeçalhos From, Reply-To e List-Unsubscribe;
+
+*) implementação do método hairCut, na qual remove o excesso de registros de denuncia a fim de evitar um estouro de memória;
+
+*) detecção de usuário postmaster quando o mesmo estiver cadastrado como tal;
+
+*) implementação de autenticação TOTP para usuários;
+
+*) implementação do painel de controle para usuários, para manipulação de listas de bloquei e whitelist usando registros de consulta;
+
+*) confirmação de desbloqueio para remetente liberado pelo destinatário;
+
+*) implementação do código DNSBL 127.0.0.3 para IP bloqueado apesar de reputação não estar ruim;
+
+*) implementação da lista GENERIC para identificar hostnames genéricos de datacenter ou operadoras de acesso à Internet;
+
+*) aprimoramento na validação dos peers;
+
+*) implementação do algoritimo de Huffman para reduzir o tamanho das URLs geradas;
+
+*) implementação de personalidade para clientes, para determinar novos comportamentos personalizados do sistema para cada cliente;
+
+*) correção nos métodos do subsistema de análise;
+

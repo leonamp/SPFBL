@@ -319,13 +319,14 @@ public final class QueryDNSBL extends Server {
         }
 
         public DatagramPacket getPacket() {
-            if (QueryDNSBL.this.continueListenning()) {
+            if (continueListenning()) {
                 try {
                     SEMAPHORE.acquire();
-                    return PACKET;
+                    interrupted = false;
                 } catch (InterruptedException ex) {
-                    return null;
+                    interrupted = true;
                 }
+                return PACKET;
             } else {
                 return null;
             }
@@ -335,6 +336,8 @@ public final class QueryDNSBL extends Server {
             time = 0;
             PACKET = null;
         }
+        
+        private boolean interrupted = false;
 
         /**
          * Processamento da consulta e envio do resultado.
@@ -342,208 +345,259 @@ public final class QueryDNSBL extends Server {
          */
         @Override
         public void run() {
-            DatagramPacket packet;
-            while ((packet = getPacket()) != null) {
-                InetAddress ipAddress = packet.getAddress();
-                String origin = ipAddress.getHostAddress();
-                String query = "ERROR";
-                String result = "IGNORED";
-                try {
-                    byte[] data = packet.getData();
-                    // Processando consulta DNS.
-                    Message message = new Message(data);
-                    Header header = message.getHeader();
-                    Record question = message.getQuestion();
-                    Name name = question.getName();
-                    String type = Type.string(question.getType());
-                    query = name.toString();
-                    // Identificação do cliente.
-                    Client client = Client.create(ipAddress, "DNSBL");
-                    if (client == null) {
-                        result = "IGNORED";
-                    } else if (client.hasPermission(Permission.NONE)) {
-                        client.addQuery();
-                        origin += ' ' + client.getDomain();
-                        result = "IGNORED";
-                    } else if (client.isAbusing()) {
-                        client.addQuery();
-                        origin += ' ' + client.getDomain();
-                        result = "IGNORED";
-                    } else {
-                        client.addQuery();
-                        origin += ' ' + client.getDomain();
-                        long ttl = 3600; // Uma hora padrão.
-                        String host = Domain.extractHost(query, false);
-                        ServerDNSBL server = null;
-                        String clientQuery = null;
-                        if (host == null) {
-                            result = "NXDOMAIN";
+            try {
+                DatagramPacket packet;
+                while ((packet = getPacket()) != null) {
+                    InetAddress ipAddress = packet.getAddress();
+                    String origin = ipAddress.getHostAddress();
+                    String query = "ERROR";
+                    String result = "IGNORED";
+                    try {
+                        byte[] data = packet.getData();
+                        // Processando consulta DNS.
+                        Message message = new Message(data);
+                        Header header = message.getHeader();
+                        Record question = message.getQuestion();
+                        Name name = question.getName();
+                        String type = Type.string(question.getType());
+                        query = name.toString();
+                        if (interrupted) {
+                            result = "INTERRUPTED";
                         } else {
-                            int index = host.length() - 1;
-                            host = host.substring(0, index);
-                            String hostname = null;
-                            String reverse = "";
-                            if ((server = getExact('.' + host)) == null) {
-                                while ((index = host.lastIndexOf('.', index)) != -1) {
-                                    reverse = host.substring(0, index);
-                                    hostname = host.substring(index);
-                                    if ((server = getExact(hostname)) == null) {
-                                        index--;
+                            // Identificação do cliente.
+                            Client client = Client.create(ipAddress, "DNSBL");
+                            if (client == null) {
+                                result = "IGNORED";
+                            } else if (client.hasPermission(Permission.NONE)) {
+                                client.addQuery();
+                                origin += ' ' + client.getDomain();
+                                result = "IGNORED";
+                            } else if (client.isAbusing()) {
+                                client.addQuery();
+                                origin += ' ' + client.getDomain();
+                                result = "IGNORED";
+                            } else {
+                                client.addQuery();
+                                origin += ' ' + client.getDomain();
+                                long ttl = 3600; // Uma hora padrão.
+                                String host = Domain.extractHost(query, false);
+                                ServerDNSBL server = null;
+                                String clientQuery = null;
+                                if (host == null) {
+                                    result = "NXDOMAIN";
+                                } else {
+                                    int index = host.length() - 1;
+                                    host = host.substring(0, index);
+                                    String hostname = null;
+                                    String reverse = "";
+                                    if ((server = getExact('.' + host)) == null) {
+                                        while ((index = host.lastIndexOf('.', index)) != -1) {
+                                            reverse = host.substring(0, index);
+                                            hostname = host.substring(index);
+                                            if ((server = getExact(hostname)) == null) {
+                                                index--;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (server == null) {
+                                        // Não existe servidor DNSBL cadastrado.
+                                        result = "NXDOMAIN";
+                                    } else if (type.equals("A") && server.isHostName(host)) {
+                                        // O A é o próprio servidor.
+                                        if ((result = Core.getHostname()) == null) {
+                                            result = "NXDOMAIN";
+                                        } else {
+                                            InetAddress address = InetAddress.getByName(result);
+                                            result = address.getHostAddress();
+                                        }
+                                    } else if (type.equals("NS") && server.isHostName(host)) {
+                                        // O NS é o próprio servidor.
+                                        if ((result = Core.getHostname()) == null) {
+                                            result = "NXDOMAIN";
+                                        } else {
+                                            result += '.';
+                                        }
+                                    } else if (host.equals(hostname)) {
+                                        // Consulta do próprio hostname do servidor.
+                                        result = "NXDOMAIN";
+                                    } else if (reverse.length() == 0) {
+                                        // O reverso é inválido.
+                                        result = "NXDOMAIN";
+                                    } else if (SubnetIPv4.isValidIPv4(reverse)) {
+                                        // A consulta é um IPv4.
+                                        clientQuery = SubnetIPv4.reverseToIPv4(reverse);
+                                        Analise.processToday(clientQuery);
+                                        SPF.Status status = SPF.getStatus(clientQuery, false);
+                                        if (clientQuery.equals("127.0.0.1")) {
+                                            // Consulta de teste para negativo.
+                                            result = "NXDOMAIN";
+                                        } else if (clientQuery.equals("127.0.0.2")) {
+                                            // Consulta de teste para positivo.
+                                            result = "127.0.0.2";
+                                            ttl = 0;
+                                        } else if (clientQuery.equals("127.0.0.3")) {
+                                            if (client.isPassive()) {
+                                                result = "NXDOMAIN";
+                                            } else {
+                                                // Consulta de teste para positivo.
+                                                result = "127.0.0.3";
+                                                ttl = 0;
+                                            }
+                                        } else if (Block.containsCIDR(clientQuery)) {
+                                            if (status == SPF.Status.RED) {
+                                                result = "127.0.0.2";
+                                                ttl = 604800; // Sete dias.
+                                            } else if (status == SPF.Status.YELLOW) {
+                                                result = "127.0.0.2";
+                                                ttl = 432000; // Cinco dias.
+                                            } else if (client.isPassive()) {
+                                                result = "NXDOMAIN";
+                                            } else {
+                                                result = "127.0.0.3";
+                                                ttl = 259200; // Três dias.
+                                            }
+                                        } else if (status == SPF.Status.RED) {
+                                            result = "127.0.0.2";
+                                            ttl = 86400; // Um dia.
+                                        } else {
+                                            result = "NXDOMAIN";
+                                        }
+                                    } else if (SubnetIPv6.isReverseIPv6(reverse)) {
+                                        // A consulta é um IPv6.
+                                        clientQuery = SubnetIPv6.reverseToIPv6(reverse);
+                                        Analise.processToday(clientQuery);
+                                        SPF.Status status = SPF.getStatus(clientQuery, false);
+                                        if (Block.containsCIDR(clientQuery)) {
+                                            if (status == SPF.Status.RED) {
+                                                result = "127.0.0.2";
+                                                ttl = 604800; // Sete dias.
+                                            } else if (status == SPF.Status.YELLOW) {
+                                                result = "127.0.0.2";
+                                                ttl = 432000; // Cinco dias.
+                                            } else if (client.isPassive()) {
+                                                result = "NXDOMAIN";
+                                            } else {
+                                                result = "127.0.0.3";
+                                                ttl = 259200; // Três dias.
+                                            }
+                                        } else if (status == SPF.Status.RED) {
+                                            result = "127.0.0.2";
+                                            ttl = 86400; // Um dia.
+                                        } else {
+                                            result = "NXDOMAIN";
+                                        }
+                                    } else if ((clientQuery = server.extractDomain(host)) != null) {
+                                        SPF.Status status = SPF.getStatus(clientQuery, false);
+                                        if (Block.containsDomain(clientQuery)) {
+                                            if (status == SPF.Status.RED) {
+                                                result = "127.0.0.2";
+                                                ttl = 604800; // Sete dias.
+                                            } else if (status == SPF.Status.YELLOW) {
+                                                result = "127.0.0.2";
+                                                ttl = 432000; // Cinco dias.
+                                            } else if (client.isPassive()) {
+                                                result = "NXDOMAIN";
+                                            } else {
+                                                result = "127.0.0.3";
+                                                ttl = 259200; // Três dias.
+                                            }
+                                        } else if (status == SPF.Status.RED) {
+                                            result = "127.0.0.2";
+                                            ttl = 86400; // Um dia.
+                                        } else {
+                                            result = "NXDOMAIN";
+                                        }
+                                        clientQuery = Domain.normalizeHostname(clientQuery, false);
                                     } else {
-                                        break;
+                                        // Não está listado.
+                                        result = "NXDOMAIN";
                                     }
                                 }
-                            }
-                            if (server == null) {
-                                // Não existe servidor DNSBL cadastrado.
-                                result = "NXDOMAIN";
-                            } else if (type.equals("A") && server.isHostName(host)) {
-                                // O A é o próprio servidor.
-                                if ((result = Core.getHostname()) == null) {
-                                    result = "NXDOMAIN";
+                                if (type.equals("TXT") && result.startsWith("127.0.0.")) {
+                                    if (server == null) {
+                                        result = "NXDOMAIN";
+                                    } else {
+                                        String information = server.getMessage(clientQuery);
+                                        if (information == null) {
+                                            result = "NXDOMAIN";
+                                        } else {
+                                            result = information;
+                                        }
+                                    }
+                                }
+                                // Alterando mensagem DNS para resposta.
+                                header.setFlag(Flags.QR);
+                                header.setFlag(Flags.AA);
+                                if (result.equals("NXDOMAIN")) {
+                                    header.setRcode(Rcode.NXDOMAIN);
+                                    if (server != null) {
+                                        long refresh = 1800;
+                                        long retry = 900;
+                                        long expire = 604800;
+                                        long minimum = 300;
+                                        name = new Name(server.getHostName().substring(1) + '.');
+                                        SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
+                                                name, SERIAL, refresh, retry, expire, minimum);
+                                        message.addRecord(soa, Section.AUTHORITY);
+                                    }
+                                } else if (type.equals("TXT")) {
+                                    TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
+                                    message.addRecord(txt, Section.ANSWER);
+                                } else if (result.startsWith("127.0.0.")) {
+                                    InetAddress address = InetAddress.getByName(result);
+                                    ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                                    message.addRecord(a, Section.ANSWER);
+                                } else if (type.equals("NS")) {
+                                    Name hostname = Name.fromString(result);
+                                    NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
+                                    message.addRecord(ns, Section.ANSWER);
                                 } else {
                                     InetAddress address = InetAddress.getByName(result);
-                                    result = address.getHostAddress();
+                                    ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                                    message.addRecord(a, Section.ANSWER);
                                 }
-                            } else if (type.equals("NS") && server.isHostName(host)) {
-                                // O NS é o próprio servidor.
-                                if ((result = Core.getHostname()) == null) {
-                                    result = "NXDOMAIN";
-                                } else {
-                                    result += '.';
-                                }
-                            } else if (host.equals(hostname)) {
-                                // Consulta do próprio hostname do servidor.
-                                result = "NXDOMAIN";
-                            } else if (reverse.length() == 0) {
-                                // O reverso é inválido.
-                                result = "NXDOMAIN";
-                            } else if (SubnetIPv4.isValidIPv4(reverse)) {
-                                // A consulta é um IPv4.
-                                clientQuery = SubnetIPv4.reverseToIPv4(reverse);
-                                Analise.processToday(clientQuery);
-                                if (clientQuery.equals("127.0.0.1")) {
-                                    // Consulta de teste para negativo.
-                                    result = "NXDOMAIN";
-                                } else if (clientQuery.equals("127.0.0.2")) {
-                                    // Consulta de teste para positivio.
-                                    result = "127.0.0.2";
-                                } else if (Block.containsCIDR(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 259200; // Três dias.
-                                } else if (SPF.isRed(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 86400; // Um dia.
-                                } else {
-                                    result = "NXDOMAIN";
-                                }
-                            } else if (SubnetIPv6.isReverseIPv6(reverse)) {
-                                // A consulta é um IPv6.
-                                clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-                                Analise.processToday(clientQuery);
-                                if (Block.containsCIDR(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 259200; // Três dias.
-                                } else if (SPF.isRed(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 86400; // Um dia.
-                                } else {
-                                    result = "NXDOMAIN";
-                                }
-                            } else if ((clientQuery = server.extractDomain(host)) != null) {
-                                if (Block.containsDomain(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 259200; // Três dias.
-                                } else if (SPF.isRed(clientQuery)) {
-                                    result = "127.0.0.2";
-                                    ttl = 86400; // Um dia.
-                                } else {
-                                    result = "NXDOMAIN";
-                                }
-                                clientQuery = Domain.normalizeHostname(clientQuery, false);
-                            } else {
-                                // Não está listado.
-                                result = "NXDOMAIN";
-                            }
-                        }
-                        if (type.equals("TXT") && result.equals("127.0.0.2")) {
-                            if (server == null) {
-                                result = "NXDOMAIN";
-                            } else {
-                                String information = server.getMessage(clientQuery);
-                                if (information == null) {
-                                    result = "NXDOMAIN";
-                                } else {
-                                    result = information;
-                                }
-                            }
-                        }
-                        // Alterando mensagem DNS para resposta.
-                        header.setFlag(Flags.QR);
-                        header.setFlag(Flags.AA);
-                        if (result.equals("NXDOMAIN")) {
-                            header.setRcode(Rcode.NXDOMAIN);
-                            if (server != null) {
-                                long refresh = 1800;
-                                long retry = 900;
-                                long expire = 604800;
-                                long minimum = 300;
-                                name = new Name(server.getHostName().substring(1) + '.');
-                                SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
-                                        name, SERIAL, refresh, retry, expire, minimum);
-                                message.addRecord(soa, Section.AUTHORITY);
-                            }
-                        } else if (type.equals("TXT")) {
-                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
-                            message.addRecord(txt, Section.ANSWER);
-                        } else if (result.equals("127.0.0.2")) {
-                            InetAddress address = InetAddress.getByName(result);
-                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
-                            message.addRecord(a, Section.ANSWER);
-                        } else if (type.equals("NS")) {
-                            Name hostname = Name.fromString(result);
-                            NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
-                            message.addRecord(ns, Section.ANSWER);
-                        } else {
-                            InetAddress address = InetAddress.getByName(result);
-                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
-                            message.addRecord(a, Section.ANSWER);
-                        }
-                        result = ttl + " " + result;
-                        // Enviando resposta.
-                        int portDestiny = packet.getPort();
-                        byte[] sendData = message.toWire();
-                        DatagramPacket sendPacket = new DatagramPacket(
-                                sendData, sendData.length,
-                                ipAddress, portDestiny
+                                result = ttl + " " + result;
+                                // Enviando resposta.
+                                int portDestiny = packet.getPort();
+                                byte[] sendData = message.toWire();
+                                DatagramPacket sendPacket = new DatagramPacket(
+                                        sendData, sendData.length,
+                                        ipAddress, portDestiny
                                 );
-                        SERVER_SOCKET.send(sendPacket);
+                                SERVER_SOCKET.send(sendPacket);
+                            }
+                            query = type + " " + query;
+                        }
+                    } catch (SocketException ex) {
+                        // Houve fechamento do socket.
+                        result = "CLOSED";
+                    } catch (WireParseException ex) {
+                        // Ignorar consultas inválidas.
+                        query = "UNPARSEABLE";
+                        result = "IGNORED";
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                        result = "ERROR";
+                    } finally {
+                        Server.logQueryDNSBL(
+                                time,
+                                origin,
+                                query,
+                                result
+                        );
+                        clearPacket();
+                        // Oferece a conexão ociosa na última posição da lista.
+                        offer(this);
+                        CONNECION_SEMAPHORE.release();
                     }
-                    query = type + " " + query;
-                } catch (SocketException ex) {
-                    // Houve fechamento do socket.
-                    result = "CLOSED";
-                } catch (WireParseException ex) {
-                    // Ignorar consultas inválidas.
-                    query = "UNPARSEABLE";
-                    result = "IGNORED";
-                } catch (Exception ex) {
-                    Server.logError(ex);
-                    result = "ERROR";
-                } finally {
-                    Server.logQueryDNSBL(
-                            time,
-                            origin,
-                            query,
-                            result
-                    );
-                    clearPacket();
-                    // Oferece a conexão ociosa na última posição da lista.
-                    offer(this);
-                    CONNECION_SEMAPHORE.release();
                 }
+            } catch (Exception ex) {
+                Server.logError(ex);
+            } finally {
+                CONNECTION_COUNT--;
             }
-            CONNECTION_COUNT--;
         }
     }
 
@@ -641,7 +695,7 @@ public final class QueryDNSBL extends Server {
                 CONNECTION_COUNT++;
                 return connection;
             } else {
-            // Se não houver liberação, ignorar consulta DNS.
+                // Se não houver liberação, ignorar consulta DNS.
                 // O MX que fizer a consulta terá um TIMEOUT
                 // considerando assim o IP como não listado.
                 return null;
@@ -663,7 +717,8 @@ public final class QueryDNSBL extends Server {
                 try {
                     byte[] receiveData = new byte[1024];
                     DatagramPacket packet = new DatagramPacket(
-                            receiveData, receiveData.length);
+                            receiveData, receiveData.length
+                    );
                     SERVER_SOCKET.receive(packet);
                     if (continueListenning()) {
                         long time = System.currentTimeMillis();

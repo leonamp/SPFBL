@@ -137,7 +137,7 @@ public final class QueryTCP extends Server {
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                         query = bufferedReader.readLine();
                         if (query == null) {
-                            result = "ERROR: QUERY\n";
+                            result = "INVALID QUERY\n";
                         } else if (query.equals("DOMAIN SHOW")) {
                             TreeSet<String> domainSet = Domain.getDomainNameSet();
                             if (domainSet.isEmpty()) {

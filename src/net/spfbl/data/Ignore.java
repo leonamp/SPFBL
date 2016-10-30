@@ -303,12 +303,14 @@ public class Ignore {
     }
     
     private static String normalizeTokenCIDR(String token) throws ProcessException {
-        return SPF.normalizeToken(token, false, false, true, false, false);
+        return SPF.normalizeToken(token, false, false, true, false,
+//                false,
+                false);
     }
 
     public static boolean add(String token) throws ProcessException {
         if ((token = normalizeTokenCIDR(token)) == null) {
-            throw new ProcessException("ERROR: TOKEN INVALID");
+            throw new ProcessException("TOKEN INVALID");
         } else if (addExact(token)) {
             return true;
         } else {
@@ -328,7 +330,7 @@ public class Ignore {
 
     public static boolean drop(String token) throws ProcessException {
         if ((token = normalizeTokenCIDR(token)) == null) {
-            throw new ProcessException("ERROR: TOKEN INVALID");
+            throw new ProcessException("TOKEN INVALID");
         } else if (dropExact(token)) {
             return true;
         } else {

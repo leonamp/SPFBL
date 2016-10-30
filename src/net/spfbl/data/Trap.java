@@ -26,6 +26,7 @@ import java.util.TreeSet;
 import net.spfbl.core.Client;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
+import net.spfbl.core.User;
 import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -78,32 +79,36 @@ public class Trap {
             return false;
         } else if (Domain.isEmail(recipient)) {
             return true;
-        } else if (recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1))) {
-            return true;
         } else {
-            return false;
+            return recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1));
         }
     }
 
     public static boolean add(String recipient) throws ProcessException {
         if (!isValid(recipient)) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (addExact(recipient.toLowerCase())) {
-            return true;
+            throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return false;
+            return addExact(recipient.toLowerCase());
         }
     }
 
     public static boolean add(Client client, String recipient) throws ProcessException {
         if (client == null || !client.hasEmail()) {
-            throw new ProcessException("ERROR: CLIENT INVALID");
+            throw new ProcessException("CLIENT INVALID");
         } else if (!isValid(recipient)) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (addExact(client.getEmail() + ':' + recipient.toLowerCase())) {
-            return true;
+            throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return false;
+            return addExact(client.getEmail() + ':' + recipient.toLowerCase());
+        }
+    }
+    
+    public static boolean add(String client, String recipient) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("CLIENT INVALID");
+        } else if (!isValid(recipient)) {
+            throw new ProcessException("RECIPIENT INVALID");
+        } else {
+            return addExact(client + ':' + recipient.toLowerCase());
         }
     }
 
@@ -119,23 +124,29 @@ public class Trap {
 
     public static boolean drop(String recipient) throws ProcessException {
         if (!isValid(recipient)) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (dropExact(recipient.toLowerCase())) {
-            return true;
+            throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return false;
+            return dropExact(recipient.toLowerCase());
         }
     }
 
     public static boolean drop(Client client, String recipient) throws ProcessException {
         if (client == null || !client.hasEmail()) {
-            throw new ProcessException("ERROR: CLIENT INVALID");
+            throw new ProcessException("CLIENT INVALID");
         } else if (!isValid(recipient)) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
-        } else if (dropExact(client.getEmail() + ':' + recipient.toLowerCase())) {
-            return true;
+            throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return false;
+            return dropExact(client.getEmail() + ':' + recipient.toLowerCase());
+        }
+    }
+    
+    public static boolean drop(String client, String recipient) throws ProcessException {
+        if (client == null || !Domain.isEmail(client)) {
+            throw new ProcessException("CLIENT INVALID");
+        } else if (!isValid(recipient)) {
+            throw new ProcessException("RECIPIENT INVALID");
+        } else {
+            return dropExact(client + ':' + recipient.toLowerCase());
         }
     }
 
@@ -163,10 +174,15 @@ public class Trap {
         return trapSet;
     }
 
-    public static boolean contains(Client client, String recipient) {
-        if (client == null) {
-            return false;
-        } else if (!client.hasEmail()) {
+    public static boolean contains(Client client, User user, String recipient) {
+        // Definição do e-mail do usuário.
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        if (userEmail == null) {
             return false;
         } else if (!isValid(recipient)) {
             return false;
@@ -178,9 +194,9 @@ public class Trap {
                 return true;
             } else if (containsExact(domain)) {
                 return true;
-            } else if (containsExact(client.getEmail() + ':' + recipient)) {
+            } else if (containsExact(userEmail + ':' + recipient)) {
                 return true;
-            } else if (containsExact(client.getEmail() + ':' + domain)) {
+            } else if (containsExact(userEmail + ':' + domain)) {
                 return true;
             } else {
                 int index3 = domain.length();
@@ -188,7 +204,7 @@ public class Trap {
                     String subdomain = domain.substring(0, index3 + 1);
                     if (containsExact(subdomain)) {
                         return true;
-                    } else if (containsExact(client.getEmail() + ':' + subdomain)) {
+                    } else if (containsExact(userEmail + ':' + subdomain)) {
                         return true;
                     }
                 }
@@ -197,7 +213,7 @@ public class Trap {
                     String subrecipient = recipient.substring(0, index4 + 1);
                     if (containsExact(subrecipient)) {
                         return true;
-                    } else if (containsExact(client.getEmail() + ':' + subrecipient)) {
+                    } else if (containsExact(userEmail + ':' + subrecipient)) {
                         return true;
                     }
                 }

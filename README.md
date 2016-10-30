@@ -225,7 +225,7 @@ Os elementos que podem ser adicionados nesta lista são:
 
 Internamente esta lista aceita somente identificação de remetentes com qualificador. Portanto se nenhum qualificador for definido, a lista acatará o qualificador padrão PASS.
 
-Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;FAIL" nesta lista. Esta lista é á única lista que aceita FAIL como qualificador. O SPFBL ignora o resultado FAIL para o domínio específico quando usado. Atenção! Este comando deve ser evitado! O correto é pedir ao administrador do domínio corrigir a falha no registro SPF dele usando este comando somente durante o intervalo onde o problema está sendo corrigido.
+Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;zone.domain.tld" ou "@domain.tld;IP" nesta lista, onde o primeiro se refere à zona DNS do IP de origem na qual o remetente é considerado válido na liberação.
 
 Existe uma forma de incluir remetentes na whitelist onde o próprio SPFBL descobre se melhor incluir o remetente pelo domínio ou pelo endereço completo.
 
@@ -288,7 +288,7 @@ Lembre-se de substituir 'IP-DO-SEU-POOL-SPFBL' pelo seu pool de SPFBL. No caso d
 
 ##### Greylisting
 
-A mensagem será atrasada 25min sempre que o responsável estiver com status YELLOW.
+A mensagem será atrasada 25min sempre que o responsável estiver com reputação YELLOW.
 
 ##### Blacklisted
 
@@ -330,7 +330,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 * NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remetente não existe.
 * INVALID: rejeita o recebimento e informa à origem que o IP ou o endereço do remetente não é válido.
-* WHITE: aceita a mensagem e a encaminha imediatamente para roteamento sem passar por outros filtros.
+* WHITE: aceita a mensagem e a encaminha imediatamente para roteamento sem passar por outros filtros, exceto antivírus.
 
 ##### Método de listagem
 
@@ -437,11 +437,21 @@ O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP d
 
 ##### Integração com Exim
 
-Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl_check_rcpt":
+Para integrar o SPFBL no Exim, basta adicionar as seguintes linhas em suas respectivas seções:
 ```
-# Use 'spfbl.sh query' to perform SPFBL check.
+acl_check_mail:
+
+  # Define SPFBL flags
+  accept
+    set acl_c_whitelisted = false
+    set acl_c_spamflag = false
+
+
+acl_check_rcpt:
+
+  # Use SPFBL to perform SPF check.
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR: $value}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG |WHITE )}{}}
   deny
@@ -449,11 +459,11 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check failed.
     condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
   defer
-    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    message = 4.7.1 SPFBL transient error occurred when checking SPF record.
     log_message = SPFBL check error.
     condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
   deny
-    message = One or more SPF records from $sender_address_domain could not be interpreted. Please see http://www.openspf.org/SPF_Record_Syntax for details.
+    message = 4.7.1 SPFBL one or more SPF records from $sender_host_address could not be interpreted.
     log_message = SPFBL check unknown.
     condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
   deny
@@ -461,7 +471,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     log_message = SPFBL check nxdomain.
     condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
   deny
-    message = 5.7.1 SPFBL IP or sender is invalid.
+    message = 5.7.1 SPFBL invalid sender indentification.
     log_message = SPFBL check invalid.
     condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
   defer
@@ -470,7 +480,7 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
   defer
-    message = 4.7.2 SPFBL you are temporarily blocked on this server.
+    message = 4.7.2 SPFBL temporarily blocked on this server.
     log_message = SPFBL check listed.
     condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
   deny
@@ -479,33 +489,119 @@ Para integrar o SPFBL no Exim, basta adicionar a seguinte linha na secção "acl
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
     condition = ${if match {$acl_c_spfblticket}{^http://}{true}{false}}
   deny
-    message = 5.7.1 SPFBL you are permanently blocked on this server.
+    message = 5.7.1 SPFBL permanently blocked.
     log_message = SPFBL check blocked.
     condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
   discard
     log_message = SPFBL check spamtrap.
     condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
   defer
-    message = 4.7.1 SPFBL you are greylisted on this server.
+    message = 4.7.1 SPFBL greylisted message.
     log_message = SPFBL check greylisting.
     condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
   defer
-    message = A transient error occurred when checking SPF record from $sender_address, preventing a result from being reached. Try again later.
+    message = 4.3.1 SPFBL temporarily out of service.
     log_message = SPFBL check timeout.
     condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
   warn
-    log_message = SPFBL check flag.
     condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
-    add_header = X-Spam-Flag: YES
+    set acl_c_spamflag = true
   warn
-    condition = ${if eq {$acl_c_spfreceived}{16}{false}{true}}
-    add_header = X-Spam-Flag: NO
     add_header = Received-SPFBL: $acl_c_spfbl
   warn
     set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{http://.+/([0-9a-zA-Z_-]+)\\n}{\$1}}
-  accept
+  warn
     condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
+    set acl_c_whitelisted = true
+
+
+acl_check_mime:
+
+  # Accept if SPFBL ticket in undefined
+  accept
+    condition = ${if def:acl_c_spfblticket {no}{yes}}
+
+  # Decode MIME
+  warn
+    decode = $mime_filename
+
+  # Reject HTML redirect
+  deny
+    message = 5.7.1 SPFBL the attachment has a HTML redirect command.
+    condition = ${if eq{$mime_content_type}{text/html}{true}{false}}
+    mime_regex = <meta[^>]+http-equiv *= *"?refresh"?[^>]+>
+    log_message = ${run{/usr/local/bin/spfbl.sh malware $acl_c_spfblticket "$mime_filename"}{SPFBL check redirect}{SPFBL ERROR: $value}}.
+ 
+  # Reject JavaScript redirect
+  deny
+    message = 5.7.1 SPFBL the attachment has a JavaScript redirect command.
+    condition = ${if eq{$mime_content_type}{text/html}{true}{false}}
+    mime_regex = <script[^>]+language *= *"?JavaScript"?[^>]+>
+    mime_regex = window\\.location(\\.href *=|\\.replace\\()?
+    log_message = ${run{/usr/local/bin/spfbl.sh malware $acl_c_spfblticket "$mime_filename"}{SPFBL check redirect}{SPFBL ERROR: $value}}.
+ 
+  # Reject known executable file extensions.
+  deny
+    message = 5.7.1 SPFBL this message was executable attachment.
+    condition = ${if match {$mime_filename}{\\.(com|vbs|vbe|bat|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js)\$}{true}{false}}
+    log_message = ${run{/usr/local/bin/spfbl.sh malware $acl_c_spfblticket "$mime_filename"}{SPFBL check executable}{SPFBL ERROR: $value}}.
+    
+  # Accept if sender is whitelisted in SPFBL
+  accept
+    condition = $acl_c_whitelisted
+
+  # Check HTML links
+  deny
+    message = 5.7.1 SPFBL this message was blacklisted links.
+    condition = ${if eq{$mime_content_type}{text/html}{true}{false}}
+    set acl_c_hreflist = ${perl{geturldomainlist}}
+    condition = ${if eq {${run{/usr/local/bin/spfbl.sh link $acl_c_spfblticket "$acl_c_hreflist"}{$runrc}{$runrc}}}{1}{true}{false}}
+    log_message = SPFBL check blacklinked.
+
+  # accept otherwise
+  accept
+
+
+acl_check_data:
+
+  # Deny if From or Reply-To is blocked in SPFBL.
+  deny
+    condition = ${if eq {${address:$h_From:}${address:$h_Reply-To:}}{}{false}{true}}
+    condition = ${if eq {${run{/usr/local/bin/spfbl.sh from $acl_c_spfblticket From:${address:$h_From:} ReplyTo:${address:$h_Reply-To:} List-Unsubscribe:$h_List-Unsubscribe:}{$runrc}{$runrc}}}{1}{true}{false}}
+    message = 5.7.1 SPFBL from or reply-to permanently blocked on this server.
+    log_message = SPFBL check blocked.
+  warn
+    condition = ${if eq {$runrc}{17}{true}{false}}
+    set acl_c_whitelisted = true
+
+  # Deny if the message contains malware. Before enabling this check, you
+  # must install a virus scanner and set the av_scanner option in the
+  # main configuration.
+  #
+  # exim4-daemon-heavy must be used for this section to work.
+  #
+  deny
+    condition = ${if < {$message_size}{16m}{true}{false}}
+    malware = *
+    message = 5.7.1 SPFBL this message was detected as possible malware.
+    log_message = ${if def:acl_c_spfblticket {${run{/usr/local/bin/spfbl.sh malware $acl_c_spfblticket "$malware_name"}{SPFBL check malware}{SPFBL ERROR: $value}}}{malware}}.
+
+  # accept otherwise
+  warn
+    log_message = SPFBL check whitelisted.
+    condition = $acl_c_whitelisted
+  warn
+    log_message = SPFBL check flag.
+    condition = $acl_c_spamflag
+  accept
+    add_header = X-Spam-Flag: ${if eq {$acl_c_spamflag}{true}{YES}{NO}}
 ```
+
+A função "geturldomainlist" pode ser obtida dentro do arquivo "./run/exim.pl" deste projeto.
+
+Recomendamos a implementação do "clamav-unofficial-sigs" para tornar o Clamav mais efetivo:
+
+<a href="https://github.com/extremeshok/clamav-unofficial-sigs">https://github.com/extremeshok/clamav-unofficial-sigs</a>
 
 Para que o Exim faça o roteamento para a pasta ".Junk" do destinatário, é necessário fazer uma pequena alteração no "directory" do transporte "maildir_home" da seção "transports":
 ```
@@ -517,38 +613,12 @@ maildir_home:
   ...
 ```
 
-Para mandar o Exim bloquear o campo From e Reply-To da mensagem, basta adicionar esta configuração na seção "acl_check_data":
-```
-  # Deny if From or Reply-To is blocked in SPFBL.
-  deny
-    condition = ${if match {${address:$h_From:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
-    condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_From:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
-    message = 5.7.1 SPFBL you are permanently blocked on this server.
-    log_message = SPFBL check blocked. From:${address:$h_From:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
-  deny
-    condition = ${if match {${address:$h_Reply-To:}}{^([[:alnum:]][[:alnum:].+_-]*)@([[:alnum:]_-]+\\.)+([[:alpha:]]\{2,5\})\$}{true}{false}}
-    condition = ${if eq {${address:$h_From:}}{${address:$h_Reply-To:}}{false}{true}}
-    condition = ${if eq {${run{/usr/local/bin/spfbl block find ${address:$h_Reply-To:}}{NONE\n}{$value}}}{NONE\n}{false}{true}}
-    message = 5.7.1 SPFBL you are permanently blocked on this server.
-    log_message = SPFBL check blocked. Reply-To:${address:$h_Reply-To:}. ${run{/usr/local/bin/spfbl spam $acl_c_spfblticket}{$value}{ERROR}}.
-```
-
-Se o Exim estiver usando anti-vírus, é possível mandar a denúnica automaticamente utilizando a seguinte configuração na seção "acl_check_data":
-```
-  # Deny if the message contains malware
-  deny
-    condition = ${if < {$message_size}{16m}{true}{false}}
-    malware = *
-    message = 5.7.1 SPFBL this message was detected as possible malware.
-    log_message = SPFBL malware detected. ${run{/usr/local/bin/spfbl.sh spam $acl_c_spfblticket}{$value}{ERROR}}.
-```
-
 ##### Integração com Exim do cPanel
 
 Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced Editor", e ativar a opção "custom_begin_rbl" com o seguinte código:
 ```
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl.sh query "$sender_host_address" "$sender_address" "$sender_helo_name" "$local_part@$domain"}{ERROR}{$value}}
     set acl_c_spfreceived = $runrc
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |LISTED |BLOCKED |FLAG |WHITE )}{}}
   deny
@@ -615,6 +685,28 @@ Se a configuração do Exim for feita for cPanel, basta seguir na guia "Advanced
 ```
 
 Para que a mensagem seja roteada pelo cPanel para a pasta ".Junk" do destinatário, é necessário criar o arquivo ".spamassassinboxenable" dentro da pasta home deste mesmo destinatário.
+
+##### Painel de controle
+
+O SPFBL possui um painel de controle simples para o usuário manipular corretamente listas de bloqueio e liberação dos remetentes.
+
+![Panel](https://github.com/leonamp/SPFBL/blob/master/doc/panel.png "Painel de controle")
+
+Para usar o painel de controle, é necessário ter MTA cliente e usuário devidamente cadastrados:
+
+```
+spfbl.sh client add <cidr> <zone> SPFBL <email>
+spfbl.sh user add <email> <name>
+```
+
+Feito isso, o painel de controle pode ser acessado pela URL http://<hostname>/<email>
+
+Na primeira vez que o usuário entrar nesta URL, o SPFBL iniciará um processo de cadastro TOTP, enviando um e-mail para o usuário com o QRcode contendo o segredo TOPT dele.
+
+Para acessar corretamente o QRcode, é necessário baixar o aplicativo Google Authenticator, em seu celular, e ler o mesmo QRcode com este aplicativo.
+
+O aplicativo irá gerar uma senha TOPT a cada minuto para que o usuário possa entrar com segurança na plataforma.
+
 
 ### Como iniciar o serviço SPFBL
 

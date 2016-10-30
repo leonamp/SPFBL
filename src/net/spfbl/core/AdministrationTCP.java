@@ -31,6 +31,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import net.spfbl.core.Client.Permission;
 import net.spfbl.data.Block;
+import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
@@ -173,12 +174,13 @@ public final class AdministrationTCP extends Server {
             Server.logError(ex);
         } finally {
             Server.logInfo("administration TCP server closed.");
+            System.exit(0);
         }
     }
     
     /**
      * Processa o comando e retorna o resultado.
-     * @param user o usuário do processo.
+     * @param client o cliente do processo.
      * @param command a expressão do comando.
      * @return o resultado do processamento.
      */
@@ -186,7 +188,7 @@ public final class AdministrationTCP extends Server {
         try {
             String result = "";
             if (command.length() == 0) {
-                result = "ERROR: COMMAND\n";
+                result = "INVALID COMMAND\n";
             } else {
                 StringTokenizer tokenizer = new StringTokenizer(command, " ");
                 String token = tokenizer.nextToken();
@@ -561,7 +563,7 @@ public final class AdministrationTCP extends Server {
                             result = "NOT FOUND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("LOG") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -575,10 +577,10 @@ public final class AdministrationTCP extends Server {
                                 result += "SAME\n";
                             }
                         } catch (Exception ex) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("RELOAD") && !tokenizer.hasMoreTokens()) {
                     if (Core.loadConfiguration()) {
@@ -616,7 +618,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
@@ -629,8 +631,11 @@ public final class AdministrationTCP extends Server {
                     }
                 } else if (token.equals("STORE") && !tokenizer.hasMoreTokens()) {
                     // Comando para gravar o cache em disco.
-                    result = "OK\n";
-                    storeCache();
+                    if (tryStoreCache(false)) {
+                        result = "OK\n";
+                    } else {
+                        result = "ALREADY STORING\n";
+                    }
                 } else if (token.equals("TLD") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -677,7 +682,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("DNSBL") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -733,7 +738,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -752,9 +757,8 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
-                        Provider.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
@@ -778,9 +782,8 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
-                        Provider.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         // Mecanismo de visualização de provedores.
                         for (String provider : Provider.getAll()) {
@@ -799,10 +802,10 @@ public final class AdministrationTCP extends Server {
                                 result = "NOT FOUND " + domain + "\n";
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("IGNORE") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -821,7 +824,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         Ignore.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -847,7 +850,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         Ignore.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
@@ -863,7 +866,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -893,13 +896,13 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
                         if (token.equals("ALL")) {
                             if (tokenizer.hasMoreTokens()) {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             } else {
                                 if (Block.dropAll()) {
                                     result += "DROPPED\n";
@@ -931,7 +934,7 @@ public final class AdministrationTCP extends Server {
                                 }
                             } while (tokenizer.hasMoreElements());
                             if (result.length() == 0) {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             }
                         }
                     } else if (token.equals("OVERLAP") && tokenizer.hasMoreTokens()) {
@@ -944,7 +947,7 @@ public final class AdministrationTCP extends Server {
                                 result = "ALREADY EXISTS\n";
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("EXTRACT") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
@@ -960,7 +963,7 @@ public final class AdministrationTCP extends Server {
                                 result = "EXTRACTED " + token + "\n";
                             }
                         } else{
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
@@ -973,12 +976,23 @@ public final class AdministrationTCP extends Server {
                                 result = "NOT FOUND\n";
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        String block = Block.find(null, token, false);
-                        result = (block == null ? "NONE" : block) + "\n";
+                        while (tokenizer.hasMoreElements()) {
+                            token = tokenizer.nextToken();
+                            int index = token.indexOf(':');
+                            String clientLocal = null;
+                            if (index != -1) {
+                                String prefix = token.substring(0, index);
+                                if (Domain.isEmail(prefix)) {
+                                    clientLocal = prefix;
+                                    token = token.substring(index+1);
+                                }
+                            }
+                            String block = Block.find(clientLocal, token, false);
+                            result = (block == null ? "NONE" : block) + "\n";
+                        }
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
                             // Mecanismo de visualização 
@@ -1009,7 +1023,70 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
+                    }
+                } else if (token.equals("GENERIC") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String genericToken = tokenizer.nextToken();
+                                if ((genericToken = Generic.add(genericToken)) == null) {
+                                    result += "ALREADY EXISTS\n";
+                                 } else {
+                                    result += "ADDED " + genericToken + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "INVALID COMMAND\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            if (tokenizer.hasMoreTokens()) {
+                                result = "INVALID COMMAND\n";
+                            } else {
+                                if (Generic.dropAll()) {
+                                    result += "DROPPED\n";
+                                } else {
+                                    result += "EMPTY\n";
+                                }
+                            }
+                        } else {
+                            do {
+                                try {
+                                    if (Generic.drop(token)) {
+                                        result += "DROPPED\n";
+                                    } else {
+                                        result += "NOT FOUND\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result += ex.getMessage() + "\n";
+                                }
+                            } while (tokenizer.hasMoreElements());
+                            if (result.length() == 0) {
+                                result = "INVALID COMMAND\n";
+                            }
+                        }
+                    } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        String generic = Generic.find(token);
+                        result = (generic == null ? "NONE" : generic) + "\n";
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        StringBuilder builder = new StringBuilder();
+                        for (String sender : Generic.get()) {
+                            builder.append(sender);
+                            builder.append('\n');
+                        }
+                        result = builder.toString();
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("WHITE") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1038,7 +1115,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         White.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1075,7 +1152,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         White.store();
                     } else if (token.equals("SHOW")) {
@@ -1108,7 +1185,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("TRAP") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1117,11 +1194,11 @@ public final class AdministrationTCP extends Server {
                             try {
                                 String trapToken = tokenizer.nextToken();
                                 int index = trapToken.indexOf(':');
-                                Client clientLocal = null;
+                                String clientLocal = null;
                                 if (index != -1) {
                                     String prefix = trapToken.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        clientLocal = Client.getByEmail(prefix);
+                                        clientLocal = prefix;
                                         trapToken = trapToken.substring(index+1);
                                     }
                                 }
@@ -1137,7 +1214,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         Trap.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1154,11 +1231,11 @@ public final class AdministrationTCP extends Server {
                         } else {
                             try {
                                 int index = token.indexOf(':');
-                                Client clientLocal = null;
+                                String clientLocal = null;
                                 if (index != -1) {
                                     String prefix = token.substring(0, index);
                                     if (Domain.isEmail(prefix)) {
-                                        clientLocal = Client.getByEmail(prefix);
+                                        clientLocal = prefix;
                                         token = token.substring(index+1);
                                     }
                                 }
@@ -1174,7 +1251,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         Trap.store();
                     } else if (token.equals("SHOW")) {
@@ -1204,7 +1281,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1217,7 +1294,7 @@ public final class AdministrationTCP extends Server {
                             result = "NOT FOUND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("NOREPLY") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1235,7 +1312,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         NoReply.store();
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1261,7 +1338,7 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         NoReply.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
@@ -1272,7 +1349,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("CLIENT") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1297,10 +1374,10 @@ public final class AdministrationTCP extends Server {
                                 }
                                 Client.store();
                             } else {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
@@ -1323,7 +1400,7 @@ public final class AdministrationTCP extends Server {
                             }
                             Client.store();
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                         
                     } else if (token.equals("SHOW")) {
@@ -1365,7 +1442,7 @@ public final class AdministrationTCP extends Server {
                                     result += clientLocal + "\n";
                                 }
                             } else {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             }
                         } else {
                             for (Client clientLocal : Client.getSet()) {
@@ -1390,6 +1467,13 @@ public final class AdministrationTCP extends Server {
                                 } else {
                                     result = "ALREADY THIS VALUE\n";
                                 }
+                            } else if (token.equals("PERSONALITY") && tokenizer.countTokens() == 1) {
+                                String personality = tokenizer.nextToken();
+                                if (clientLocal.setPersonality(personality)) {
+                                    result = "UPDATED " + clientLocal + "\n";
+                                } else {
+                                    result = "ALREADY THIS VALUE\n";
+                                }
                             } else if (token.equals("ACTION") && tokenizer.hasMoreTokens()) {
                                 token = tokenizer.nextToken();
                                 if (token.equals("BLOCK") && tokenizer.countTokens() == 1) {
@@ -1407,31 +1491,30 @@ public final class AdministrationTCP extends Server {
                                         result = "ALREADY THIS VALUE\n";
                                     }
                                 } else {
-                                    result = "ERROR: COMMAND\n";
+                                    result = "INVALID COMMAND\n";
                                 }
                             } else if (Domain.isHostname(token) && tokenizer.hasMoreTokens()) {
                                 String domain = Domain.extractDomain(token, false);
                                 String permission = tokenizer.nextToken();
                                 String email = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
                                 if (tokenizer.hasMoreTokens()) {
-                                    result = "ERROR: COMMAND\n";
+                                    result = "INVALID COMMAND\n";
                                 } else if (email != null && !Domain.isEmail(email)) {
-                                    result = "ERROR: INVALID EMAIL\n";
+                                    result = "INVALID EMAIL\n";
                                 } else {
                                     clientLocal.setPermission(permission);
                                     clientLocal.setDomain(domain);
                                     clientLocal.setEmail(email);
                                     result = "UPDATED " + clientLocal + "\n";
-                                    Client.store();
                                 }
                             } else {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("USER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1452,9 +1535,8 @@ public final class AdministrationTCP extends Server {
                             } catch (ProcessException ex) {
                                 result = ex.getMessage() + "\n";
                             }
-                            User.store();
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
@@ -1475,7 +1557,6 @@ public final class AdministrationTCP extends Server {
                                 result = "DROPPED " + userLocal + "\n";
                             }
                         }
-                        User.store();
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         for (User userLocal : User.getSet()) {
                             result += userLocal + "\n";
@@ -1484,7 +1565,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("PEER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1496,9 +1577,9 @@ public final class AdministrationTCP extends Server {
                         }
                         int index = service.indexOf(':');
                         if (index == -1) {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         } else if (email != null && !Domain.isEmail(email)) {
-                            result = "ERROR: INVALID EMAIL\n";
+                            result = "INVALID EMAIL\n";
                         } else {
                             String address = service.substring(0, index);
                             String port = service.substring(index + 1);
@@ -1548,7 +1629,7 @@ public final class AdministrationTCP extends Server {
                                 }
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("SET") && tokenizer.countTokens() == 3) {
                         String address = tokenizer.nextToken();
@@ -1618,7 +1699,7 @@ public final class AdministrationTCP extends Server {
                                     }
                                 }
                             } else {
-                                result = "ERROR: COMMAND\n";
+                                result = "INVALID COMMAND\n";
                             }
                         } else if (token.equals("RELEASE")) {
                             token = tokenizer.nextToken();
@@ -1663,10 +1744,10 @@ public final class AdministrationTCP extends Server {
                                 }
                             }
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("GUESS") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1682,7 +1763,7 @@ public final class AdministrationTCP extends Server {
                             SPF.storeGuess();
                             SPF.storeSPF();
                         } else {
-                            result = "ERROR: COMMAND\n";
+                            result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
@@ -1709,7 +1790,7 @@ public final class AdministrationTCP extends Server {
                             result = "EMPTY\n";
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("REPUTATION")) {
                     // Comando para verificar a reputação dos tokens.
@@ -1778,7 +1859,7 @@ public final class AdministrationTCP extends Server {
                             result = stringBuilder.toString();
                         }
                     } else {
-                        result = "ERROR: COMMAND\n";
+                        result = "INVALID COMMAND\n";
                     }
                 } else if (token.equals("CLEAR") && tokenizer.countTokens() == 1) {
                     try {
@@ -1834,7 +1915,7 @@ public final class AdministrationTCP extends Server {
                         }
                     }
                 } else {
-                    result = "ERROR: COMMAND\n";
+                    result = "INVALID COMMAND\n";
                 }
             }
             return result;

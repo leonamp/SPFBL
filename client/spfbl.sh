@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.5"
+version="2.6"
 
 head()
 {
@@ -1618,20 +1618,17 @@ case $1 in
 
 				echo "$response"
 			;;
-			[0-9]*)
+			*)
 				ip=$2
+				list=$3
 
-				response=$(echo $OTP_CODE"ANALISE $ip" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo $OTP_CODE"ANALISE $ip &list" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 				if [[ $response == "" ]]; then
 					response="TIMEOUT"
 				fi
 
 				echo "$response"
-			;;
-			*)
-				head
-				printf "Invalid Parameters. Syntax: $0 analise <ip> or {show | dump | drop} \n"
 			;;
 		esac
 	;;
@@ -1802,6 +1799,175 @@ case $1 in
 					echo "A reclamação SPFBL não foi enviada: $resposta"
 					exit 3
 				fi
+			fi
+		fi
+	;;
+	'link')
+		# Códigos de saída:
+		#
+		#    0: nenhum bloqueio encontrado.
+		#    1: pelo meno um link está bloqueado e o ticket foi denunciado.
+		#    2: timeout de conexão.
+		#    3: consulta inválida.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 link <ticket> <links>\n"
+		else
+			ticket=$2
+			links=$3
+
+			response=$(echo "LINK $ticket $links" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "CLEAR" ]]; then
+				exit 0
+			elif [[ $response == "BLOCKED "* ]]; then
+				exit 1
+			else
+				exit 3
+			fi
+		fi
+	;;
+	'malware')
+		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
+		#
+		# Com posse do ticket, ele envia a reclamação ao serviço SPFBL para contabilização de reclamação como malware encontrado.
+		#
+		# Parâmetros de entrada:
+		#  1. o arquivo de e-mail com o ticket ou o ticket sozinho.
+		#
+		# Códigos de saída:
+		#  0. Ticket enviado com sucesso.
+		#  1. Arquivo inexistente.
+		#  2. Arquivo não contém ticket.
+		#  3. Erro no envio do ticket.
+		#  4. Timeout no envio do ticket.
+		#  5. Parâmetro inválido.
+		#  6. Ticket inválido.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Invalid Parameters. Syntax: $0 malware [ticketid or file]\n"
+		else
+                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
+                                # O parâmentro é uma URL de denúncia SPFBL.
+                                url=$2
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
+				# O parâmentro é um ticket SPFBL.
+				ticket=$2
+			elif [ -f "$2" ]; then
+				# O parâmetro é um arquivo.
+				file=$2
+
+				if [ -e "$file" ]; then
+					# Extrai o ticket incorporado no arquivo.
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
+
+					if [ $? -gt 0 ]; then
+
+						# Extrai o ticket incorporado no arquivo.
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+
+						if [ $? -gt 0 ]; then
+							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
+							exit 2
+						fi
+					fi
+				else
+					echo "O arquivo não existe."
+					exit 1
+				fi
+			else
+				echo "O parâmetro passado não corresponde a um arquivo nem a um ticket."
+				exit 5
+			fi
+
+			if [[ -z $url ]]; then
+				if [[ -z $ticket ]]; then
+					echo "Ticket SPFBL inválido."
+					exit 6
+				else
+					# Registra reclamação SPFBL como malware.
+					resposta=$(echo $OTP_CODE"MALWARE $ticket $3" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $resposta == "" ]]; then
+						echo "A reclamação SPFBL não foi enviada por timeout."
+						exit 4
+					elif [[ $resposta == "OK"* ]]; then
+						echo "Reclamação SPFBL enviada com sucesso."
+						exit 0
+					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
+						echo "Ticket SPFBL inválido."
+						exit 6
+					else
+						echo "A reclamação SPFBL não foi enviada: $resposta"
+						exit 3
+					fi
+				fi
+			else
+			        ### Atenção! Reclamaão de malware não implementada em HTTP ainda.
+				# Registra reclamação SPFBL via HTTP.
+                                resposta=$(curl -X PUT -s -m 3 $url)
+				if [[ $? == "28" ]]; then
+					echo "A reclamação SPFBL não foi enviada por timeout."
+					exit 4
+				elif [[ $resposta == "OK"* ]]; then
+					echo "Reclamação SPFBL enviada com sucesso."
+					exit 0
+				elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
+					echo "Ticket SPFBL inválido."
+					exit 6
+				else
+					echo "A reclamação SPFBL não foi enviada: $resposta"
+					exit 3
+				fi
+			fi
+		fi
+	;;
+	'from')
+		# Códigos de saída:
+		#
+		#    0: nenhum bloqueio encontrado.
+		#    1: pelo meno um endereço está bloqueado e o ticket foi denunciado.
+		#    2: timeout de conexão.
+		#    3: consulta inválida.
+		#   17: remetente colocado em lista branca.
+
+		if [ $# -lt "3" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 from <ticket> From:<from> Reply-To:<replyto> List-Unsubscribe:<url>\n"
+		else
+			ticket=$2
+			from=$3
+			replyto=$4
+			unsubscribe=$5
+
+			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "CLEAR" ]]; then
+				exit 0
+			elif [[ $response == "WHITE" ]]; then
+				exit 17
+			elif [[ $response == "BLOCKED"* ]]; then
+				exit 1
+			else
+				exit 3
 			fi
 		fi
 	;;
@@ -2244,7 +2410,7 @@ case $1 in
 		printf "Admin Commands:\n"
 		printf "    $0 shutdown\n"
 		printf "    $0 store\n"
-		printf "    $0 superclear hostname\n"
+		printf "    $0 clear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
 		printf "    $0 peer { add host [email] | drop { host | all } | show [host] | set host send receive | ping host | send host }\n"
 		printf "    $0 retention { show [host] | release { sender | all } | reject { sender | all } }\n"

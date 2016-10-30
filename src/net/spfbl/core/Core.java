@@ -16,11 +16,16 @@
  */
 package net.spfbl.core;
 
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
+import com.sun.mail.smtp.SMTPAddressFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
 import it.sauronsoftware.junique.MessageHandler;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,7 +33,6 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
@@ -48,15 +52,18 @@ import java.util.Timer;
 import java.util.TimerTask;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.imageio.ImageIO;
 import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
+import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.data.NoReply;
 import net.spfbl.dnsbl.QueryDNSBL;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -64,6 +71,7 @@ import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.codec.binary.Base32;
+import org.apache.commons.codec.binary.Base64;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -73,11 +81,12 @@ import org.apache.commons.codec.binary.Base32;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 3;
-    private static final byte RELEASE = 2;
+    private static final byte SUBVERSION = 4;
+    private static final byte RELEASE = 0;
+    private static final boolean TESTING = false;
     
     public static String getAplication() {
-        return "SPFBL-" + getVersion();
+        return "SPFBL-" + getVersion() + (TESTING ? "-TESTING" : "");
     }
     
     public static String getVersion() {
@@ -127,40 +136,36 @@ public class Core {
     
     private static ServerHTTP complainHTTP = null;
     
-    public static String getSpamURL() {
-        if (complainHTTP == null) {
-            return null;
-        } else {
-            return complainHTTP.getSpamURL();
-        }
-    }
+    public static final Huffman HUFFMAN = Huffman.load();
     
-    public static String getLoginURL() {
-        if (complainHTTP == null) {
-            return null;
-        } else {
-            return complainHTTP.getLoginURL();
-        }
-    }
+    public static final Base64 BASE64 = new Base64(0, new byte[0], true);
     
     public static String getReleaseURL(String id) throws ProcessException {
         if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
             Defer defer = Defer.getDefer(id);
-            String url = complainHTTP.getReleaseURL();
+            String url = complainHTTP.getURL();
             if (defer == null) {
                 return null;
             } else if (url == null) {
                 return null;
             } else {
                 try {
-                    String ticket = Server.formatTicketDate(defer.getStartDate()) + " " + id;
-                    ticket = Server.encrypt(ticket);
-                    ticket = URLEncoder.encode(ticket, "UTF-8");
-                    return url + ticket;
-                } catch (UnsupportedEncodingException ex) {
-                    throw new ProcessException("ERROR: ENCODE", ex);
+                    long time = System.currentTimeMillis();
+                    String ticket = "release " + id;
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
                 }
             }
         } else {
@@ -185,43 +190,57 @@ public class Core {
     
     public static String getUnblockURL(
             Client client,
+            User user,
             String ip,
             String sender,
             String hostname,
             String result,
             String recipient
             ) throws ProcessException {
-        if (client == null) {
-            return null;
-        } else if (!client.hasEmail()) {
+        // Definição do e-mail do usuário.
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        if (userEmail == null) {
             return null;
         } else if (ip == null) {
             return null;
         } else if (sender == null) {
             return null;
-        } else if (result == null) {
-            return null;
-        } else if (!result.equals("PASS")) {
+        } else if (!Domain.isValidEmail(sender)) {
             return null;
         } else if (recipient == null) {
+            return null;
+        } else if (!Domain.isValidEmail(recipient)) {
             return null;
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getUnblockURL();
+            String url = complainHTTP.getURL();
             if (url == null) {
                 return null;
             } else {
                 try {
-                    String ticket = Server.getNewTicketDate();
-                    ticket += ' ' + client.getEmail();
+                    long time = System.currentTimeMillis();
+                    String ticket = "unblock";
+                    ticket += ' ' + userEmail;
                     ticket += ' ' + ip;
                     ticket += ' ' + sender;
                     ticket += ' ' + recipient;
                     ticket += hostname == null ? "" : ' ' + hostname;
-                    ticket = Server.encrypt(ticket);
-                    ticket = URLEncoder.encode(ticket, "UTF-8");
-                    return url + ticket;
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
                 } catch (Exception ex) {
                     throw new ProcessException("FATAL", ex);
                 }
@@ -244,17 +263,25 @@ public class Core {
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getUnblockURL();
+            String url = complainHTTP.getURL();
             if (url == null) {
                 return null;
             } else {
                 try {
-                    String ticket = Server.getNewTicketDate();
+                    long time = System.currentTimeMillis();
+                    String ticket = "unblock";
                     ticket += ' ' + client;
                     ticket += ' ' + ip;
-                    ticket = Server.encrypt(ticket);
-                    ticket = URLEncoder.encode(ticket, "UTF-8");
-                    return url + ticket;
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
                 } catch (Exception ex) {
                     throw new ProcessException("FATAL", ex);
                 }
@@ -285,41 +312,71 @@ public class Core {
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getWhiteURL();
+            String url = complainHTTP.getURL();
             if (url == null) {
                 return null;
             } else {
                 try {
-                    String ticket = Server.getNewTicketDate();
+                    long time = System.currentTimeMillis();
+                    String ticket = "white";
                     ticket += ' ' + white;
                     ticket += ' ' + client;
                     ticket += ' ' + ip;
                     ticket += ' ' + sender;
                     ticket += ' ' + recipient;
                     ticket += hostname == null ? "" : ' ' + hostname;
-                    ticket = Server.encrypt(ticket);
-                    ticket = URLEncoder.encode(ticket, "UTF-8");
-                    return url + ticket;
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
                 } catch (Exception ex) {
                     throw new ProcessException("FATAL", ex);
                 }
+//                try {
+//                    String ticket = Server.getNewTicketDate();
+//                    ticket += ' ' + white;
+//                    ticket += ' ' + client;
+//                    ticket += ' ' + ip;
+//                    ticket += ' ' + sender;
+//                    ticket += ' ' + recipient;
+//                    ticket += hostname == null ? "" : ' ' + hostname;
+//                    ticket = Server.encrypt(ticket);
+//                    ticket = URLEncoder.encode(ticket, "UTF-8");
+//                    return url + ticket;
+//                } catch (Exception ex) {
+//                    throw new ProcessException("FATAL", ex);
+//                }
             }
         } else {
             return null;
         }
     }
     
-    public static String getSpamURL(String recipient) {
+    public static String getURL() {
         if (complainHTTP == null) {
             return null;
-        } else if (recipient == null) {
-            return complainHTTP.getSpamURL();
         } else {
-            int index = recipient.lastIndexOf('@');
-            String domain = recipient.substring(index + 1).toLowerCase();
-            return complainHTTP.getSpamURL(domain);
+            return complainHTTP.getURL();
         }
     }
+    
+//    public static String getSpamURL(String recipient) {
+//        if (complainHTTP == null) {
+//            return null;
+//        } else if (recipient == null) {
+//            return complainHTTP.getSpamURL();
+//        } else {
+//            int index = recipient.lastIndexOf('@');
+//            String domain = recipient.substring(index + 1).toLowerCase();
+//            return complainHTTP.getSpamURL(domain);
+//        }
+//    }
     
     public static String dropURL(String domain) {
         if (complainHTTP == null) {
@@ -408,8 +465,10 @@ public class Core {
                     Core.setFloodMaxRetry(properties.getProperty("flood_max_retry"));
                     Core.setDeferTimeFLOOD(properties.getProperty("defer_time_flood"));
                     Core.setDeferTimeSOFTFAIL(properties.getProperty("defer_time_softfail"));
-                    Core.setDeferTimeGRAY(properties.getProperty("defer_time_gray"));
-                    Core.setDeferTimeBLACK(properties.getProperty("defer_time_gray"));
+                    Core.setDeferTimeYELLOW(properties.getProperty("defer_time_gray")); // Obsolete.
+                    Core.setDeferTimeYELLOW(properties.getProperty("defer_time_yellow"));
+                    Core.setDeferTimeRED(properties.getProperty("defer_time_black")); // Obsolete.
+                    Core.setDeferTimeRED(properties.getProperty("defer_time_red"));
                     Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
@@ -442,10 +501,15 @@ public class Core {
         if (ADMIN_EMAIL == null) {
             return null;
         } else {
-            try {
-                return new InternetAddress(ADMIN_EMAIL, "SPFBL Admin");
-            } catch (UnsupportedEncodingException ex) {
-                return null;
+            User user = User.get(ADMIN_EMAIL);
+            if (user == null) {
+                try {
+                    return new InternetAddress(ADMIN_EMAIL, "SPFBL Admin");
+                } catch (UnsupportedEncodingException ex) {
+                    return null;
+                }
+            } else {
+                return user.getInternetAddress();
             }
         }
     }
@@ -538,6 +602,7 @@ public class Core {
             } else {
                 for (int i = 0; i < attributeA.size(); i++) {
                     String host4Address = (String) attributeA.get(i);
+                    host4Address = host4Address.trim();
                     if (SubnetIPv4.isValidIPv4(host4Address)) {
                         try {
                             InetAddress address = InetAddress.getByName(host4Address);
@@ -563,7 +628,7 @@ public class Core {
         if (hostame != null && hostame.length() > 0) {
             if (!Domain.isHostname(hostame)) {
                 Server.logError("invalid hostame '" + hostame + "'.");
-            } else if (!isRouteable(hostame)) {
+            } else if (!Core.TESTING && !isRouteable(hostame)) {
                 Server.logError("unrouteable hostname '" + hostame + "'.");
             } else {
                 Core.HOSTNAME = Domain.extractHost(hostame, false);
@@ -888,51 +953,51 @@ public class Core {
         }
     }
     
-    private static byte DEFER_TIME_GRAY = 25;
+    private static byte DEFER_TIME_YELLOW = 25;
     
-    public static byte getDeferTimeGRAY() {
-        return DEFER_TIME_GRAY;
+    public static byte getDeferTimeYELLOW() {
+        return DEFER_TIME_YELLOW;
     }
     
-    public static void setDeferTimeGRAY(String time) {
+    public static void setDeferTimeYELLOW(String time) {
         if (time != null && time.length() > 0) {
             try {
-                setDeferTimeGRAY(Integer.parseInt(time));
+                setDeferTimeYELLOW(Integer.parseInt(time));
             } catch (Exception ex) {
-                Server.logError("invalid DEFER time for GRAY '" + time + "'.");
+                Server.logError("invalid DEFER time for YELLOW '" + time + "'.");
             }
         }
     }
     
-    public static synchronized void setDeferTimeGRAY(int time) {
+    public static synchronized void setDeferTimeYELLOW(int time) {
         if (time < 0 || time > Byte.MAX_VALUE) {
-            Server.logError("invalid DEFER time for GRAY '" + time + "'.");
+            Server.logError("invalid DEFER time for YELLOW '" + time + "'.");
         } else {
-            Core.DEFER_TIME_GRAY = (byte) time;
+            Core.DEFER_TIME_YELLOW = (byte) time;
         }
     }
     
-    private static byte DEFER_TIME_BLACK = 25;
+    private static byte DEFER_TIME_RED = 25;
     
     public static byte getDeferTimeBLACK() {
-        return DEFER_TIME_BLACK;
+        return DEFER_TIME_RED;
     }
     
-    public static void setDeferTimeBLACK(String time) {
+    public static void setDeferTimeRED(String time) {
         if (time != null && time.length() > 0) {
             try {
-                setDeferTimeBLACK(Integer.parseInt(time));
+                setDeferTimeRED(Integer.parseInt(time));
             } catch (Exception ex) {
-                Server.logError("invalid DEFER time for BLACK '" + time + "'.");
+                Server.logError("invalid DEFER time for RED '" + time + "'.");
             }
         }
     }
     
-    public static synchronized void setDeferTimeBLACK(int time) {
-        if (time < 0 || time > Byte.MAX_VALUE) {
-            Server.logError("invalid DEFER time for BLACK '" + time + "'.");
+    public static synchronized void setDeferTimeRED(int time) {
+        if (time < 0 || time > Integer.MAX_VALUE) {
+            Server.logError("invalid DEFER time for RED '" + time + "'.");
         } else {
-            Core.DEFER_TIME_BLACK = (byte) time;
+            Core.DEFER_TIME_RED = (byte) time;
         }
     }
 
@@ -1097,13 +1162,37 @@ public class Core {
     
     private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
     
+    public static void sendAllMessages() {
+        int count = MESSAGE_QUEUE.size();
+        while (count-- > 0) {
+            sendNextMessage();
+        }
+    }
+    
     public static void sendNextMessage() {
         Message message = MESSAGE_QUEUE.poll();
-        try {
-            sendMessage(message);
-        } catch (Exception ex) {
-            MESSAGE_QUEUE.offer(message);
-            Server.logError(ex);
+        if (message != null) {
+            try {
+                sendMessage(message);
+            } catch (ProcessException ex) {
+                Throwable cause = ex.getCause(SMTPAddressFailedException.class);
+                if (cause == null) {
+                    MESSAGE_QUEUE.offer(message);
+                    Server.logError(ex);
+                } else {
+                    SMTPAddressFailedException afEx = (SMTPAddressFailedException) cause;
+                    Server.logDebug("SMTP " + afEx.getMessage());
+                    try {
+                        InternetAddress address = afEx.getAddress();
+                        NoReply.add(address.getAddress());
+                    } catch (ProcessException ex2) {
+                        Server.logError(ex2);
+                    }
+                }
+            } catch (Exception ex) {
+                MESSAGE_QUEUE.offer(message);
+                Server.logError(ex);
+            }
         }
     }
     
@@ -1114,8 +1203,8 @@ public class Core {
     private static void sendMessage(Message message) throws Exception {
         if (message != null && hasSMTP()) {
             Server.logInfo("sending e-mail message.");
-            Server.logDebug("SMTP authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
-            Server.logDebug("SMTP start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
+            Server.logSendMTP("authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
+            Server.logSendMTP("start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
             Properties props = System.getProperties();
             props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
@@ -1124,21 +1213,24 @@ public class Core {
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
                 transport.setLocalHost(HOSTNAME);
-                Server.logDebug("SMTP connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
+                Server.logSendMTP("connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
-                Server.logDebug("SMTP sending message.");
+                Server.logSendMTP("sending '" + message.getSubject() + "'.");
                 transport.sendMessage(message, recipients);
-                Server.logDebug("SMTP message sent.");
+                Server.logSendMTP("message '" + message.getSubject() + "' sent.");
             } catch (AuthenticationFailedException ex) {
+                Server.logSendMTP("authentication failed.");
                 throw new ProcessException("Falha de autenticação SMTP.", ex);
             } catch (MailConnectException ex) {
+                Server.logSendMTP("connection failed.");
                 throw new ProcessException("Falha de conexão SMTP.", ex);
             } catch (MessagingException ex) {
+                Server.logSendMTP("messaging failed.");
                 throw new ProcessException("Falha de conexão SMTP.", ex);
             } finally {
                 if (transport.isConnected()) {
                     transport.close();
-                    Server.logDebug("SMTP connection closed.");
+                    Server.logSendMTP("connection closed.");
                 }
             }
         }
@@ -1222,7 +1314,7 @@ public class Core {
         public void run() {
             Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Enviar próxima mensagem de e-mail.
-            Core.sendNextMessage();
+            Core.sendAllMessages();
         }
     }
     
@@ -1339,7 +1431,7 @@ public class Core {
         public void run() {
             Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             // Armazena todos os registros atualizados durante a consulta.
-            Server.storeCache();
+            Server.tryStoreCache(true);
         }
     }
     
@@ -1375,25 +1467,7 @@ public class Core {
     }
     
     public static void startTimer() {
-//        TIMER00.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
-////        TIMER00.schedule(new TimerExpiredComplain(), 1000, 1000); // Frequência de 1 segundo.
-//        TIMER00.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
-//        TIMER01.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
-//        TIMER01.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
-//        TIMER01.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
-//        TIMER10.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
-//        TIMER30.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
-//        TIMER30.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
-//        TIMER60.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
-//        TIMER60.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
-//        TIMER60.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
-//        TIMER60.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
-//        TIMER60.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-//        TIMER60.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
-//        if (CACHE_TIME_STORE > 0) {
-//            TIMERST.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
-//        }
-        TIMER.schedule(new TimerSendMessage(), 3000, 3000); // Frequência de 3 segundos.
+        TIMER.schedule(new TimerSendMessage(), 30000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
         TIMER.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
@@ -1558,5 +1632,34 @@ public class Core {
     public static boolean hasLowMemory() {
         return relativeFreeMemory() < 0.0625f;
     }
+    
+    private static final QRCodeWriter qrCodeWriter = new QRCodeWriter();
 
+    public static File getQRCodeTempFile(String codigo) throws Exception {
+        BitMatrix matrix = qrCodeWriter.encode(codigo, com.google.zxing.BarcodeFormat.QR_CODE, 256, 256);
+        int width = matrix.getWidth();
+        int height = matrix.getHeight();
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (!matrix.get(x, y)) {
+                    image.setRGB(x, y, Color.WHITE.getRGB());
+                }
+            }
+        }
+        File file = File.createTempFile(Long.toString(Server.getNewUniqueTime()), ".png");
+        ImageIO.write(image, "png", file);
+        Server.logTrace("QRCode temp file created at " + file.getAbsolutePath() + ".");
+        file.deleteOnExit();
+        return file;
+    }
+    
+    public static boolean isLong(String text) {
+        try {
+            Long.parseLong(text);
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
 }

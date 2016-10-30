@@ -17,6 +17,8 @@
 
 package net.spfbl.core;
 
+import com.sun.mail.smtp.SMTPAddressFailedException;
+
 /**
  * Exceção de processamento.
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
@@ -47,5 +49,15 @@ public class ProcessException extends Exception {
         } else {
             return message;
         }
+    }
+
+    public Throwable getCause(Class causeClass) {
+        Throwable cause = this;
+        while ((cause = cause.getCause()) != null) {
+            if (cause.getClass().equals(causeClass)) {
+                return cause;
+            }
+        }
+        return null;
     }
 }

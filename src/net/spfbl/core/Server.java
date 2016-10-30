@@ -23,8 +23,6 @@ import net.spfbl.data.White;
 import net.spfbl.data.Trap;
 import net.spfbl.data.Ignore;
 import net.spfbl.spf.SPF;
-import net.spfbl.spf.SPF.Distribution;
-import net.spfbl.spf.SPF.Status;
 import net.spfbl.whois.AutonomousSystem;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Handle;
@@ -47,33 +45,26 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
-import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
-import net.spfbl.core.Client.Permission;
+import net.spfbl.data.Generic;
 import net.spfbl.dnsbl.QueryDNSBL;
-import net.spfbl.dnsbl.ServerDNSBL;
-import net.spfbl.spf.SPF.Binomial;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -124,6 +115,7 @@ public abstract class Server extends Thread {
         Peer.load();
         Analise.load();
         Reverse.load();
+        Generic.load();
         Block.load();
         White.load();
         Trap.load();
@@ -135,10 +127,41 @@ public abstract class Server extends Thread {
         QueryDNSBL.load();
     }
     
+    private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
+    
     /**
      * Armazenamento de cache em disco.
      */
-    public static void storeCache() {
+    public static boolean tryStoreCache(boolean simplify) {
+        if (SEMAPHORE_STORE.tryAcquire()) {
+            try {
+                storeAll(simplify, true);
+                return true;
+            } finally {
+                SEMAPHORE_STORE.release();
+            }
+        } else {
+            return false;
+        }
+    }
+        
+    /**
+     * Armazenamento de cache em disco.
+     */
+    private static void storeCache() {
+        try {
+            SEMAPHORE_STORE.acquire();
+            try {
+                storeAll(false, false);
+            } finally {
+                SEMAPHORE_STORE.release();
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        }
+    }
+    
+    private static void storeAll(boolean simplify, boolean clone) {
         Client.store();
         User.store();
         Owner.store();
@@ -151,18 +174,19 @@ public abstract class Server extends Thread {
         Peer.store();
         Analise.store();
         Reverse.store();
-        Block.store();
+        Generic.store();
+        Block.store(simplify);
         White.store();
         Trap.store();
         Ignore.store();
         Provider.store();
-        SPF.store();
+        SPF.store(clone);
         NoReply.store();
         Defer.store();
         QueryDNSBL.store();
         System.gc();
     }
-    
+
     private static SecretKey privateKey = null;
     
     private static SecretKey getPrivateKey() {
@@ -230,6 +254,21 @@ public abstract class Server extends Thread {
         }
     }
     
+    public static String encryptURLSafe(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
+                byte[] code = cipher.doFinal(byteArray);
+                return Core.BASE64.encodeAsString(code);
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
     public static String decrypt(String code) throws ProcessException {
         if (code == null) {
             return null;
@@ -239,6 +278,20 @@ public abstract class Server extends Thread {
                 cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
                 byte[] message = cipher.doFinal(Base64Coder.decode(code));
                 return new String(message, "UTF8");
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: DECRYPTION", ex);
+            }
+        }
+    }
+    
+    public static byte[] decryptToByteArrayURLSafe(String code) throws ProcessException {
+        if (code == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
+                return cipher.doFinal(Core.BASE64.decode(code));
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: DECRYPTION", ex);
             }
@@ -269,7 +322,7 @@ public abstract class Server extends Thread {
      * portanto é necessário utilizar sincronismo
      * nos métodos que o utilizam.
      */
-    private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+    private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     
     /**
      * Constante de formatação da data no ticket.
@@ -497,6 +550,10 @@ public abstract class Server extends Thread {
      */
     public static void logDebug(String message) {
         log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG", message, (String) null);
+    }
+    
+    public static void logSendMTP(String message) {
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "SMTPS", message, (String) null);
     }
     
     /**
@@ -758,7 +815,16 @@ public abstract class Server extends Thread {
             long time,
             String type,
             String client,
-            String query, String result) {
+            String query,
+            String result
+    ) {
+        if (result != null && result.length() > 1024) {
+            int index1 = result.indexOf('\n', 1024);
+            int index2 = result.indexOf(' ', 1024);
+            int index = Math.min(index1, index2);
+            index = Math.max(index, 1024);
+            result = result.substring(0, index) + "... too long";
+        }
         log(time, Core.Level.INFO, type, (client == null ? "" : client + ": ") + query, result);
     }
     
@@ -1079,7 +1145,7 @@ public abstract class Server extends Thread {
         try {
             String result = "";
             if (query.length() == 0) {
-                result = "ERROR: QUERY\n";
+                result = "INVALID QUERY\n";
             } else {
                 StringTokenizer tokenizer = new StringTokenizer(query, " ");
                 String token = tokenizer.nextToken();
@@ -1122,7 +1188,7 @@ public abstract class Server extends Thread {
                         }
                     }
                 } else {
-                    result = "ERROR: QUERY\n";
+                    result = "INVALID QUERY\n";
                 }
             }
             return result;

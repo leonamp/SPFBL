@@ -10,12 +10,33 @@
 # será adicionado com o resultado do SPFBL.
 #
 # Para implementar este script no Postfix,
-# adicione as seguintes linhas no arquivo master.cf:
+# salve este arquivo em: /etc/postfix/
 #
-#    policy-spfbl  unix  -       n       n       -       -       spawn
-#        user=nobody argv=/usr/bin/spfblquery.pl
+# Adicione em: /etc/postfix/master.cf
 #
-# Última alteração: 22/08/2016 11:07
+# policy-spfbl  unix  -       n       n       -       -       spawn
+#	user=nobody argv=/usr/bin/perl /etc/postfix/spfblpostfix.pl
+#
+# Altere ou adicione em: /etc/postfix/main.cf
+#
+# smtpd_recipient_restrictions =
+#	permit_mynetworks,
+#	permit_sasl_authenticated,
+#	permit_tls_clientcerts,
+#	reject_unknown_client_hostname,
+#	reject_unknown_reverse_client_hostname,
+#	reject_non_fqdn_sender,
+#	reject_non_fqdn_recipient,
+#	reject_unknown_sender_domain,
+#	reject_unknown_recipient_domain,
+#	reject_invalid_hostname,
+#	reject_non_fqdn_hostname,
+#	reject_unauth_pipelining,
+#	reject_unauth_destination,
+#	check_policy_service unix:private/policy-spfbl,
+#	permit
+#
+# Última alteração: 05/10/2016 12:13
 
 use strict;
 use warnings;

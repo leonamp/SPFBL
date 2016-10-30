@@ -699,14 +699,6 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else if (key.equals("created")) {
             if (created == null) {
                 return null;
-            } else if (created.getYear() > new Date().getYear()) {
-                // Correção temporária devido a uma 
-                // falha em capturar o valor do WHOIS.
-                return null;
-            } else if (created.getYear() < 1990) {
-                // Correção temporária devido a uma 
-                // falha em capturar o valor do WHOIS.
-                return null;
             } else {
                 return DATE_FORMATTER.format(created);
             }

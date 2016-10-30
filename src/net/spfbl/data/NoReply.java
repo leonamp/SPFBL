@@ -94,7 +94,7 @@ public class NoReply {
 
     public static boolean add(String address) throws ProcessException {
         if ((address = normalize(address)) == null) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
+            throw new ProcessException("RECIPIENT INVALID");
         } else if (addExact(address)) {
             return true;
         } else {
@@ -114,7 +114,7 @@ public class NoReply {
 
     public static boolean drop(String address) throws ProcessException {
         if ((address = normalize(address)) == null) {
-            throw new ProcessException("ERROR: RECIPIENT INVALID");
+            throw new ProcessException("RECIPIENT INVALID");
         } else if (dropExact(address)) {
             return true;
         } else {

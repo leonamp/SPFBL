@@ -29,6 +29,7 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import net.spfbl.data.Generic;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.spf.SPF.Status;
@@ -48,12 +49,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     private final String address; // Endereço de acesso ao peer.
     private short port; // Porta de acesso ao peer.
-    private Send send = Send.NEVER; // Status de envio para este peer.
-    private Receive receive = Receive.REJECT; // Status de recebimento deste peer.
+    private Send send = Send.REPUTATION; // Status de envio para este peer.
+    private Receive receive = Receive.DROP; // Status de recebimento deste peer.
     private String email = null; // E-mail do responsável.
     private int limit = 100;
     private NormalDistribution frequency = null;
     private long last = 0; // Último recebimento.
+    private long create = System.currentTimeMillis(); // Data de criação.
     
     /**
      * Tabela de reputação do peer.
@@ -74,7 +76,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
             this.frequency = other.frequency.replicate();
         }
         this.last = other.last;
-        this.reputationMap2.putAll(other.reputationMap2);
+        this.create = other.create;
+        this.reputationMap2.putAll(other.getReputationMap());
     }
     
     /**
@@ -97,6 +100,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         REJECT, // Ignora todos os bloqueios recebidos.
         DROP, // Decarta todos os bloqueios recebidos e manda o firewall dropar.
         CONFIRM, // Obsoleto.
+        REPUTATION, // Aceitar somente tabela de reputação.
         RETAIN, // Retém todos os bloqueios recebidos para confirmação.
         REPASS, // Aceita e repassa imediatamente os bloqueios.
         MIRROR // Trata o peer como espelho no recebimento.
@@ -107,13 +111,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
             this.address = Domain.extractHost(address, false);
             this.setPort(port);
         } else {
-            throw new ProcessException("ERROR: INVALID PEER");
+            throw new ProcessException("INVALID PEER");
         }
     }
     
     public boolean setPort(int port) throws ProcessException {
         if (port < 1024 || port >= 49152) {
-            throw new ProcessException("ERROR: INVALID PORT");
+            throw new ProcessException("INVALID PORT");
         } else if (this.port != port) {
             this.port = (short) port;
             CHANGED = true;
@@ -128,7 +132,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             int portInt = Integer.parseInt(port);
             return setPort(portInt);
         } catch (NumberFormatException ex) {
-            throw new ProcessException("ERROR: INVALID PORT", ex);
+            throw new ProcessException("INVALID PORT", ex);
         }
     }
     
@@ -182,7 +186,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 CHANGED = true;
             }
         } else {
-            throw new ProcessException("ERROR: INVALID EMAIL");
+            throw new ProcessException("INVALID EMAIL");
         }
     }
     
@@ -232,7 +236,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public synchronized Binomial getBinomial(String key) {
+    public Binomial getBinomial(String key) {
         return reputationMap2.get(key);
     }
     
@@ -264,7 +268,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return returnSet;
     }
     
-    public synchronized boolean dropExact(String token) {
+    public boolean dropExact(String token) {
         return retainSet.remove(token);
     }
     
@@ -390,17 +394,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
         peerNew.limit = this.limit;
         peerNew.frequency = this.frequency.replicate();
         peerNew.last = this.last;
+        peerNew.create = this.create;
         return peerNew;
     }
     
-    public synchronized static Peer create(
+    public static Peer create(
             String hostname, String port
             ) throws ProcessException {
         try {
             int portInt = Integer.parseInt(port);
             return create(hostname, portInt);
         } catch (NumberFormatException ex) {
-            throw new ProcessException("ERROR: INVALID PORT", ex);
+            throw new ProcessException("INVALID PORT", ex);
         }
     }
     
@@ -418,7 +423,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public synchronized static TreeSet<Peer> getSet() {
+    public static TreeSet<Peer> getSet() {
         TreeSet<Peer> peerSet = new TreeSet<Peer>();
         peerSet.addAll(MAP.values());
         return peerSet;
@@ -504,7 +509,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return peerSet;
     }
     
-    public synchronized static Peer drop(String address) {
+    public static Peer drop(String address) {
         Peer peer = MAP.remove(address);
         if (peer != null) {
             CHANGED = true;
@@ -512,7 +517,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return peer;
     }
     
-    public synchronized static Peer get(String address) {
+    public static Peer get(String address) {
         if (address == null) {
             return null;
         } else {
@@ -524,12 +529,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
         String ip = inetAddress.getHostAddress();
         ip = Subnet.normalizeIP(ip);
         for (Peer peer : getSet()) {
-            try {
-                if (ip.equals(peer.getIP())) {
-                    return peer;
-                }
-            } catch (UnknownHostException ex) {
-                Server.logDebug("peer '" + peer.getAddress() + "' has unknown host.");
+//            try {
+//                if (ip.equals(peer.getIP())) {
+//                    return peer;
+//                }
+//            } catch (UnknownHostException ex) {
+//                Server.logDebug("peer '" + peer.getAddress() + "' has unknown host.");
+//            }
+            if (SPF.matchHELO(ip, peer.getAddress())) {
+                return peer;
             }
         }
         return null;
@@ -635,7 +643,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
      * @param distribuiton 
      */
     public static void sendToAll(String token, Distribution distribuiton) {
-        if (isValid(token)) {
+        if (isValidReputation(token)) {
             long time = System.currentTimeMillis();
             if (Core.hasPeerConnection()) {
                 int[] binomial;
@@ -737,6 +745,22 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    private static boolean isValidReputation(String token) {
+        if (token == null || token.length() == 0) {
+            return false;
+        } else if (Subnet.isValidIP(token)) {
+            return true;
+        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
+            return true;
+        } else if (token.contains("@") && Domain.isEmail(token)) {
+            return true;
+        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     public static void sendToMirros(String command) {
         long time = System.currentTimeMillis();
         if (Core.hasPeerConnection()) {
@@ -771,7 +795,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return receive == Receive.REPASS;
     }
     
-    private synchronized boolean addRetain(String token) {
+    private boolean addRetain(String token) {
         return retainSet.add(token);
     }
     
@@ -779,6 +803,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
         try {
             if (!isValid(token)) {
                 return "INVALID";
+            } else if (Generic.contains(token)) {
+                return "GENERIC";
             } else if (Domain.isReserved(token)) {
                 return "RESERVED";
             } else if (Ignore.contains(token)) {
@@ -923,6 +949,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } catch (Exception ex) {
                 Server.logError(ex);
             }
+        } else {
+            try {
+                Peer matrix = Peer.create("matrix.spfbl.net", 9877);
+                matrix.setReceiveStatus(Receive.ACCEPT);
+                matrix.setSendStatus(Send.REPUTATION);
+                matrix.sendHELO();
+            } catch (ProcessException ex) {
+                Server.logError(ex);
+            }
         }
     }
     
@@ -1038,14 +1073,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    protected synchronized String setReputation(
+    protected String setReputation(
             String key,
             String ham,
             String spam
     ) {
         try {
-            if (!isValid(key)) {
+            if (!isValidReputation(key)) {
                 return "INVALID";
+            } else if (Generic.contains(key)) {
+                return "GENERIC";
             } else if (Domain.isReserved(key)) {
                 return "RESERVED";
             } else if (isReceiveReject()) {
@@ -1055,6 +1092,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } else {
                 int hamInt = Integer.parseInt(ham);
                 int spamInt = Integer.parseInt(spam);
+                int total = hamInt + spamInt;
+                if (total > 512) {
+                    float proporcion = 512.0f / total;
+                    hamInt = (int) (hamInt * proporcion);
+                    spamInt = (int) (spamInt * proporcion);
+                }
                 Binomial binomial;
                 if (hamInt == 0 && spamInt == 0) {
                     binomial = reputationMap2.remove(key);
@@ -1089,7 +1132,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public boolean isExpired7() {
-        return System.currentTimeMillis() - last > 604800000;
+        return System.currentTimeMillis() - last > 604800000 &&
+                System.currentTimeMillis() - create > 604800000;
     }
     
     public static void dropExpired() {
@@ -1128,7 +1172,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return clearSet;
     }
     
-    private synchronized boolean containsReputationExact(String key) {
+    private boolean containsReputationExact(String key) {
         return reputationMap2.containsKey(key);
     }
     
@@ -1177,11 +1221,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return blockSet;
     }
     
-    private synchronized Binomial dropReputation(String key) {
+    private Binomial dropReputation(String key) {
         return reputationMap2.remove(key);
     }
     
-    private synchronized boolean clearReputation(String key) {
+    private boolean clearReputation(String key) {
         Binomial binomial = reputationMap2.get(key);
         if (binomial == null) {
              return false;
@@ -1214,9 +1258,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
         
         public synchronized void set(int ham, int spam) throws ProcessException {
             if (ham < 0) {
-                throw new ProcessException("ERROR: INVALID HAM VALUE");
+                throw new ProcessException("INVALID HAM VALUE");
             } else if (spam < 0) {
-                throw new ProcessException("ERROR: INVALID SPAM VALUE");
+                throw new ProcessException("INVALID SPAM VALUE");
             } else if (this.ham != ham || this.spam != spam) {
                 this.ham = ham;
                 this.spam = spam;
@@ -1225,15 +1269,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
             }
         }
         
-        public synchronized int getSPAM() {
+        public int getSPAM() {
             return spam;
         }
         
-        public synchronized int getHAM() {
+        public int getHAM() {
             return ham;
         }
         
-        public synchronized Status getStatus() {
+        public Status getStatus() {
             return status;
         }
         
@@ -1248,15 +1292,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
             }
         }
         
-        public synchronized boolean isExpired3() {
+        public boolean isExpired3() {
             return System.currentTimeMillis() - last > 259200000;
         }
 
-        public synchronized boolean isExpired7() {
+        public boolean isExpired7() {
             return System.currentTimeMillis() - last > 604800000;
         }
 
-        public synchronized boolean hasLastUpdate() {
+        public boolean hasLastUpdate() {
             return last > 0;
         }
         

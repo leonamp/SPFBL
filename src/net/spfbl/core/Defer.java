@@ -136,6 +136,17 @@ public class Defer implements Serializable, Comparable<Defer> {
         return new Date(start);
     }
     
+    public static Defer getDefer(long start, String id) {
+        Defer defer = Defer.getExact(id);
+        if (defer == null) {
+            return null;
+        } else if (defer.start == start) {
+            return defer;
+        } else {
+            return null;
+        }
+    }
+    
     public static Defer getDefer(Date start, String id) {
         Defer defer = Defer.getExact(id);
         if (defer == null) {

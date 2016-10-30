@@ -259,17 +259,14 @@ public final class SubnetIPv6 extends Subnet {
         }
         k = 7;
         count = 8 - count; // Calcula quantos blocos faltaram.
-        endIndex = ip.length();
+        endIndex = ip.length()-1;
         // Converte invertido do final ao inicio.
         while (count-- > 0 && (beginIndex = ip.lastIndexOf(':', endIndex)) != -1) {
             if (beginIndex == endIndex) {
                 // Encontrou a abreviação central.
                 break;
-            } else if (beginIndex+1 == endIndex) {
-                // Final abreviado.
-                break;
             } else {
-                String block = ip.substring(beginIndex+1, endIndex);
+                String block = ip.substring(beginIndex+1, endIndex+1);
                 address[k--] |= Integer.valueOf(block, 16);
                 endIndex = beginIndex - 1;
             }

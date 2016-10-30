@@ -252,7 +252,7 @@ public class Provider {
     }
     
     private static void logTrace(long time, String message) {
-        Server.log(time, Core.Level.TRACE, "IGNOR", message, (String) null);
+        Server.log(time, Core.Level.TRACE, "PRVDR", message, (String) null);
     }
     
     private static boolean dropExact(String token) {
@@ -306,7 +306,9 @@ public class Provider {
     }
     
     private static String normalizeProvider(String token) throws ProcessException {
-        return SPF.normalizeToken(token, false, false, true, false, false);
+        return SPF.normalizeToken(token, false, false, true, false,
+//                false,
+                false);
     }
 
     public static boolean add(String address) throws ProcessException {
@@ -343,19 +345,36 @@ public class Provider {
         return CIDR.get(null, ip) != null;
     }
     
-    public static boolean containsDomain(String helo) {
-        helo = Domain.normalizeHostname(helo, true);
-        if (helo == null) {
+    public static boolean containsMX(String sender) {
+        if (sender == null) {
+            return false;
+        } else if (Domain.isEmail(sender)) {
+            int index = sender.indexOf('@');
+            return SET.contains(sender.substring(index));
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean containsDomain(String address) {
+        if (address == null) {
             return false;
         } else {
-            do {
-                int index = helo.indexOf('.') + 1;
-                helo = helo.substring(index);
-                if (SET.contains('.' + helo)) {
-                    return true;
-                }
-            } while (helo.contains("."));
-            return false;
+            int index = address.indexOf('@') + 1;
+            address = address.substring(index);
+            String hostname = Domain.normalizeHostname(address, true);
+            if (hostname == null) {
+                return false;
+            } else {
+                do {
+                    index = hostname.indexOf('.') + 1;
+                    hostname = hostname.substring(index);
+                    if (SET.contains('.' + hostname)) {
+                        return true;
+                    }
+                } while (hostname.contains("."));
+                return false;
+            }
         }
     }
 

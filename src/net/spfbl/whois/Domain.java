@@ -34,6 +34,7 @@ import java.util.StringTokenizer;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
+import javax.naming.InvalidNameException;
 import javax.naming.NameNotFoundException;
 import javax.naming.ServiceUnavailableException;
 import net.spfbl.core.Core;
@@ -350,14 +351,42 @@ public class Domain implements Serializable, Comparable<Domain> {
         } else {
             address = address.trim();
             address = address.toLowerCase();
-            return Pattern.matches(
+            if (Pattern.matches(
                     "^"
                     + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
                     + "@"
                     + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
                     + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
                     + "$", address
-                    );
+                    )) {
+                int index = address.indexOf('@');
+                String domain = address.substring(index+1);
+                return Domain.isHostname(domain);
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    public static boolean isValidEmail(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            address = address.trim();
+            address = address.toLowerCase();
+            if (Pattern.matches(
+                    "^[0-9a-zA-Z._-]+"
+                    + "@"
+                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+                    + "$", address
+                    )) {
+                int index = address.indexOf('@');
+                String domain = address.substring(index+1);
+                return Domain.isHostname(domain);
+            } else {
+                return false;
+            }
         }
     }
     
@@ -495,6 +524,9 @@ public class Domain implements Serializable, Comparable<Domain> {
                     if (line.startsWith("domain:")) {
                         int index = line.indexOf(':') + 1;
                         domainResult = line.substring(index).trim();
+                        // Remove a versão de domínios com acentuação.
+                        index = domainResult.lastIndexOf(' ') + 1;
+                        domainResult = domainResult.substring(index);
                         // Descobre o TLD do domínio e adiciona no conjunto.
                         index = domainResult.indexOf('.');
                         String tld = domainResult.substring(index);
@@ -717,14 +749,6 @@ public class Domain implements Serializable, Comparable<Domain> {
             return billing_c;
         } else if (key.equals("created")) {
             if (created == null) {
-                return null;
-            } else if (created.getYear() > new Date().getYear()) {
-                // Correção temporária devido a uma 
-                // falha em capturar o valor do WHOIS.
-                return null;
-            } else if (created.getYear() < 1990) {
-                // Correção temporária devido a uma 
-                // falha em capturar o valor do WHOIS.
                 return null;
             } else {
                 return DATE_FORMATTER.format(created);
@@ -1038,6 +1062,8 @@ public class Domain implements Serializable, Comparable<Domain> {
             Server.logCheckDNS(time, host, "TIMEOUT");
         } catch (ServiceUnavailableException ex) {
             Server.logCheckDNS(time, host, "SERVFAIL");
+        } catch (InvalidNameException ex) {
+            Server.logCheckDNS(time, host, "INVALID");
         } catch (Exception ex) {
             // Houve uma falha indefinida para encontrar os registros.
             Server.logError(ex);
@@ -1186,7 +1212,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 MAP.put(domain.getDomain(), domain);
                 DOMAIN_CHANGED = true;
             } catch (ProcessException ex) {
-                if (ex.getMessage().equals("ERROR: RESERVED")) {
+                if (ex.isErrorMessage("RESERVED")) {
                     // A chave de busca é um TLD.
                     if (TLD_SET.add(host)) {
                         // Atualiza flag de atualização.
@@ -1312,7 +1338,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             DOMAIN_CHANGED = true;
             return domain;
         } catch (ProcessException ex) {
-            if (ex.getMessage().equals("ERROR: RESERVED")) {
+            if (ex.isErrorMessage("RESERVED")) {
                 // A chave de busca é um TLD.
                 if (TLD_SET.add(host)) {
                     // Atualiza flag de atualização.

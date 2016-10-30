@@ -29,6 +29,7 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
+import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.data.Block;
@@ -158,10 +159,12 @@ public final class QuerySPF extends Server {
                     String type = "SPFBL";
                     String query = null;
                     String result = null;
+                    InetAddress ipAddress = socket.getInetAddress();
+                    Client client = null;
+                    User user = null;
                     try {
-                        InetAddress ipAddress = socket.getInetAddress();
-                        Client client = Client.get(ipAddress);
-                        User user = client == null ? null : client.getUser();
+                        client = Client.get(ipAddress);
+                        user = client == null ? null : client.getUser();
                         InputStream inputStream = socket.getInputStream();
                         InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
                         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
@@ -192,9 +195,11 @@ public final class QuerySPF extends Server {
                                     }
                                 } while ((line = bufferedReader.readLine()).length() > 0);
                                 query += "\\n";
+                                LinkedList<User> userResult = new LinkedList<User>();
                                 result = SPF.processPostfixSPF(
-                                        ipAddress, client, user, ip, sender, helo, recipient
+                                        ipAddress, client, user, ip, sender, helo, recipient, userResult
                                         );
+                                user = userResult.isEmpty() ? user : userResult.getLast();
                             } else {
                                 StringTokenizer tokenizer = new StringTokenizer(line, " ");
                                 String token = tokenizer.nextToken();
@@ -212,6 +217,7 @@ public final class QuerySPF extends Server {
                                 if (result != null) {
                                     // Houve erro de OTP.
                                 } else if (token.equals("VERSION")) {
+                                    query = token;
                                     result = Core.getAplication() + "\n";
                                 } else if (line.startsWith("BLOCK ADD ")) {
                                     query = line.substring(6).trim();
@@ -237,7 +243,7 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.startsWith("BLOCK DROP ")) {
                                     query = line.substring(6).trim();
@@ -263,14 +269,14 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.equals("BLOCK SHOW ALL")) {
                                     query = line.substring(6).trim();
                                     type = "BLOCK";
                                     // Mecanismo de visualização de bloqueios de remetentes.
                                     StringBuilder builder = new StringBuilder();
-                                    for (String sender : Block.getAll(client)) {
+                                    for (String sender : Block.getAll(client, null)) {
                                         builder.append(sender);
                                         builder.append('\n');
                                     }
@@ -283,7 +289,7 @@ public final class QuerySPF extends Server {
                                     type = "BLOCK";
                                     // Mecanismo de visualização de bloqueios de remetentes.
                                     StringBuilder builder = new StringBuilder();
-                                    for (String sender : Block.get(client)) {
+                                    for (String sender : Block.get(client, null)) {
                                         builder.append(sender);
                                         builder.append('\n');
                                     }
@@ -297,25 +303,41 @@ public final class QuerySPF extends Server {
                                     // Mecanismo de remoção de bloqueio de remetente.
                                     line = line.substring(11);
                                     tokenizer = new StringTokenizer(line, " ");
-                                    while (tokenizer.hasMoreElements()) {
-                                        try {
+                                    if (tokenizer.hasMoreTokens()) {
+                                        token = tokenizer.nextToken();
+                                        String ticket = null;
+                                        String userEmail = SPF.getClientURLSafe(token);
+                                        if (userEmail == null) {
+                                            userEmail = client == null ? null : client.getEmail();
+                                        } else if (tokenizer.hasMoreTokens()) {
+                                            ticket = token;
                                             token = tokenizer.nextToken();
-                                            String block = Block.find(client, token, false);
-                                            if (result == null) {
-                                                result = (block == null ? "NONE" : block) + "\n";
-                                            } else {
-                                                result += (block == null ? "NONE" : block) + "\n";
-                                            }
-                                        } catch (Exception ex) {
-                                            if (result == null) {
-                                                result = ex.getMessage() + "\n";
-                                            } else {
-                                                result += ex.getMessage() + "\n";
-                                            }
+                                        } else {
+                                            ticket = token;
+                                            token = null;
                                         }
+                                        user = User.get(userEmail);
+                                        do {
+                                            String block = Block.find(userEmail, token, false);
+                                            if (block == null) {
+                                                result = "NONE\n";
+                                            } else if (ticket == null) {
+                                                result = block + "\n";
+                                                break;
+                                            } else {
+                                                try {
+                                                    SPF.addComplainURLSafe(userEmail, ticket, "REJECT");
+                                                    result = block + "\n";
+                                                    break;
+                                                } catch (ProcessException ex) {
+                                                    result = "INVALID TICKET\n";
+                                                    break;
+                                                }
+                                            }
+                                        } while (tokenizer.hasMoreElements() && (token = tokenizer.nextToken()) != null);
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.startsWith("TRAP ADD ")) {
                                     query = line.substring(5).trim();
@@ -341,7 +363,7 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.startsWith("TRAP DROP ")) {
                                     query = line.substring(5).trim();
@@ -367,7 +389,7 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.equals("TRAP SHOW")) {
                                     query = line.substring(5).trim();
@@ -406,7 +428,7 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.startsWith("WHITE DROP ")) {
                                     query = line.substring(6).trim();
@@ -432,32 +454,42 @@ public final class QuerySPF extends Server {
                                         }
                                     }
                                     if (result == null) {
-                                        result = "ERROR: COMMAND";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.startsWith("WHITE SENDER ")) {
                                     query = line.substring(13).trim();
                                     type = "WHITE";
                                     if (Domain.isEmail(query)) {
                                         String domain = Domain.extractHost(query, true);
-                                        if (Provider.containsExact(domain)) {
-                                            token = query;
+                                        if (client == null) {
+                                            result = "ERROR: UNDEFINED CLIENT\n";
+                                        } else if (!client.hasEmail()) {
+                                            result = "ERROR: CLIENT WITHOUT EMAIL\n";
+                                        } else if (Block.containsExact(client.getEmail() + ":" + query)) {
+                                            result = "BLOCKED AS " + query + "\n";
+                                        } else if (Block.containsExact(client.getEmail() + ":" + domain)) {
+                                            result = "BLOCKED AS " + domain + "\n";
                                         } else {
-                                            token = domain;
-                                        }
-                                        if (White.add(client, token)) {
-                                            result = "ADDED " + token + "\n";
-                                        } else {
-                                            result = "ALREADY EXISTS " + token + "\n";
+                                            if (Provider.containsExact(domain)) {
+                                                token = query;
+                                            } else {
+                                                token = domain;
+                                            }
+                                            if (White.add(client, token)) {
+                                                result = "ADDED " + token + "\n";
+                                            } else {
+                                                result = "ALREADY EXISTS " + token + "\n";
+                                            }
                                         }
                                     } else {
-                                        result = "ERROR: COMMAND\n";
+                                        result = "INVALID COMMAND\n";
                                     }
                                 } else if (line.equals("WHITE SHOW ALL")) {
                                     query = line.substring(6).trim();
                                     type = "WHITE";
                                     // Mecanismo de visualização de bloqueios de remetentes.
                                     StringBuilder builder = new StringBuilder();
-                                    for (String recipient : White.getAll(client)) {
+                                    for (String recipient : White.getAll(client, null)) {
                                         builder.append(recipient);
                                         builder.append('\n');
                                     }
@@ -470,7 +502,7 @@ public final class QuerySPF extends Server {
                                     type = "WHITE";
                                     // Mecanismo de visualização de bloqueios de remetentes.
                                     StringBuilder builder = new StringBuilder();
-                                    for (String recipient : White.get(client)) {
+                                    for (String recipient : White.get(client, null)) {
                                         builder.append(recipient);
                                         builder.append('\n');
                                     }
@@ -480,10 +512,16 @@ public final class QuerySPF extends Server {
                                     }
                                 } else {
                                     query = line.trim();
-                                    result = SPF.processSPF(ipAddress, client, user, query);
+                                    LinkedList<User> userResult = new LinkedList<User>();
+                                    result = SPF.processSPF(ipAddress, client, user, query, userResult);
+                                    user = userResult.isEmpty() ? user : userResult.getLast();
                                     if (query.startsWith("HAM ")) {
                                         type = "SPFHM";
                                     } else if (query.startsWith("SPAM ")) {
+                                        type = "SPFSP";
+                                    } else if (query.startsWith("LINK ")) {
+                                        type = "LINKF";
+                                    } else if (query.startsWith("MALWARE ")) {
                                         type = "SPFSP";
                                     } else if (query.startsWith("CHECK ")) {
                                         type = "SPFCK";
@@ -501,22 +539,29 @@ public final class QuerySPF extends Server {
                     } finally {
                         // Fecha conexão logo após resposta.
                         socket.close();
-                        InetAddress address = socket.getInetAddress();
                         // Log da consulta com o respectivo resultado.
-                        String origin;
-                        Client client = Client.get(address);
-                        if (client == null) {
-                            origin = address.getHostAddress();
-                        } else if (client.hasEmail()) {
+                        String origin = ipAddress.getHostAddress();
+                        if (client != null) {
                             client.addQuery();
-                            origin = address.getHostAddress()
-                                    + ' ' + client.getDomain()
-                                    + ' ' + client.getEmail();
-                        } else {
-                            client.addQuery();
-                            origin = address.getHostAddress()
-                                    + ' ' + client.getDomain();
+                            origin += ' ' + client.getDomain();
                         }
+                        if (user != null) {
+                            origin += ' ' + user.getEmail();
+                        } else if (client != null && client.hasEmail()) {
+                            origin += ' ' + client.getEmail();
+                        }
+//                        if (client == null) {
+//                            origin = ipAddress.getHostAddress();
+//                        } else if (client.hasEmail()) {
+//                            client.addQuery();
+//                            origin = ipAddress.getHostAddress()
+//                                    + ' ' + client.getDomain()
+//                                    + ' ' + client.getEmail();
+//                        } else {
+//                            client.addQuery();
+//                            origin = ipAddress.getHostAddress()
+//                                    + ' ' + client.getDomain();
+//                        }
                         Server.logQuery(
                                 time, type,
                                 origin,
