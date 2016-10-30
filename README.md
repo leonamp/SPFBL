@@ -693,13 +693,15 @@ O SPFBL possui um painel de controle simples para o usuário manipular corretame
 ![Panel](https://github.com/leonamp/SPFBL/blob/master/doc/panel.png "Painel de controle")
 
 Para usar o painel de controle, é necessário ter MTA cliente e usuário devidamente cadastrados:
-
 ```
 spfbl.sh client add <cidr> <zone> SPFBL <email>
 spfbl.sh user add <email> <name>
 ```
 
-Feito isso, o painel de controle pode ser acessado pela URL http://<hostname>/<email>
+Feito isso, o painel de controle pode ser acessado pela URL:
+```
+http://<hostname>/<email>
+```
 
 Na primeira vez que o usuário entrar nesta URL, o SPFBL iniciará um processo de cadastro TOTP, enviando um e-mail para o usuário com o QRcode contendo o segredo TOPT dele.
 
