@@ -1,9 +1,11 @@
-01/10/2016 correções de defeitos da versão 2.4.1:
+v.2.4.1 ; release 01/10/2016:
 
-*) inicialização do SPFBL em loop infinito se a lista de ANALISE estiver vazia;
+FIX) correção na inicialização do SPFBL quando a lista de ANALISE estiver vazia (loop - high CPU);
 
 
-30/10/2016 correções e melhorias da versão 2.4.0:
+v.2.4.0 ; release 30/10/2016:
+
+NEW) implementação do Painel de Controle - acesso web pelo navegador
 
 *) método de separação dos segmentos IPv6;
 
