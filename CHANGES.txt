@@ -43,7 +43,7 @@ NEW) implementação do Painel de Controle - acesso web pelo navegador
 
 *) implementação de autenticação TOTP para usuários;
 
-*) implementação do painel de controle para usuários, para manipulação de listas de bloquei e whitelist usando registros de consulta;
+*) implementação do painel de controle para usuários, para manipulação de listas de bloqueio e whitelist usando registros de consulta;
 
 *) confirmação de desbloqueio para remetente liberado pelo destinatário;
 
