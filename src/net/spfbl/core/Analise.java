@@ -179,7 +179,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static void initProcess() {
-        while (SEMAPHORE.tryAcquire()) {
+        while (getProcessTotal() > 0 && SEMAPHORE.tryAcquire()) {
             Process process = new Process();
             process.start();
         }
@@ -364,6 +364,14 @@ public class Analise implements Serializable, Comparable<Analise> {
      * Mapa de processos.
      */
     private static final HashMap<String,Analise> MAP = new HashMap<String,Analise>();
+    
+    private synchronized static int getProcessTotal() {
+        int total = 0;
+        for (Analise analise : MAP.values()) {
+            total += analise.processSet.size();
+        }
+        return total;
+    }
     
     public synchronized static TreeSet<Analise> getAnaliseSet() {
         TreeSet<Analise> queue = new TreeSet<Analise>();
@@ -1039,6 +1047,7 @@ public class Analise implements Serializable, Comparable<Analise> {
         private Process() {
             super("ANALISEPS");
             super.setPriority(MIN_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
         @Override
         public void run() {

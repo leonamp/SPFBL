@@ -65,6 +65,7 @@ public final class QuerySPF extends Server {
         // Criando conexões.
         Server.logDebug("binding SPF socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
+        Server.logTrace(getName() + " thread allocation.");
     }
 
     private int CONNECTION_ID = 1;
@@ -88,6 +89,7 @@ public final class QuerySPF extends Server {
         public Connection() {
             super("SPFTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             setPriority(Thread.MAX_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
 
         /**

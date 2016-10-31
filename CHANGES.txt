@@ -1,3 +1,8 @@
+01/10/2016 correções de defeitos da versão 2.4.1:
+
+*) inicialização do SPFBL em loop infinito se a lista de ANALISE estiver vazia;
+
+
 30/10/2016 correções e melhorias da versão 2.4.0:
 
 *) método de separação dos segmentos IPv6;

@@ -51,12 +51,13 @@ public final class QueryTCP extends Server {
      * @throws java.io.IOException se houver falha durante o bind.
      */
     public QueryTCP(int port) throws IOException {
-        super("ServerWHOISTCP");
+        super("WHOISTCPP");
         PORT = port;
         setPriority(Thread.MIN_PRIORITY);
         // Criando conexões.
         Server.logDebug("binding TCP socket on port " + port + "...");
         SERVER_SOCKET = new ServerSocket(port);
+        Server.logTrace(getName() + " thread allocation.");
     }
     
     private int CONNECTION_ID = 1;
@@ -81,6 +82,7 @@ public final class QueryTCP extends Server {
             super("WHSTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
         
         /**

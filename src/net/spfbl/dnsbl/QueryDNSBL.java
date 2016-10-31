@@ -265,6 +265,7 @@ public final class QueryDNSBL extends Server {
         Server.logDebug("binding DNSBL socket on port " + port + "...");
         PORT = port;
         SERVER_SOCKET = new DatagramSocket(port);
+        Server.logTrace(getName() + " thread allocation.");
     }
 
     private int CONNECTION_ID = 1;
@@ -288,6 +289,7 @@ public final class QueryDNSBL extends Server {
             super("DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.NORM_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
 
         /**

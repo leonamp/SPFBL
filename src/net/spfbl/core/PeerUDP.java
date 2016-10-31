@@ -58,6 +58,7 @@ public final class PeerUDP extends Server {
         SIZE = size - 20 - 8; // Tamanho máximo da mensagem já descontando os cabeçalhos de IP e UDP.
         // Criando conexões.
         SERVER_SOCKET = new DatagramSocket(port);
+        Server.logTrace(getName() + " thread allocation.");
     }
     
     public boolean hasConnection() {
@@ -103,6 +104,7 @@ public final class PeerUDP extends Server {
             super("P2PUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
         
         /**

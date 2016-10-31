@@ -178,6 +178,7 @@ public final class ServerHTTP extends Server {
         SERVER = HttpServer.create(new InetSocketAddress(port), 0);
         SERVER.createContext("/", new ComplainHandler());
         SERVER.setExecutor(null); // creates a default executor
+        Server.logTrace(getName() + " thread allocation.");
     }
     
     public String getURL() {

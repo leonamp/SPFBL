@@ -57,6 +57,7 @@ public final class QueryUDP extends Server {
         // Criando conexões.
         Server.logDebug("binding querie UDP socket on port " + port + "...");
         SERVER_SOCKET = new DatagramSocket(port);
+        Server.logTrace(getName() + " thread allocation.");
     }
     
     private int CONNECTION_ID = 1;
@@ -80,6 +81,7 @@ public final class QueryUDP extends Server {
             super("WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
+            Server.logTrace(getName() + " thread allocation.");
         }
         
         /**

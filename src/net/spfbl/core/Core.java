@@ -82,7 +82,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 4;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
