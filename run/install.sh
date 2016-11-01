@@ -184,6 +184,7 @@ if [ "$1" == "--install" ]; then
     VER=$DISTRIB_RELEASE
     # Chama instalação em plataforma DEBIAN
     echo -e "${V}\nPlataforma baseada em Debian: $OS ${R}"
+    echo -e "${V}\nO processo a seguir ira levar varios minutos ${R}"
     . /lib/lsb/init-functions
     instalaDebian
     preInstall
@@ -201,6 +202,7 @@ if [ "$1" == "--install" ]; then
     }
     # Chama instalação em plataforma RHEL
     echo -e "${V}\nPlataforma baseada em RHEL: $(OS) ${R}"
+    echo -e "${V}\nO processo a seguir ira levar varios minutos ${R}"
     . /etc/init.d/functions
     instalaRedhat
     preInstall
