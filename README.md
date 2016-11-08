@@ -381,37 +381,15 @@ Na segunda seção, temos o bloqueio encontrado para aquela consulta. Se houver 
 
 Na terceira seção, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
 
-##### Integração Postfix
 
-O SPFBL tem integração nativa com o Postfix a partir da versão 3.
+##### Integração com Dovecot
 
-Para utilizar o serviço SPFBL pelo Postfix a partir da versão 3, basta adicionar a seguinte linha no arquivo main.cf:
-```
-check_policy_service {
-	inet:<IP_do_servidor_SPFBL>:9877,
-	timeout=10s,
-	default_action=DEFER
-}
-```
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Dovecot---SPFBL
 
-Para utilizar o serviço SPFBL pelo Postfix a antes da versão 3, basta adicionar as seguintes linhas no arquivo master.cf:
-```
-policy-spfbl  unix  -       n       n       -       -       spawn
-   user=nobody argv=/caminho/do/script/spfblpostfix.pl
-```
-Depois disto, adicione a seguinte linha na seção "smtpd_recipient_restrictions" do arquivo main.cf:
-```
-check_policy_service unix:private/policy-spfbl
-```
 
-Após todas configurações, dê o comando reload ou restart no Postfix.
+##### Integração com Postfix
 
-O script pode ser obtido na pasta "./client" deste projeto. Basta alterar o IP do servidor SPFBL dentro dele.
-
-O administrador deve ficar atento à seguinte linha de configuração do arquivo master.cf, pois a mesma deve permenecer comentada:
-```
-# -o soft_bounce=yes
-```
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 ##### Integração Zimbra
 
