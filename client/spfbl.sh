@@ -40,10 +40,10 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 OTP_SECRET=""
 DUMP_PATH="/tmp"
-QUERY_TIMEOUT="10"
+QUERY_TIMEOUT="20"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.6"
+version="2.8"
 
 head()
 {
@@ -1728,7 +1728,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 spam [ticketid or file]\n"
 		else
-                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
+                        if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
@@ -1740,12 +1740,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K([0-9a-zA-Z:/._-]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z_-]+)" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1857,7 +1857,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 malware [ticketid or file]\n"
 		else
-                        if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
+                        if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
                                 # O parâmentro é uma URL de denúncia SPFBL.
                                 url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
@@ -1869,12 +1869,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -1971,6 +1971,95 @@ case $1 in
 			fi
 		fi
 	;;
+	'header')
+		# Códigos de saída:
+		#
+		#    0: nenhum bloqueio encontrado.
+		#    1: pelo meno um endereço está bloqueado e o ticket foi denunciado.
+		#    2: timeout de conexão.
+		#    3: consulta inválida.
+		#   17: remetente colocado em lista branca.
+
+		if [ $# -lt "3" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
+		else
+			ticket=$2
+			from=$3
+			replyto=$4
+			subject=$5
+			unsubscribe=$6
+
+			response=$(echo "HEADER $ticket $from $replyto $subject $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+			if [[ $response == "" ]]; then
+				response="TIMEOUT"
+			fi
+
+			echo "$response"
+
+			if [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "CLEAR" ]]; then
+				exit 0
+			elif [[ $response == "WHITE" ]]; then
+				exit 17
+			elif [[ $response == "BLOCKED"* ]]; then
+				exit 1
+			else
+				exit 3
+			fi
+		fi
+	;;
+	'holding')
+		which exigrep > /dev/null
+
+		if [ $? -eq 0 ]; then
+
+			list=$(exiqgrep -z | egrep -o "([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}")
+
+			if [ $? -eq 0 ]; then
+
+				while read -r message; do
+
+					ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: HOLD (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+
+					if [ $? -eq 0 ]; then
+
+						response=$(echo $OTP_CODE"HOLDING $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+						if [[ $response == "" ]]; then
+
+							# Manter a mensagem congelada.
+							echo "Message $message keep frozen."
+
+						elif [[ $response == "WHITE" ]]; then
+
+							# Liberar a mensagem congelada.
+							exim -Mt $message
+							exim -M $message
+
+						elif [[ $response == "ERROR" ]]; then
+
+							# Manter a mensagem congelada.
+							echo "Message $message keep frozen."
+
+						elif [[ $response == "HOLD" ]]; then
+
+							# Manter a mensagem congelada.
+							echo "Message $message keep frozen."
+
+						else
+
+							# Remover a mensagem congelada.
+							exim -Mrm $message
+
+						fi
+					fi
+				done <<< "$list"
+			fi
+		fi
+	;;
 	'ham')
 		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
 		#
@@ -1992,7 +2081,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 ham [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/spam/[a-zA-Z0-9%_-]{44,1024}$ ]]; then
+			if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 	                        # O parâmentro é uma URL de denúncia SPFBL.
 	                        url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
@@ -2004,12 +2093,12 @@ case $1 in
 
 				if [ -e "$file" ]; then
 					# Extrai o ticket incorporado no arquivo.
-					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K([0-9a-zA-Z\+/=]+)$" $file)
+					ticket=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K([0-9a-zA-Z\+/=]+)$" $file)
 
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE) \K(http://.+/spam/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -2105,6 +2194,7 @@ case $1 in
 		#    NXDOMAIN: o domínio do remetente é inexistente.
 		#    INVALID: o endereço do remetente é inválido.
 		#    WHITE: aceitar imediatamente a mensagem.
+		#    HOLD: congelar a entrega da mensagem.
 		#
 		# Códigos de saída:
 		#
@@ -2126,6 +2216,7 @@ case $1 in
 		#    15: mensagem originada de uma rede local.
 		#    16: mensagem marcada como SPAM.
 		#    17: remetente em lista branca.
+		#    18: congelar mensagem.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -2158,6 +2249,8 @@ case $1 in
 				exit 15
 			elif [[ $qualifier == "FLAG"* ]]; then
 				exit 16
+			elif [[ $qualifier == "HOLD"* ]]; then
+				exit 18
 			elif [[ $qualifier == "SPAMTRAP" ]]; then
 				exit 11
 			elif [[ $qualifier == "BLOCKED"* ]]; then

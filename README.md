@@ -323,6 +323,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remetente não existe.
 * INVALID: rejeita o recebimento e informa à origem que o IP ou o endereço do remetente não é válido.
 * WHITE: aceita a mensagem e a encaminha imediatamente para roteamento sem passar por outros filtros, exceto antivírus.
+* HOLD: congelar a mensagem e aguardar pela definição do usuário.
 
 ##### Método de listagem
 
@@ -333,6 +334,17 @@ O SPFBL mantém uma flag de reputação para cada identificador. Esta flag tem t
 Quando a flag estiver no estado RED para o identificador, então o SPFBL retorna FLAG. Quando o MTA receber este retorno FLAG, deve incluir no cabeçalho a flag padrão do Spamassassin "X-Spam-Flag: YES" de modo ao MTA seguir o roteamento da mensagem para a pasta SPAM do usuário.
 
 Quando a flag estiver no estado YELLOW para o identificador, então o SPFBL retorna GREYLISTED para que o MTA atrase a mensagem até a finalização do greylisting.
+
+##### Sistema de feedback
+
+Devido à natureza descentralizada do SPFBL, todo feedback é passado na própria camada SMTP. Isso facilita o trabalho do enviador pois ele não precisa se cadastrar, como ocorre em sistemas de feeback loop de grandes provedores. Tudo que ele precisa fazer é olhar nos registros de LOG do MTA de saída.
+
+O prefixo de rejeição do SPFBL segue este padrão e o uso deste prefixo é obrigatório para todos que utilizam o sistema SPFBL:
+```
+5.7.1 SPFBL <message>
+```
+
+A mensagem da rejeição deve esplicar o motivo da mesma de tal forma que o enviador seja capaz de tomar providências para reduzir o volume de envio de mensagens indesejadas na Internet.
 
 ##### Fluxo do SPFBL
 

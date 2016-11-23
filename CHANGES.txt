@@ -1,4 +1,4 @@
-v.2.4.1 ; release 01/10/2016:
+v.2.4.1 ; release 31/10/2016:
 
 FIX) correção na inicialização do SPFBL quando a lista de ANALISE estiver vazia (loop - high CPU);
 

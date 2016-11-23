@@ -52,7 +52,7 @@ my $CONFIG = {
         PeerHost => 'matrix.spfbl.net',
         PeerPort => 9877,
         Proto    => 'tcp',
-        Timeout  => 10,
+        Timeout  => 20,
     }
 };
 
@@ -100,6 +100,11 @@ while ( my $line = <STDIN> ) {
     elsif ( $result =~ /^FLAG/ ) {
         STDOUT->print(
             "action=PREPEND X-Spam-Flag: YES\n\n"
+        );
+    }
+    elsif ( $result =~ /^HOLD/ ) {
+        STDOUT->print(
+            "action=HOLD\n\n"
         );
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {
