@@ -6,7 +6,7 @@ O serviço SPFBL é uma junção dos conceitos de SPF e DNSBL.
 
 O propósito deste serviço é melhorar o processamento SPF e reduzir a quantidade de consultas externas de um servidor de e-mail, na qual utiliza SPF e pelo menos um serviço qualquer de DNSBL.
 
-Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh". Atenção! O script "spfbl.sh" necessita do pacote "netcat"instalado para funcionar corretamente.
+Uma vez iniciado o serviço, as consultas podem ser feitas por programas clientes, como por exemplo o script "spfbl.sh". Atenção! O script "spfbl.sh" necessita do pacote "netcat" (command "nc") instalado para funcionar corretamente.
 
 A listagem é realizada através do ticket SPFBL, que é enviado juntamente com o qualificador SPF da consulta:
 
@@ -33,14 +33,6 @@ Reclamação SPFBL enviada com sucesso.
 ```
 
 Cada denúncia expira em sete dias após a data de recebimento da mensagem e só pode ser denunciada até cinco dias após o recebimento.
-
-Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados, o volume diário de recebimento e o MTA utilizado pelos seus terminais MX para liberação do firewall.
-
-Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
-
-<a href="https://www.patreon.com/user?u=2430613&ty=h">Patreon SPFBL project</a>
-
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 ### Funcionalidades
 
@@ -617,11 +609,23 @@ Aqui vemos alguns pools em funcionamento para que novos membros possam se cadast
 
 Abertos:
 * MatrixDefense: leandro@spfbl.net
-* MX-Protection: gianspfbl@gmail.com
+* MX-Protection: gian.spfbl@gmail.com
 * Spamlet: noc@lhost.net.br
 * Papuda: antispam@stoppay.net
 
 Para se conectar, basta entrar em contato com cada administrador pelo endereço de e-mail e fazer a solicitação.
+
+
+### O desenvolvedor
+
+Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados, o volume diário de recebimento e o MTA utilizado pelos seus terminais MX para liberação do firewall.
+
+Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
+
+<a href="https://www.patreon.com/user?u=2430613&ty=h">Patreon SPFBL project</a>
+
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+
 
 ### Noticias sobre o SPFBL
 
@@ -634,6 +638,9 @@ Para se conectar, basta entrar em contato com cada administrador pelo endereço 
 <a href="http://www.abrahosting.org.br/Evento/RodadadeNegocios.html">01/09/2016 Abrahosting: participação do SPFBL.net na Rodada de Negócios.</a></br>
 
 <a href="http://multirbl.valli.org/lookup/">14/09/2016 Valli.org: O SPFBL.net entra na lista MultiRBL da valli.org.</a></br>
+
+<a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
+
 
 ### Forum de discussão SPFBL
 
