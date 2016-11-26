@@ -49,10 +49,10 @@ $| = 1;
 # configs
 my $CONFIG = {
     socket => {
-        PeerHost => 'matrix.spfbl.net',
-        PeerPort => 9877,
+        PeerHost => 'matrix.spfbl.net', # change to your hostname
+        PeerPort => '9877',
         Proto    => 'tcp',
-        Timeout  => 20,
+        Timeout  => '20',
     }
 };
 
@@ -190,7 +190,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-             "action=554 5.7.1 SPFBL $params->{sender} is not allowed to send mail from $params->{client_address}.\n\n"
+             "action=554 5.7.1 SPFBL Message rejected due to receiver policy for SPF fail. Please see http://www.openspf.net/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address} \n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {
