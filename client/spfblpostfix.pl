@@ -36,7 +36,7 @@
 #	check_policy_service unix:private/policy-spfbl,
 #	permit
 #
-# Última alteração: 05/10/2016 12:13
+# Última alteração: 26/11/2016 16:45
 
 use strict;
 use warnings;
@@ -50,9 +50,9 @@ $| = 1;
 my $CONFIG = {
     socket => {
         PeerHost => 'matrix.spfbl.net', # change to your hostname
-        PeerPort => '9877',
+        PeerPort => 9877,
         Proto    => 'tcp',
-        Timeout  => '20',
+        Timeout  => 20,
     }
 };
 
