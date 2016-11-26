@@ -94,140 +94,20 @@ O SPFBL mantém em cache todos os registros SPF encontrados e procura mantê-los
 
 Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue informações sobre o responsável pelo envio e a data que a consulta foi realizada. Este ticket pode ser utilizado para formalizar uma denúncia, que contabiliza para o responsável o peso de denúncia. Cada denúncia expira em sete dias após a data da consulta e não pode ser feita após cinco dias da consulta.
 
-##### Bloqueio permanente de remetentes
+##### Blocklist
 
-É possível bloquear remetentes permanentemente através da alteração de uma lista arbitrária onde o SPFBL realiza a denúncia automática e manda o MTA rejeitar a mensagem.
-
-As opções de bloqueio são:
-
-* Caixa postal: apenas a parte que antecede o arroba.
-* Domínio: apenas a parte que precede o arroba.
-* Remetente: o endereço completo do remetente.
-
-Para visualizar a lista de bloqueios arbitrários:
-```
-user:~# spfbl.sh block show
-EMPTY
-```
-
-Para adicionar um bloqueio arbitrário:
-```
-user:~# spfbl.sh block add <remetente>
-ADDED
-```
-
-Para remover um bloqueio arbitrário:
-```
-user:~# spfbl.sh block drop <remetente>
-DROPED
-```
-
-Os elementos que podem ser adicionados nesta lista são:
-* .tld[&gt;&lt;recipient&gt;]
-* .domain.ltd[&gt;&lt;recipient&gt;]
-* .sub.domain.tld[&gt;&lt;recipient&gt;]
-* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* IP[&gt;&lt;recipient&gt;]
-* CNPJ[&gt;&lt;recipient&gt;]
-* CPF[&gt;&lt;recipient&gt;]
-* CIDR=&lt;cidr&gt;
-* REGEX=&lt;java regex&gt;
-* WHOIS/&lt;field&gt;[/&lt;field&gt;...]\(=\|&lt;\|&gt;\)&lt;value&gt;
-* DNSBL=&lt;server&gt;;&lt;value&gt;
-
-Esta possibilidade de colocar um qualificador, significa que o bloqueio só será feito se o resultado SPF resultar neste qualificador. Exemplo: "@gmail.com;SOFTFAIL" bloqueia qualquer tentativa de envio com remetente *@gmail.com e o SPF deu SOFTFAIL.
-
-No caso do bloqueio por WHOIS, é possível definir criterios onde o domínio do remetente (somente .br) será consultado e a navegação pela estrutura de dados é feita pelo caracter "/". Exemplo: "WHOIS/owner-c=EJCGU" bloqueia todos os remetentes cujo domínio tenha no WHOIS o campo "owner-c" igual à "EJCGU". Se for usado os sinais "<" ou ">" e o campo for de data, então o SPFBL vai converter o valor do campo em um inteiro que representam a quantidade de dias que se passaram daquela data e comparar com o valor do critério. Este último consegue resolver o problema em que alguns spammers cadastram um novo owner para enviar SPAM. Para evitar isso, é possível bloquear owners novos, com menos de sete dias por exemplo, usando o bloqueio "WHOIS/owner-c/created<7".
-
-Deve ser utilizado o padrão Java para o bloqueio por REGEX: <http://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html>
-
-Para bloqueio por DNSBL, infomar o servidor em &lt;server&gt; e o valor positivo do mesmo em &lt;value&gt;, como exemplo padrão para &lt;value&gt; 127.0.0.2.
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-block
 
 ##### Spamtrap
 
-É possível adicionar destinatários na lista spamtrap do SPFBL.
-
-Sempre que o destinatário de uma consulta está na lista spamtrap, o SPFBL realiza a denúncia automática e manda o MTA descartar silencionsamente a mensagem.
-
-Para visualizar a lista de spamtrap:
-```
-user:~# spfbl.sh trap show
-EMPTY
-```
-
-Para adicionar um spamtrap:
-```
-user:~# spfbl.sh trap add <destinatário>
-ADDED
-```
-
-Para remover um spamtrap:
-```
-user:~# spfbl.sh trap drop <destinatário>
-DROPED
-```
-
-Os elementos que podem ser adicionados nesta lista são:
-* .tld
-* .domain.ltd
-* .sub.domain.tld
-* @domain.tld
-* @sub.domain.tld
-* recipient@domain.tld
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-trap
 
 ##### Whitelist
 
-É possível adicionar remetentes na lista branca.
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-white
 
-Para visualizar a lista branca:
-```
-user:~# spfbl.sh white show
-EMPTY
-```
 
-Para adicionar um remetente:
-```
-user:~# spfbl.sh white add <remetente>
-ADDED
-```
-
-Para remover um remetente:
-```
-user:~# spfbl.sh white drop <remetente>
-DROPED
-```
-
-Os elementos que podem ser adicionados nesta lista são:
-* .tld[&gt;&lt;recipient&gt;]
-* .domain.ltd[&gt;&lt;recipient&gt;]
-* .sub.domain.tld[&gt;&lt;recipient&gt;]
-* @domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* @sub.domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* sender@domain.tld[;&lt;qualifier&gt;][&gt;&lt;recipient&gt;]
-* IP[&gt;&lt;recipient&gt;]
-* CNPJ[&gt;&lt;recipient&gt;]
-* CPF[&gt;&lt;recipient&gt;]
-* CIDR=&lt;cidr&gt;
-* REGEX=&lt;java regex&gt;
-* WHOIS/&lt;field&gt;[/&lt;field&gt;...]=&lt;value&gt;
-
-Internamente esta lista aceita somente identificação de remetentes com qualificador. Portanto se nenhum qualificador for definido, a lista acatará o qualificador padrão PASS.
-
-Quando o SPF retorna FAIL, o fluxo SPFBL rejeita imediatamente a mensagem pois isso é um padrão SPF. Porém existem alguns casos específicos onde o administrador do domínio do remetente utiliza "-all" e não coloca todos os IPs de envio, resultando em falso FAIL. Neste caso, é possível resolver o problema, sem depender do tal administrador, adicionado o token "@domain.tld;zone.domain.tld" ou "@domain.tld;IP" nesta lista, onde o primeiro se refere à zona DNS do IP de origem na qual o remetente é considerado válido na liberação.
-
-Existe uma forma de incluir remetentes na whitelist onde o próprio SPFBL descobre se melhor incluir o remetente pelo domínio ou pelo endereço completo.
-
-Esta forma de inclusão, com operador "sender" invés de "add", o SPFBL verifica se o domínio deste remetente é um provedor de caixa postal e inclui o endereço completo se for, ou inclui o domínio se for email corporativo:
-```
-user:~# spfbl white sender leandro@spfbl.net
-ADDED @spfbl.net
-user:~# spfbl white sender user@gmail.com
-ADDED user@gmail.com
-```
+##### Automação da Whitelist
 
 Este script abaixo ajuda no processo de eliminação de falsos positivos usando o comando acima para incluir endereços onde os usuários do Postfix enviaram alguma mensagem para estes endereços:
 ```
@@ -437,44 +317,7 @@ O aplicativo irá gerar uma senha TOPT a cada minuto para que o usuário possa e
 
 ### Como iniciar o serviço SPFBL
 
-Para instalar o serviço, basta copiar os arquivos "./dist/SPFBL.jar" e "./run/spfbl.conf" do projeto em "/opt/spfbl/".
-
-Copie também e as pastas "./lib" e "./data/" do projeto em "/opt/spfbl/".
-
-Crie a pasta "/var/log/spfbl", se esta não existir, com permissões de leitura e escrita para o usuário que rodará o serviço.
-
-O script client "./client/spfbl.sh" deve ser copiado na pasta "/usr/local/bin" com permissão de execução.
-
-Quando todos os arquivos e pastas estiverem copiados, configure o serviço editando o arquivo "/opt/spfbl/spfbl.conf".
-
-Após a configuração, rode o serviço utilizando o seguinte comando na mesma pasta:
-
-```
-user:~# java -jar /opt/spfbl/SPFBL.jar &
-```
-
-Caso seja necessário iniciar o serviço com DNSBL, é importante lembrar que o sistema operacional pode requerer permissão especial:
-
-```
-user:~# sudo java -jar /opt/spfbl/SPFBL.jar &
-```
-
-O serviço necessita da JVM versão 6 instalada, ou superior, para funcionar corretamente.
-
-Nós disponibilizamos aqui uma lista de bloqueios atualizada pela rede SPFBL via P2P para um inicio de instalação:
-
-<https://github.com/leonamp/SPFBL/raw/master/doc/block.txt>
-
-Esta lista de bloqueios pode ser usada por conta e risco do novo administrador do serviço SPFBL, sendo que este administrdaor deve inserir a lista no SPFBL através de script próprio.
-
-### Como parar o serviço SPFBL
-
-Este este comando pode ser usado para parar o SPFBL:
-```
-user:~# spfbl.sh shutdown
-```
-
-O script de inicio e parada do SPFBL na inicialização do sistema operacional está sendo desenvolvido.
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---iniciar-o-servi%C3%A7o-SPFBL
 
 ### Descentralização do SPFBL
 
@@ -494,126 +337,11 @@ O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve
 
 ### Como cadastrar peers
 
-Para cadastrar um peer, primeiro é necessário que a máquina esteja rodando com um IP público e existir um hostname de aponte para este IP.
-
-Com posse do hostname da máquina, supondo que seja "sub.domain.tld", altere o arquivo de configuração "spfbl.conf", que deve ficar junto do arquivo executável JAR:
-```
-# Hostname that point to this server.
-# Define a valid hostname to use P2P network.
-hostname=sub.domain.tld
-```
-
-Descomente e defina também o e-mail de contato para questões P2P:
-```
-# Service administrator e-mail.
-# Uncoment to receive report of P2P problems.
-#admin_email=part@domain.tld
-```
-
-A porta escolhida para o serviço SPFBL trabalha com os dois protolocos, sendo TCP para consulta e UDP para P2P.
-
-O firewall deve estar com a porta UDP escolhida para o serviço SPFBL completamente aberta para entrada e saída.
-
-Após esta modificação, reinicie o serviço e rode este comando na porta administrativa para adicionar o peer, supondo que este peer seja "sub.domain2.tld:9877":
-```
-spfbl.sh peer add sub.domain2.tld:9877 <send> <receive>
-sub.domain2.tld:9877 <send> <receive> 0 DEAD >100ms UNDEFINED
-```
-
-A variável &lt;send&gt; pode admitir estes valores:
-* NEVER: nunca enviar anúncios para este peer.
-* ALWAYS: sempre enviar anúncios para este peer. 
-* REPASS: repassar imediatamente todos os anúncios aceitos dos demais peers para este peer.
-
-A variável &lt;receive&gt; pode admitir estes valores:
-* ACCEPT: aceitar todos os anúncios deste peer.
-* REJECT: rejeitar todos os anúncios deste peer.
-* DROP: dropar os pacotes deste peer (funcionalidade de firewall não implementada ainda).
-* RETAIN: reter todos os anúncios deste peer para confirmação posterior.
-* REPASS: repassar todos os anúncios deste peer para os demais peers.
-
-Assim que a inclusão estiver completa, o peer adicionado receberá um pacote de apresentação. Este pacote contém o hostname, porta e e-mail de contato do seu peer. No mesmo intante o peer remoto adcionará o seu na lista dele, onde os parâmetros de envio e recebimento estarão fechados por padrão.
-
-Assim que o administrador do peer remoto analisar este novo peer adicionado na lista dele, vai decidir por liberar ou não. A visualização da lista de peers pode ser feita executando o seguinte comando:
-```
-user:~# spfbl.sh peer show
-sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
-```
-
-Caso decida pela liberação, ele vai usar o seguinte comando, usando valores abertos para &lt;send&gt; e &lt;receive&gt;:
-```
-user:~# spfbl.sh peer set sub.domain.tld <send> <receive>
-sub.domain.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
-UPDATED SEND=<send>
-UPDATED RECEIVE=<receive>
-```
-
-Apartir da liberação, o peer dele vai passar a pingar no seu peer na frequência de uma hora, assim como o seu também fará o mesmo para ele, fazendo com que o status do peer passe a ficar ALIVE:
-```
-user:~# spfbl.sh peer show
-sub.domain2.tld:9877 NEVER REJECT 0 ALIVE >100ms UNDEFINED
-```
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-peer
 
 ### Como administrar listas de retenção dos peers
 
-Sempre que o status <receive> do peer for RETAIN, o SPFBL vai criar uma lista separada para aquele peer e guardar todos os identificadores que receber dele.
-
-Quando os peers tiverem identificadores retidos, a lista deles poderão ser vistas através deste comando:
-```
-user:~# spfbl.sh retention show (<peer>|all)
-```
-Exemplo:
-```
-user:~# spfbl.sh retention show all
-<peer1_hostame>:.br.netunoserver.net.br
-<peer1_hostame>:.carrosvermelhos.top
-<peer1_hostame>:.rdns-3.k7mail.com.br
-<peer1_hostame>:@carrosvermelhos.top
-<peer2_hostame>:.cloud2fun.com.br
-<peer2_hostame>:.cloudmask.com.br
-<peer2_hostame>:.cloversend.com.br
-<peer2_hostame>:.email-a.first.cloudmask.com.br
-<peer2_hostame>:.email.cloversend.com.br
-<peer2_hostame>:.first.cloudmask.com.br
-<peer2_hostame>:.marisa.email.cloversend.com.br
-<peer2_hostame>:@cloud2fun.com.br
-<peer2_hostame>:@email-a.first.cloudmask.com.br
-<peer3_hostame>:.br.netunoserver.net.br
-<peer3_hostame>:.carrosvermelhos.top
-<peer3_hostame>:.rdns-3.k7mail.com.br
-<peer3_hostame>:@carrosvermelhos.top
-```
-
-Para liberar todas as retenções, fazendo com que o SPFBL considere todos para BLOCK, utilie este comando:
-```
-user:~# spfbl.sh retention release (all|<identificador>)
-```
-Exemplo:
-```
-user:~# spfbl.sh retention release all
-<peer1_hostame>:.br.netunoserver.net.br => ADDED
-<peer1_hostame>:.carrosvermelhos.top => EXISTS
-<peer1_hostame>:.rdns-3.k7mail.com.br => ADDED
-<peer1_hostame>:@carrosvermelhos.top => EXISTS
-<peer2_hostame>:.cloud2fun.com.br => EXISTS
-<peer2_hostame>:.cloudmask.com.br => EXISTS
-<peer2_hostame>:.cloversend.com.br => EXISTS
-<peer2_hostame>:.email-a.first.cloudmask.com.br => EXISTS
-<peer2_hostame>:.email.cloversend.com.br => EXISTS
-<peer2_hostame>:.first.cloudmask.com.br => EXISTS
-<peer2_hostame>:.marisa.email.cloversend.com.br => EXISTS
-<peer2_hostame>:@cloud2fun.com.br => EXISTS
-<peer2_hostame>:@email-a.first.cloudmask.com.br => ADDED
-<peer3_hostame>:.br.netunoserver.net.br => EXISTS
-<peer3_hostame>:.carrosvermelhos.top => EXISTS
-<peer3_hostame>:.rdns-3.k7mail.com.br => EXISTS
-<peer3_hostame>:@carrosvermelhos.top => EXISTS
-```
-
-Para rejeitar os identificadores retidos, utilize este comando:
-```
-user:~# spfbl.sh retention reject (ALL|<identificador>)
-```
+https://github.com/leonamp/SPFBL/wiki/peer---dministrando-listas-de-reten%C3%A7%C3%A3o
 
 ### Pools conhecidos em funcionamento
 
