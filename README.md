@@ -341,7 +341,7 @@ https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-peer
 
 ### Como administrar listas de retenção dos peers
 
-https://github.com/leonamp/SPFBL/wiki/peer---dministrando-listas-de-reten%C3%A7%C3%A3o
+https://github.com/leonamp/SPFBL/wiki/peer---administrando-listas-de-reten%C3%A7%C3%A3o
 
 ### Pools conhecidos em funcionamento
 
