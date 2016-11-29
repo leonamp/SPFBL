@@ -94,70 +94,6 @@ O SPFBL mantém em cache todos os registros SPF encontrados e procura mantê-los
 
 Quando o resultado da consulta SPFBL retorna um ticket, dentro dele segue informações sobre o responsável pelo envio e a data que a consulta foi realizada. Este ticket pode ser utilizado para formalizar uma denúncia, que contabiliza para o responsável o peso de denúncia. Cada denúncia expira em sete dias após a data da consulta e não pode ser feita após cinco dias da consulta.
 
-##### Blocklist
-
-https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-block
-
-##### Spamtrap
-
-https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-trap
-
-##### Whitelist
-
-https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-white
-
-
-##### Automação da Whitelist
-
-Este script abaixo ajuda no processo de eliminação de falsos positivos usando o comando acima para incluir endereços onde os usuários do Postfix enviaram alguma mensagem para estes endereços:
-```
-# Autor: Kleber Rodrigues
-SHELL=/bin/bash
-PATH=/bin:/sbin:/usr/bin:/usr/sbin
-mes=$(date +%b)
-dia=$(date +%_d)
-hora=$(date +%H)
-echo "$mes $dia $hora" > /usr/local/sbin/hora
-grep "$mes $dia $hora" /var/log/maillog | grep "status=sent (250 2.6.0" | grep -o "to=<.*.>," | grep -o '@[^:]*' | cut -d '<' -f 2 | cut -d '>' -f 1 | sort -u > /usr/local/sbin/tmp
-awk '{print "/opt/spfbl/spfbl.sh white sender "$0""}' /usr/local/sbin/tmp > /usr/local/sbin/domain-analise.sh
-chmod a+x /usr/local/sbin/domain-analise.sh
-bash /usr/local/sbin/domain-analise.sh
-rm /usr/local/sbin/tmp
-```
-
-O script deve ser rodado em uma certa frequência.
-
-A ideia é antecipar as respostas dos futuros remetentes destes usuários e já avisar o SPFBL que estes casos podem ser aceitos sem preocupação.
-
-Para EXIM e servidores com cPanel/WHM, você poderá utilizar o script abaixo. Ele faz automaticamente a detecção de auto-repliers, então você não terá problemas com spammers sendo inseridos na whitelist caso o cliente tenha uma mensagem automático.
-
-```
-SECTION: PREROUTERS
-whitelister:
-  driver    = accept
-  domains    = !+local_domains
-  condition = ${if match_domain{$sender_address_domain}{+local_domains}} 
-  condition = ${if or {{ !eq{$h_list-id:$h_list-post:$h_list-subscribe:}{} }{ match{$h_precedence:}{(?i)bulk|list|junk|auto_reply} } { match{$h_auto-submitted:}{(?i)auto-generated|auto-replied} } } {no}{yes}}
-  transport = whlist
-unseen
-
-SECTION: TRANSPORTSTART
-whlist:
-  driver  = pipe
-  command = /var/spool/exim/autoWH $local_part@$domain 
-  return_fail_output = true
-
-ARQUIVO /var/spool/exim/autoWH
-#!/bin/sh
-# Debug:
-echo "Args recebidos: \$1 = $1" >> /var/spool/exim/log-transport.log
-# Magica:
-#/var/spool/exim/spfbl.sh white sender $1 >/dev/null 2>&1
-echo "WHITE SENDER $1" | nc IP-DO-SEU-POOL-SPFBL 9877
-####
-```
-Lembre-se de substituir 'IP-DO-SEU-POOL-SPFBL' pelo seu pool de SPFBL. No caso do matrix defense, seria 'matrix.spfbl.net'.
-
 ##### Greylisting
 
 A mensagem será atrasada 25min sempre que o responsável estiver com reputação YELLOW.
@@ -266,31 +202,6 @@ Na segunda seção, temos o bloqueio encontrado para aquela consulta. Se houver 
 Na terceira seção, temos a sequência dos responsáveis pelo envio na mensagem, sendo que a primeira coluna é o token do responsável, a segunda coluna é a frequência de envio em segundos, a terceira é a flag de listagem e a quarta coluna é a probabilidade daquele responsável enviar SPAM.
 
 
-##### Integração com Dovecot
-
-https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Dovecot---SPFBL
-
-
-##### Integração com Postfix
-
-https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
-
-
-##### Integração com Zimbra
-
-https://github.com/leonamp/SPFBL/wiki/Intergra%C3%A7%C3%A3o-com-Zimbra---SPFBL
-
-
-##### Integração com Exim
-
-https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim---SPFBL
-
-
-##### Integração com Exim do cPanel
-
-https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim-do-cPanel---SPFBL
-
-
 ##### Painel de controle
 
 O SPFBL possui um painel de controle simples para o usuário manipular corretamente listas de bloqueio e liberação dos remetentes.
@@ -315,10 +226,6 @@ Para acessar corretamente o QRcode, é necessário baixar o aplicativo Google Au
 O aplicativo irá gerar uma senha TOPT a cada minuto para que o usuário possa entrar com segurança na plataforma.
 
 
-### Como iniciar o serviço SPFBL
-
-https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---iniciar-o-servi%C3%A7o-SPFBL
-
 ### Descentralização do SPFBL
 
 A descentralização do serviço SPFBL deve ser feito através de redes P2P:
@@ -335,13 +242,55 @@ Responsabilidades dos elementos:
 
 O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve para criar uma rede de confiança, onde um pool sempre irá enviar informações na qual seu par concorde sempre. Não é correto um pool enviar informação de bloqueio sendo que o outro pool não concorde. Neste caso o pool que recebeu a informação deve passar a rejeitar as informações do pool de origem e procurar outros pools com melhor reputação.
 
-### Como cadastrar peers
+
+##### Como iniciar o serviço SPFBL
+
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---iniciar-o-servi%C3%A7o-SPFBL
+
+##### Blocklist
+
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-block
+
+##### Spamtrap
+
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-trap
+
+##### Whitelist
+
+https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-white
+
+##### Automação da Whitelist
+
+https://github.com/leonamp/SPFBL/wiki/Automa%C3%A7%C3%A3o-da-Whitelist
+
+##### Integração com Dovecot
+
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Dovecot---SPFBL
+
+##### Integração com Postfix
+
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
+
+##### Integração com Zimbra
+
+https://github.com/leonamp/SPFBL/wiki/Intergra%C3%A7%C3%A3o-com-Zimbra---SPFBL
+
+##### Integração com Exim
+
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim---SPFBL
+
+##### Integração com Exim do cPanel
+
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim-do-cPanel---SPFBL
+
+##### Como cadastrar peers
 
 https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-peer
 
-### Como administrar listas de retenção dos peers
+##### Como administrar listas de retenção dos peers
 
 https://github.com/leonamp/SPFBL/wiki/peer---administrando-listas-de-reten%C3%A7%C3%A3o
+
 
 ### Pools conhecidos em funcionamento
 
