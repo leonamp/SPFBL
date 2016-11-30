@@ -97,6 +97,7 @@ moveArquivos(){
         mv SPFBL/client/spfbl.sh /etc/spfbl/
         ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
         mv SPFBL/dist/* /opt/spfbl/
+        mv SPFBL/run/spfbl-cron /etc/cron.d/
         mv SPFBL/run/spfbl.conf /opt/spfbl/
         ln -sf /opt/spfbl/spfbl.conf /etc/spfbl/spfbl.conf
         mv SPFBL/lib/* /opt/spfbl/lib/
