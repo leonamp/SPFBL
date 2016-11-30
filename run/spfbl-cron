@@ -1,0 +1,2 @@
+SHELL=/bin/sh
+0 0 * * * root root /opt/spfbl/bin/spfbl.sh backup 7 > /dev/null 2>&1
