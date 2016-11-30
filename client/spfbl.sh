@@ -2483,6 +2483,34 @@ case $1 in
 			fi
 		fi
 	;;
+	'backup')
+		# Parâmetros de entrada: dias p/ reter o backup.
+		#
+		# Códigos de saída: nenhum.
+
+		fazBackup(){
+
+			PASTABKP=/opt/spfbl/backup
+			NOW=$(date +"%d-%m-%Y-%H-%S")
+  			if [ ! -d $PASTABKP ]; then
+  				mkdir $PASTABKP
+  			fi
+
+		    echo "STORE" | nc 127.0.0.1 9875
+		    echo "DUMP" | nc 127.0.01 9875 > "$PASTABKP"/dump-"$NOW".txt
+		    tar -zcf "$PASTABKP"/spfbl-folder-"$NOW".tar /opt/spfbl --exclude "$PASTABKP" &> /dev/null
+		    find $PASTABKP -mtime +"$DAYSTORETAIN" -exec rm {} \;
+		}
+
+		if [ $# -lt "2" ]; then
+			DAYSTORETAIN=60
+			fazBackup
+		else
+			DAYSTORETAIN=$2
+			fazBackup
+		fi
+
+    	;;		
 	*)
 		head
 		printf "Help\n\n"
@@ -2516,6 +2544,7 @@ case $1 in
 		printf "    $0 analise <ip> or { show | dump | drop }\n"
 		printf "    $0 dump\n"
 		printf "    $0 load path\n"
+		printf "    $0 backup days [days to retain backup, default 60]\n"
 		printf "\n"
 	;;
 esac
