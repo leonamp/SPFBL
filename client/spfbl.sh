@@ -2472,7 +2472,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 load path\n"
 		else
-			file=$1
+			file=$2
 			if [ -f $file ]; then
 				for line in `cat $file`; do
 					echo -n "Adding $line ... "
