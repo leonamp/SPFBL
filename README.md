@@ -273,7 +273,7 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 ##### Integração com Zimbra
 
-https://github.com/leonamp/SPFBL/wiki/Intergra%C3%A7%C3%A3o-com-Zimbra---SPFBL
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
 ##### Integração com Exim
 
