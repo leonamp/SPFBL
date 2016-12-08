@@ -144,6 +144,7 @@ configRotate(){
     # Configurar log rotation
     echo -n "Configurando rotacao de logs"
     mv SPFBL/run/spfbl-rotate /etc/logrotate.d/spfbl
+    chmod a-x /etc/logrotate.d/spfbl
     [ -f /etc/logrotate.d/spfbl ] && success || failure echo
 }    
  
