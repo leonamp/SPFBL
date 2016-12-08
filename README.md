@@ -336,6 +336,9 @@ Bitcoin:<br>
 <a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
 
 
+[![GTER42](https://img.youtube.com/vi/Itw2hPQt_SY/0.jpg)](https://www.youtube.com/watch?v=Itw2hPQt_SY&t=8964)
+
+
 ### Forum de discussão SPFBL
 
 Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
