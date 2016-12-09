@@ -1982,15 +1982,16 @@ case $1 in
 
 		if [ $# -lt "3" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
+			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Message-ID:[<messageid>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
 		else
 			ticket=$2
 			from=$3
 			replyto=$4
-			subject=$5
-			unsubscribe=$6
+			messageid=$5
+			subject=$6
+			unsubscribe=$7
 
-			response=$(echo "HEADER $ticket $from $replyto $subject $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "HEADER $ticket $from $replyto $messageid $subject $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $response == "" ]]; then
 				response="TIMEOUT"
@@ -2472,7 +2473,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 load path\n"
 		else
-			file=$2
+			file=$1
 			if [ -f $file ]; then
 				for line in `cat $file`; do
 					echo -n "Adding $line ... "
@@ -2510,7 +2511,56 @@ case $1 in
 			fazBackup
 		fi
 
-    	;;		
+    	;;
+	'stats')
+		#
+		# gera estatistica diaria
+		# saida na linha de comando
+		#
+
+		TODAY=`date +%Y-%m-%d`
+		LOGPATH=/var/log/spfbl/
+				
+		BLOCKED=$(grep -c BLOCKED "$LOGPATH"spfbl."$TODAY".log)
+		FAIL=$(grep -c ' FAIL' "$LOGPATH"spfbl."$TODAY".log)
+		FLAG=$(grep -c FLAG "$LOGPATH"spfbl."$TODAY".log)
+		GREYLIST=$(grep -c GREYLIST "$LOGPATH"spfbl."$TODAY".log)
+		HOLD=$(grep -c HOLD "$LOGPATH"spfbl."$TODAY".log)
+		INTERRUPTED=$(grep -c INTERRUPTED "$LOGPATH"spfbl."$TODAY".log)
+		INVALID=$(grep -c INVALID "$LOGPATH"spfbl."$TODAY".log)
+		LISTED=$(grep -c LISTED "$LOGPATH"spfbl."$TODAY".log)
+		NEUTRAL=$(grep -c NEUTRAL "$LOGPATH"spfbl."$TODAY".log)
+		NONE=$(grep -c NONE "$LOGPATH"spfbl."$TODAY".log)
+		NXDOMAIN=$(grep -c NXDOMAIN "$LOGPATH"spfbl."$TODAY".log)
+		PASS=$(grep -c PASS "$LOGPATH"spfbl."$TODAY".log)
+		SOFTFAIL=$(grep -c SOFTFAIL "$LOGPATH"spfbl."$TODAY".log)
+		SPAMTRAP=$(grep -c SPAMTRAP "$LOGPATH"spfbl."$TODAY".log)
+		TIMEOUT=$(grep -c TIMEOUT "$LOGPATH"spfbl."$TODAY".log)
+
+		TOTALES=$(echo $BLOCKED + $FLAG + $GREYLIST + $HOLD + $LISTED + $NXDOMAIN + $PASS + $TIMEOUT + $NONE + $SOFTFAIL + $NEUTRAL + $INTERRUPTED + $SPAMTRAP + $INVALID + $FAIL | bc)
+				
+		echo '=========================='
+		echo '= SPFBL Daily Statistics ='
+		echo '=========================='
+		echo '     PASS:' $(echo "scale=0;($PASS*100) / $TOTALES" | bc)'% - '"$PASS"
+		echo '  BLOCKED:' $(echo "scale=0;($BLOCKED*100) / $TOTALES" | bc)'% - '"$BLOCKED"
+		echo '     FAIL:' $(echo "scale=0;($FAIL*100) / $TOTALES" | bc)'% - '"$FAIL"
+		echo '     FLAG:' $(echo "scale=0;($FLAG*100) / $TOTALES" | bc)'% - '"$FLAG"
+		echo ' GREYLIST:' $(echo "scale=0;($GREYLIST*100) / $TOTALES" | bc)'% - '"$GREYLIST"
+		echo '     HOLD:' $(echo "scale=0;($HOLD*100) / $TOTALES" | bc)'% - '"$HOLD"
+		echo ' INTRRPTD:' $(echo "scale=0;($INTERRUPTED*100) / $TOTALES" | bc)'% - '"$INTERRUPTED"
+		echo '  INVALID:' $(echo "scale=0;($INVALID*100) / $TOTALES" | bc)'% - '"$INVALID"
+		echo '   LISTED:' $(echo "scale=0;($LISTED*100) / $TOTALES" | bc)'% - '"$LISTED"
+		echo '  NEUTRAL:' $(echo "scale=0;($NEUTRAL*100) / $TOTALES" | bc)'% - '"$NEUTRAL"
+		echo '     NONE:' $(echo "scale=0;($NONE*100) / $TOTALES" | bc)'% - '"$NONE"
+		echo ' NXDOMAIN:' $(echo "scale=0;($NXDOMAIN*100) / $TOTALES" | bc)'% - '"$NXDOMAIN"
+		echo ' SOFTFAIL:' $(echo "scale=0;($SOFTFAIL*100) / $TOTALES" | bc)'% - '"$SOFTFAIL"
+		echo ' SPAMTRAP:' $(echo "scale=0;($SPAMTRAP*100) / $TOTALES" | bc)'% - '"$SPAMTRAP"
+		echo '  TIMEOUT:' $(echo "scale=0;($TIMEOUT*100) / $TOTALES" | bc)'% - '"$TIMEOUT"
+		echo '  ----------------------'
+		echo '    TOTAL:' $(echo "scale=0;($TOTALES*100) / $TOTALES" | bc)'% - '"$TOTALES"
+		echo '=========================='
+	;;
 	*)
 		head
 		printf "Help\n\n"
@@ -2531,6 +2581,7 @@ case $1 in
 		printf "Admin Commands:\n"
 		printf "    $0 shutdown\n"
 		printf "    $0 store\n"
+		printf "    $0 stats\n"
 		printf "    $0 clear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
 		printf "    $0 peer { add host [email] | drop { host | all } | show [host] | set host send receive | ping host | send host }\n"
