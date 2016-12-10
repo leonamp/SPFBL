@@ -6,7 +6,7 @@
 
 start() {
     cd /opt/spfbl/
-    /usr/bin/java -jar /opt/spfbl/SPFBL.jar >> /var/log/spfbl/spfbl.error.log 2>&1 &
+    /usr/bin/java -jar /opt/spfbl/SPFBL.jar 2>&1 &
 }
 
 stop() {
