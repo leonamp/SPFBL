@@ -5,6 +5,17 @@ a versão TESTING está disponível em:
 https://github.com/SPFBL/beta-test
 
 
+### v2.5.0-TESTING ; release 10/12/2016:
+
+NEW) implementação saída INEXISTENT
+
+NEW) script spfbl.sh stats - show daily statistics
+
+UPDT) script spfbl.sh - comando INEXISTENT
+
+UPDT) script postfix.pl - saida INEXISTENT
+
+
 ### v.2.4.2-TESTING ; release 26/11/2016:
 
 UPDT) melhorias "white sender"; Ex. spfbl.sh white add sender@domain.tld
