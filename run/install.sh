@@ -45,7 +45,7 @@ fi
 
 instalaDebian(){ 
 
-    apt-get update >/dev/null && apt-get install -y unzip wget git logrotate default-jre >/dev/null
+    apt-get update >/dev/null && apt-get install -y unzip wget git bc netcat logrotate default-jre >/dev/null
 }
 
 instalaRedhat(){ 
