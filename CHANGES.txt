@@ -11,12 +11,11 @@ NEW) implementação saída INEXISTENT
 
 NEW) script spfbl.sh stats - show daily statistics
 
+NEW) script spfbl.sh backup
+
 UPDT) script spfbl.sh - comando INEXISTENT
 
 UPDT) script postfix.pl - saida INEXISTENT
-
-
-### v.2.4.2-TESTING ; release 26/11/2016:
 
 UPDT) melhorias "white sender"; Ex. spfbl.sh white add sender@domain.tld
 
