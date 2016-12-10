@@ -43,7 +43,7 @@ DUMP_PATH="/tmp"
 QUERY_TIMEOUT="20"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.9"
+version="2.9.1"
 
 head()
 {
@@ -57,6 +57,26 @@ else
 fi
 
 case $1 in
+	'start')
+		echo "Iniciando serviço do SPFBL"
+        	cd /opt/spfbl/
+        	/usr/bin/java -jar /opt/spfbl/SPFBL.jar &
+		echo "OK"
+	;;
+	'stop')
+		echo "Parando o serviço do SPFBL"
+		echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN
+		echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN
+		echo "OK"
+	;;
+	'restart')
+		echo "Reiniciando serviço do SPFBL"
+		cd /opt/spfbl/
+		echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN
+		echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN
+		/usr/bin/java -jar /opt/spfbl/SPFBL.jar &
+		echo "OK"
+	;;
 	'version')
 		# Verifica a versão do servidor SPPFBL.
 		#
@@ -2584,7 +2604,7 @@ case $1 in
 		printf "    $0 noreply { add recipient | drop recipient | show }\n"
 		printf "\n"
 		printf "Admin Commands:\n"
-		printf "    $0 shutdown\n"
+		printf "    $0 start|stop|restart|shutdown\n"
 		printf "    $0 store\n"
 		printf "    $0 clear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
