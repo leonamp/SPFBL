@@ -124,7 +124,7 @@ A tabela REPUTATION é formada por quatro colunas:
 
 ##### Respostas SPFBL
 
-O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificadores novos, chamados LISTED, BLOCKED, SPAMTRAP, GREYLIST, NXDOMAIN e INVALID:
+O SPFBL retorna todos os qualificadores do SPF convencional mais dez qualificadores novos, chamados LISTED, BLOCKED, SPAMTRAP, INEXISTENT, HOLD, WHITE, FLAG, GREYLIST, NXDOMAIN e INVALID:
 
 * PASS &lt;ticket&gt;: permite o recebimento da mensagem.
 * FAIL: rejeita o recebimento da mensagem e informa à origem o descumprimento do SPF.
@@ -135,6 +135,7 @@ O SPFBL retorna todos os qualificadores do SPF convencional mais seis qualificad
 * BLOCKED [&lt;url&gt;]: rejeita o recebimento da mensagem e informa à origem o seu bloqueio manual, com possibilidade de solicitar desbloqueio diretamente ao destinatário com auxílio da URL.
 * FLAG: aceita o recebimento e redirecione a mensagem para a pasta SPAM.
 * SPAMTRAP: descarta silenciosamente a mensagem e informa à origem que a mensagem foi recebida com sucesso.
+* INEXISTENT: rejeita a mensagem e informa à origem que o destinatário não existe.
 * GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 * NXDOMAIN: rejeita o recebimento e informa à origem que o domínio do remetente não existe.
 * INVALID: rejeita o recebimento e informa à origem que o IP ou o endereço do remetente não é válido.
@@ -320,6 +321,9 @@ Patreon:<br>
 Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
+Palestra GTER 42:<br>
+[![GTER42](https://img.youtube.com/vi/Itw2hPQt_SY/0.jpg)](https://www.youtube.com/watch?v=Itw2hPQt_SY&t=8964)
+
 
 ### Noticias sobre o SPFBL
 
@@ -334,9 +338,6 @@ Bitcoin:<br>
 <a href="http://multirbl.valli.org/lookup/">14/09/2016 Valli.org: O SPFBL.net entra na lista MultiRBL da valli.org.</a></br>
 
 <a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
-
-
-[![GTER42](https://img.youtube.com/vi/Itw2hPQt_SY/0.jpg)](https://www.youtube.com/watch?v=Itw2hPQt_SY&t=8964)
 
 
 ### Forum de discussão SPFBL
