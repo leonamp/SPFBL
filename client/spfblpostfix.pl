@@ -203,9 +203,14 @@ while ( my $line = <STDIN> ) {
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
     }
+    elsif ( $result =~ /^INEXISTENT/ ) {
+        STDOUT->print(
+             "action=550 5.1.1 SPFBL Unknown user in virtual mailbox table.\n\n"
+        );
+    }
     elsif ( $result =~ /^INEXISTENT / ) {
         STDOUT->print(
-             "action=550 5.1.1 Unknown user in virtual mailbox table.\n\n"
+             "action=550 5.1.1 SPFBL Unknown user in virtual mailbox table.\n\n"
         );
     }
     else {
@@ -214,4 +219,3 @@ while ( my $line = <STDIN> ) {
         );
     }
 }
-
