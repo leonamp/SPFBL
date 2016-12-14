@@ -5,7 +5,7 @@ a versão TESTING está disponível em:
 https://github.com/SPFBL/beta-test
 
 
-### v2.5.0-TESTING ; release 10/12/2016:
+### v2.5.0-TESTING ; release 12/12/2016:
 
 NEW) implementação saída INEXISTENT
 
@@ -22,6 +22,8 @@ UPDT) melhorias "white sender"; Ex. spfbl.sh white add sender@domain.tld
 UPDT) atualização nos scripts .sh e .pl; adicionadas saídas HOLD e FLAG do engine SPFBL
 
 UPDT) adições nas configurações do EXIM; verificação From e Reply-to
+
+FIX) correção comando DUMP - pulava uma entrada em whitelist quando especifico para um dominio
 
 
 ### v.2.4.1 ; release 31/10/2016:
