@@ -47,11 +47,45 @@ instalaDebian(){
 
     apt-get update >/dev/null && apt-get install -y unzip wget git bc netcat logrotate default-jre >/dev/null
 }
-
+#
+#	FUNCAO DE INSTALACAO DOS PACOTES NECESSARIOS VIA YUM
+#
 instalaRedhat(){ 
+#
+#	DEFINICAO DE PACOTES
+#
+_pacotes=( "git" "nc" "unzip" "logrotate" "wget" "java-1.8.0-openjdk" "bc" )
+#
+#	CHECK POR VERSAO
+#
+if [ -e /etc/os-release ]
+then
+	source /etc/os-release
+fi
+#
+#	INSTALA PACOTES
+#
+for i in "${_pacotes[@]}"
+do
+        if [ "$i" == "nc" ] && [ ! -z $VERSION_ID ] && [ $VERSION_ID == "7" ]
+        then
+ 		i="nmap-ncat"
+        fi
 
-    yum -y upgrade >/dev/null && yum -y install git nc unzip logrotate wget java-1.8.0-openjdk >/dev/null
-        [ "$(rpm -q git java-1.8.0-openjdk wget unzip nc | wc -l)" -eq "5" ] && success || failure echo   
+	if ! yum list installed "$i" >/dev/null 2>&1
+	then
+		yum -y install "$i" >/dev/null 2>&1
+		if rpm -q "$i" >/dev/null 2>&1
+		then
+			echo "$i Instalado com sucesso"
+		else
+			echo "Nao foi possivel instalar $i :"
+			echo "* Verifique sua lista de repositorios cadastrados /etc/yum.repos.d/"
+			echo "* Para maiores informacoes, utilize o comando yum --help"
+			exit 1
+		fi		
+	fi
+done
 }
 
 preInstall(){
