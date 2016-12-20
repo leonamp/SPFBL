@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##########################################
-# Gerenciador de instalação e remoção    #                  
+# Gerenciador de instalacao e remocao    #                  
 #               SPFBL                    #
 ##########################################
 
@@ -15,7 +15,10 @@ if [ "$1" == "--uninstall" ]; then
     if [ -f /etc/lsb-release ]; then
     . /etc/lsb-release
     else
-    . /etc/init.d/functions
+        if [ -e /etc/init.d/functions ]
+        then
+                source /etc/init.d/functions
+        fi
     fi    
     
     echo -e "${D}Iniciando processo de remocao do SPFBL!${R}"
@@ -42,21 +45,79 @@ if [ "$1" == "--uninstall" ]; then
     echo
     echo
 fi
-
+#
+#	FUNCAO DE INSTALACAO DE PACOTES DEBIAN
+#
 instalaDebian(){ 
+_dpkg=( "unzip" "wget" "git" "bc" "netcat" "logrotate" "default-jre" )
+apt-get update >/dev/null 2>&1
+#
+#	INSTALA PACOTES
+#
+for j in "${_dpkg[@]}"
+do
+        if ! dpkg -s "$j" >/dev/null 2>&1
+        then
+                apt-get -y install "$j" >/dev/null 2>&1
+                _key="$?"
+                if [ "$_key" == "0" ]
+                then
+                        echo "$j Instalado com sucesso"
+                else
+                        echo "Nao foi possivel instalar $j :"
+                        echo "* Verifique sua lista de repositorios cadastrados /etc/apt/sources.list"
+                        echo "* Para maiores informacoes, utilize o comando apt-get --help"
+                        exit 1
+                fi
 
-    apt-get update >/dev/null && apt-get install -y unzip wget git bc netcat logrotate default-jre >/dev/null
+        fi
+done
+
 }
-
+#
+#	FUNCAO DE INSTALACAO DOS PACOTES NECESSARIOS VIA YUM
+#
 instalaRedhat(){ 
+#
+#	DEFINICAO DE PACOTES
+#
+_pacotes=( "git" "nc" "unzip" "logrotate" "wget" "java-1.8.0-openjdk" "bc" )
+#
+#	CHECK POR VERSAO
+#
+if [ -e /etc/os-release ]
+then
+	source /etc/os-release
+fi
+#
+#	INSTALA PACOTES
+#
+for i in "${_pacotes[@]}"
+do
+        if [ "$i" == "nc" ] && [ ! -z $VERSION_ID ] && [ $VERSION_ID == "7" ]
+        then
+ 		i="nmap-ncat"
+        fi
 
-    yum -y upgrade >/dev/null && yum -y install git nc unzip logrotate wget java-1.8.0-openjdk >/dev/null
-        [ "$(rpm -q git java-1.8.0-openjdk wget unzip nc | wc -l)" -eq "5" ] && success || failure echo   
+	if ! yum list installed "$i" >/dev/null 2>&1
+	then
+		yum -y install "$i" >/dev/null 2>&1
+		if rpm -q "$i" >/dev/null 2>&1
+		then
+			echo "$i Instalado com sucesso"
+		else
+			echo "Nao foi possivel instalar $i :"
+			echo "* Verifique sua lista de repositorios cadastrados /etc/yum.repos.d/"
+			echo "* Para maiores informacoes, utilize o comando yum --help"
+			exit 1
+		fi		
+	fi
+done
 }
 
 preInstall(){
 
-    # Verifica se há instalação e instala
+    # Verifica se existe pre instalacao e ou instala
     if [ -d /opt/spfbl ]; then
         data=`date +"%Y%m%d%H%M%S"`
         echo -e "${V}Localizei arquivos antigos. \nRenomeando para $PWD/SPFBL-$data$ \nRenomeando /opt/spfbl-$data\nRenomeando /etc/spfbl-$data\nRemovendo /etc/logrotate.d/spfbl\nRemovendo /var/log/spfbl\nRemovendo /etc/init.d/spfbl{R}"
@@ -74,14 +135,16 @@ preInstall(){
 
 baixaGit(){
 
-    cd /usr/src && git clone https://github.com/leonamp/SPFBL.git
-    echo -n "Clonando SPFBL a partir do Github... "
-    [ -d /usr/src/SPFBL ] && success || failure echo
-    
-    if [ -d /usr/src/SPFBL ]; then
-        chmod a+x SPFBL/client/*.sh
-        chmod a+x SPFBL/run/*
-    fi
+    	cd /usr/src && git clone https://github.com/leonamp/SPFBL.git
+    	echo -n "Clonando SPFBL a partir do Github... "
+	if [ ! -d /usr/src/SPFBL ]
+	then 
+   		echo "/usr/src/SPFBL nao encontrado"
+		exit 1
+	else 
+        	chmod a+x SPFBL/client/*.sh
+        	chmod a+x SPFBL/run/*
+   	 fi
 }     
 
 moveArquivos(){
@@ -104,7 +167,11 @@ moveArquivos(){
         mv SPFBL/data/* /opt/spfbl/data/
         mv SPFBL/doc/* /opt/spfbl/doc/
         mv SPFBL/README.md /opt/spfbl/doc/
-        [ -d /opt/spfbl ] && success || failure echo
+	if [ ! -d /opt/spfbl ]
+	then
+		echo "/opt/spfbl nao encontrado"
+		exit 1
+	fi
     fi
 } 
 
@@ -114,7 +181,11 @@ criaVarLog(){
     if [ ! -d /var/log/spfbl ]; then
         echo -n "Criando /var/log/spfbl .. "
         mkdir -p /var/log/spfbl
-        [ -d /var/log/spfbl ] && success || failure echo
+        if [ ! -d /var/log/spfbl ]
+	then
+		echo "/var/log/spfbl nao encontrado"
+		exit 1
+	fi
     fi    
 }
 
@@ -125,7 +196,11 @@ autoBootDebian(){
     mv SPFBL/run/spfbl-init-noarch.sh /etc/init.d/spfbl
     chmod a+x /etc/init.d/spfbl
     update-rc.d spfbl defaults 100
-    [ -f /etc/init.d/spfbl ] && success || failure echo
+    	if [ ! -e /etc/init.d/spfbl ]
+	then
+		echo "/etc/init.d/spfbl nao encontrado"
+		exit 1
+	fi
 }    
 
 autoBootRedhat(){
@@ -136,7 +211,11 @@ autoBootRedhat(){
     chmod a+x /etc/init.d/spfbl    
     chkconfig --add spfbl
     chkconfig spfbl on
-    [ -f /etc/init.d/spfbl ] && success || failure echo
+        if [ ! -e /etc/init.d/spfbl ] 
+	then
+		echo "/etc/init.d/spfbl nao encontrado"
+		exit 1
+	fi
 }    
 
 configRotate(){ 
@@ -145,12 +224,16 @@ configRotate(){
     echo -n "Configurando rotacao de logs"
     mv SPFBL/run/spfbl-rotate /etc/logrotate.d/spfbl
     chmod a-x /etc/logrotate.d/spfbl
-    [ -f /etc/logrotate.d/spfbl ] && success || failure echo
+    	if [ ! -e /etc/logrotate.d/spfbl ] 
+	then
+		echo "/etc/logrotate.d/spfbl nao encontrado"
+		exit 1
+	fi
 }    
  
 setaVariaveis(){
 
-    # Setando variáveis do ambiente para o auto-updater
+    # Setando variaveis do ambiente para o auto-updater
     touch /root/.spfbl-install
     echo -en "** NAO REMOVA ESTE ARQUIVO! \nELE SERA UTILIZADO PELO SPFBL \nPARA ATUALIZACAO AUTOMATICA**\n" >> /root/.spfbl-install 
     echo -en $"\nBASE_FOLDER=/opt/spfbl\nCONF_FILE=/etc/spfbl/spfbl.conf\nSTART_FILE=/etc/init.d/spfbl\nLR_FILE=/etc/logrotate.d/spfbl\nLOG_FOLDER=/var/log/spfbl\n" >> /root/.spfbl-install 
@@ -158,7 +241,7 @@ setaVariaveis(){
 
 finaliza(){ 
 
-    # Limpando pasta temporária
+    # Limpando pasta temporaria
     rm -rf /usr/src/SPFBL
 
     # Iniciando
@@ -180,32 +263,39 @@ if [ "$1" == "--install" ]; then
     echo "Acessando pasta $PWD"
     echo -en "Precisamos detectar a plataforma e instalar o git, nc, wget, unzip e pacotes java"
     
-    if [ -f /etc/lsb-release ]; then
-    . /etc/lsb-release 
-    OS=$DISTRIB_ID
-    VER=$DISTRIB_RELEASE
-    # Chama instalação em plataforma DEBIAN
-    echo -e "${V}\nPlataforma baseada em Debian: $OS ${R}"
-    echo -e "${V}\nO processo a seguir ira levar varios minutos ${R}"
-    . /lib/lsb/init-functions
-    instalaDebian
-    preInstall
-    baixaGit
-    moveArquivos
-    criaVarLog
-    autoBootDebian
-    configRotate
-    setaVariaveis
-    finaliza
+#
+# DETECTANDO DEBIAN E UBUNTU
+#    
+        if [ -f /etc/debian_version ] && [ "$1" == "--install" ]
+    	then
+    	# Chama instalacao em plataforma DEBIAN
+    	echo -e "${V}\nPlataforma baseada em Debian: $OS ${R}"
+    	echo -e "${V}\nO processo a seguir ira levar varios minutos ${R}"
+        if [ -e /etc/init.d/functions ]
+        then
+                source /etc/init.d/functions
+        fi
+    	instalaDebian
+    	preInstall
+    	baixaGit
+    	moveArquivos
+    	criaVarLog
+    	autoBootDebian
+    	configRotate
+    	setaVariaveis
+    	finaliza
 
     elif [ -f /etc/redhat-release ] && [ "$1" == "--install" ]; then
     OS(){
         cat '/etc/redhat-release'
     }
-    # Chama instalação em plataforma RHEL
+    # Chama instalacao em plataforma RHEL
     echo -e "${V}\nPlataforma baseada em RHEL: $(OS) ${R}"
     echo -e "${V}\nO processo a seguir ira levar varios minutos ${R}"
-    . /etc/init.d/functions
+	if [ -e /etc/init.d/functions ]
+	then
+    		source /etc/init.d/functions
+	fi
     instalaRedhat
     preInstall
     baixaGit
@@ -229,8 +319,8 @@ if [ "$1" != "--install" ] && [ "$1" != "--uninstall" ]; then
 fi    
 
     #########################################################################################
-    # Abaixo estão instruções que podem ser usadas em necessidade futura para
-    # reconhecimento de arquitetura e de sistema debian específico
+    # Abaixo estao instrucoes que podem ser usadas em necessidade futura para
+    # reconhecimento de arquitetura e de sistema debian especifico
     #########################################################################################
 
     # Identifica se eh 32 ou 64 bits. Nao eh necessario pro spfbl ainda.. 
@@ -238,9 +328,10 @@ fi
     #
     # ARQ=$(uname -m | sed 's/x86_//;s/i[3-6]86/32/')
 
-    # Não é necessário uma instalação específica para Debain..
+    # Nao eh necessario uma instalacao especifica para Debain..
     # mas se um dia for
     #
     # elif [ -f /etc/debian_version ]; then
     # OS=Debian
     # VER=$(cat /etc/debian_version)
+
