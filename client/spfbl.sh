@@ -40,7 +40,7 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 OTP_SECRET=""
 DUMP_PATH="/tmp"
-QUERY_TIMEOUT="20"
+QUERY_TIMEOUT="60"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.10"
