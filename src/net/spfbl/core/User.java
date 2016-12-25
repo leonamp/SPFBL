@@ -22,16 +22,20 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeUtility;
 import javax.naming.NamingException;
 import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Provider;
+import net.spfbl.data.Trap;
 import net.spfbl.data.White;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
@@ -50,6 +54,7 @@ public class User implements Serializable, Comparable<User> {
     
     private final String email;
     private String name;
+    private boolean trusted = false;
 
     /**
      * Atributos para OTP.
@@ -78,6 +83,15 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public boolean setTrusted(boolean trusted) {
+        if (this.trusted == trusted) {
+            return false;
+        } else {
+            this.trusted = trusted;
+            return CHANGED = true;
+        }
+    }
+    
     public String getEmail() {
         return email;
     }
@@ -85,6 +99,14 @@ public class User implements Serializable, Comparable<User> {
     public String getDomain() {
         int index = email.indexOf('@') + 1;
         return email.substring(index);
+    }
+    
+    public boolean isTrusted() {
+        return trusted;
+    }
+    
+    public boolean isPostmaster() {
+        return email.startsWith("postmaster@");
     }
     
     public boolean isEmail(String email) {
@@ -278,6 +300,7 @@ public class User implements Serializable, Comparable<User> {
     public synchronized static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing user.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,User> map = getMap();
                 File file = new File("./data/user.map");
@@ -469,6 +492,41 @@ public class User implements Serializable, Comparable<User> {
         CHANGED = true;
     }
     
+    public String whiteMessageBySender(String messageID) {
+        if (messageID == null || messageID.length() == 0) {
+            return "INVALID MESSAGE";
+        } else {
+            for (long time : getTimeSet().descendingSet()) {
+                Query query = getQuery(time);
+                if (query != null && query.isMessage(messageID)) {
+                    String block = query.getBlock();
+                    if (block == null) {
+                        Situation situation = query.getSituation();
+                        if (situation == Situation.ORIGIN) {
+                            return "INVALID SENDER";
+                        } else if (query.white(time, situation)) {
+                            switch (situation) {
+                                case IP:
+                                    return "ADDED " + query.getSenderSimplified(false, true) + ";" + query.getIP();
+                                case ZONE:
+                                    return "ADDED " + query.getSenderSimplified(false, true) + ";" + query.getOriginDomain(false);
+                                case AUTHENTIC:
+                                    return "ADDED " + query.getSenderSimplified(false, true) + ";PASS";
+                                default:
+                                    return "ERROR: FATAL";
+                            }
+                        } else {
+                            return "ALREADY EXISTS";
+                        }
+                    } else {
+                        return "BLOCKED AS " + block;
+                    }
+                }
+            }
+            return "NOT FOUND";
+        }
+    }
+    
     public enum Situation {
         
         NONE,
@@ -477,6 +535,8 @@ public class User implements Serializable, Comparable<User> {
         ZONE,
         AUTHENTIC,
         SAME,
+        DOMAIN,
+        RECIPIENT,
         ALL
         
     }
@@ -496,6 +556,9 @@ public class User implements Serializable, Comparable<User> {
         private String result;
         private String from = null;
         private String replyto = null;
+        private String subject = null;
+        private String messageID = null;
+        private URL unsubscribe = null;
         private TreeMap<String,Boolean> linkMap = null;
         private String malware = null;
         
@@ -562,13 +625,28 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        public String getOriginDomain(boolean pontuacao) {
+            String host = getValidHostname();
+            if (host == null) {
+                host = helo;
+            }
+            try {
+                return Domain.extractDomain(host, pontuacao);
+            } catch (ProcessException ex) {
+                return null;
+            }
+        }
+        
         public TreeSet<String> getSenderMXDomainSet() throws NamingException {
             String host = getSenderHostname(false);
             TreeSet<String> mxSet = new TreeSet<String>();
             if (host != null) {
                 for (String mx : Reverse.getMXSet(host)) {
                     try {
-                        mxSet.add(Domain.extractDomain(mx, false));
+                        String domain = Domain.extractDomain(mx, false);
+                        if (domain != null) {
+                            mxSet.add(domain);
+                        }
                     } catch (ProcessException ex) {
                     }
                 }
@@ -611,16 +689,20 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public String getSender() {
-            if (sender == null && from != null) {
-                return from;
-            } else if (sender == null && replyto != null) {
-                return replyto;
-            } else if (sender == null && getValidHostname() != null && !Generic.contains(getValidHostname())) {
-                return "mailer-daemon@" + getValidHostname();
+            if (sender == null) {
+                return from == null ? replyto : from;
             } else if (Provider.containsMX(sender) && Domain.isValidEmail(sender)) {
                 return sender;
             } else if (Provider.containsDomain(getValidHostname()) && Provider.containsDomain(sender)) {
-                return from == null ? replyto : from;
+                if (from == null && replyto == null) {
+                    return sender;
+                } else if (replyto == null) {
+                    return from;
+                } else if (sender.equals(from)) {
+                    return replyto;
+                } else {
+                    return from;
+                }
             } else if (Domain.isValidEmail(sender)) {
                 return sender;
             } else if (Domain.isValidEmail(from)) {
@@ -629,10 +711,12 @@ public class User implements Serializable, Comparable<User> {
                 return replyto;
             } else if (Domain.isEmail(sender)) { // Temporário.
                 return sender;
-            } else if (from != null) {
+            } else if (Domain.isEmail(from)) {
                 return from;
-            } else {
+            } else if (Domain.isEmail(replyto)) {
                 return replyto;
+            } else {
+                return null;
             }
         }
         
@@ -720,6 +804,10 @@ public class User implements Serializable, Comparable<User> {
                 }
             }
         }
+        
+        public User getUser() {
+            return User.this;
+        }
 
         public String getRecipient() {
             return recipient;
@@ -729,26 +817,51 @@ public class User implements Serializable, Comparable<User> {
             return result;
         }
         
-        private String getComplainKey() {
-            String key = getSenderSimplified(true, true);
-            if (key == null) {
-                return getOrigin(true);
+        public boolean isResult(String result) {
+            return this.result.equals(result);
+        }
+        
+        public boolean isMessage(String MessageID) {
+            if (MessageID == null || MessageID.length() == 0) {
+                return false;
             } else {
-                return key;
+                return MessageID.equals(this.messageID);
             }
         }
         
-        public void processComplain() {
+        private String getComplainKey() {
+            String key = getSenderSimplified(true, true);
+            if (key == null) {
+                key = getOriginDomain(true);
+                if (key == null) {
+                    key = getOrigin(true);
+                }
+            }
+            return key;
+        }
+        
+        public void processComplainForWhite() {
             String complainKey = getComplainKey();
             for (long time : getTimeSet().descendingSet()) {
                 Query query = getQuery(time);
                 if (query != null && complainKey.equals(query.getComplainKey())) {
                     if (query.isWhite()) {
-                        clearBlock();
+                        query.clearBlock();
                         if (!query.hasMalware()) {
                             SPF.setHam(time, query.getTokenSet());
                         }
-                    } else if (query.isBlock()) {
+                    }
+                }
+            }
+        }
+        
+        public void processComplainForBlock() {
+            String complainKey = getComplainKey();
+            for (long time : getTimeSet().descendingSet()) {
+                Query query = getQuery(time);
+                if (query != null && complainKey.equals(query.getComplainKey())) {
+                    if (query.isBlock()) {
+                        query.clearWhite();
                         SPF.setSpam(time, query.getTokenSet());
                     }
                 }
@@ -781,7 +894,7 @@ public class User implements Serializable, Comparable<User> {
             }
             if (linkMap != null) {
                 for (String link : linkMap.keySet()) {
-                    Block.clear(link, email);
+                    Block.clear(User.this, link, email);
                 }
             }
         }
@@ -804,15 +917,33 @@ public class User implements Serializable, Comparable<User> {
                         } else {
                             return Block.add(User.this, getSenderSimplified(true, true) + ";" + validator);
                         }
-                    case ALL:
+                    case DOMAIN:
                         String senderSimplified = getSenderSimplified(true, true);
-                        if (SPF.isNotGreen(senderSimplified)) {
-                            if (Block.addExact(senderSimplified)) {
-                                Server.logDebug("new BLOCK '" + senderSimplified + "' added by '" + email + "'.");
-                                Peer.sendBlockToAll(senderSimplified);
+                        if (senderSimplified == null) {
+                            return false;
+                        } else {
+                            if (SPF.isRed(senderSimplified)) {
+                                if (Block.addExact(senderSimplified)) {
+                                    Server.logDebug("new BLOCK '" + senderSimplified + "' added by '" + email + "'.");
+                                    Peer.sendBlockToAll(senderSimplified);
+                                }
                             }
+                            return Block.add(User.this, senderSimplified);
                         }
-                        return Block.add(User.this, senderSimplified);
+                    case ALL:
+                        String domain = this.getOriginDomain(false);
+                        if (domain == null) {
+                            return false;
+                        } else {
+                            return Block.add(User.this, "@;" + domain);
+                        }
+                    case RECIPIENT:
+                        String recipientAddr = getRecipient();
+                        if (recipientAddr == null) {
+                            return false;
+                        } else {
+                            return Trap.addInexistent(User.this, recipientAddr);
+                        }
                     default:
                         return false;
                 }
@@ -825,31 +956,52 @@ public class User implements Serializable, Comparable<User> {
         public boolean white(long time, String situationName) throws ProcessException {
             try {
                 Situation situation = Situation.valueOf(situationName);
-                clearBlock();
-                SPF.setHam(time, tokenSet);
-                switch (situation) {
-                    case ORIGIN:
-                        return White.add(User.this, "@;" + getOrigin(false));
-                    case IP:
-                        return White.add(User.this, getSenderSimplified(false, true) + ";" + ip);
-                    case ZONE:
-                        String domain = getValidHostDomain();
-                        if (domain == null) {
+                return white(time, situation);
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+        
+        public boolean white(long time, Situation situation) {
+            try {
+                if (situation == null) {
+                    return false;
+                } else {
+                    String domain;
+                    clearBlock();
+                    SPF.setHam(time, tokenSet);
+                    switch (situation) {
+                        case ORIGIN:
+                            return White.add(User.this, "@;" + getOrigin(false));
+                        case IP:
+                            return White.add(User.this, getSenderSimplified(false, true) + ";" + ip);
+                        case ZONE:
+                            domain = getValidHostDomain();
+                            if (domain == null) {
+                                return false;
+                            } else {
+                                return White.add(User.this, getSenderSimplified(false, true) + ";" + domain);
+                            }
+                        case AUTHENTIC:
+                            return White.add(User.this, getSenderSimplified(false, true) + ";PASS");
+                        case SAME:
+                            String validator = getValidator(false);
+                            if (validator == null) {
+                                return false;
+                            } else {
+                                return White.add(User.this, getSenderSimplified(false, true) + ";" + validator);
+                            }
+                        case RECIPIENT:
+                            String recipientAddr = getRecipient();
+                            if (recipientAddr == null) {
+                                return false;
+                            } else {
+                                return Trap.clear(User.this, recipientAddr);
+                            }
+                        default:
                             return false;
-                        } else {
-                            return White.add(User.this, getSenderSimplified(false, true) + ";" + domain);
-                        }
-                    case AUTHENTIC:
-                        return White.add(User.this, getSenderSimplified(false, true) + ";PASS");
-                    case SAME:
-                        String validator = getValidator(false);
-                        if (validator == null) {
-                            return false;
-                        } else {
-                            return White.add(User.this, getSenderSimplified(false, true) + ";" + validator);
-                        }
-                    default:
-                        return false;
+                    }
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -862,7 +1014,11 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isWhite() {
-            return White.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient) != null;
+            if (White.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient) != null) {
+                return true;
+            } else {
+                return White.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient) != null;
+            }
         }
         
         public String getWhite() {
@@ -870,11 +1026,27 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isBlock() {
-            return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, true) != null;
+            if (Block.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient, true) != null) {
+                return true;
+            } else {
+                return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, true) != null;
+            }
         }
         
         public String getBlock() {
             return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, true);
+        }
+        
+        public boolean isRoutable() {
+            if (recipient == null) {
+                return true;
+            } else {
+                return Trap.getTime(recipient) == null;
+            }
+        }
+        
+        public Long getTrapTime() {
+            return Trap.getTime(null, User.this, recipient);
         }
         
         public boolean isSenderWhite() {
@@ -900,6 +1072,15 @@ public class User implements Serializable, Comparable<User> {
         
         public boolean isOriginBlock() {
             return Block.containsExact(User.this, "@;" + getOrigin(false));
+        }
+        
+        public boolean isOriginDomainBlock() {
+            String domain = getOriginDomain(false);
+            if (domain == null) {
+                return false;
+            } else {
+                return Block.containsExact(User.this, "@;" + domain);
+            }
         }
         
         public boolean isSenderRed() {
@@ -984,6 +1165,14 @@ public class User implements Serializable, Comparable<User> {
             return replyto;
         }
         
+        public String getSubject() {
+            return subject;
+        }
+        
+        public URL getUnsubscribeURL() {
+            return unsubscribe;
+        }
+        
         public boolean isLinkBlocked(String link) {
             if (linkMap == null) {
                 return false;
@@ -1045,6 +1234,7 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        @Deprecated
         public String setFrom(String from, String replyto, String unsubscribe) {
             if (from == null) {
                 if (this.from != null) {
@@ -1100,6 +1290,103 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        public String setHeader(
+                String from,
+                String replyto,
+                String subject,
+                String messageID,
+                String unsubscribe
+        ) {
+            if (from == null || from.length() == 0) {
+                if (this.from != null) {
+                    this.from = null;
+                    CHANGED = true;
+                }
+            } else if (Domain.isEmail(from = from.toLowerCase()) && !from.equals(this.from)) {
+                this.from = from;
+                CHANGED = true;
+            }
+            if (replyto == null || replyto.length() == 0) {
+                if (this.replyto != null) {
+                    this.replyto = null;
+                    CHANGED = true;
+                }
+            } else if (Domain.isEmail(replyto = replyto.toLowerCase()) && !replyto.equals(this.replyto)) {
+                this.replyto = replyto;
+                CHANGED = true;
+            }
+            if (subject == null || subject.length() == 0) {
+                if (this.subject != null) {
+                    this.subject = null;
+                    CHANGED = true;
+                }
+            } else {
+                try {
+                    subject = MimeUtility.decodeText(subject);
+                } catch (UnsupportedEncodingException ex) {
+                }
+                if (!subject.equals(this.subject)) {
+                    this.subject = subject;
+                    CHANGED = true;
+                }
+            }
+            if (messageID == null || messageID.length() == 0) {
+                if (this.messageID != null) {
+                    this.messageID = null;
+                    CHANGED = true;
+                }
+            } else {
+                int index = messageID.indexOf('<');
+                if (index >= 0) {
+                    messageID = messageID.substring(index+1);
+                    index = messageID.indexOf('>');
+                    if (index > 0) {
+                        messageID = messageID.substring(0, index);
+                        if (!messageID.equals(this.messageID)) {
+                            this.messageID = messageID;
+                            CHANGED = true;
+                        }
+                    }
+                }
+            }
+            boolean reject = false;
+            if (unsubscribe != null && unsubscribe.length() > 0) {
+                try {
+                    int index = unsubscribe.indexOf('<');
+                    if (index >= 0) {
+                        unsubscribe = unsubscribe.substring(index+1);
+                        index = unsubscribe.indexOf('>');
+                        if (index > 0) {
+                            unsubscribe = unsubscribe.substring(0, index);
+                            URL url = new URL(unsubscribe);
+                            reject = addLink(url.getHost());
+                            if (!url.equals(this.unsubscribe)) {
+                                this.unsubscribe = url;
+                                CHANGED = true;
+                            }
+                        }
+                    }
+                } catch (MalformedURLException ex) {
+                    Server.logTrace("malformed unsubscribe URL: " + unsubscribe);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+            if (isWhite()) {
+                clearBlock();
+                return this.result = "WHITE";
+            } else if (isBlock()) {
+                clearWhite();
+                this.result = "BLOCK";
+                return "BLOCKED";
+            } else if (reject) {
+                this.result = "REJECT";
+                return "BLOCKED";
+            } else {
+                return null;
+            }
+        }
+        
         public boolean isSpam(long time) {
             for (String token : tokenSet) {
                 Distribution distribution = SPF.getDistribution(token);
@@ -1120,6 +1407,16 @@ public class User implements Serializable, Comparable<User> {
                 return Situation.IP;
             } else {
                 return Situation.ZONE;
+            }
+        }
+        
+        public Situation getOriginWhiteSituation() {
+            if (isOriginWhite()) {
+                return Situation.ORIGIN;
+            } else if (isWhite()) {
+                return Situation.SAME;
+            } else {
+                return Situation.NONE;
             }
         }
         
@@ -1144,11 +1441,25 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public Situation getSenderBlockSituation() {
-            if (isSenderBlock(false)) {
+        public Situation getOriginBlockSituation() {
+            if (isOriginDomainBlock()) {
                 return Situation.ALL;
+            } else if (isOriginBlock()) {
+                return Situation.ORIGIN;
+            } else if (isBlock()) {
+                return Situation.SAME;
+            } else {
+                return Situation.NONE;
+            }
+        }
+        
+        public Situation getSenderBlockSituation() {
+            String validator = getValidator(false);
+            if (validator == null && isOriginDomainBlock()) {
+                return Situation.ALL;
+            } else if (isSenderBlock(false)) {
+                return Situation.DOMAIN;
             } else if (isSenderBlock(true)) {
-                String validator = getValidator(false);
                 if (validator == null) {
                     return Situation.ORIGIN;
                 } else if (Subnet.isValidIP(validator)) {

@@ -771,6 +771,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenMX));
             } else {
                 builder.append(Domain.revert(tokenMX));
+                String mask = Generic.convertHostToMask(tokenMX);
+                if (mask != null) {
+                    builder.append(' ');
+                    builder.append(mask);
+                }
             }
         }
     }
@@ -961,7 +966,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 String cidr;
                 int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
                 if ((cidr = Block.clearCIDR(ip, mask)) != null) {
-                    Server.logDebug("false positive BLOCK '" + cidr + "' detected by '" + tokenName + ";" + statusName + "'.");
+                    Server.logInfo("false positive BLOCK '" + cidr + "' detected by '" + tokenName + ";" + statusName + "'.");
                 }
                 if (Provider.containsCIDR(ip)) {
                     statusIP = Status.PROVIDER;
@@ -990,7 +995,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     String cidr;
                     int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
                     if ((cidr = Block.clearCIDR(ip, mask)) != null) {
-                        Server.logDebug("false positive BLOCK '" + cidr + "' detected by 'list.dnswl.org;" + result + "'.");
+                        Server.logInfo("false positive BLOCK '" + cidr + "' detected by 'list.dnswl.org;" + result + "'.");
                     }
                     if (Provider.containsCIDR(ip)) {
                         statusIP = Status.PROVIDER;
@@ -1019,6 +1024,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenName));
             } else {
                 builder.append(Domain.revert(tokenName));
+                String mask = Generic.convertHostToMask(tokenName);
+                if (mask != null) {
+                    builder.append(' ');
+                    builder.append(mask);
+                }
             }
         } catch (Exception ex) {
             builder.append("ERROR");
@@ -1065,6 +1075,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing analise.set");
                 long time = System.currentTimeMillis();
                 TreeSet<Analise> set = getAnaliseCloneSet();
                 File file = new File("./data/analise.set");

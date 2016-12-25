@@ -42,6 +42,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
@@ -64,7 +65,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
 import net.spfbl.data.Generic;
-import net.spfbl.dnsbl.QueryDNSBL;
+import net.spfbl.dns.QueryDNS;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 
@@ -124,7 +125,7 @@ public abstract class Server extends Thread {
         SPF.load();
         NoReply.load();
         Defer.load();
-        QueryDNSBL.load();
+        QueryDNS.load();
     }
     
     private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
@@ -183,7 +184,7 @@ public abstract class Server extends Thread {
         SPF.store(clone);
         NoReply.store();
         Defer.store();
-        QueryDNSBL.store();
+        QueryDNS.store();
         System.gc();
     }
 
@@ -682,12 +683,7 @@ public abstract class Server extends Thread {
      * @param ex a exceção a ser registrada.
      */
     public static void logError(Throwable ex) {
-//        if (ex instanceof ProcessException) {
-//            ProcessException pex = (ProcessException) ex;
-//            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", pex.getErrorMessage(), (String) null);
-//        } else if (ex instanceof Exception) {
-            log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
-//        }
+        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
     }
     
     /**
@@ -700,6 +696,11 @@ public abstract class Server extends Thread {
     public static void logLookupSPF(
             long time, String hostname, String result) {
         log(time, Core.Level.DEBUG, "SPFLK", hostname, result);
+    }
+    
+    public static void logQueryP2PUDP(long time,
+            InetAddress ipAddress, String query, String result) {
+        logQuery(time, "P2PUDP", ipAddress, query, result);
     }
     
     /**
@@ -807,7 +808,9 @@ public abstract class Server extends Thread {
             Core.Level level,
             String type,
             String client,
-            String query, String result) {
+            String query,
+            String result
+    ) {
         log(time, level, type, (client == null ? "" : client + ": ") + query, result);
     }
     
@@ -850,10 +853,12 @@ public abstract class Server extends Thread {
         Server.logInfo("interrupting analises...");
         Analise.interrupt();
         Server.logInfo("shutting down server...");
+        for (Server server : SERVER_LIST) {
+            server.run = false;
+        }
         boolean closed = true;
         for (Server server : SERVER_LIST) {
             try {
-                server.run = false;
                 server.close();
             } catch (Exception ex) {
                 closed = false;
@@ -1043,6 +1048,16 @@ public abstract class Server extends Thread {
         return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
     }
     
+//    public static String getProviderDNS() {
+//        try {
+//            Hashtable env = (Hashtable) INITIAL_DIR_CONTEXT.getEnvironment();
+//            return (String) env.get("java.naming.provider.url") + '/';
+//        } catch (NamingException ex) {
+//            Server.logError(ex);
+//            return "";
+//        }
+//    }
+    
     static {
         try {
             initDNS();
@@ -1052,12 +1067,28 @@ public abstract class Server extends Thread {
         }
     }
     
+    private static String DNS_PROVIDER = null;
+    
+    public static void setProviderDNS(String ip) {
+        if (ip != null && ip.length() > 0) {
+            if (Subnet.isValidIP(ip)) {
+                Server.DNS_PROVIDER = Subnet.normalizeIP(ip);
+                Server.logInfo("using " + ip + " as fixed DNS provider.");
+            } else {
+                Server.logError("invalid DNS provider '" + ip + "'.");
+            }
+        }
+    }
+    
     @SuppressWarnings("unchecked")
     public static void initDNS() throws NamingException {
         Hashtable env = new Hashtable();
         env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
         env.put("com.sun.jndi.dns.timeout.initial", "3000");
         env.put("com.sun.jndi.dns.timeout.retries", "1");
+        if (DNS_PROVIDER != null) {
+            env.put("java.naming.provider.url", "dns://" + DNS_PROVIDER);
+        }
         INITIAL_DIR_CONTEXT = new InitialDirContext(env);
     }
     
@@ -1073,8 +1104,7 @@ public abstract class Server extends Thread {
         long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-//            WHOIS_CONNECTION_SEMAPHORE.acquire();
-            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
+            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
                 try {
                     acquireWhoisQuery();
                     WhoisClient whoisClient = new WhoisClient();
@@ -1113,18 +1143,18 @@ public abstract class Server extends Thread {
         }
     }
     
-    public static synchronized void tryRefreshWHOIS() {
-        // Evita que muitos processos fiquem 
-        // presos aguardando a liberação do método.
-        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
-            refreshWHOIS();
-        }
-    }
+//    public static synchronized void tryRefreshWHOIS() {
+//        // Evita que muitos processos fiquem 
+//        // presos aguardando a liberação do método.
+//        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
+//            refreshWHOIS();
+//        }
+//    }
     
     /**
      * Atualiza os registros quase expirando.
      */
-    public static synchronized boolean refreshWHOIS() {
+    public static synchronized boolean tryRefreshWHOIS() {
         if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
             if (Domain.backgroundRefresh()) {
                 return true;
@@ -1178,13 +1208,17 @@ public abstract class Server extends Thread {
                     }
                 } else if (Domain.containsDomain(token) && tokenizer.hasMoreTokens()) {
                     Domain domain = Domain.getDomain(token);
-                    while (tokenizer.hasMoreTokens()) {
-                        String key = tokenizer.nextToken();
-                        String value = domain.get(key, updated);
-                        if (value == null) {
-                            result += '\n';
-                        } else {
-                            result += value + '\n';
+                    if (domain == null) {
+                        result = "NOT FOUND\n";
+                    } else {
+                        while (tokenizer.hasMoreTokens()) {
+                            String key = tokenizer.nextToken();
+                            String value = domain.get(key, updated);
+                            if (value == null) {
+                                result += '\n';
+                            } else {
+                                result += value + '\n';
+                            }
                         }
                     }
                 } else {

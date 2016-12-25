@@ -87,14 +87,10 @@ public class White {
             return SET.remove(token);
         }
         
-        public static boolean contains(String token) {
+        public static synchronized boolean contains(String token) {
             return SET.contains(token);
         }
     }
-    
-//    private static void logTrace(long time, String message) {
-//        Server.log(time, Core.Level.TRACE, "WHITE", message, (String) null);
-//    }
     
     /**
      * Conjunto de critérios WHOIS para liberação.
@@ -167,11 +163,15 @@ public class White {
             return set.add(whois);
         }
         
+        private static synchronized TreeSet<String> getClientSet(String client) {
+            return MAP.get(client);
+        }
+        
         public static boolean contains(String client, String dnsbl) {
             if (dnsbl == null) {
                 return false;
             } else {
-                TreeSet<String> dnsblSet = MAP.get(client);
+                TreeSet<String> dnsblSet = getClientSet(client);
                 if (dnsblSet == null) {
                     return false;
                 } else {
@@ -180,8 +180,8 @@ public class White {
             }
         }
         
-        private static synchronized String[] getArray(String client) {
-            TreeSet<String> set = MAP.get(client);
+        private static String[] getArray(String client) {
+            TreeSet<String> set = getClientSet(client);
             if (set == null) {
                 return null;
             } else {
@@ -195,7 +195,6 @@ public class White {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
-//                long time = System.currentTimeMillis();
                 TreeSet<String> subSet = new TreeSet<String>();
                 String[] array = getArray(null);
                 if (array != null) {
@@ -240,17 +239,14 @@ public class White {
                                     if (value != null) {
                                         if (signal == '=') {
                                             if (criterion.equals(value)) {
-//                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
                                                 return whois;
                                             }
                                         } else if (value.length() > 0) {
                                             int criterionInt = parseIntWHOIS(criterion);
                                             int valueInt = parseIntWHOIS(value);
                                             if (signal == '<' && valueInt < criterionInt) {
-//                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
                                                 return whois;
                                             } else if (signal == '>' && valueInt > criterionInt) {
-//                                                logTrace(time, "WHOIS lookup for " + tokenSet + ".");
                                                 return whois;
                                             }
                                         }
@@ -261,159 +257,12 @@ public class White {
                             Server.logError(ex);
                         }
                     }
-//                    logTrace(time, "WHOIS lookup for " + tokenSet + ".");
                     return null;
                 }
 
             }
         }
     }
-    
-//    /**
-//     * Conjunto de DNSBL para bloqueio de IP.
-//     */
-//    private static class DNSBL {
-//        
-//        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
-//        
-//        public static synchronized boolean isEmpty() {
-//            return MAP.isEmpty();
-//        }
-//        
-//        public static synchronized void clear() {
-//            MAP.clear();
-//        }
-//        
-//        public static synchronized TreeSet<String> getAll() {
-//            TreeSet<String> set = new TreeSet<String>();
-//            for (String client : MAP.keySet()) {
-//                for (String dnsbl : MAP.get(client)) {
-//                    if (client == null) {
-//                        set.add("DNSBL=" + dnsbl);
-//                    } else {
-//                        set.add(client + ":DNSBL=" + dnsbl);
-//                    }
-//                }
-//            }
-//            return set;
-//        }
-//        
-//        private static synchronized boolean dropExact(String token) {
-//            int index = token.indexOf('=');
-//            String dnsbl = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            TreeSet<String> set = MAP.get(client);
-//            if (set == null) {
-//                return false;
-//            } else {
-//                boolean removed = set.remove(dnsbl);
-//                if (set.isEmpty()) {
-//                    MAP.remove(client);
-//                }
-//                return removed;
-//            }
-//        }
-//        
-//        private static synchronized boolean addExact(String token) {
-//            int index = token.indexOf('=');
-//            String dnsbl = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            TreeSet<String> set = MAP.get(client);
-//            if (set == null) {
-//                set = new TreeSet<String>();
-//                MAP.put(client, set);
-//            }
-//            return set.add(dnsbl);
-//        }
-//        
-//        public static boolean containsExtact(String client, String dnsbl) {
-//            if (dnsbl == null) {
-//                return false;
-//            } else {
-//                TreeSet<String> dnsblSet = MAP.get(client);
-//                if (dnsblSet == null) {
-//                    return false;
-//                } else {
-//                    return dnsblSet.containsExtact(dnsbl);
-//                }
-//            }
-//        }
-//    
-//        private static synchronized String[] getArray(String client) {
-//            TreeSet<String> set = MAP.get(client);
-//            if (set == null) {
-//                return null;
-//            } else {
-//                int size = set.size();
-//                String[] array = new String[size];
-//                return set.toArray(array);
-//            }
-//        }
-//        
-//        private static String get(String client, String ip) {
-//            if (ip == null) {
-//                return null;
-//            } else {
-//                long time = System.currentTimeMillis();
-//                TreeMap<String,TreeSet<String>> dnsblMap =
-//                        new TreeMap<String,TreeSet<String>>();
-//                String[] array = getArray(null);
-//                if (array != null) {
-//                    for (String dnsbl : array) {
-//                        int index = dnsbl.indexOf(';');
-//                        String server = dnsbl.substring(0, index);
-//                        String value = dnsbl.substring(index + 1);
-//                        TreeSet<String> dnsblSet = dnsblMap.get(server);
-//                        if (dnsblSet == null) {
-//                            dnsblSet = new TreeSet<String>();
-//                            dnsblMap.put(server, dnsblSet);
-//                        }
-//                        dnsblSet.add(value);
-//                    }
-//                }
-//                if (client != null) {
-//                    array = getArray(client);
-//                    if (array != null) {
-//                        for (String dnsbl : array) {
-//                            int index = dnsbl.indexOf(';');
-//                            String server = dnsbl.substring(0, index);
-//                            String value = dnsbl.substring(index + 1);
-//                            TreeSet<String> dnsblSet = dnsblMap.get(server);
-//                            if (dnsblSet == null) {
-//                                dnsblSet = new TreeSet<String>();
-//                                dnsblMap.put(server, dnsblSet);
-//                            }
-//                            dnsblSet.add(value);
-//                        }
-//                    }
-//                }
-//                String result = null;
-//                for (String server : dnsblMap.keySet()) {
-//                    TreeSet<String> valueSet = dnsblMap.get(server);
-//                    String listed = Reverse.getListed(ip, server, valueSet);
-//                    if (listed != null) {
-//                        Server.logDebug("IP " + ip + " is listed in '" + server + ";" + listed + "'.");
-//                        result = server + ";" + listed;
-//                        break;
-//                    }
-//                }
-//                logTrace(time, "DNSBL lookup for '" + ip + "'.");
-//                return result;
-//            }
-//        }
-//    }
     
     /**
      * Conjunto de REGEX para liberação.
@@ -500,11 +349,15 @@ public class White {
             return true;
         }
         
+        private static synchronized ArrayList<Pattern> getClientList(String client) {
+            return MAP.get(client);
+        }
+        
         public static boolean contains(String client, String regex) {
             if (regex == null) {
                 return false;
             } else {
-                ArrayList<Pattern> patternList = MAP.get(client);
+                ArrayList<Pattern> patternList = getClientList(client);
                 if (patternList == null) {
                     return false;
                 } else {
@@ -518,8 +371,8 @@ public class White {
             }
         }
         
-        private static synchronized Pattern[] getArray(String client) {
-            ArrayList<Pattern> patternList = MAP.get(client);
+        private static Pattern[] getArray(String client) {
+            ArrayList<Pattern> patternList = getClientList(client);
             if (patternList == null) {
                 return null;
             } else {
@@ -687,18 +540,26 @@ public class White {
             }
         }
         
+        private static synchronized TreeSet<String> getClientSet(String client) {
+            return MAP.get(client);
+        }
+        
         public static boolean contains(String client, String cidr) {
             if (cidr == null) {
                 return false;
             } else {
                 String key = Subnet.expandCIDR(cidr);
-                TreeSet<String> cidrSet = MAP.get(client);
-                return cidrSet.contains(key);
+                TreeSet<String> cidrSet = getClientSet(client);
+                if (cidrSet == null) {
+                    return false;
+                } else {
+                    return cidrSet.contains(key);
+                }
             }
         }
         
         private static String getFloor(String client, String ip) {
-            TreeSet<String> cidrSet = MAP.get(client);
+            TreeSet<String> cidrSet = getClientSet(client);
             if (cidrSet == null || cidrSet.isEmpty()) {
                 return null;
             } else if (SubnetIPv4.isValidIPv4(ip)) {
@@ -727,7 +588,6 @@ public class White {
         }
 
         public static String get(String client, String ip) {
-            long time = System.currentTimeMillis();
             String result;
             String cidr = getFloor(null, ip);
             if (Subnet.containsIP(cidr, ip)) {
@@ -741,7 +601,6 @@ public class White {
             } else {
                 result = null;
             }
-//            logTrace(time, "CIDR lookup for '" + ip + "'.");
             return result;
         }
     }
@@ -757,14 +616,6 @@ public class White {
             } else {
                 return false;
             }
-//        } else if (token.containsExtact("DNSBL=")) {
-//            if (DNSBL.dropExact(token)) {
-//                Peer.releaseAll(token);
-//                CHANGED = true;
-//                return true;
-//            } else {
-//                return false;
-//            }
         } else if (token.contains("CIDR=")) {
             if (CIDR.dropExact(token)) {
                 Peer.releaseAll(token);
@@ -794,7 +645,6 @@ public class White {
         TreeSet<String> set = SET.clear();
         set.addAll(CIDR.clear());
         set.addAll(REGEX.clear());
-//        set.addAll(DNSBL.clear());
         set.addAll(WHOIS.clear());
         CHANGED = true;
         return set;
@@ -811,14 +661,6 @@ public class White {
             } else {
                 return false;
             }
-//        } else if (token.containsExtact("DNSBL=")) {
-//            if (DNSBL.addExact(token)) {
-//                Peer.releaseAll(token);
-//                CHANGED = true;
-//                return true;
-//            } else {
-//                return false;
-//            }
         } else if (token.contains("CIDR=")) {
             if (CIDR.addExact(token)) {
                 Peer.releaseAll(token);
@@ -848,7 +690,6 @@ public class White {
         TreeSet<String> whiteSet = SET.getAll();
         whiteSet.addAll(CIDR.getAll());
         whiteSet.addAll(REGEX.getAll());
-//        whiteSet.addAll(DNSBL.getAll());
         whiteSet.addAll(WHOIS.getAll());
         return whiteSet;
     }
@@ -856,8 +697,6 @@ public class White {
     public static boolean containsIP(String ip) {
         if ((ip = Subnet.normalizeIP(ip)) == null) {
             return false;
-//        } else if (SET.containsExtact(ip)) {
-//            return true;
         } else {
             return CIDR.get(null, ip) != null;
         }
@@ -875,17 +714,6 @@ public class White {
                 client = token.substring(0, index);
             }
             return WHOIS.contains(client, whois);
-//        } else if (token.containsExtact("DNSBL=")) {
-//            int index = token.indexOf('=');
-//            String dnsbl = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            return DNSBL.containsExtact(client, dnsbl);
         } else if (token.contains("CIDR=")) {
             int index = token.indexOf('=');
             String cidr = token.substring(index+1);
@@ -912,34 +740,6 @@ public class White {
             return SET.contains(token);
         }
     }
-
-//    private static String addDomain(String user, String token) {
-//        try {
-//            if (token == null) {
-//                return null;
-//            } else if (token.startsWith("@") && (token = Domain.extractDomain(token.substring(1), true)) != null) {
-//                if (user == null && addExact(token)) {
-//                    return token;
-//                } else if (user != null && addExact(user + ':' + token)) {
-//                    return user + ':' + token;
-//                } else {
-//                    return null;
-//                }
-//            } else if (token.startsWith(".") && (token = Domain.extractDomain(token, true)) != null) {
-//                if (user == null && addExact(token)) {
-//                    return token;
-//                } else if (user != null && addExact(user + ':' + token)) {
-//                    return user + ':' + token;
-//                } else {
-//                    return null;
-//                }
-//            } else {
-//                return null;
-//            }
-//        } catch (ProcessException ex) {
-//            return null;
-//        }
-//    }
     
     private static boolean matches(String regex, String token) {
         try {
@@ -1226,16 +1026,30 @@ public class White {
             ) throws ProcessException {
         TreeSet<String> whiteSet = new TreeSet<String>();
         String white;
-        while (dropExact(white = find(client, user, ip, sender, hostname, qualifier, recipient))) {
+        while ((white = find(client, user, ip, sender, hostname, qualifier, recipient)) != null) {
             if (whiteSet.contains(white)) {
-                throw new ProcessException("FATAL WHITE ERROR");
-            } else if (user == null) {
-                Server.logDebug("false negative WHITE '" + white + "' detected.");
-            } else {
-                Server.logDebug("false negative WHITE '" + white + "' detected by '" + user.getEmail() + "'.");
+                throw new ProcessException("FATAL BLOCK ERROR");
+            } else if (dropExact(white)) {
+                if (user != null) {
+                    Server.logInfo("false negative WHITE '" + white + "' detected by '" + user.getEmail() + "'.");
+                } else if (client != null && client.hasEmail()) {
+                    Server.logInfo("false negative WHITE '" + white + "' detected by '" + client.getEmail() + "'.");
+                } else {
+                    Server.logInfo("false negative WHITE '" + white + "' detected.");
+                }
             }
             whiteSet.add(white);
         }
+//        while (dropExact(white = find(client, user, ip, sender, hostname, qualifier, recipient))) {
+//            if (whiteSet.contains(white)) {
+//                throw new ProcessException("FATAL WHITE ERROR");
+//            } else if (user == null) {
+//                Server.logDebug("false negative WHITE '" + white + "' detected.");
+//            } else {
+//                Server.logDebug("false negative WHITE '" + white + "' detected by '" + user.getEmail() + "'.");
+//            }
+//            whiteSet.add(white);
+//        }
     }
     
     public static boolean contains(Client client, User user,
@@ -1444,6 +1258,23 @@ public class White {
                         return userEmail + ':' + subsender + ';' + validation + '>' + recipientDomain;
                     }
                 }
+                index4 = index2;
+                while ((index4 = sender.lastIndexOf('.', index4 - 1)) > 0) {
+                    String subsender = sender.substring(index4);
+                    if (SET.contains(subsender + ';' + validation)) {
+                        return subsender + ';' + validation;
+                    } else if (recipient != null && SET.contains(subsender + ';' + validation + '>' + recipient)) {
+                        return subsender + ';' + validation + '>' + recipient;
+                    } else if (recipientDomain != null && SET.contains(subsender + ';' + validation + '>' + recipientDomain)) {
+                        return subsender + ';' + validation + '>' + recipientDomain;
+                    } else if (userEmail != null && SET.contains(userEmail + ':' + subsender + ';' + validation)) {
+                        return userEmail + ':' + subsender + ';' + validation;
+                    } else if (userEmail != null && recipient != null && SET.contains(userEmail + ':' + subsender + ';' + validation + '>' + recipient)) {
+                        return userEmail + ':' + subsender + ';' + validation + '>' + recipient;
+                    } else if (userEmail != null && recipientDomain != null && SET.contains(userEmail + ':' + subsender + ';' + validation + '>' + recipientDomain)) {
+                        return userEmail + ':' + subsender + ';' + validation + '>' + recipientDomain;
+                    }
+                }
             }
             if (senderDomain.endsWith(".br")) {
                 whoisSet.add(senderDomain);
@@ -1508,6 +1339,7 @@ public class White {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing white.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/white.set");
                 TreeSet<String> set = getAll();

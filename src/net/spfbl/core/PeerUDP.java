@@ -231,7 +231,7 @@ public final class PeerUDP extends Server {
                         int index = token.indexOf(' ') + 1;
                         String reputation = token.substring(index);
                         StringTokenizer tokenizer = new StringTokenizer(reputation, " ");
-                        if (tokenizer.countTokens() == 3) {
+                        if (tokenizer.countTokens() > 2) {
                             String key = tokenizer.nextToken();
                             String ham = tokenizer.nextToken();
                             String spam = tokenizer.nextToken();
@@ -459,7 +459,7 @@ public final class PeerUDP extends Server {
                                 InetAddress ipAddress = packet.getAddress();
                                 String result = "ERROR: FATAL\n";
                                 Server.logError(ex);
-                                Server.logQueryDNSBL(time, ipAddress, null, result);
+                                Server.logQueryP2PUDP(time, ipAddress, null, result);
                                 offer(connection);
                             }
                         }

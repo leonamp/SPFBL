@@ -41,6 +41,7 @@ PORTA_ADMIN="9875"
 OTP_SECRET=""
 DUMP_PATH="/tmp"
 QUERY_TIMEOUT="60"
+MAX_TIMEOUT="30"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.10"
@@ -113,7 +114,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
-			if [ "$?" -le "3" ]; then
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
 				response="TIMEOUT"
 			else
 				response="OUT OF SERVICE"
@@ -149,7 +150,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
-			if [ "$?" -le "3" ]; then
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
 				response="TIMEOUT"
 			else
 				response="OUT OF SERVICE"
@@ -185,7 +186,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
-			if [ "$?" -le "3" ]; then
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
 				response="TIMEOUT"
 			else
 				response="OUT OF SERVICE"
@@ -221,7 +222,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
-			if [ "$?" -le "3" ]; then
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
 				response="TIMEOUT"
 			else
 				response="OUT OF SERVICE"
@@ -266,7 +267,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -310,7 +311,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -350,7 +351,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -400,7 +401,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -444,7 +445,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -484,7 +485,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -535,7 +536,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -580,7 +581,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -620,7 +621,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -673,7 +674,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -720,7 +721,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -765,7 +766,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -805,7 +806,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -858,7 +859,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -902,7 +903,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -947,7 +948,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -991,7 +992,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1038,7 +1039,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1083,7 +1084,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1132,7 +1133,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1172,7 +1173,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1214,7 +1215,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1259,7 +1260,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1310,7 +1311,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1355,7 +1356,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1402,7 +1403,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1442,7 +1443,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1493,7 +1494,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1538,7 +1539,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1582,7 +1583,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1642,7 +1643,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1696,7 +1697,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1738,7 +1739,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1777,7 +1778,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1829,7 +1830,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1873,7 +1874,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1912,7 +1913,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -1968,7 +1969,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2016,7 +2017,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2061,7 +2062,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2107,7 +2108,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2149,7 +2150,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2191,7 +2192,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2245,7 +2246,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2291,7 +2292,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2337,7 +2338,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -2381,7 +2382,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
-			if [ "$?" -le "3" ]; then
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
 				response="TIMEOUT"
 			else
 				response="OUT OF SERVICE"
@@ -2426,7 +2427,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					response="TIMEOUT"
 				else
 					response="OUT OF SERVICE"
@@ -2470,7 +2471,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					response="TIMEOUT"
 				else
 					response="OUT OF SERVICE"
@@ -2510,7 +2511,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
-					if [ "$?" -le "3" ]; then
+					if [ "$?" -le "$MAX_TIMEOUT" ]; then
 						response="TIMEOUT"
 					else
 						response="OUT OF SERVICE"
@@ -2534,7 +2535,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
-					if [ "$?" -le "3" ]; then
+					if [ "$?" -le "$MAX_TIMEOUT" ]; then
 						response="TIMEOUT"
 					else
 						response="OUT OF SERVICE"
@@ -2559,7 +2560,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
-					if [ "$?" -le "3" ]; then
+					if [ "$?" -le "$MAX_TIMEOUT" ]; then
 						response="TIMEOUT"
 					else
 						response="OUT OF SERVICE"
@@ -2582,11 +2583,11 @@ case $1 in
 				ip=$2
 				list=$3
 
-				response=$(echo $OTP_CODE"ANALISE $ip &list" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo $OTP_CODE"ANALISE $ip $list" | nc $IP_SERVIDOR $PORTA_ADMIN)
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
-					if [ "$?" -le "3" ]; then
+					if [ "$?" -le "$MAX_TIMEOUT" ]; then
 						response="TIMEOUT"
 					else
 						response="OUT OF SERVICE"
@@ -2650,7 +2651,7 @@ case $1 in
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					qualifier="TIMEOUT"
 				else
 					qualifier="OUT OF SERVICE"
@@ -2807,7 +2808,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					response="TIMEOUT"
 				else
 					response="OUT OF SERVICE"
@@ -2950,7 +2951,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					response="TIMEOUT"
 				else
 					response="OUT OF SERVICE"
@@ -3000,7 +3001,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					response="TIMEOUT"
 				else
 					response="OUT OF SERVICE"
@@ -3249,7 +3250,7 @@ case $1 in
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
-				if [ "$?" -le "3" ]; then
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
 					qualifier="TIMEOUT"
 				else
 					qualifier="OUT OF SERVICE"
@@ -3337,7 +3338,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3382,7 +3383,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3422,7 +3423,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3473,7 +3474,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3518,7 +3519,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3558,7 +3559,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3609,7 +3610,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3654,7 +3655,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3694,7 +3695,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3745,7 +3746,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3790,7 +3791,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"
@@ -3830,7 +3831,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
-						if [ "$?" -le "3" ]; then
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
 							response="TIMEOUT"
 						else
 							response="OUT OF SERVICE"

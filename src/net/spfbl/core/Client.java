@@ -26,6 +26,7 @@ import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import net.spfbl.data.Generic;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import org.apache.commons.lang3.SerializationUtils;
@@ -460,7 +461,16 @@ public class Client implements Serializable, Comparable<Client> {
             if (cidr != null) {
                 String ip = address.getHostAddress();
                 String hostame = Reverse.getHostname(ip);
-                String domain = Domain.extractDomain(hostame, false);
+                String domain;
+                if (Generic.contains(hostame)) {
+                    domain = null;
+                } else {
+                    try {
+                        domain = Domain.extractDomain(hostame, false);
+                    } catch (ProcessException ex) {
+                        domain = null;
+                    }
+                }
                 client = Client.create(cidr, domain, permissao, null);
                 if (client != null) {
                     Server.logDebug("CLIENT ADDED " + client);
@@ -531,6 +541,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing client.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Client> map = getMap();
                 File file = new File("./data/client.map");
@@ -656,14 +667,16 @@ public class Client implements Serializable, Comparable<Client> {
         return interval;
     }
     
-    public void addQuery() {
+    public boolean addQuery() {
         Float interval = getInterval();
         if (interval == null) {
-            // Se não houver intervalo definido, fazer nada.
+            return false;
         } else if (frequency == null) {
             frequency = new NormalDistribution(interval < 1000 ? 1000 : interval);
+            return true;
         } else {
             frequency.addElement(interval);
+            return true;
         }
     }
     

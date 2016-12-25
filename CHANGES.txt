@@ -1,29 +1,46 @@
-##### Atenção:
+### v2.5.0 ; release 25/12/2016:
 
-a versão TESTING está disponível em: 
+FIX) correção no parsing da resposta WHOIS.
 
-https://github.com/SPFBL/beta-test
+NEW) implementação de máscara nos registros da lista GENERIC.
 
+FIX) correções que causavam deadlock em certos métodos de manipulação de listas.
 
-### v2.5.0-TESTING ; release 12/12/2016:
+FIX) correção na liberação de bloqueio do usuário pelo painel de controle.
 
-NEW) implementação saída INEXISTENT
+UPDT) preparação para pacote P2P suportar mais valores, que serão usados futuramente.
 
-NEW) script spfbl.sh stats - show daily statistics
+NEW) implementação do calculo de correlação entre peers para determinar ponderação de reputação.
 
-NEW) script spfbl.sh backup
+UPDT) melhorias no gerenciamento de memória e no fluxo multithread.
 
-UPDT) script spfbl.sh - comando INEXISTENT
+FIX) correção na grafia smpt_port no spfbl.conf.
 
-UPDT) script postfix.pl - saida INEXISTENT
+NEW) implementação da variável dns_provider no spfbl.conf para determinar um servidor DNS fixo que o SPFBL deve consultar.
 
-UPDT) melhorias "white sender"; Ex. spfbl.sh white add sender@domain.tld
+NEW) implementação do serviço DNSWL.
 
-UPDT) atualização nos scripts .sh e .pl; adicionadas saídas HOLD e FLAG do engine SPFBL
+NEW) implementação saída HOLD para congelamento da mensagem no MTA.
 
-UPDT) adições nas configurações do EXIM; verificação From e Reply-to
+NEW) implementação saída OUT OF SERVICE.
 
-FIX) correção comando DUMP - pulava uma entrada em whitelist quando especifico para um dominio
+NEW) implementação saída INEXISTENT para destinatário cadastrado como inexistente e todos registros incluidos nesta lista se tornam automaticamente spamtrap em 365 dias.
+
+NEW) script spfbl.sh stats - show daily statistics.
+
+NEW) script spfbl.sh backup.
+
+UPDT) script spfbl.sh - comando INEXISTENT.
+
+UPDT) script postfix.pl - saida INEXISTENT.
+
+UPDT) melhorias "white sender"; Ex. spfbl.sh white add sender@domain.tld.
+
+UPDT) atualização nos scripts .sh e .pl; adicionadas saídas HOLD e FLAG do engine SPFBL.
+
+UPDT) adições nas configurações do EXIM; verificação From e Reply-to.
+
+FIX) correção comando DUMP - pulava uma entrada em whitelist quando especifico para um dominio.
 
 
 ### v.2.4.1 ; release 31/10/2016:

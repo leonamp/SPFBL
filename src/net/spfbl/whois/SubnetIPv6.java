@@ -645,13 +645,28 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
+    private static synchronized SubnetIPv6 newSubnet(String ip) throws ProcessException {
+//        Server.logTrace("quering new WHOIS IPv6");
+        // Selecionando servidor da pesquisa WHOIS.
+        String server = getWhoisServer(ip);
+        // Fazer a consulta no WHOIS.
+        String result = Server.whois(ip, server);
+        SubnetIPv6 subnet = new SubnetIPv6(result);
+        subnet.server = server; // Temporário até final de transição.
+        String key = getFirstIPv6(subnet.getInetnum());
+        key = expandIPv6(key);
+        MAP.put(key, subnet);
+        CHANGED = true;
+        return subnet;
+    }
+    
     /**
      * Retorna o bloco de IP de AS de um determinado IP.
      * @param ip o IP cujo bloco deve ser retornado.
      * @return o registro de bloco IPv6 de AS de um determinado IP.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static synchronized SubnetIPv6 getSubnet(String ip) throws ProcessException {
+    public static SubnetIPv6 getSubnet(String ip) throws ProcessException {
         SubnetIPv6 subnet;
         String key = MAP.floorKey(expandIPv6(ip));
         while (key != null) {
@@ -679,17 +694,7 @@ public final class SubnetIPv6 extends Subnet {
             }
         }
         // Não encontrou a sub-rede em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(ip);
-        // Fazer a consulta no WHOIS.
-        String result = Server.whois(ip, server);
-        subnet = new SubnetIPv6(result);
-        subnet.server = server; // Temporário até final de transição.
-        key = getFirstIPv6(subnet.getInetnum());
-        key = expandIPv6(key);
-        MAP.put(key, subnet);
-        CHANGED = true;
-        return subnet;
+        return newSubnet(ip);
     }
     
     private static synchronized TreeMap<String,SubnetIPv6> getMap() {
@@ -704,6 +709,7 @@ public final class SubnetIPv6 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing subnet6.map");
                 long time = System.currentTimeMillis();
                 TreeMap<String,SubnetIPv6> map = getMap();
                 File file = new File("./data/subnet6.map");

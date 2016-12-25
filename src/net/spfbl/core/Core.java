@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.BindException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
@@ -57,17 +58,17 @@ import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
-import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.data.NoReply;
-import net.spfbl.dnsbl.QueryDNSBL;
+import net.spfbl.dns.QueryDNS;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
+import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.codec.binary.Base32;
@@ -81,8 +82,8 @@ import org.apache.commons.codec.binary.Base64;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 4;
-    private static final byte RELEASE = 1;
+    private static final byte SUBVERSION = 5;
+    private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -416,7 +417,7 @@ public class Core {
     
     private static AdministrationTCP administrationTCP = null;
     private static QuerySPF querySPF = null;
-    private static QueryDNSBL queryDNSBL = null;
+    private static QueryDNS queryDNSBL = null;
     private static PeerUDP peerUDP = null;
     
     public static void interruptTimeout() {
@@ -444,13 +445,15 @@ public class Core {
                     properties.load(confIS);
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
+                    Server.setProviderDNS(properties.getProperty("dns_provider"));
                     Core.setHostname(properties.getProperty("hostname"));
                     Core.setInterface(properties.getProperty("interface"));
                     Core.setAdminEmail(properties.getProperty("admin_email"));
                     Core.setIsAuthSMTP(properties.getProperty("smtp_auth"));
                     Core.setStartTLSSMTP(properties.getProperty("smtp_starttls"));
                     Core.setHostSMTP(properties.getProperty("smtp_host"));
-                    Core.setPortSMTP(properties.getProperty("smpt_port"));
+                    Core.setPortSMTP(properties.getProperty("smpt_port")); // Version: 2.4
+                    Core.setPortSMTP(properties.getProperty("smtp_port"));
                     Core.setUserSMTP(properties.getProperty("smtp_user"));
                     Core.setPasswordSMTP(properties.getProperty("smtp_password"));
                     Core.setPortAdmin(properties.getProperty("admin_port"));
@@ -475,7 +478,7 @@ public class Core {
                     Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
                     Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
-                    QueryDNSBL.setConnectionLimit(properties.getProperty("dnsbl_limit"));
+                    QueryDNS.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
                     Analise.setAnaliseExpires(properties.getProperty("analise_expires"));
                     Analise.setAnaliseIP(properties.getProperty("analise_ip"));
@@ -562,6 +565,10 @@ public class Core {
         return HOSTNAME;
     }
     
+    public static boolean hasHostname() {
+        return HOSTNAME != null;
+    }
+    
     private static String HOSTNAME = null;
     private static String INTERFACE = null;
     private static String ADMIN_EMAIL = null;
@@ -627,8 +634,8 @@ public class Core {
     public static synchronized void setHostname(String hostame) {
         if (hostame != null && hostame.length() > 0) {
             if (!Domain.isHostname(hostame)) {
-                Server.logError("invalid hostame '" + hostame + "'.");
-            } else if (!Core.TESTING && !isRouteable(hostame)) {
+                Server.logError("invalid hostname '" + hostame + "'.");
+            } else if (!Core.TESTING && !hostame.equals("localhost") && !isRouteable(hostame)) {
                 Server.logError("unrouteable hostname '" + hostame + "'.");
             } else {
                 Core.HOSTNAME = Domain.extractHost(hostame, false);
@@ -1103,8 +1110,10 @@ public class Core {
     
     public static synchronized void setHostSMTP(String host) {
         if (host != null && host.length() > 0) {
-            if (Domain.isHostname(host)) {
-                Core.SMTP_HOST = host.toLowerCase();
+            if (Subnet.isValidIP(host)) {
+                Core.SMTP_HOST = Subnet.normalizeIP(host);
+            } else if (Domain.isHostname(host)) {
+                Core.SMTP_HOST = Domain.normalizeHostname(host, false);
             } else {
                 Server.logError("invalid SMTP hostname '" + host + "'.");
             }
@@ -1129,6 +1138,12 @@ public class Core {
                 Core.SMTP_PASSWORD = password;
             }
         }
+    }
+    
+    private static short REPUTATION_LIMIT = 1024;
+    
+    public static short getReputationLimit() {
+        return REPUTATION_LIMIT;
     }
     
     public static final DecimalFormat CENTENA_FORMAT = new DecimalFormat("000");
@@ -1208,6 +1223,9 @@ public class Core {
             Properties props = System.getProperties();
             props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
+            props.put("mail.smtp.host", SMTP_HOST);
+            props.put("mail.smtp.port", Short.toString(SMTP_PORT));
+            props.put("mail.smtp.ssl.trust", SMTP_HOST);
             Address[] recipients = message.getRecipients(Message.RecipientType.TO);
             Session session = Session.getDefaultInstance(props);
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
@@ -1220,13 +1238,11 @@ public class Core {
                 Server.logSendMTP("message '" + message.getSubject() + "' sent.");
             } catch (AuthenticationFailedException ex) {
                 Server.logSendMTP("authentication failed.");
-                throw new ProcessException("Falha de autenticação SMTP.", ex);
             } catch (MailConnectException ex) {
                 Server.logSendMTP("connection failed.");
-                throw new ProcessException("Falha de conexão SMTP.", ex);
             } catch (MessagingException ex) {
                 Server.logSendMTP("messaging failed.");
-                throw new ProcessException("Falha de conexão SMTP.", ex);
+                throw new ProcessException("Falha de envio SMTP.", ex);
             } finally {
                 if (transport.isConnected()) {
                     transport.close();
@@ -1258,25 +1274,64 @@ public class Core {
                 loadConfiguration();
                 Server.logInfo("starting server...");
                 Server.loadCache();
-                administrationTCP = new AdministrationTCP(PORT_ADMIN);
-                administrationTCP.start();
+                try {
+                    administrationTCP = new AdministrationTCP(PORT_ADMIN);
+                    administrationTCP.start();
+                } catch (BindException ex) {
+                    Server.logError("system could not start because TCP port " + PORT_ADMIN + " is already in use.");
+                    System.exit(1);
+                }
                 if (PORT_WHOIS > 0) {
-                    new QueryTCP(PORT_WHOIS).start();
+                    try {
+                        new QueryTCP(PORT_WHOIS).start();
+                    } catch (BindException ex) {
+                        Server.logError("WHOIS socket was not binded because TCP port " + PORT_WHOIS + " is already in use.");
+                    }
                 }
                 if (PORT_SPFBL > 0) {
-                    querySPF = new QuerySPF(PORT_SPFBL);
-                    querySPF.start();
-                    peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, UDP_MAX);
-                    peerUDP.start();
+                    try {
+                        querySPF = new QuerySPF(PORT_SPFBL);
+                        querySPF.start();
+                    } catch (BindException ex) {
+                        querySPF = null;
+                        Server.logError("SPFBL socket was not binded because TCP port " + PORT_SPFBL + " is already in use.");
+                    }
+                    if (HOSTNAME == null) {
+                        Server.logInfo("P2P socket was not binded because no hostname defined.");
+                    } else if (isRouteable(HOSTNAME)) {
+                        try {
+                            peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, UDP_MAX);
+                            peerUDP.start();
+                        } catch (BindException ex) {
+                            peerUDP = null;
+                            Server.logError("P2P socket was not binded because UDP port " + PORT_SPFBL + " is already in use.");
+                        }
+                    } else {
+                        Server.logError("P2P socket was not binded because '" + HOSTNAME + "' is not a routeable hostname.");
+                    }
                 }
                 if (PORT_DNSBL > 0) {
-                    queryDNSBL = new QueryDNSBL(PORT_DNSBL);
-                    queryDNSBL.start();
+                    try {
+                        queryDNSBL = new QueryDNS(PORT_DNSBL);
+                        queryDNSBL.start();
+                    } catch (BindException ex) {
+                        queryDNSBL = null;
+                        Server.logError("DNSBL socket was not binded because UDP port " + PORT_DNSBL + " is already in use.");
+                    }
                 }
                 if (PORT_HTTP > 0 ) {
-                    complainHTTP = new ServerHTTP(HOSTNAME, PORT_HTTP);
-                    complainHTTP.load();
-                    complainHTTP.start();
+                    if (HOSTNAME == null) {
+                        Server.logInfo("HTTP socket was not binded because no hostname defined.");
+                    } else {
+                        try {
+                            complainHTTP = new ServerHTTP(HOSTNAME, PORT_HTTP);
+                            complainHTTP.load();
+                            complainHTTP.start();
+                        } catch (BindException ex) {
+                            complainHTTP = null;
+                            Server.logError("HTTP socket was not binded because TCP port " + PORT_HTTP + " is already in use.");
+                        }
+                    }
                 }
                 Peer.sendHeloToAll();
                 Core.startTimer();
@@ -1292,157 +1347,205 @@ public class Core {
      * Timer que controla os processos em background.
      */
     private static final Timer TIMER = new Timer("BCKGROUND");
-//    private static final Timer TIMER00 = new Timer("BCKGRND00");
-//    private static final Timer TIMER01 = new Timer("BCKGRND01");
-//    private static final Timer TIMER10 = new Timer("BCKGRND10");
-//    private static final Timer TIMER30 = new Timer("BCKGRND30");
-//    private static final Timer TIMER60 = new Timer("BCKGRND60");
-//    private static final Timer TIMERST = new Timer("BCKGRNDST");
 
     public static void cancelTimer() {
         TIMER.cancel();
-//        TIMER00.cancel();
-//        TIMER01.cancel();
-//        TIMER10.cancel();
-//        TIMER30.cancel();
-//        TIMER60.cancel();
-//        TIMERST.cancel();
     }
     
     private static class TimerSendMessage extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Enviar próxima mensagem de e-mail.
-            Core.sendAllMessages();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Enviar próxima mensagem de e-mail.
+                Core.sendAllMessages();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerInterruptTimeout extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Interromper conexões vencidas.
-            Core.interruptTimeout();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Interromper conexões vencidas.
+                Core.interruptTimeout();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerRefreshSPF extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Atualiza registro SPF mais consultado.
-            SPF.refreshSPF();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registro SPF mais consultado.
+                SPF.refreshSPF();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerRefreshHELO extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Atualiza registro HELO mais consultado.
-            SPF.refreshHELO();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registro HELO mais consultado.
+                SPF.refreshHELO();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerRefreshReverse extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Atualiza registro de IP reverso mais consultado.
-            Reverse.refreshLast();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registro de IP reverso mais consultado.
+                Reverse.refreshLast();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerRefreshWHOIS extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Atualiza registros WHOIS expirando.
-            Server.tryRefreshWHOIS();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Atualiza registros WHOIS expirando.
+                Server.tryRefreshWHOIS();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredSPF extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Remoção de registros SPF expirados. 
-            SPF.dropExpiredSPF();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Remoção de registros SPF expirados. 
+                SPF.dropExpiredSPF();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerSendHeloToAll extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Envio de PING para os peers cadastrados.
-            Peer.sendHeloToAll();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Envio de PING para os peers cadastrados.
+                Peer.sendHeloToAll();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredPeer extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Remoção de registros de reputação expirados. 
-            Peer.dropExpired();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Remoção de registros de reputação expirados. 
+                Peer.dropExpired();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredHELO extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Apagar todas os registros de DNS de HELO vencidos.
-            SPF.dropExpiredHELO();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Apagar todas os registros de DNS de HELO vencidos.
+                SPF.dropExpiredHELO();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredReverse extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Apagar todas os registros de IP reverso vencidos.
-            Reverse.dropExpired();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Apagar todas os registros de IP reverso vencidos.
+                Reverse.dropExpired();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredDistribution extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Apagar todas as distribuições vencidas.
-            SPF.dropExpiredDistribution();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Apagar todas as distribuições vencidas.
+                SPF.dropExpiredDistribution();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDropExpiredDefer extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Apagar todas os registros de atrazo programado vencidos.
-            Defer.dropExpired();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Apagar todas os registros de atrazo programado vencidos.
+                Defer.dropExpired();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerStoreCache extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Armazena todos os registros atualizados durante a consulta.
-            Server.tryStoreCache(true);
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Armazena todos os registros atualizados durante a consulta.
+                Server.tryStoreCache(true);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     
     private static class TimerDeleteLogExpired extends TimerTask {
         @Override
         public void run() {
-            Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-            // Apaga todos os arquivos de LOG vencidos.
-            Server.deleteLogExpired();
-            // Apaga todos as listas de analise vencidas.
-            Analise.dropExpired();
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                // Apaga todos os arquivos de LOG vencidos.
+                Server.deleteLogExpired();
+                // Apaga todos as listas de analise vencidas.
+                Analise.dropExpired();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
         }
     }
     

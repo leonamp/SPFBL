@@ -104,6 +104,8 @@ public class Handle implements Serializable, Comparable<Handle> {
     public void setCreated(String created) throws ProcessException {
         if (created == null) {
             throw new ProcessException("ERROR: INVALID CREATED");
+        } else if (created.length() < 8) {
+            this.created = null;
         } else {
             try {
                 Date createdDate = DATE_FORMATTER.parse(created);
@@ -113,8 +115,8 @@ public class Handle implements Serializable, Comparable<Handle> {
                     CHANGED = true;
                 }
             } catch (ParseException ex) {
+                this.created = null;
                 Server.logError(ex);
-                throw new ProcessException("ERROR: PARSING CREATED " + created);
             }
         }
     }
@@ -251,6 +253,7 @@ public class Handle implements Serializable, Comparable<Handle> {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing handle.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Handle> map = getMap();
                 File file = new File("./data/handle.map");

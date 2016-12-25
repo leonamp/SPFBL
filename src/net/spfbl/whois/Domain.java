@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
@@ -174,6 +175,20 @@ public class Domain implements Serializable, Comparable<Domain> {
             return TLD_SET.contains(address);
         } else {
             return TLD_SET.contains(address);
+        }
+    }
+    
+    public static boolean isDomain(String address) {
+        if ((address = extractHost(address, true)) == null) {
+            return false;
+        } else {
+            int index = address.indexOf('.', 1);
+            if (index == -1) {
+                return !TLD_SET.contains(address);
+            } else {
+                String tld = address.substring(index);
+                return TLD_SET.contains(tld);
+            }
         }
     }
     
@@ -579,17 +594,25 @@ public class Domain implements Serializable, Comparable<Domain> {
                     } else if (line.startsWith("created:")) {
                         int index = line.indexOf(':') + 1;
                         String valor = line.substring(index).trim();
-                        if (valor.startsWith("before ")) {
-                            index = line.indexOf(' ') - 1;
-                            valor = valor.substring(index);
+                        if (valor.length() > 0) {
+                            if (valor.startsWith("before ")) {
+                                index = line.indexOf(' ') - 1;
+                                valor = valor.substring(index);
+                            }
+                            createdNew = DATE_FORMATTER.parse(valor);
                         }
-                        createdNew = DATE_FORMATTER.parse(valor);
                     } else if (line.startsWith("changed:")) {
                         int index = line.indexOf(':') + 1;
-                        changedNew = DATE_FORMATTER.parse(line.substring(index).trim());
+                        String valor = line.substring(index).trim();
+                        if (valor.length() > 0) {
+                            changedNew = DATE_FORMATTER.parse(valor);
+                        }
                     } else if (line.startsWith("expires:")) {
                         int index = line.indexOf(':') + 1;
-                        expiresNew = DATE_FORMATTER.parse(line.substring(index).trim());
+                        String valor = line.substring(index).trim();
+                        if (valor.length() > 0) {
+                            expiresNew = DATE_FORMATTER.parse(valor);
+                        }
                     } else if (line.startsWith("status:")) {
                         int index = line.indexOf(':') + 1;
                         statusNew = line.substring(index).trim();
@@ -871,17 +894,19 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return domain.get(key, false);
                 }
             } catch (ProcessException ex) {
-                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                if (ex.isErrorMessage("NSLOOKUP")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                } else if (ex.isErrorMessage("WAITING")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                } else if (ex.isErrorMessage("RESERVED")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: RESERVED")) {
+                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS CONNECTION FAIL")) {
+                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
                     return null;
                 } else {
                     Server.logError(ex);
@@ -940,6 +965,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
+                Server.logTrace("storing domain.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/domain.map");
                 HashMap<String,Domain> map = getDomainMap();
@@ -967,6 +993,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static void storeTLD() {
         if (TLD_CHANGED) {
             try {
+                Server.logTrace("storing tld.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/tld.set");
                 TreeSet<String> set = getSetTLD();
@@ -1056,7 +1083,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Verifica se o domínio tem algum registro de diretório válido.
             Server.getAttributesDNS(host, null);
         } catch (NameNotFoundException ex) {
-            Server.logCheckDNS(time, host, "NXDOMAIN");
+//            Server.logCheckDNS(time, host, "NXDOMAIN");
             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
         } catch (CommunicationException ex) {
             Server.logCheckDNS(time, host, "TIMEOUT");
@@ -1160,6 +1187,10 @@ public class Domain implements Serializable, Comparable<Domain> {
                     domainMax.drop();
                 } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
                     // Fazer nada.
+                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
+                    // Fazer nada.
+                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+                    // Fazer nada.
                 } else {
                     Server.logError(ex);
                 }
@@ -1228,7 +1259,11 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (address.endsWith(".br")) {
             try {
                 Domain domain = getDomain(address);
-                return domain.get("ownerid", false);
+                if (domain == null) {
+                    return null;
+                } else {
+                    return domain.get("ownerid", false);
+                }
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
                     return null;
@@ -1252,7 +1287,11 @@ public class Domain implements Serializable, Comparable<Domain> {
         if (address.endsWith(".br")) {
             try {
                 Domain domain = getDomain(address);
-                return domain.get("owner-c", false);
+                if (domain == null) {
+                    return null;
+                } else {
+                    return domain.get("owner-c", false);
+                }
             } catch (ProcessException ex) {
                 if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
                     return null;
@@ -1285,19 +1324,50 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+//    private static final Semaphore SEMAPHORE_NEW = new Semaphore(1);
+    
+    private static synchronized Domain newDomain(String host) throws ProcessException {
+//        try {
+//            Server.logTrace("quering new WHOIS domain");
+            // Selecionando servidor da pesquisa WHOIS.
+            String server = getWhoisServer(host);
+            // Domínio existente.
+            // Realizando a consulta no WHOIS.
+            String result = Server.whois(host, server);
+            try {
+                Domain domain = new Domain(result);
+                domain.server = server; // Temporário até final de transição.
+                // Adicinando registro em cache.
+                MAP.put(domain.getDomain(), domain);
+                DOMAIN_CHANGED = true;
+                return domain;
+            } catch (ProcessException ex) {
+                if (ex.isErrorMessage("RESERVED")) {
+                    // A chave de busca é um TLD.
+                    if (TLD_SET.add(host)) {
+                        // Atualiza flag de atualização.
+                        TLD_CHANGED = true;
+                    }
+                }
+                throw ex;
+            }
+//        } finally {
+//            SEMAPHORE_NEW.release();
+//        }
+    }
+    
     /**
      * Retorna o registro de domínio de um determinado host.
      * @param address o endereço cujo registro de domínio deve ser retornado.
      * @return o registro de domínio de um determinado endereço.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static synchronized Domain getDomain(String address) throws ProcessException {
+    public static Domain getDomain(String address) throws ProcessException {
         String key = extractDomain(address, false);
-        Domain domain = null;
+        Domain domain = MAP.get(key);
         // Busca eficiente O(1).
-        if (MAP.containsKey(key)) {
+        if (domain != null) {
             // Domínio encontrado.
-            domain = MAP.get(key);
             domain.queries++;
             if (domain.isRegistryExpired()) {
                 // Registro desatualizado.
@@ -1319,34 +1389,14 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
         // Extrair o host se for e-mail.
         String host = extractHost(address, false);
-        // Não encontrou o dominio em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(host);
         // Verifica o DNS do host antes de fazer a consulta no WHOIS.
         // Evita consulta desnecessária no WHOIS.
-        if (domain == null) {
-            checkHost(host);
-        }
-        // Domínio existente.
-        // Realizando a consulta no WHOIS.
-        String result = Server.whois(host, server);
-        try {
-            domain = new Domain(result);
-            domain.server = server; // Temporário até final de transição.
-            // Adicinando registro em cache.
-            MAP.put(domain.getDomain(), domain);
-            DOMAIN_CHANGED = true;
-            return domain;
-        } catch (ProcessException ex) {
-            if (ex.isErrorMessage("RESERVED")) {
-                // A chave de busca é um TLD.
-                if (TLD_SET.add(host)) {
-                    // Atualiza flag de atualização.
-                    TLD_CHANGED = true;
-                }
-            }
-            throw ex;
-        }
+        checkHost(host);
+//        if (SEMAPHORE_NEW.tryAcquire()) {
+            return newDomain(host);
+//        } else {
+//            return null;
+//        }
     }
     
     /**

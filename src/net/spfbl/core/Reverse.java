@@ -677,6 +677,7 @@ public final class Reverse implements Serializable {
     public static void store() {
         if (isChanged()) {
             try {
+                Server.logTrace("storing reverse.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/reverse.map");
                 HashMap<String,Reverse> map = getMap();

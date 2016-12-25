@@ -18,7 +18,6 @@
 package net.spfbl.dnsbl;
 
 import java.io.Serializable;
-import java.net.InetAddress;
 import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
 import net.spfbl.whois.Domain;
@@ -33,7 +32,6 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
     private static final long serialVersionUID = 1L;
 
     private final String hostname;
-    private final InetAddress address = null; // Obsoleto.
     private String message;
 
     public ServerDNSBL(String hostname, String message) {

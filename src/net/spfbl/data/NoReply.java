@@ -145,6 +145,8 @@ public class NoReply {
             return true;
         } else if (containsExact(address)) {
             return true;
+        } else if (Trap.contaisAnything(address)) {
+            return true;
         } else {
             address = address.toLowerCase();
             int index1 = address.indexOf('@');
@@ -186,6 +188,7 @@ public class NoReply {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing noreply.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/noreply.set");
                 TreeSet<String> set = getAll();

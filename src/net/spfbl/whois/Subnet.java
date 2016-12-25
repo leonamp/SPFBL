@@ -635,7 +635,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     /**
      * Atualiza em background todos os registros adicionados no conjunto.
      */
-    public static synchronized boolean backgroundRefresh() {
+    public static boolean backgroundRefresh() {
         Subnet subnetMax = null;
         for (Subnet subnet : getSubnetSet()) {
             if (subnet.isReduced() || subnet.isRegistryExpired()) {
@@ -656,6 +656,17 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             try {
                 // Atualizando campos do registro.
                 return subnetMax.refresh();
+            } catch (ProcessException ex) {
+                if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                    // Fazer nada.
+                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
+                    // Fazer nada.
+                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+                    // Fazer nada.
+                } else {
+                    Server.logError(ex);
+                }
+                return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;

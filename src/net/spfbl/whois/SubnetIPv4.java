@@ -24,6 +24,7 @@ import java.io.FileOutputStream;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -539,13 +540,28 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
+    private static synchronized SubnetIPv4 newSubnet(String ip) throws ProcessException {
+//        Server.logTrace("quering new WHOIS IPv4");
+        // Selecionando servidor da pesquisa WHOIS.
+        String server = getWhoisServer(ip);
+        // Fazer a consulta no WHOIS.
+        String result = Server.whois(ip, server);
+        SubnetIPv4 subnet = new SubnetIPv4(result);
+        subnet.server = server; // Temporário até final de transição.
+        ip = getFirstIPv4(subnet.getInetnum());
+        Long key = getLongIP(ip);
+        MAP.put(key, subnet);
+        CHANGED = true;
+        return subnet;
+    }
+    
     /**
      * Retorna o bloco de IP de AS de um determinado IP.
      * @param ip o IP cujo bloco deve ser retornado.
      * @return o registro de bloco IPv4 de AS de um determinado IP.
      * @throws ProcessException se houver falha no processamento.
      */
-    public static synchronized SubnetIPv4 getSubnet(String ip) throws ProcessException {
+    public static SubnetIPv4 getSubnet(String ip) throws ProcessException {
         SubnetIPv4 subnet;
         Long key = getLongIP(ip);
         key = MAP.floorKey(key);
@@ -574,17 +590,7 @@ public final class SubnetIPv4 extends Subnet {
             }
         }
         // Não encontrou a sub-rede em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(ip);
-        // Fazer a consulta no WHOIS.
-        String result = Server.whois(ip, server);
-        subnet = new SubnetIPv4(result);
-        subnet.server = server; // Temporário até final de transição.
-        ip = getFirstIPv4(subnet.getInetnum());
-        key = getLongIP(ip);
-        MAP.put(key, subnet);
-        CHANGED = true;
-        return subnet;
+        return newSubnet(ip);
     }
     
     private static synchronized TreeMap<Long,SubnetIPv4> getMap() {
@@ -599,6 +605,7 @@ public final class SubnetIPv4 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
+                Server.logTrace("storing subnet4.map");
                 long time = System.currentTimeMillis();
                 TreeMap<Long,SubnetIPv4> map = getMap();
                 File file = new File("./data/subnet4.map");
