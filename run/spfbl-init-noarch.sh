@@ -1,18 +1,29 @@
 #!/bin/bash
-# chkconfig: 345 99 01
-# description: SPFBL
+
+### BEGIN INIT INFO
+# Provides:          spfbl
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: SPFBL - p2p anti-spam service
+# Description:       SPFBL - p2p anti-spam service
+### END INIT INFO
+
 ##########################################
 #       Gerenciador de start / stop      #                  
 #               SPFBL                    #
 ##########################################
+
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+
 if [ -f /etc/lsb-release ]; then
   . /etc/lsb-release
 else
   . /etc/init.d/functions
 fi
 
-start()
-{
+start() {
     ret=0
     echo -n "[SPFBL] Starting... "
 
@@ -37,8 +48,7 @@ start()
     echo
 }
 
-stop()
-{
+stop() {
     ret=0
     echo -n "[SPFBL] Stopping... "
     if [ "$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)" -eq "1" ]; then
@@ -59,14 +69,12 @@ stop()
     echo
 }
 
-restart()
-{
+restart() {
     stop
     start
 }
 
-status()
-{
+status() {
     if [ "$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)" -eq "1" ]; then
         echo -n "[SPFBL] Server is running"
         echo
@@ -90,4 +98,10 @@ case "$1" in
     status)
         status
     ;;
+    *)
+        echo "Usage: /etc/init.d/spfbl {start|stop|restart|status}"
+        exit 1
+    ;;
 esac
+
+exit 0
