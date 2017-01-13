@@ -276,10 +276,6 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
-##### Instalação do Zimbra 8.7.1 no Ubuntu integrado ao SPFBL
-
-http://linuxpro.com.br/2016/12/install-zimbra-8
-
 ##### Integração com Exim
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim---SPFBL
@@ -326,7 +322,7 @@ Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
 Palestra GTER 42:<br>
-[![GTER42](https://img.youtube.com/vi/Itw2hPQt_SY/0.jpg)](https://www.youtube.com/watch?v=Itw2hPQt_SY&t=8964)
+[![GTER42](https://img.youtube.com/vi/7OAL9ulMEy4/0.jpg)](https://www.youtube.com/watch?v=7OAL9ulMEy4)
 
 
 ### Noticias sobre o SPFBL
