@@ -276,6 +276,10 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
+##### Instalação do Zimbra 8.7.1 no Ubuntu integrado ao SPFBL
+
+http://linuxpro.com.br/2016/12/install-zimbra-8
+
 ##### Integração com Exim
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim---SPFBL
