@@ -59,7 +59,7 @@ if [ $port -eq 25 ]; then
 		OTP_CODE="$(oathtool --totp -b -d 6 $OTP_SECRET) "
 	fi
 
-	result=$(echo $OTP_CODE"SPF '$ip' '$sender' '$helo' '$recipient'" | nc -w 20 $IP_SERVIDOR $PORTA_SERVIDOR)
+	result=$(echo $OTP_CODE"SPF '$ip' '$sender' '$helo' '$recipient'" | nc -w 10 $IP_SERVIDOR $PORTA_SERVIDOR)
 
 	if [[ $result == "" ]]; then
 	

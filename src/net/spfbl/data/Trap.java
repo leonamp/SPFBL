@@ -78,7 +78,7 @@ public class Trap {
         if (!Domain.isValidEmail(client)) {
             throw new ProcessException("INVALID USER");
         } else if (!isValid(token)) {
-            throw new ProcessException("INVALID TRAP");
+            throw new ProcessException("INVALID ADDRESS");
         } else {
             try {
                 long time = timeString == null ? System.currentTimeMillis() + 31536000000L : Long.parseLong(timeString);
@@ -108,7 +108,7 @@ public class Trap {
     
     public static boolean putInexistent(String token, String timeString) throws ProcessException {
         if (!isValid(token)) {
-            throw new ProcessException("INVALID TRAP");
+            throw new ProcessException("INVALID ADDRESS");
         } else {
             try {
                 long time = timeString == null ? System.currentTimeMillis() + 31536000000L : Long.parseLong(timeString);
@@ -129,10 +129,10 @@ public class Trap {
         } else {
             Long timeOld = MAP.put(token, timeNew);
             if (timeOld == null) {
-                return true;
+                return CHANGED = true;
             } else {
                 long timeNow = System.currentTimeMillis();
-                return timeOld < timeNow != timeNew < timeNow;
+                return CHANGED = timeOld < timeNow != timeNew < timeNow;
             }
         }
     }
@@ -199,7 +199,7 @@ public class Trap {
     public static boolean isValid(String recipient) {
         if (recipient == null) {
             return false;
-        } else if (Domain.isEmail(recipient)) {
+        } else if (Domain.isValidEmail(recipient)) {
             return true;
         } else {
             return recipient.startsWith("@") && Domain.containsDomain(recipient.substring(1));
@@ -225,12 +225,20 @@ public class Trap {
     }
     
     public static boolean addTrap(String client, String recipient) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
             return addTrapExact(client + ':' + recipient.toLowerCase());
+        }
+    }
+    
+    public static boolean addInexistentForever(String recipient) {
+        if (!isValid(recipient)) {
+            return false;
+        } else {
+            return putExact(recipient.toLowerCase(), Long.MAX_VALUE);
         }
     }
     
@@ -242,6 +250,16 @@ public class Trap {
         } else {
             long time = System.currentTimeMillis() + 31536000000L;
             return putExact(user.getEmail() + ':' + recipient.toLowerCase(), time);
+        }
+    }
+    
+    public static boolean addInexistentForever(User user, String recipient) {
+        if (user == null) {
+            return false;
+        } else if (!isValid(recipient)) {
+            return false;
+        } else {
+            return putExact(user.getEmail() + ':' + recipient.toLowerCase(), Long.MAX_VALUE);
         }
     }
     
@@ -276,19 +294,19 @@ public class Trap {
         return trapSet;
     }
     
-    public static boolean clear(User user, String recipient) throws ProcessException {
-        if (recipient == null) {
-            return false;
-        } else {
-            int index = recipient.indexOf('@');
-            String domain = recipient.substring(index);
-            boolean dropped = drop(recipient);
+    public static boolean clear(User user, String address) throws ProcessException {
+        if (isValid(address)) {
+            int index = address.indexOf('@');
+            String domain = address.substring(index);
+            boolean dropped = drop(address);
             dropped |= drop(domain);
             if (user != null) {
-                dropped |= drop(user, recipient);
+                dropped |= drop(user, address);
                 dropped |= drop(user, domain);
             }
             return dropped;
+        } else {
+            return false;
         }
     }
 
@@ -321,7 +339,7 @@ public class Trap {
     }
     
     public static boolean drop(String client, String recipient) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
@@ -474,8 +492,64 @@ public class Trap {
         }
     }
     
+    public static boolean containsAnything(Client client, User user, String recipient) {
+        // Definição do e-mail do usuário.
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        if (userEmail == null) {
+            return false;
+        } else if (!isValid(recipient)) {
+            return false;
+        } else {
+            recipient = recipient.toLowerCase();
+            int index2 = recipient.lastIndexOf('@');
+            String domain = recipient.substring(recipient.lastIndexOf('@'));
+            if (containsAnythingExact(recipient)) {
+                return true;
+            } else if (containsAnythingExact(domain)) {
+                return true;
+            } else if (containsAnythingExact(userEmail + ':' + recipient)) {
+                return true;
+            } else if (containsAnythingExact(userEmail + ':' + domain)) {
+                return true;
+            } else {
+                int index3 = domain.length();
+                while ((index3 = domain.lastIndexOf('.', index3 - 1)) > index2) {
+                    String subdomain = domain.substring(0, index3 + 1);
+                    if (containsAnythingExact(subdomain)) {
+                        return true;
+                    } else if (containsAnythingExact(userEmail + ':' + subdomain)) {
+                        return true;
+                    }
+                }
+                int index4 = recipient.length();
+                while ((index4 = recipient.lastIndexOf('.', index4 - 1)) > index2) {
+                    String subrecipient = recipient.substring(0, index4 + 1);
+                    if (containsAnythingExact(subrecipient)) {
+                        return true;
+                    } else if (containsAnythingExact(userEmail + ':' + subrecipient)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+    }
+    
     public static boolean contaisAnything(String recipient) {
         return getTime(null, null, recipient) != null;
+    }
+    
+    public static Long getTime(User user, String recipient) {
+        if (user == null) {
+            return null;
+        } else {
+            return getTime(user.getEmail(), recipient);
+        }
     }
     
     public static Long getTime(Client client, User user, String recipient) {
@@ -486,9 +560,11 @@ public class Trap {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
-        if (userEmail == null) {
-            return null;
-        } else if (!isValid(recipient)) {
+        return getTime(userEmail, recipient);
+    }
+    
+    public static Long getTime(String userEmail, String recipient) {
+        if (!isValid(recipient)) {
             return null;
         } else {
             recipient = recipient.toLowerCase();
@@ -499,9 +575,9 @@ public class Trap {
                 return time;
             } else if ((time = Trap.getTime(domain)) != null) {
                 return time;
-            } else if ((time = Trap.getTime(userEmail + ':' + recipient)) != null) {
+            } else if (userEmail != null && (time = Trap.getTime(userEmail + ':' + recipient)) != null) {
                 return time;
-            } else if ((time = Trap.getTime(userEmail + ':' + domain)) != null) {
+            } else if (userEmail != null && (time = Trap.getTime(userEmail + ':' + domain)) != null) {
                 return time;
             } else {
                 int index3 = domain.length();
@@ -509,7 +585,7 @@ public class Trap {
                     String subdomain = domain.substring(0, index3 + 1);
                     if ((time = Trap.getTime(subdomain)) != null) {
                         return time;
-                    } else if ((time = Trap.getTime(userEmail + ':' + subdomain)) != null) {
+                    } else if (userEmail != null && (time = Trap.getTime(userEmail + ':' + subdomain)) != null) {
                         return time;
                     }
                 }
@@ -518,7 +594,7 @@ public class Trap {
                     String subrecipient = recipient.substring(0, index4 + 1);
                     if ((time = Trap.getTime(subrecipient)) != null) {
                         return time;
-                    } else if ((time = Trap.getTime(userEmail + ':' + subrecipient)) != null) {
+                    } else if (userEmail != null && (time = Trap.getTime(userEmail + ':' + subrecipient)) != null) {
                         return time;
                     }
                 }

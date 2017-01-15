@@ -36,6 +36,7 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.User;
+import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
@@ -107,7 +108,7 @@ public final class QuerySPF extends Server {
                 return false;
             } else {
                 int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 90;
+                return interval > 60;
             }
         }
 
@@ -486,6 +487,26 @@ public final class QuerySPF extends Server {
                                         if (result.length() == 0) {
                                             result = "EMPTY\n";
                                         }
+                                    } else if (line.startsWith("INEXISTENT IS ")) {
+                                        query = line.substring(11).trim();
+                                        type = "INXST";
+                                        String address = line.substring(14);
+                                        if (Trap.containsAnything(client, user, address)) {
+                                            result = "TRUE\n";
+                                        } else {
+                                            result = "FALSE\n";
+                                        }
+                                    } else if (line.startsWith("NOREPLY IS ")) {
+                                        query = line.substring(8).trim();
+                                        type = "NRPLY";
+                                        String address = line.substring(11);
+                                        if (NoReply.contains(address, true)) {
+                                            result = "TRUE\n";
+                                        } else if (Trap.containsAnything(client, user, address)) {
+                                            result = "TRUE\n";
+                                        } else {
+                                            result = "FALSE\n";
+                                        }
                                     } else if (line.startsWith("WHITE ADD ")) {
                                         query = line.substring(6).trim();
                                         type = "WHITE";
@@ -760,7 +781,7 @@ public final class QuerySPF extends Server {
     private Connection pollConnection() {
         try {
             if (CONNECION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
-                // Espera aceitável para conexão de 100ms.
+                // Espera aceitável para conexão de 3s.
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
@@ -768,8 +789,6 @@ public final class QuerySPF extends Server {
                     use(connection);
                 }
                 return connection;
-//            } else if (Core.hasLowMemory()) {
-//                return null;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
                 // Cria uma nova conexão se não houver conexões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.

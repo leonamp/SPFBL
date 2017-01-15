@@ -51,6 +51,7 @@ public class Client implements Serializable, Comparable<Client> {
     
     private Action actionBLOCK = Action.REJECT;
     private Action actionRED = Action.FLAG;
+    private Action actionYELLOW = Action.DEFER;
     
     public enum Permission {
         NONE,
@@ -188,6 +189,30 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public boolean setActionYELLOW(String action) throws ProcessException {
+        try {
+            return setActionYELLOW(Action.valueOf(action));
+        } catch (Exception ex) {
+            throw new ProcessException("INVALID YELLOW ACTION");
+        }
+    }
+    
+    public boolean setActionYELLOW(Action action) throws ProcessException {
+        if (action == null) {
+            throw new ProcessException("INVALID YELLOW ACTION");
+        } else if (action == this.actionYELLOW) {
+            return false;
+        } else if (action == Action.DEFER) {
+            this.actionYELLOW = Action.DEFER;
+            return CHANGED = true;
+        } else if (action == Action.HOLD) {
+            this.actionYELLOW = Action.HOLD;
+            return CHANGED = true;
+        } else {
+            throw new ProcessException("INVALID YELLOW ACTION");
+        }
+    }
+
     public boolean setLimit(String limit) throws ProcessException {
         try {
             return setLimit(Integer.parseInt(limit));
@@ -280,6 +305,10 @@ public class Client implements Serializable, Comparable<Client> {
     
     public Action getActionRED() {
         return actionRED;
+    }
+    
+    public Action getActionYELLOW() {
+        return actionYELLOW;
     }
     
     /**
@@ -584,6 +613,9 @@ public class Client implements Serializable, Comparable<Client> {
                         }
                         if (client.actionRED == null) {
                             client.actionRED = Action.FLAG;
+                        }
+                        if (client.actionYELLOW == null) {
+                            client.actionYELLOW = Action.DEFER;
                         }
                         if (client.personality == null) {
                             client.personality = Personality.RATIONAL;

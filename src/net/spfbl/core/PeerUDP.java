@@ -271,7 +271,8 @@ public final class PeerUDP extends Server {
                         } else {
                             peer.addNotification();
                             address = peer.getAddress();
-                            result = peer.processReceive(token);
+//                            result = peer.processReceive(token);
+                            result = "INVALID";
                             type = "PEERB";
                         }
                     }
@@ -380,16 +381,17 @@ public final class PeerUDP extends Server {
         CONNECTION_USE.offer(connection);
     }
     
+    @Deprecated
     public void interruptTimeout() {
-        Connection connection = pollUsing();
-        if (connection != null) {
-            if (connection.isTimeout()) {
-                offerUsing(connection);
-                connection.interrupt();
-            } else {
-                offerUsing(connection);
-            }
-        }
+//        Connection connection = pollUsing();
+//        if (connection != null) {
+//            if (connection.isTimeout()) {
+//                offerUsing(connection);
+//                connection.interrupt();
+//            } else {
+//                offerUsing(connection);
+//            }
+//        }
     }
     
     /**

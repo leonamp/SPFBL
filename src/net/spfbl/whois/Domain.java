@@ -32,7 +32,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
-import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
@@ -139,7 +138,6 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Extrai o host de um endereço de e-mail.
      * @param address o endereço que contém o host.
-     * @param arroba se o arroba deve ser mantido na resposta.
      * @return o host do endereço de e-mail.
      */
     public static String extractHost(String address, boolean pontuacao) {
@@ -195,7 +193,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Extrai o domínio pelos TLDs conhecidos.
      * @param address o endereço que contém o domínio.
-     * @param se o ponto deve ser mantido na resposta.
+     * @param pontuacao se o ponto deve ser mantido na resposta.
      * @return o domínio pelos TLDs conhecidos.
      * @throws ProcessException se o endereço for um TLD.
      */
@@ -237,9 +235,9 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Extrai o TLD do endereço.
      * @param address o endereço que contém o TLD.
-     * @throws se o ponto de ser mantido.
+     * @param ponto se o ponto de ser mantido.
      * @return o TLDs do endereço.
-     * @throws se houve faha na extração do domínio.
+     * @throws ProcessException se houve faha na extração do domínio.
      */
     public static String extractTLD(String address,
             boolean ponto) throws ProcessException {
@@ -322,7 +320,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     /**
      * Extrai o host de um endereço de e-mail.
      * @param address o endereço que contém o host.
-     * @param arroba se o arroba deve ser mantido na resposta.
+     * @param pontuacao se o arroba deve ser mantido na resposta.
      * @return o host do endereço de e-mail.
      */
     public static String normalizeHostname(String address, boolean pontuacao) {
@@ -535,152 +533,154 @@ public class Domain implements Serializable, Comparable<Domain> {
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.startsWith("domain:")) {
-                        int index = line.indexOf(':') + 1;
-                        domainResult = line.substring(index).trim();
-                        // Remove a versão de domínios com acentuação.
-                        index = domainResult.lastIndexOf(' ') + 1;
-                        domainResult = domainResult.substring(index);
-                        // Descobre o TLD do domínio e adiciona no conjunto.
-                        index = domainResult.indexOf('.');
-                        String tld = domainResult.substring(index);
-                        addTLD(tld);
-                    } else if (line.startsWith("owner:")) {
-                        int index = line.indexOf(':') + 1;
-                        ownerNew = line.substring(index).trim();
-                    } else if (line.startsWith("ownerid:")) {
-                        int index = line.indexOf(':') + 1;
-                        owneridNew = line.substring(index).trim();
-                    } else if (line.startsWith("p.a. to:")) {
+                    try {
+                        line = line.trim();
+                        if (line.startsWith("domain:")) {
+                            int index = line.indexOf(':') + 1;
+                            domainResult = line.substring(index).trim();
+                            // Remove a versão de domínios com acentuação.
+                            index = domainResult.lastIndexOf(' ') + 1;
+                            domainResult = domainResult.substring(index);
+                            // Descobre o TLD do domínio e adiciona no conjunto.
+                            index = domainResult.indexOf('.');
+                            String tld = domainResult.substring(index);
+                            addTLD(tld);
+                        } else if (line.startsWith("owner:")) {
+                            int index = line.indexOf(':') + 1;
+                            ownerNew = line.substring(index).trim();
+                        } else if (line.startsWith("ownerid:")) {
+                            int index = line.indexOf(':') + 1;
+                            owneridNew = line.substring(index).trim();
+                        } else if (line.startsWith("p.a. to:")) {
                         // Este cammpo "p.a. to" (power of attorney to) 
-                        // é equivalente ao ownerid. A diferença é que 
-                        // neste caso é o ownerid do procurador invés 
-                        // do próprio dono extrangeiro representado.
-                        // https://registro.br/dominio/reg-estrangeiros.html
-                        int index = line.indexOf(':') + 1;
-                        owneridNew = line.substring(index).trim();
-                    } else if (line.startsWith("responsible:")) {
-                        int index = line.indexOf(':') + 1;
-                        responsibleNew = line.substring(index).trim();
-                    } else if (line.startsWith("country:")) {
-                        int index = line.indexOf(':') + 1;
-                        countryNew = line.substring(index).trim();
-                    } else if (line.startsWith("owner-c:")) {
-                        int index = line.indexOf(':') + 1;
-                        owner_cNew = line.substring(index).trim();
-                    } else if (line.startsWith("admin-c:")) {
-                        int index = line.indexOf(':') + 1;
-                        admin_cNew = line.substring(index).trim();
-                    } else if (line.startsWith("tech-c:")) {
-                        int index = line.indexOf(':') + 1;
-                        tech_cNew = line.substring(index).trim();
-                    } else if (line.startsWith("billing-c:")) {
-                        int index = line.indexOf(':') + 1;
-                        billing_cNew = line.substring(index).trim();
-                    } else if (line.startsWith("nserver:")) {
-                        int index = line.indexOf(':') + 1;
-                        String nserver = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String nsstat = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String nslastaa = line.substring(index).trim();
-                        NameServer ns = NameServer.getNameServer(nserver);
-                        ns.setStat(nsstat);
-                        ns.setLastAA(nslastaa);
-                        nameServerListNew.add(nserver);
-                    } else if (line.startsWith("created:")) {
-                        int index = line.indexOf(':') + 1;
-                        String valor = line.substring(index).trim();
-                        if (valor.length() > 0) {
-                            if (valor.startsWith("before ")) {
+                            // é equivalente ao ownerid. A diferença é que 
+                            // neste caso é o ownerid do procurador invés 
+                            // do próprio dono extrangeiro representado.
+                            // https://registro.br/dominio/reg-estrangeiros.html
+                            int index = line.indexOf(':') + 1;
+                            owneridNew = line.substring(index).trim();
+                        } else if (line.startsWith("responsible:")) {
+                            int index = line.indexOf(':') + 1;
+                            responsibleNew = line.substring(index).trim();
+                        } else if (line.startsWith("country:")) {
+                            int index = line.indexOf(':') + 1;
+                            countryNew = line.substring(index).trim();
+                        } else if (line.startsWith("owner-c:")) {
+                            int index = line.indexOf(':') + 1;
+                            owner_cNew = line.substring(index).trim();
+                        } else if (line.startsWith("admin-c:")) {
+                            int index = line.indexOf(':') + 1;
+                            admin_cNew = line.substring(index).trim();
+                        } else if (line.startsWith("tech-c:")) {
+                            int index = line.indexOf(':') + 1;
+                            tech_cNew = line.substring(index).trim();
+                        } else if (line.startsWith("billing-c:")) {
+                            int index = line.indexOf(':') + 1;
+                            billing_cNew = line.substring(index).trim();
+                        } else if (line.startsWith("nserver:")) {
+                            int index = line.indexOf(':') + 1;
+                            String nserver = line.substring(index).trim();
+                            line = reader.readLine().trim();
+                            index = line.indexOf(':') + 1;
+                            String nsstat = line.substring(index).trim();
+                            line = reader.readLine().trim();
+                            index = line.indexOf(':') + 1;
+                            String nslastaa = line.substring(index).trim();
+                            NameServer ns = NameServer.getNameServer(nserver);
+                            ns.setStat(nsstat);
+                            ns.setLastAA(nslastaa);
+                            nameServerListNew.add(nserver);
+                        } else if (line.startsWith("created:")) {
+                            int index = line.indexOf(':') + 1;
+                            String valor = line.substring(index).trim();
+                            if (valor.equals("multiple points")) {
+                                valor = null;
+                            } else if (valor.startsWith("before ")) {
                                 index = line.indexOf(' ') - 1;
                                 valor = valor.substring(index);
                             }
-                            createdNew = DATE_FORMATTER.parse(valor);
-                        }
-                    } else if (line.startsWith("changed:")) {
-                        int index = line.indexOf(':') + 1;
-                        String valor = line.substring(index).trim();
-                        if (valor.length() > 0) {
+                            if (valor != null) {
+                                createdNew = DATE_FORMATTER.parse(valor);
+                            }
+                        } else if (line.startsWith("changed:")) {
+                            int index = line.indexOf(':') + 1;
+                            String valor = line.substring(index).trim();
                             changedNew = DATE_FORMATTER.parse(valor);
-                        }
-                    } else if (line.startsWith("expires:")) {
-                        int index = line.indexOf(':') + 1;
-                        String valor = line.substring(index).trim();
-                        if (valor.length() > 0) {
+                        } else if (line.startsWith("expires:")) {
+                            int index = line.indexOf(':') + 1;
+                            String valor = line.substring(index).trim();
                             expiresNew = DATE_FORMATTER.parse(valor);
-                        }
-                    } else if (line.startsWith("status:")) {
-                        int index = line.indexOf(':') + 1;
-                        statusNew = line.substring(index).trim();
-                    } else if (line.startsWith("dsrecord:")) {
-                        int index = line.indexOf(':') + 1;
-                        dsrecordNew = line.substring(index).trim();
-                    } else if (line.startsWith("dsstatus:")) {
-                        int index = line.indexOf(':') + 1;
-                        dsstatusNew = line.substring(index).trim();
-                    } else if (line.startsWith("dslastok:")) {
-                        int index = line.indexOf(':') + 1;
-                        dslastokNew = line.substring(index).trim();
-                    } else if (line.startsWith("saci:")) {
-                        int index = line.indexOf(':') + 1;
-                        saciNew = line.substring(index).trim();
-                    } else if (line.startsWith("web-whois:")) {
-                        int index = line.indexOf(':') + 1;
-                        web_whoisNew = line.substring(index).trim();
-                    } else if (line.startsWith("provider:")) {
-                        int index = line.indexOf(':') + 1;
-                        providerNew = line.substring(index).trim();
-                    } else if (line.startsWith("nic-hdl-br:")) {
-                        int index = line.indexOf(':') + 1;
-                        String nic_hdl_br = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String person = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String e_mail;
-                        if (reducedNew) {
-                            e_mail = null;
-                        } else {
-                            e_mail = line.substring(index).trim();
+                        } else if (line.startsWith("status:")) {
+                            int index = line.indexOf(':') + 1;
+                            statusNew = line.substring(index).trim();
+                        } else if (line.startsWith("dsrecord:")) {
+                            int index = line.indexOf(':') + 1;
+                            dsrecordNew = line.substring(index).trim();
+                        } else if (line.startsWith("dsstatus:")) {
+                            int index = line.indexOf(':') + 1;
+                            dsstatusNew = line.substring(index).trim();
+                        } else if (line.startsWith("dslastok:")) {
+                            int index = line.indexOf(':') + 1;
+                            dslastokNew = line.substring(index).trim();
+                        } else if (line.startsWith("saci:")) {
+                            int index = line.indexOf(':') + 1;
+                            saciNew = line.substring(index).trim();
+                        } else if (line.startsWith("web-whois:")) {
+                            int index = line.indexOf(':') + 1;
+                            web_whoisNew = line.substring(index).trim();
+                        } else if (line.startsWith("provider:")) {
+                            int index = line.indexOf(':') + 1;
+                            providerNew = line.substring(index).trim();
+                        } else if (line.startsWith("nic-hdl-br:")) {
+                            int index = line.indexOf(':') + 1;
+                            String nic_hdl_br = line.substring(index).trim();
                             line = reader.readLine().trim();
                             index = line.indexOf(':') + 1;
+                            String person = line.substring(index).trim();
+                            line = reader.readLine().trim();
+                            index = line.indexOf(':') + 1;
+                            String e_mail;
+                            if (reducedNew) {
+                                e_mail = null;
+                            } else {
+                                e_mail = line.substring(index).trim();
+                                line = reader.readLine().trim();
+                                index = line.indexOf(':') + 1;
+                            }
+                            String created2 = line.substring(index).trim();
+                            line = reader.readLine().trim();
+                            index = line.indexOf(':') + 1;
+                            String changed2 = line.substring(index).trim();
+                            Handle handle = Handle.getHandle(nic_hdl_br);
+                            handle.setPerson(person);
+                            handle.setEmail(e_mail);
+                            handle.setCreated(created2);
+                            handle.setChanged(changed2);
+                        } else if (line.startsWith("% No match for domain")) {
+                            throw new ProcessException("ERROR: DOMAIN NOT FOUND");
+                        } else if (line.startsWith("% release process: ")) {
+                            throw new ProcessException("ERROR: WAITING");
+                        } else if (line.startsWith("% reserved:    CG")) {
+                            throw new ProcessException("ERROR: RESERVED");
+                        } else if (line.startsWith("% Permission denied.")) {
+                            throw new ProcessException("ERROR: WHOIS DENIED");
+                        } else if (line.startsWith("% Permissão negada.")) {
+                            throw new ProcessException("ERROR: WHOIS DENIED");
+                        } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
+                            throw new ProcessException("ERROR: WHOIS CONCURRENT");
+                        } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
+                            // Informação reduzida devido ao estouro de limite de consultas.
+                            Server.removeWhoisQueryHour();
+                            reducedNew = true;
+                        } else if (line.startsWith("% Query rate limit exceeded")) {
+                            // Restrição total devido ao estouro de limite de consultas.
+                            Server.removeWhoisQueryDay();
+                            throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
+                        } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
+                            Server.logError("Linha não reconhecida: " + line);
                         }
-                        String created2 = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String changed2 = line.substring(index).trim();
-                        Handle handle = Handle.getHandle(nic_hdl_br);
-                        handle.setPerson(person);
-                        handle.setEmail(e_mail);
-                        handle.setCreated(created2);
-                        handle.setChanged(changed2);
-                    } else if (line.startsWith("% No match for domain")) {
-                        throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-                    } else if (line.startsWith("% release process: ")) {
-                        throw new ProcessException("ERROR: WAITING");
-                    } else if (line.startsWith("% reserved:    CG")) {
-                        throw new ProcessException("ERROR: RESERVED");
-                    } else if (line.startsWith("% Permission denied.")) {
-                        throw new ProcessException("ERROR: WHOIS DENIED");
-                    } else if (line.startsWith("% Permissão negada.")) {
-                        throw new ProcessException("ERROR: WHOIS DENIED");
-                    } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
-                        throw new ProcessException("ERROR: WHOIS CONCURRENT");
-                    } else if (line.startsWith("% Query rate limit exceeded. Reduced information.")) {
-                        // Informação reduzida devido ao estouro de limite de consultas.
-                        Server.removeWhoisQueryHour();
-                        reducedNew = true;
-                    } else if (line.startsWith("% Query rate limit exceeded")) {
-                        // Restrição total devido ao estouro de limite de consultas.
-                        Server.removeWhoisQueryDay();
-                        throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
-                    } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
-                        Server.logError("Linha não reconhecida: " + line);
+                    } catch (NumberFormatException ex) {
+                        Server.logError(ex);
                     }
                 }
             } finally {

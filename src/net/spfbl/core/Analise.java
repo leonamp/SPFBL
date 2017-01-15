@@ -179,7 +179,8 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static void initProcess() {
-        while (getProcessTotal() > 0 && SEMAPHORE.tryAcquire()) {
+        int count = 0;
+        while (count++ < 256 && getProcessTotal() > 0 && SEMAPHORE.tryAcquire()) {
             Process process = new Process();
             process.start();
         }
@@ -735,6 +736,8 @@ public class Analise implements Serializable, Comparable<Analise> {
                         Server.logDebug("new BLOCK '" + tokenMX + "' added by NXDOMAIN.");
                         Peer.sendBlockToAll(tokenMX);
                     }
+                } else if (Domain.isReserved(tokenMX)) {
+                    statusAddress = Status.RESERVED;
                 } else {
                     statusAddress = Status.NXDOMAIN;
                     String domain = Domain.extractDomain(tokenMX, true);

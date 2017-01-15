@@ -27,6 +27,8 @@ import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.SortedMap;
+import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.mail.internet.InternetAddress;
@@ -51,7 +53,7 @@ import org.apache.commons.lang3.SerializationUtils;
 public class User implements Serializable, Comparable<User> {
     
     private static final long serialVersionUID = 1L;
-    
+
     private final String email;
     private String name;
     private boolean trusted = false;
@@ -224,6 +226,30 @@ public class User implements Serializable, Comparable<User> {
             } else {
                 return text;
             }
+        }
+    }
+    
+    private synchronized boolean dropExpiredQuery() {
+        if (queryMap == null) {
+            return false;
+        } else {
+            long head = System.currentTimeMillis() - 604800000;
+            TreeSet<Long> removeSet = new TreeSet<Long>();
+            SortedMap<Long,Query> headMap = queryMap.headMap(head);
+            removeSet.addAll(headMap.keySet());
+            boolean updated = false;
+            for (Long time : removeSet) {
+                if (queryMap.remove(time) != null) {
+                    CHANGED = updated = true;
+                }
+            }
+            return updated;
+        }
+    }
+    
+    public static void dropAllExpiredQuery() {
+        for (User user : getSet()) {
+            user.dropExpiredQuery();
         }
     }
     
@@ -438,10 +464,23 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public synchronized TreeSet<Long> getQueryKeySet() {
+//    public synchronized TreeSet<Long> getQueryKeySet() {
+//        TreeSet<Long> keySet = new TreeSet<Long>();
+//        if (queryMap != null) {
+//            keySet.addAll(queryMap.keySet());
+//        }
+//        return keySet;
+//    }
+    
+    public synchronized TreeSet<Long> getQueryKeySet(Long begin) {
         TreeSet<Long> keySet = new TreeSet<Long>();
         if (queryMap != null) {
             keySet.addAll(queryMap.keySet());
+        }
+        if (begin != null) {
+            TreeSet<Long> tailSet = new TreeSet<Long>();
+            tailSet.addAll(keySet.tailSet(begin));
+            keySet.removeAll(tailSet);
         }
         return keySet;
     }
@@ -486,7 +525,7 @@ public class User implements Serializable, Comparable<User> {
             queryMap = new TreeMap<Long,Query>();
         }
         queryMap.put(time, query);
-        if (queryMap.size() > 1024) {
+        if (queryMap.size() > 16384) {
             queryMap.pollFirstEntry();
         }
         CHANGED = true;
@@ -883,6 +922,11 @@ public class User implements Serializable, Comparable<User> {
         
         public void clearBlock() {
             try {
+                Trap.clear(User.this, sender);
+            } catch (ProcessException ex) {
+                Server.logError(ex);
+            }
+            try {
                 Block.clear(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
             } catch (ProcessException ex) {
                 Server.logError(ex);
@@ -1014,10 +1058,14 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isWhite() {
-            if (White.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient) != null) {
+            if (sender != null && White.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient) != null) {
+                return true;
+            } else if (from != null && White.find(null, User.this, ip, from, getValidHostname(), "NONE", recipient) != null) {
+                return true;
+            } else if (replyto != null && White.find(null, User.this, ip, replyto, getValidHostname(), "NONE", recipient) != null) {
                 return true;
             } else {
-                return White.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient) != null;
+                return false;
             }
         }
         
@@ -1026,22 +1074,61 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isBlock() {
-            if (Block.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient, true) != null) {
+            if (sender != null && Block.find(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient, true) != null) {
+                return true;
+            } else if (from != null && Block.find(null, User.this, ip, from, getValidHostname(), "NONE", recipient, true) != null) {
+                return true;
+            } else if (replyto != null && Block.find(null, User.this, ip, replyto, getValidHostname(), "NONE", recipient, true) != null) {
                 return true;
             } else {
-                return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, true) != null;
+                return false;
             }
+        }
+        
+        public boolean isAnyLinkBlocked() {
+            boolean blocked = false;
+            for (String token : getLinkKeySet()) {
+                if (Block.find(User.this, token) != null) {
+                    setLinkBlocked(token);
+                    blocked = true;
+                }
+            }
+            return blocked;
         }
         
         public String getBlock() {
             return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, true);
         }
         
+        public boolean isInexistent() {
+            if (recipient == null) {
+                return false;
+            } else {
+                return Trap.containsAnything(null, User.this, recipient);
+            }
+        }
+        
+        public boolean isNonExistentSender() {
+            if (sender == null) {
+                return false;
+            } else {
+                return Trap.containsAnything(null, User.this, sender);
+            }
+        }
+        
         public boolean isRoutable() {
             if (recipient == null) {
                 return true;
             } else {
-                return Trap.getTime(recipient) == null;
+                return getTrapTime() == null;
+            }
+        }
+        
+        public boolean isToPostmaster() {
+            if (recipient == null) {
+                return false;
+            } else {
+                return recipient.startsWith("postmaster@");
             }
         }
         
@@ -1107,19 +1194,23 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isFail() {
-            return getQualifierName().equals("FAIL");
+            return qualifier  == SPF.Qualifier.FAIL;
         }
         
         public boolean isSoftfail() {
-            return getQualifierName().equals("SOFTFAIL");
+            return qualifier  == SPF.Qualifier.SOFTFAIL;
         }
         
-        public boolean isRed() {
-            return SPF.isRed(tokenSet);
+        public boolean hasRed() {
+            return SPF.hasRed(tokenSet);
         }
         
-        public boolean isYellow() {
-            return SPF.isRed(tokenSet);
+        public boolean hasYellow() {
+            return SPF.hasYellow(tokenSet);
+        }
+        
+        public boolean isGreen() {
+            return SPF.isGreen(tokenSet);
         }
         
         public TreeSet<String> getLinkSet() {
@@ -1173,6 +1264,14 @@ public class User implements Serializable, Comparable<User> {
             return unsubscribe;
         }
         
+        private void setLinkBlocked(String link) {
+            if (linkMap == null) {
+                linkMap = new TreeMap<String,Boolean>();
+            }
+            linkMap.put(link, true);
+            CHANGED = true;
+        }
+        
         public boolean isLinkBlocked(String link) {
             if (linkMap == null) {
                 return false;
@@ -1186,6 +1285,14 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        private TreeSet<String> getLinkKeySet() {
+            TreeSet<String> keySet = new TreeSet<String>();
+            if (linkMap != null) {
+                keySet.addAll(linkMap.keySet());
+            }
+            return keySet;
+        }
+        
         public boolean addLink(String link) {
             if (link == null) {
                 return false;
@@ -1194,7 +1301,9 @@ public class User implements Serializable, Comparable<User> {
                     this.linkMap = new TreeMap<String,Boolean>();
                 }
                 boolean blocked = false;
-                if (Block.find(User.this, link) == null) {
+                if (isToPostmaster()) {
+                    this.linkMap.put(link, false);
+                } else if (Block.find(User.this, link) == null) {
                     this.linkMap.put(link, false);
                 } else {
                     this.linkMap.put(link, true);
@@ -1214,7 +1323,9 @@ public class User implements Serializable, Comparable<User> {
                 }
                 boolean blocked = false;
                 for (String link : linkSet) {
-                    if (Block.find(User.this, link) == null) {
+                    if (isToPostmaster()) {
+                        this.linkMap.put(link, false);
+                    } else if (Block.find(User.this, link) == null) {
                         this.linkMap.put(link, false);
                     } else {
                         this.linkMap.put(link, true);

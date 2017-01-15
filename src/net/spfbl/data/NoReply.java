@@ -132,20 +132,26 @@ public class NoReply {
         return trapSet;
     }
 
-    public static boolean contains(String address) {
-        if (!Domain.isEmail(address)) {
-            return false;
-        } else if (address.contains("bounce+")) {
+    public static boolean contains(String address, boolean inexistent) {
+        if (address.contains("bounce+")) {
             return true;
         } else if (address.contains("bounce-")) {
+            return true;
+        } else if (address.contains("bounces-")) {
+            return true;
+        } else if (address.contains("-bounces@")) {
+            return true;
+        } else if (address.startsWith("return-")) {
             return true;
         } else if (address.startsWith("prvs=")) {
             return true;
         } else if (address.startsWith("msprvs1=")) {
             return true;
+        } else if (!Domain.isValidEmail(address)) {
+            return false;
         } else if (containsExact(address)) {
             return true;
-        } else if (Trap.contaisAnything(address)) {
+        } else if (inexistent && Trap.contaisAnything(address)) {
             return true;
         } else {
             address = address.toLowerCase();

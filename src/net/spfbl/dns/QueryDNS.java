@@ -400,7 +400,7 @@ public final class QueryDNS extends Server {
                 return false;
             } else {
                 int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 90;
+                return interval > 60;
             }
         }
 
@@ -839,16 +839,17 @@ public final class QueryDNS extends Server {
         CONNECTION_USE.offer(connection);
     }
 
+    @Deprecated
     public void interruptTimeout() {
-        Connection connection = pollUsing();
-        if (connection != null) {
-            if (connection.isTimeout()) {
-                offerUsing(connection);
-                connection.interrupt();
-            } else {
-                offerUsing(connection);
-            }
-        }
+//        Connection connection = pollUsing();
+//        if (connection != null) {
+//            if (connection.isTimeout()) {
+//                offerUsing(connection);
+//                connection.interrupt();
+//            } else {
+//                offerUsing(connection);
+//            }
+//        }
     }
 
     /**

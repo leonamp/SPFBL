@@ -40,8 +40,8 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 OTP_SECRET=""
 DUMP_PATH="/tmp"
-QUERY_TIMEOUT="60"
-MAX_TIMEOUT="30"
+QUERY_TIMEOUT="10"
+MAX_TIMEOUT="100"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.10"
@@ -2638,6 +2638,7 @@ case $1 in
 		#    10: domínio inexistente.
 		#    11: parâmetros inválidos.
 		#    12: out of service.
+		#    13: remetente inexistente.
 
 		if [ $# -lt "4" ]; then
 			head
@@ -2668,6 +2669,8 @@ case $1 in
 				exit 9
 			elif [[ $qualifier == "NXDOMAIN" ]]; then
 				exit 10
+			elif [[ $qualifier == "NXSENDER" ]]; then
+				exit 13
 			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
 			elif [[ $qualifier == "INVALID" ]]; then
@@ -3051,9 +3054,15 @@ case $1 in
 
 						elif [[ $response == "WHITE" ]]; then
 
-							# Liberar a mensagem congelada.
+							# Liberar a mensagem congelada 
+							# e entregar imedatamente.
 							exim -Mt $message
 							exim -M $message
+
+						elif [[ $response == "ACCEPT" ]]; then
+
+							# Liberar a mensagem congelada.
+							exim -Mt $message
 
 						elif [[ $response == "ERROR" ]]; then
 
@@ -3209,6 +3218,7 @@ case $1 in
 		#    INEXISTENT: rejeitar a mensagem e informar que o destinatário não existe.
 		#    GREYLIST: atrasar a mensagem informando à origem ele está em greylisting.
 		#    NXDOMAIN: o domínio do remetente é inexistente.
+		#    NXSENDER: a conta do remetente é inexistente.
 		#    INVALID: o endereço do remetente é inválido.
 		#    WHITE: aceitar imediatamente a mensagem.
 		#    HOLD: congelar a entrega da mensagem.
@@ -3236,6 +3246,7 @@ case $1 in
 		#    18: congelar mensagem.
 		#    19: inexistente.
 		#    20: out of service.
+		#    21: remetente inexistente.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -3267,6 +3278,8 @@ case $1 in
 				exit 9
 			elif [[ $qualifier == "NXDOMAIN" ]]; then
 				exit 13
+			elif [[ $qualifier == "NXSENDER" ]]; then
+				exit 21
 			elif [[ $qualifier == "GREYLIST" ]]; then
 				exit 12
 			elif [[ $qualifier == "INVALID" ]]; then
@@ -3579,6 +3592,47 @@ case $1 in
 					fi
 				fi
 			;;
+			'is')
+				# Parâmetros de entrada: nenhum.
+				#
+				# Códigos de saída:
+				#
+				#    0: não é inexistente.
+				#    1: é inexistente.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 inexistent is <recipient>\n"
+				else
+					recipient=$3
+					response=$(echo $OTP_CODE"INEXISTENT IS $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "TRUE" ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
 			*)
 				head
 				printf "Syntax:\n    $0 inexistent add recipient\n    $0 inexistent drop recipient\n    $0 inexistent show\n"
@@ -3851,6 +3905,51 @@ case $1 in
 					fi
 				fi
 			;;
+			'is')
+				# Parâmetros de entrada:
+				#
+				#    1. recipient: o destinatário que o SPFBL deve verificar se pode responder e-mail.
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: pode reponder e-mail.
+				#    1: não pode reponder e-mail.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 noreply is <recipient>\n"
+				else
+					recipient=$3
+
+					response=$(echo $OTP_CODE"NOREPLY IS $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "TRUE" ]]; then
+						exit 1
+					else
+						exit 0
+					fi
+				fi
+			;;
 			*)
 				head
 				printf "Syntax:\n    $0 noreply add recipient\n    $0 noreply drop recipient\n    $0 noreply show\n"
@@ -3936,13 +4035,14 @@ case $1 in
 		NEUTRAL=$(grep -c NEUTRAL "$LOGPATH"spfbl."$TODAY".log)
 		NONE=$(grep -c NONE "$LOGPATH"spfbl."$TODAY".log)
 		NXDOMAIN=$(grep -c NXDOMAIN "$LOGPATH"spfbl."$TODAY".log)
+		NXSENDER=$(grep -c NXSENDER "$LOGPATH"spfbl."$TODAY".log)
 		PASS=$(grep -c PASS "$LOGPATH"spfbl."$TODAY".log)
 		SOFTFAIL=$(grep -c SOFTFAIL "$LOGPATH"spfbl."$TODAY".log)
 		SPAMTRAP=$(grep -c SPAMTRAP "$LOGPATH"spfbl."$TODAY".log)
 		INEXISTENT=$(grep -c INEXISTENT "$LOGPATH"spfbl."$TODAY".log)
 		TIMEOUT=$(grep -c TIMEOUT "$LOGPATH"spfbl."$TODAY".log)
 
-		TOTALES=$(echo $BLOCKED + $FLAG + $GREYLIST + $HOLD + $LISTED + $NXDOMAIN + $PASS + $TIMEOUT + $NONE + $SOFTFAIL + $NEUTRAL + $INTERRUPTED + $SPAMTRAP + $INEXISTENT + $INVALID + $FAIL | bc)
+		TOTALES=$(echo $BLOCKED + $FLAG + $GREYLIST + $HOLD + $LISTED + $NXDOMAIN + $NXSENDER + $PASS + $TIMEOUT + $NONE + $SOFTFAIL + $NEUTRAL + $INTERRUPTED + $SPAMTRAP + $INEXISTENT + $INVALID + $FAIL | bc)
 
 		echo '=========================='
 		echo '= SPFBL Daily Statistics ='
@@ -3959,6 +4059,7 @@ case $1 in
 		echo '   NEUTRAL:' $(echo "scale=0;($NEUTRAL*100) / $TOTALES" | bc)'% - '"$NEUTRAL"
 		echo '      NONE:' $(echo "scale=0;($NONE*100) / $TOTALES" | bc)'% - '"$NONE"
 		echo '  NXDOMAIN:' $(echo "scale=0;($NXDOMAIN*100) / $TOTALES" | bc)'% - '"$NXDOMAIN"
+		echo '  NXSENDER:' $(echo "scale=0;($NXSENDER*100) / $TOTALES" | bc)'% - '"$NXSENDER"
 		echo '  SOFTFAIL:' $(echo "scale=0;($SOFTFAIL*100) / $TOTALES" | bc)'% - '"$SOFTFAIL"
 		echo '  SPAMTRAP:' $(echo "scale=0;($SPAMTRAP*100) / $TOTALES" | bc)'% - '"$SPAMTRAP"
 		echo 'INEXISTENT:' $(echo "scale=0;($INEXISTENT*100) / $TOTALES" | bc)'% - '"$INEXISTENT"

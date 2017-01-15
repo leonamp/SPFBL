@@ -19,6 +19,7 @@ package net.spfbl.core;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.sun.mail.smtp.SMTPAddressFailedException;
+import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
@@ -83,7 +84,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 5;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -1205,8 +1206,21 @@ public class Core {
                     }
                 }
             } catch (Exception ex) {
-                MESSAGE_QUEUE.offer(message);
-                Server.logError(ex);
+                if (ex.getCause() instanceof SMTPSendFailedException) {
+                    SMTPSendFailedException smtpEx = (SMTPSendFailedException) ex.getCause();
+                    if (smtpEx.getReturnCode() / 100 == 5) {
+                        Server.logError("SMTP " + smtpEx.getMessage());
+                    } else if (smtpEx.getReturnCode() / 100 == 4) {
+                        MESSAGE_QUEUE.offer(message);
+                        Server.logDebug("SMTP " + smtpEx.getMessage());
+                    } else {
+                        MESSAGE_QUEUE.offer(message);
+                        Server.logError(ex);
+                    }
+                } else {
+                    MESSAGE_QUEUE.offer(message);
+                    Server.logError(ex);
+                }
             }
         }
     }
@@ -1500,7 +1514,8 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apagar todas as distribuições vencidas.
+                // Apagar todas as distribuições e consultas vencidas.
+                User.dropAllExpiredQuery();
                 SPF.dropExpiredDistribution();
             } catch (Exception ex) {
                 Server.logError(ex);

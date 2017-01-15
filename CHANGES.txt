@@ -1,3 +1,15 @@
+### v2.5.1 ; release 15/01/2017:
+
+FIX) correção no timeout do WHOIS, que causava encavalamento de conexões SPFBL.
+
+FIX) correção no parsing da resposta WHOIS nos campos de data.
+
+UPDT) botão para visualizar mais registros no painel de controle.
+
+NEW) implementação do ACTION para status YELLOW, com nova possibilidade de HOLD.
+
+NEW) implementação do NXSENDER, que indica remetente inexistente.
+
 ### v2.5.0 ; release 25/12/2016:
 
 FIX) correção no parsing da resposta WHOIS.

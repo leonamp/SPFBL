@@ -37,7 +37,6 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -240,9 +239,10 @@ public final class ServerHTTP extends Server {
     @SuppressWarnings("unchecked")
     private static HashMap<String,Object> getParameterMap(String query) throws UnsupportedEncodingException {
         if (query == null) {
-            return null;
+            return new HashMap<String,Object>();
         } else {
             Integer otp = null;
+            Long begin = null;
             TreeSet<String> identifierSet = new TreeSet<String>();
             HashMap<String,Object> map = new HashMap<String,Object>();
             String pairs[] = query.split("[&]");
@@ -264,12 +264,21 @@ public final class ServerHTTP extends Server {
                     } catch (NumberFormatException ex) {
                         // Ignore.
                     }
+                } else if ("begin".equals(key)) {
+                    try {
+                        begin = Long.parseLong(value);
+                    } catch (NumberFormatException ex) {
+                        // Ignore.
+                    }
                 } else {
                     map.put(key, value);
                 }
             }
             if (otp != null) {
                 map.put("otp", otp);
+            }
+            if (begin != null) {
+                map.put("begin", begin);
             }
             if (!identifierSet.isEmpty()) {
                 map.put("identifier", identifierSet);
@@ -465,7 +474,7 @@ public final class ServerHTTP extends Server {
                         code = 200;
                         String message;
                         HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                        if (parameterMap != null && parameterMap.containsKey("query")) {
+                        if (parameterMap.containsKey("query")) {
                             String query = (String) parameterMap.get("query");
                             if (Subnet.isValidIP(query) || Domain.isHostname(query)) {
                                 String url = Core.getDNSBLURL(query);
@@ -491,8 +500,10 @@ public final class ServerHTTP extends Server {
                         String userEmail = command.substring(1).toLowerCase();
                         User userLogin = getUser(exchange);
                         if (userLogin != null && userLogin.isEmail(userEmail)) {
-//                            message = getControlPanel(locale, userLogin);
-                            message = getRedirectHTML(command);
+                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                            Long begin = (Long) parameterMap.get("begin");
+                            message = getControlPanel(locale, userLogin, begin);
+//                            message = getRedirectHTML(command);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
                                     "Login do SPFBL",
@@ -504,7 +515,6 @@ public final class ServerHTTP extends Server {
                                 Integer otp = (Integer) parameterMap.get("otp");
                                 if (userLogin.isValidOTP(otp)) {
                                     setUser(exchange, userLogin);
-//                                    message = getControlPanel(locale, userLogin);
                                     message = getRedirectHTML(command);
                                 } else if (userLogin.tooManyFails()) {
                                     long failTime = userLogin.getFailTime();
@@ -549,7 +559,7 @@ public final class ServerHTTP extends Server {
                         } else {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             boolean valid = true;
-                            if (parameterMap != null && Core.hasRecaptchaKeys()) {
+                            if (Core.hasRecaptchaKeys()) {
                                 if (parameterMap.containsKey("recaptcha_challenge_field")
                                         && parameterMap.containsKey("recaptcha_response_field")
                                         ) {
@@ -615,7 +625,7 @@ public final class ServerHTTP extends Server {
                                 type = "QUERY";
                                 code = 200;
                                 HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                if (parameterMap != null && parameterMap.containsKey("POLICY")) {
+                                if (parameterMap.containsKey("POLICY")) {
                                     String policy = (String) parameterMap.get("POLICY");
                                     if (policy.startsWith("WHITE_")) {
                                         query.white(queryTime, policy.substring(6));
@@ -639,7 +649,7 @@ public final class ServerHTTP extends Server {
                         String ip = command.substring(index);
                         if (Subnet.isValidIP(ip)) {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                            if (parameterMap != null && parameterMap.containsKey("identifier")) {
+                            if (parameterMap.containsKey("identifier")) {
                                 boolean valid = true;
                                 if (Core.hasRecaptchaKeys()) {
                                     if (parameterMap.containsKey("recaptcha_challenge_field")
@@ -682,7 +692,7 @@ public final class ServerHTTP extends Server {
                                             ) {
                                         postmaterSet.add(client.getEmail());
                                     }
-                                    TreeSet<String> emailSet = (TreeSet) parameterMap.get("identifier");
+                                    TreeSet<String> emailSet = (TreeSet<String>) parameterMap.get("identifier");
                                     for (String email : emailSet) {
                                         if (postmaterSet.contains(email)) {
                                             String url = Core.getUnblockURL(email, ip);
@@ -1393,11 +1403,11 @@ public final class ServerHTTP extends Server {
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                                                     message = "A solicitação de desbloqueio foi enviada para o destinatário '" + recipient + "'.\n"
                                                             + "A fim de não prejudicar sua reputação, aguarde pelo desbloqueio sem enviar novas mensagens."
-                                                            + (NoReply.contains(sender) ? "" : "\nVocê receberá uma mensagem deste sistema assim que o destinatário autorizar o recebimento.");
+                                                            + (NoReply.contains(sender, true) ? "" : "\nVocê receberá uma mensagem deste sistema assim que o destinatário autorizar o recebimento.");
                                                 } else {
                                                     message = "The release request was sent to the recipient '" + recipient + "'.\n"
                                                             + "In order not to damage your reputation, wait for the release without sending new messages."
-                                                            + (NoReply.contains(sender) ? "" : "\nYou will receive a message from this system when the recipient authorize receipt.");
+                                                            + (NoReply.contains(sender, true) ? "" : "\nYou will receive a message from this system when the recipient authorize receipt.");
                                                 }
                                             } else {
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -1624,7 +1634,9 @@ public final class ServerHTTP extends Server {
                         String userEmail = command.substring(1).toLowerCase();
                         User userLogin = getUser(exchange);
                         if (userLogin != null && userLogin.isEmail(userEmail)) {
-                            message = getControlPanel(locale, userLogin);
+                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                            Long begin = (Long) parameterMap.get("begin");
+                            message = getControlPanel(locale, userLogin, begin);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
                                     "Login do SPFBL",
@@ -2617,7 +2629,7 @@ public final class ServerHTTP extends Server {
                 && Core.hasAdminEmail()
                 && Domain.isEmail(email)
                 && url != null
-                && !NoReply.contains(email)
+                && !NoReply.contains(email, true)
                 ) {
             try {
                 Server.logDebug("sending unblock by e-mail.");
@@ -2704,7 +2716,7 @@ public final class ServerHTTP extends Server {
         } else if (user == null) {
             Server.logError("no user definied to send TOTP.");
             return false;
-        } else if (NoReply.contains(user.getEmail())) {
+        } else if (NoReply.contains(user.getEmail(), true)) {
             Server.logError("cannot send TOTP because user is registered in noreply.");
             return false;
         } else {
@@ -2791,7 +2803,7 @@ public final class ServerHTTP extends Server {
                 && Core.hasAdminEmail()
                 && Domain.isEmail(destinatario)
                 && url != null
-                && !NoReply.contains(destinatario)
+                && !NoReply.contains(destinatario, true)
                 ) {
             try {
                 Server.logDebug("sending unblock by e-mail.");
@@ -2866,7 +2878,7 @@ public final class ServerHTTP extends Server {
                 Core.hasSMTP()
                 && Core.hasAdminEmail()
                 && Domain.isEmail(remetente)
-                && !NoReply.contains(remetente)
+                && !NoReply.contains(remetente, true)
                 ) {
             try {
                 Server.logDebug("sending unblock confirmation by e-mail.");
@@ -3307,14 +3319,14 @@ public final class ServerHTTP extends Server {
                         }
                         if (domain != null) {
                             String email = "postmaster@" + domain.substring(1);
-                            if (!NoReply.contains(email)) {
+                            if (!NoReply.contains(email, true)) {
                                 emailSet.add(email);
                             }
                             if (!Generic.contains(hostname) && SPF.matchHELO(ip, hostname)) {
                                 String subdominio = hostname;
                                 while (!subdominio.equals(domain)) {
                                     email = "postmaster@" + subdominio.substring(1);
-                                    if (!NoReply.contains(email)) {
+                                    if (!NoReply.contains(email, true)) {
                                         emailSet.add(email);
                                     }
                                     int index = subdominio.indexOf('.', 1);
@@ -3337,7 +3349,7 @@ public final class ServerHTTP extends Server {
                 String subdominio = hostname;
                 while (subdominio.endsWith(domain)) {
                     String email = "postmaster@" + subdominio;
-                    if (!NoReply.contains(email)) {
+                    if (!NoReply.contains(email, true)) {
                         emailSet.add(email);
                     }
                     int index = subdominio.indexOf('.', 1) + 1;
@@ -3599,7 +3611,7 @@ public final class ServerHTTP extends Server {
                             } else {
                                 builder.append("non-existent.</li>\n");
                             }
-                        } else if (NoReply.contains(email)) {
+                        } else if (NoReply.contains(email, false)) {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
                                 builder.append("não permitido.</li>\n");
                             } else {
@@ -4102,13 +4114,13 @@ public final class ServerHTTP extends Server {
                     builder.append("reject delivery by inexistent recipient");
                 }
             }
-        } else if (query.isRed()) {
+        } else if (query.hasRed()) {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("marcar como suspeita e entregar, sem considerar o conteúdo");
             } else {
                 builder.append("flag as suspected and deliver, regardless of content");
             }
-        } else if (query.isSoftfail() || query.isYellow()) {
+        } else if (query.isSoftfail() || query.hasYellow()) {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("atrasar entrega na mesma situação, sem considerar o conteúdo");
             } else {
@@ -4230,32 +4242,18 @@ public final class ServerHTTP extends Server {
             }
             builder.append("</button>\n");
         }
-        if (!blocked && recipient != null && query.getUser().isPostmaster()) {
-            if (trapTime == null) {
-                builder.append("      <button type=\"submit\" class=\"recipient\" name=\"POLICY\" value=\"BLOCK_RECIPIENT\">");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Tornar ");
-                    builder.append(recipient);
-                    builder.append(" inexistente");
-                } else {
-                    builder.append("Make ");
-                    builder.append(recipient);
-                    builder.append(" inexistent");
-                }
-                builder.append("</button>\n");
+        if (!blocked && recipient != null && trapTime != null && query.getUser().isPostmaster()) {
+            builder.append("      <button type=\"submit\" class=\"recipient\" name=\"POLICY\" value=\"WHITE_RECIPIENT\">");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("Tornar ");
+                builder.append(recipient);
+                builder.append(" existente");
             } else {
-                builder.append("      <button type=\"submit\" class=\"recipient\" name=\"POLICY\" value=\"WHITE_RECIPIENT\">");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Tornar ");
-                    builder.append(recipient);
-                    builder.append(" existente");
-                } else {
-                    builder.append("Make ");
-                    builder.append(recipient);
-                    builder.append(" inexistent");
-                }
-                builder.append("</button>\n");
+                builder.append("Make ");
+                builder.append(recipient);
+                builder.append(" inexistent");
             }
+            builder.append("</button>\n");
         }
         builder.append("    </form>\n");
         builder.append("  </body>\n");
@@ -4263,516 +4261,605 @@ public final class ServerHTTP extends Server {
         return builder.toString();
     }
     
-    private static String getControlPanel(
+    private static void buildQueryRow(
             Locale locale,
-            User user
-            ) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Painel de controle do SPFBL</title>\n");
-        } else {
-            builder.append("    <title>SPFBL control panel</title>\n");
-        }
-        // Styled page.
-        builder.append("    <style type=\"text/css\">\n");
-        builder.append("      body {");
-        builder.append("        margin:180px 0px 0px 0px;\n");
-        builder.append("        background:lightgray;\n");
-        builder.append("      }\n");
-        builder.append("      iframe {");
-        builder.append("        border-width: 0px 0px 0px 0px;\n");
-        builder.append("        width:100%;\n");
-        builder.append("        height:150px;\n");
-        builder.append("      }\n");
-        builder.append("      .header {\n");
-        builder.append("        background-color:lightgray;\n");
-        builder.append("        border-width: 0px 0px 0px 0px;\n");
-        builder.append("        position:fixed;\n");
-        builder.append("        top:0px;\n");
-        builder.append("        margin:auto;\n");
-        builder.append("        z-index:1;\n");
-        builder.append("        width:100%;\n");
-        builder.append("        height:180px;\n");
-        builder.append("      }\n");
-        builder.append("      .button {\n");
-        builder.append("          background-color: #4CAF50;\n");
-        builder.append("          border: none;\n");
-        builder.append("          color: white;\n");
-        builder.append("          padding: 16px 32px;\n");
-        builder.append("          text-align: center;\n");
-        builder.append("          text-decoration: none;\n");
-        builder.append("          display: inline-block;\n");
-        builder.append("          font-size: 16px;\n");
-        builder.append("          margin: 4px 2px;\n");
-        builder.append("          -webkit-transition-duration: 0.4s;\n");
-        builder.append("          transition-duration: 0.4s;\n");
-        builder.append("          cursor: pointer;\n");
-        builder.append("      }\n");
-        builder.append("      .sender {\n");
-        builder.append("          background-color: white; \n");
-        builder.append("          color: black; \n");
-        builder.append("          border: 2px solid #008CBA;\n");
-        builder.append("          width: 100%;\n");
-        builder.append("          word-wrap: break-word;\n");
-        builder.append("      }\n");
-        builder.append("      .sender:hover {\n");
-        builder.append("          background-color: #008CBA;\n");
-        builder.append("          color: white;\n");
-        builder.append("      }\n");
-        builder.append("      .highlight {\n");
-        builder.append("        background:lightgray;\n");
-        builder.append("        color:black;\n");
-        builder.append("        border-top: 1px solid #22262e;\n");
-        builder.append("        border-bottom: 1px solid #22262e;\n");
-        builder.append("      }\n");
-        builder.append("      .highlight:nth-child(odd) td {\n");
-        builder.append("        background:lightgray;\n");
-        builder.append("      }\n");
-        builder.append("      .click {\n");
-        builder.append("        cursor:pointer;\n");
-        builder.append("        cursor:hand;\n");
-        builder.append("      }\n");
-        builder.append("      table {\n");
-        builder.append("        background: white;\n");
-        builder.append("        table-layout:fixed;\n");
-        builder.append("        border-collapse: collapse;\n");
-        builder.append("        word-wrap:break-word;\n");
-        builder.append("        border-radius:3px;\n");
-        builder.append("        border-collapse: collapse;\n");
-        builder.append("        margin: auto;\n");
-        builder.append("        padding:2px;\n");
-        builder.append("        width: 100%;\n");
-        builder.append("        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);\n");
-        builder.append("        animation: float 5s infinite;\n");
-        builder.append("      }\n");
-        builder.append("      th {\n");
-        builder.append("        color:#FFFFFF;;\n");
-        builder.append("        background:#1b1e24;\n");
-        builder.append("        border-bottom:4px solid #9ea7af;\n");
-        builder.append("        border-right: 0px;\n");
-        builder.append("        font-size:16px;\n");
-        builder.append("        font-weight: bold;\n");
-        builder.append("        padding:4px;\n");
-        builder.append("        text-align:left;\n");
-        builder.append("        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);\n");
-        builder.append("        vertical-align:middle;\n");
-        builder.append("        height:30px;\n");
-        builder.append("      }\n");
-        builder.append("      tr {\n");
-        builder.append("        border-top: 1px solid #C1C3D1;\n");
-        builder.append("        border-bottom-: 1px solid #C1C3D1;\n");
-        builder.append("        font-size:16px;\n");
-        builder.append("        font-weight:normal;\n");
-        builder.append("        text-shadow: 0 1px 1px rgba(256, 256, 256, 0.1);\n");
-        builder.append("      }\n");
-        builder.append("      tr:nth-child(odd) td {\n");
-        builder.append("        background:#EBEBEB;\n");
-        builder.append("      }\n");
-        builder.append("      td {\n");
-        builder.append("        padding:2px;\n");
-        builder.append("        vertical-align:middle;\n");
-        builder.append("        font-size:16px;\n");
-        builder.append("        text-shadow: -1px -1px 1px rgba(0, 0, 0, 0.1);\n");
-        builder.append("        border-right: 1px solid #C1C3D1;\n");
-        builder.append("      }\n");
-        builder.append("    </style>\n");
-        // JavaScript functions.
-        TreeSet<Long> queryKeySet = user.getQueryKeySet();
-        builder.append("    <script type=\"text/javascript\">\n");
-        builder.append("      window.onbeforeunload = function () {\n");
-        builder.append("        window.scrollTo(0, 0);\n");
-        builder.append("      }\n");
-        builder.append("      var last = ");
-        if (queryKeySet.isEmpty()) {
-            builder.append(0);
-        } else {
-            builder.append(queryKeySet.last());
-        }
-        builder.append(";\n");
-        builder.append("      function view(query) {\n");
-        builder.append("        if (last != query) {\n");
-        builder.append("          var viewer = document.getElementById('viewer');\n");
-        builder.append("          viewer.addEventListener('load', function() {\n");
-        builder.append("            document.getElementById(last).className = 'tr';\n");
-        builder.append("            document.getElementById(last).className = 'click';\n");
-        builder.append("            document.getElementById(query).className = 'highlight';\n");
-        builder.append("            last = query;\n");
-        builder.append("          });\n");
-        builder.append("          viewer.src = '");
-        builder.append(Core.getURL());
-        builder.append("' + query;\n");
-        builder.append("        }\n");
-        builder.append("      }\n");
-        builder.append("    </script>\n");
-        builder.append("  </head>\n");
-        // Body.
-        builder.append("  <body>\n");
-        builder.append("  <div class=\"header\">\n");
-        if (queryKeySet.isEmpty()) {
-            builder.append("    <iframe id=\"viewer\" src=\"about:blank\"></iframe>\n");
-        } else {
-            builder.append("    <iframe id=\"viewer\" src=\"");
-            builder.append(Core.getURL());
-            builder.append(queryKeySet.last());
-            builder.append("\"></iframe>\n");
-        }
-        // Construção da tabela de consultas.
-        builder.append("    <table>\n");
-        builder.append("      <thead>\n");
-        builder.append("        <tr>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("          <th style=\"width:120px;\">Recepção</th>\n");
-            builder.append("          <th>Origem</th>\n");
-            builder.append("          <th>Remetente</th>\n");
-            builder.append("          <th>Conteúdo</th>\n");
-            builder.append("          <th>Entrega</th>\n");
-        } else {
-            builder.append("          <th style=\"width:160px;\">Reception</th>\n");
-            builder.append("          <th style=\"width:auto;\">Source</th>\n");
-            builder.append("          <th style=\"width:auto;\">Sender</th>\n");
-            builder.append("          <th style=\"width:auto;\">Content</th>\n");
-            builder.append("          <th style=\"width:auto;\">Delivery</th>\n");
-        }
-        builder.append("        </tr>\n");
-        builder.append("      </thead>\n");
-        builder.append("    </table>\n");
-        builder.append("  </div>\n");
-        builder.append("    <table>\n");
-        builder.append("      <tbody>\n");
-        if (queryKeySet.isEmpty()) {
-            builder.append("        <tr>\n");
-            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("          <td colspan=\"5\" align=\"center\">Nenhum registro encontrado</td>\n");
+            StringBuilder builder,
+            DateFormat dateFormat,
+            GregorianCalendar calendar,
+            long time,
+            User.Query query,
+            boolean highlight
+    ) {
+        if (query != null) {
+            calendar.setTimeInMillis(time);
+            String ip = query.getIP();
+            String hostname = query.getValidHostname();
+            String sender = query.getSender();
+            String from = query.getFrom();
+            String replyto = query.getReplyTo();
+            String subject = query.getSubject();
+            String malware = query.getMalware();
+            String recipient = query.getRecipient();
+            String result = query.getResult();
+            builder.append("        <tr id=\"");
+            builder.append(time);
+            builder.append("\"");
+            if (highlight) {
+                builder.append(" class=\"highlight\"");
             } else {
-                builder.append("          <td colspan=\"5\" align=\"center\">No records found</td>\n");
+                builder.append(" class=\"click\"");
             }
-            builder.append("        </tr>\n");
-        } else {
-            DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
-            GregorianCalendar calendar = new GregorianCalendar();
-            // Separar consultas congeladas.
-            TreeSet<Long> holdKeySet = new TreeSet<Long>();
-            for (Long time : queryKeySet) {
-                User.Query query = user.getQuery(time);
-                if (query != null && query.isResult("HOLD")) {
-                    holdKeySet.add(time);
+            builder.append(" onclick=\"view('");
+            builder.append(time);
+            builder.append("')\">\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("          <td style=\"width:120px;\">");
+            } else {
+                builder.append("          <td style=\"width:160px;\">");
+            }
+            builder.append(dateFormat.format(calendar.getTime()));
+            builder.append("<br>");
+            builder.append(query.getClient());
+            builder.append("</td>\n");
+            builder.append("          <td>");
+            if (hostname == null) {
+                String helo = query.getHELO();
+                if (helo == null) {
+                    builder.append(ip);
+                } else if (Subnet.isValidIP(helo)) {
+                    builder.append(ip);
+                } else {
+                    builder.append(ip);
+                    builder.append("<br>");
+                    builder.append("<strike>");
+                    builder.append(helo);
+                    builder.append("</strike>");
+                }
+            } else if (Generic.containsDomain(hostname)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><i>Genérico</i></small>");
+                } else {
+                    builder.append("<small><i>Generic</i></small>");
+                }
+                builder.append("<br>");
+                builder.append(hostname);
+            } else if (Provider.containsDomain(hostname)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><i>Provedor</i></small>");
+                } else {
+                    builder.append("<small><i>Provider</i></small>");
+                }
+                builder.append("<br>");
+                builder.append(hostname);
+            } else {
+                builder.append(hostname);
+            }
+            builder.append("</td>\n");
+            TreeSet<String> senderSet = new TreeSet<String>();
+            builder.append("          <td>");
+            if (sender == null) {
+                builder.append("MAILER-DAEMON");
+            } else {
+                senderSet.add(sender);
+                String qualifier = query.getQualifierName();
+                if (qualifier.equals("PASS")) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Comprovadamente autêntico</i></small>");
+                    } else {
+                        builder.append("<small><i>Proved genuine</i></small>");
+                    }
+                } else if (qualifier.equals("FAIL")) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Comprovadamente falso</i></small>");
+                    } else {
+                        builder.append("<small><i>Proved false</i></small>");
+                    }
+                } else if (qualifier.equals("SOFTFAIL")) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Pode ser falso</i></small>");
+                    } else {
+                        builder.append("<small><i>May be false</i></small>");
+                    }
+                } else {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Pode ser autêntico</i></small>");
+                    } else {
+                        builder.append("<small><i>May be genuine</i></small>");
+                    }
+                }
+                builder.append("<br>");
+                builder.append(sender);
+            }
+            boolean lineSeparator = false;
+            if (from != null && !senderSet.contains(from)) {
+                senderSet.add(from);
+                builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><b>De:</b> ");
+                } else {
+                    builder.append("<small><b>From:</b> ");
+                }
+                builder.append(from);
+                builder.append("</small>");
+                lineSeparator = true;
+            }
+            if (replyto != null && !senderSet.contains(replyto)) {
+                senderSet.add(replyto);
+                if (lineSeparator) {
+                    builder.append("<br>");
+                } else {
+                    builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
+                }
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><b>Responder para:</b> ");
+                } else {
+                    builder.append("<small><b>Reply to:</b> ");
+                }
+                builder.append(replyto);
+                builder.append("</small>");
+            }
+            builder.append("</td>\n");
+            builder.append("          <td>");
+            if (subject != null) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><b>Assunto:</b> ");
+                } else {
+                    builder.append("<small><b>Subject:</b> ");
+                }
+                builder.append(subject);
+                builder.append("</small>");
+                builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
+            }
+            if (malware == null) {
+                TreeSet<String> linkSet = query.getLinkSet();
+                if (linkSet == null) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Corpo não verificado</i></small>");
+                    } else {
+                        builder.append("<small><i>Body not verified</i></small>");
+                    }
+                } else if (linkSet.isEmpty()) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("<small><i>Sem links</i></small>");
+                    } else {
+                        builder.append("<small><i>No links</i></small>");
+                    }
+                } else {
+                    String link = linkSet.pollFirst();
+                    if (query.isLinkBlocked(link)) {
+                        builder.append("<font color=\"DarkRed\"><b>");
+                        builder.append(link);
+                        builder.append("</b></font>");
+                    } else {
+                        builder.append(link);
+                    }
+                    while (!linkSet.isEmpty()) {
+                        builder.append("<br>");
+                        link = linkSet.pollFirst();
+                        if (query.isLinkBlocked(link)) {
+                            builder.append("<font color=\"DarkRed\"><b>");
+                            builder.append(link);
+                            builder.append("</b></font>");
+                        } else {
+                            builder.append(link);
+                        }
+                    }
+                }
+            } else {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><i>Malware encontrado</i></small>");
+                } else {
+                    builder.append("<small><i>Malware found</i></small>");
+                }
+                if (!malware.equals("FOUND")) {
+                    builder.append("<br>");
+                    builder.append("<font color=\"DarkRed\"><b>");
+                    builder.append(malware);
+                    builder.append("</b></font>");
                 }
             }
-            queryKeySet.removeAll(holdKeySet);
-            LinkedList<Long> queryKeyList = new LinkedList<Long>();
-            queryKeyList.addAll(holdKeySet.descendingSet());
-            queryKeyList.addAll(queryKeySet.descendingSet());
-            boolean exceeded = false;
-            while (queryKeyList.size() > 1000) {
-                queryKeyList.removeLast();
-                exceeded = true;
+            builder.append("</td>\n");
+            builder.append("          <td>");
+            if (result.equals("REJECT")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada pelo conteúdo");
+                } else {
+                    builder.append("Rejected by content");
+                }
+            } else if (result.equals("BLOCK") || result.equals("BLOCKED")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por bloqueio");
+                } else {
+                    builder.append("Rejected by blocking");
+                }
+            } else if (result.equals("FAIL") || result.equals("FAILED")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por falsidade");
+                } else {
+                    builder.append("Rejected by falseness");
+                }
+            } else if (result.equals("INVALID")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por origem inválida");
+                } else {
+                    builder.append("Rejected by invalid source");
+                }
+            } else if (result.equals("GREYLIST")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Atrasada por greylisting");
+                } else {
+                    builder.append("Delayed by greylisting");
+                }
+            } else if (result.equals("SPAMTRAP") || result.equals("TRAP")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Descartado pela armadilha");
+                } else {
+                    builder.append("Discarded by spamtrap");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("INEXISTENT")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por inexistência");
+                } else {
+                    builder.append("Rejected by non-existence");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("WHITE")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Entrega prioritária para");
+                } else {
+                    builder.append("Priority delivery for");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("ACCEPT")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Entrega aceita para");
+                } else {
+                    builder.append("Accepted for delivery");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("FLAG")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Marcada como suspeita para");
+                } else {
+                    builder.append("Marked as suspect to");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("HOLD")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Entrega retida para");
+                } else {
+                    builder.append("Delivery retained for");
+                }
+                builder.append("<br>");
+                builder.append(recipient);
+            } else if (result.equals("NXDOMAIN")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por domínio inexistente");
+                } else {
+                    builder.append("Rejected by non-existent domain");
+                }
+            } else if (result.equals("NXSENDER")) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("Rejeitada por remetente inexistente");
+                } else {
+                    builder.append("Rejected by non-existent sender");
+                }
+            } else {
+                builder.append(result);
+                builder.append("<br>");
+                builder.append(recipient);
             }
-            for (Long time : queryKeyList) {
-                User.Query query = user.getQuery(time);
-                if (query != null) {
-                    calendar.setTimeInMillis(time);
-                    String ip = query.getIP();
-                    String hostname = query.getValidHostname();
-                    String sender = query.getSender();
-                    String from = query.getFrom();
-                    String replyto = query.getReplyTo();
-                    String subject = query.getSubject();
-                    String malware = query.getMalware();
-                    String recipient = query.getRecipient();
-                    String result = query.getResult();
-                    builder.append("        <tr id=\"");
-                    builder.append(time);
-                    builder.append("\"");
-                    if (time.equals(queryKeyList.getFirst())) {
-                        builder.append(" class=\"highlight\"");
-                    } else {
-                        builder.append(" class=\"click\"");
-                    }
-                    builder.append(" onclick=\"view('");
-                    builder.append(time);
-                    builder.append("')\">");
+            builder.append("</td>\n");
+            builder.append("        </tr>\n");
+        }
+    }
+    
+    private static String getControlPanel(
+            Locale locale,
+            User user,
+            Long begin
+            ) {
+        StringBuilder builder = new StringBuilder();
+        if (begin == null) {
+            builder.append("<html>\n");
+            builder.append("  <head>\n");
+            builder.append("    <meta charset=\"UTF-8\">\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("    <title>Painel de controle do SPFBL</title>\n");
+            } else {
+                builder.append("    <title>SPFBL control panel</title>\n");
+            }
+            // Styled page.
+            builder.append("    <style type=\"text/css\">\n");
+            builder.append("      body {\n");
+            builder.append("        margin:180px 0px 0px 0px;\n");
+            builder.append("        background:lightgray;\n");
+            builder.append("      }\n");
+            builder.append("      iframe {\n");
+            builder.append("        border-width: 0px 0px 0px 0px;\n");
+            builder.append("        width:100%;\n");
+            builder.append("        height:150px;\n");
+            builder.append("      }\n");
+            builder.append("      .header {\n");
+            builder.append("        background-color:lightgray;\n");
+            builder.append("        border-width: 0px 0px 0px 0px;\n");
+            builder.append("        position:fixed;\n");
+            builder.append("        top:0px;\n");
+            builder.append("        margin:auto;\n");
+            builder.append("        z-index:1;\n");
+            builder.append("        width:100%;\n");
+            builder.append("        height:180px;\n");
+            builder.append("      }\n");
+            builder.append("      .button {\n");
+            builder.append("          background-color: #4CAF50;\n");
+            builder.append("          border: none;\n");
+            builder.append("          color: white;\n");
+            builder.append("          padding: 16px 32px;\n");
+            builder.append("          text-align: center;\n");
+            builder.append("          text-decoration: none;\n");
+            builder.append("          display: inline-block;\n");
+            builder.append("          font-size: 16px;\n");
+            builder.append("          margin: 4px 2px;\n");
+            builder.append("          -webkit-transition-duration: 0.4s;\n");
+            builder.append("          transition-duration: 0.4s;\n");
+            builder.append("          cursor: pointer;\n");
+            builder.append("      }\n");
+            builder.append("      .sender {\n");
+            builder.append("          background-color: white; \n");
+            builder.append("          color: black; \n");
+            builder.append("          border: 2px solid #008CBA;\n");
+            builder.append("          width: 100%;\n");
+            builder.append("          word-wrap: break-word;\n");
+            builder.append("      }\n");
+            builder.append("      .sender:hover {\n");
+            builder.append("          background-color: #008CBA;\n");
+            builder.append("          color: white;\n");
+            builder.append("      }\n");
+            builder.append("      .highlight {\n");
+            builder.append("        background:lightgray;\n");
+            builder.append("        color:black;\n");
+            builder.append("        border-top: 1px solid #22262e;\n");
+            builder.append("        border-bottom: 1px solid #22262e;\n");
+            builder.append("      }\n");
+            builder.append("      .highlight:nth-child(odd) td {\n");
+            builder.append("        background:lightgray;\n");
+            builder.append("      }\n");
+            builder.append("      .click {\n");
+            builder.append("        cursor:pointer;\n");
+            builder.append("        cursor:hand;\n");
+            builder.append("      }\n");
+            builder.append("      table {\n");
+            builder.append("        background: white;\n");
+            builder.append("        table-layout:fixed;\n");
+            builder.append("        border-collapse: collapse;\n");
+            builder.append("        word-wrap:break-word;\n");
+            builder.append("        border-radius:3px;\n");
+            builder.append("        border-collapse: collapse;\n");
+            builder.append("        margin: auto;\n");
+            builder.append("        padding:2px;\n");
+            builder.append("        width: 100%;\n");
+            builder.append("        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);\n");
+            builder.append("        animation: float 5s infinite;\n");
+            builder.append("      }\n");
+            builder.append("      th {\n");
+            builder.append("        color:#FFFFFF;;\n");
+            builder.append("        background:#1b1e24;\n");
+            builder.append("        border-bottom:4px solid #9ea7af;\n");
+            builder.append("        border-right: 0px;\n");
+            builder.append("        font-size:16px;\n");
+            builder.append("        font-weight: bold;\n");
+            builder.append("        padding:4px;\n");
+            builder.append("        text-align:left;\n");
+            builder.append("        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);\n");
+            builder.append("        vertical-align:middle;\n");
+            builder.append("        height:30px;\n");
+            builder.append("      }\n");
+            builder.append("      tr {\n");
+            builder.append("        border-top: 1px solid #C1C3D1;\n");
+            builder.append("        border-bottom-: 1px solid #C1C3D1;\n");
+            builder.append("        font-size:16px;\n");
+            builder.append("        font-weight:normal;\n");
+            builder.append("        text-shadow: 0 1px 1px rgba(256, 256, 256, 0.1);\n");
+            builder.append("      }\n");
+            builder.append("      tr:nth-child(odd) td {\n");
+            builder.append("        background:#EBEBEB;\n");
+            builder.append("      }\n");
+            builder.append("      td {\n");
+            builder.append("        padding:2px;\n");
+            builder.append("        vertical-align:middle;\n");
+            builder.append("        font-size:16px;\n");
+            builder.append("        text-shadow: -1px -1px 1px rgba(0, 0, 0, 0.1);\n");
+            builder.append("        border-right: 1px solid #C1C3D1;\n");
+            builder.append("      }\n");
+            builder.append("    </style>\n");
+            // JavaScript functions.
+            TreeSet<Long> queryKeySet = user.getQueryKeySet(null);
+            builder.append("    <script type=\"text/javascript\" src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js\"></script>\n");
+            builder.append("    <script type=\"text/javascript\">\n");
+            builder.append("      window.onbeforeunload = function () {\n");
+            builder.append("        window.scrollTo(0, 0);\n");
+            builder.append("      }\n");
+            builder.append("      var last = ");
+            if (queryKeySet.isEmpty()) {
+                builder.append(0);
+            } else {
+                builder.append(queryKeySet.last());
+            }
+            builder.append(";\n");
+            builder.append("      function view(query) {\n");
+            builder.append("        if (last != query) {\n");
+            builder.append("          var viewer = document.getElementById('viewer');\n");
+            builder.append("          viewer.addEventListener('load', function() {\n");
+            builder.append("            document.getElementById(last).className = 'tr';\n");
+            builder.append("            document.getElementById(last).className = 'click';\n");
+            builder.append("            document.getElementById(query).className = 'highlight';\n");
+            builder.append("            last = query;\n");
+            builder.append("          });\n");
+            builder.append("          viewer.src = '");
+            builder.append(Core.getURL());
+            builder.append("' + query;\n");
+            builder.append("        }\n");
+            builder.append("      }\n");
+            builder.append("      function more(query) {\n");
+            builder.append("        var rowMore = document.getElementById('rowMore');\n");
+            builder.append("        rowMore.onclick = '';\n");
+            builder.append("        rowMore.className = 'tr';\n");
+            builder.append("        var columnMore = document.getElementById('columnMore');\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("        columnMore.innerHTML = 'carregando mais registros';\n");
+            } else {
+                builder.append("        columnMore.innerHTML = 'loading more records';\n");
+            }
+            builder.append("        $.post('");
+            builder.append(Core.getURL());
+            builder.append(user.getEmail());
+            builder.append("', {begin:query},\n");
+            builder.append("        function(data, status){;\n");
+            builder.append("          if (status == 'success') {\n");
+            builder.append("            rowMore.parentNode.removeChild(rowMore);\n");
+            builder.append("            $('#tableBody').append(data);\n");
+            builder.append("          } else {\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("            alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
+            } else {
+                builder.append("            alert('There was a system crash while trying to perform this operation.');\n");
+            }
+            builder.append("          }\n");
+            builder.append("        });\n");
+            builder.append("      }\n");
+            builder.append("    </script>\n");
+            builder.append("  </head>\n");
+            // Body.
+            builder.append("  <body>\n");
+            builder.append("    <div class=\"header\">\n");
+            if (queryKeySet.isEmpty()) {
+                builder.append("      <iframe id=\"viewer\" src=\"about:blank\"></iframe>\n");
+            } else {
+                builder.append("      <iframe id=\"viewer\" src=\"");
+                builder.append(Core.getURL());
+                builder.append(queryKeySet.last());
+                builder.append("\"></iframe>\n");
+            }
+            // Construção da tabela de consultas.
+            builder.append("      <table>\n");
+            builder.append("        <thead>\n");
+            builder.append("          <tr>\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("            <th style=\"width:120px;\">Recepção</th>\n");
+                builder.append("            <th>Origem</th>\n");
+                builder.append("            <th>Remetente</th>\n");
+                builder.append("            <th>Conteúdo</th>\n");
+                builder.append("            <th>Entrega</th>\n");
+            } else {
+                builder.append("            <th style=\"width:160px;\">Reception</th>\n");
+                builder.append("            <th style=\"width:auto;\">Source</th>\n");
+                builder.append("            <th style=\"width:auto;\">Sender</th>\n");
+                builder.append("            <th style=\"width:auto;\">Content</th>\n");
+                builder.append("            <th style=\"width:auto;\">Delivery</th>\n");
+            }
+            builder.append("          </tr>\n");
+            builder.append("        </thead>\n");
+            builder.append("      </table>\n");
+            builder.append("    </div>\n");
+            if (queryKeySet.isEmpty()) {
+                builder.append("    <table>\n");
+                builder.append("      <tbody>\n");
+                builder.append("        <tr>\n");
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("          <td colspan=\"5\" align=\"center\">nenhum registro encontrado</td>\n");
+                } else {
+                    builder.append("          <td colspan=\"5\" align=\"center\">no records found</td>\n");
+                }
+                builder.append("        </tr>\n");
+                builder.append("      </tbody>\n");
+                builder.append("    </table>\n");
+            } else {
+                DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+                GregorianCalendar calendar = new GregorianCalendar();
+                Long nextQuery = null;
+                while (queryKeySet.size() > 1024) {
+                    nextQuery = queryKeySet.pollFirst();
+                }
+                builder.append("    <table>\n");
+                builder.append("      <tbody id=\"tableBody\">\n");
+                for (Long time : queryKeySet.descendingSet()) {
+                    User.Query query = user.getQuery(time);
+                    boolean highlight = time.equals(queryKeySet.last());
+                    buildQueryRow(locale, builder, dateFormat, calendar, time, query, highlight);
+                }
+                if (nextQuery == null) {
+                    builder.append("      <tr>\n");
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("          <td style=\"width:120px;\">");
+                        builder.append("        <td colspan=\"5\" align=\"center\">não foram encontrados outros registros</td>\n");
                     } else {
-                        builder.append("          <td style=\"width:160px;\">");
+                        builder.append("        <td colspan=\"5\" align=\"center\">no more records found</td>\n");
                     }
-                    builder.append(dateFormat.format(calendar.getTime()));
-                    builder.append("<br>");
-                    builder.append(query.getClient());
-                    builder.append("</td>\n");
-                    builder.append("          <td>");
-                    if (time.equals(1476609680335L)) {
-                        builder.append("");
-                    }
-                    if (hostname == null) {
-                        String helo = query.getHELO();
-                        if (helo == null) {
-                            builder.append(ip);
-                        } else if (Subnet.isValidIP(helo)) {
-                            builder.append(ip);
-                        } else {
-                            builder.append(ip);
-                            builder.append("<br>");
-                            builder.append("<strike>");
-                            builder.append(helo);
-                            builder.append("</strike>");
-                        }
-                    } else if (Generic.containsDomain(hostname)) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><i>Genérico</i></small>");
-                        } else {
-                            builder.append("<small><i>Generic</i></small>");
-                        }
-                        builder.append("<br>");
-                        builder.append(hostname);
-                    } else if (Provider.containsDomain(hostname)) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><i>Provedor</i></small>");
-                        } else {
-                            builder.append("<small><i>Provider</i></small>");
-                        }
-                        builder.append("<br>");
-                        builder.append(hostname);
+                    builder.append("      </tr>\n");
+                } else {
+                    builder.append("        <tr id=\"rowMore\" class=\"click\" onclick=\"more('");
+                    builder.append(nextQuery);
+                    builder.append("')\">\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">clique para ver mais registros</td>\n");
                     } else {
-                        builder.append(hostname);
+                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">click to see more records</td>\n");
                     }
-                    builder.append("</td>\n");
-                    TreeSet<String> senderSet = new TreeSet<String>();
-                    builder.append("          <td>");
-                    if (sender == null) {
-                        builder.append("MAILER-DAEMON");
+                    builder.append("        </tr>\n");
+                }
+                builder.append("      </tbody>\n");
+                builder.append("    </table>\n");
+            }
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+            builder.append("  </body>\n");
+            builder.append("</html>\n");
+        } else {
+            TreeSet<Long> queryKeySet = user.getQueryKeySet(begin);
+            if (queryKeySet.isEmpty()) {
+                builder.append("        <tr>\n");
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("          <td colspan=\"5\" align=\"center\">nenhum registro encontrado</td>\n");
+                } else {
+                    builder.append("          <td colspan=\"5\" align=\"center\">no records found</td>\n");
+                }
+                builder.append("        </tr>\n");
+            } else {
+                DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+                GregorianCalendar calendar = new GregorianCalendar();
+                Long nextQuery = null;
+                while (queryKeySet.size() > 1024) {
+                    nextQuery = queryKeySet.pollFirst();
+                }
+                for (Long time : queryKeySet.descendingSet()) {
+                    User.Query query = user.getQuery(time);
+                    buildQueryRow(locale, builder, dateFormat, calendar, time, query, false);
+                }
+                if (nextQuery == null) {
+                    builder.append("        <tr>\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("          <td colspan=\"5\" align=\"center\">não foram encontrados outros registros</td>\n");
                     } else {
-                        senderSet.add(sender);
-                        String qualifier = query.getQualifierName();
-                        if (qualifier.equals("PASS")) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Comprovadamente autêntico</i></small>");
-                            } else {
-                                builder.append("<small><i>Proved genuine</i></small>");
-                            }
-                        } else if (qualifier.equals("FAIL")) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Comprovadamente falso</i></small>");
-                            } else {
-                                builder.append("<small><i>Proved false</i></small>");
-                            }
-                        } else if (qualifier.equals("SOFTFAIL")) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Pode ser falso</i></small>");
-                            } else {
-                                builder.append("<small><i>May be false</i></small>");
-                            }
-                        } else {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Pode ser autêntico</i></small>");
-                            } else {
-                                builder.append("<small><i>May be genuine</i></small>");
-                            }
-                        }
-                        builder.append("<br>");
-                        builder.append(sender);
+                        builder.append("          <td colspan=\"5\" align=\"center\">no more records found</td>\n");
                     }
-                    boolean lineSeparator = false;
-                    if (from != null && !senderSet.contains(from)) {
-                        senderSet.add(from);
-                        builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><b>De:</b> ");
-                        } else {
-                            builder.append("<small><b>From:</b> ");
-                        }
-                        builder.append(from);
-                        builder.append("</small>");
-                        lineSeparator = true;
-                    }
-                    if (replyto != null && !senderSet.contains(replyto)) {
-                        senderSet.add(replyto);
-                        if (lineSeparator) {
-                            builder.append("<br>");
-                        } else {
-                            builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
-                        }
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><b>Responder para:</b> ");
-                        } else {
-                            builder.append("<small><b>Reply to:</b> ");
-                        }
-                        builder.append(replyto);
-                        builder.append("</small>");
-                    }
-                    builder.append("</td>\n");
-                    builder.append("          <td>");
-                    if (subject != null) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><b>Assunto:</b> ");
-                        } else {
-                            builder.append("<small><b>Subject:</b> ");
-                        }
-                        builder.append(subject);
-                        builder.append("</small>");
-                        builder.append("<hr style=\"height:0px;visibility:hidden;margin-bottom:0px;\">");
-                    }
-                    if (malware == null) {
-                        TreeSet<String> linkSet = query.getLinkSet();
-                        if (linkSet == null) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Corpo não verificado</i></small>");
-                            } else {
-                                builder.append("<small><i>Body not verified</i></small>");
-                            }
-                        } else if (linkSet.isEmpty()) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("<small><i>Sem links</i></small>");
-                            } else {
-                                builder.append("<small><i>No links</i></small>");
-                            }
-                        } else {
-                            String link = linkSet.pollFirst();
-                            if (query.isLinkBlocked(link)) {
-                                builder.append("<font color=\"DarkRed\"><b>");
-                                builder.append(link);
-                                builder.append("</b></font>");
-                            } else {
-                                builder.append(link);
-                            }
-                            while (!linkSet.isEmpty()) {
-                                builder.append("<br>");
-                                link = linkSet.pollFirst();
-                                if (query.isLinkBlocked(link)) {
-                                    builder.append("<font color=\"DarkRed\"><b>");
-                                    builder.append(link);
-                                    builder.append("</b></font>");
-                                } else {
-                                    builder.append(link);
-                                }
-                            }
-                        }
+                    builder.append("        </tr>\n");
+                } else {
+                    builder.append("        <tr id=\"rowMore\" class=\"click\" onclick=\"more('");
+                    builder.append(nextQuery);
+                    builder.append("')\">\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">clique para ver mais registros</td>\n");
                     } else {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("<small><i>Malware encontrado</i></small>");
-                        } else {
-                            builder.append("<small><i>Malware found</i></small>");
-                        }
-                        if (!malware.equals("FOUND")) {
-                            builder.append("<br>");
-                            builder.append("<font color=\"DarkRed\"><b>");
-                            builder.append(malware);
-                            builder.append("</b></font>");
-                        }
+                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">click to see more records</td>\n");
                     }
-                    builder.append("</td>\n");
-                    builder.append("          <td>");
-                    if (result.equals("REJECT")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada pelo conteúdo");
-                        } else {
-                            builder.append("Rejected by content");
-                        }
-                    } else if (result.equals("BLOCK") || result.equals("BLOCKED")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada por bloqueio");
-                        } else {
-                            builder.append("Rejected by blocking");
-                        }
-                    } else if (result.equals("FAIL") || result.equals("FAILED")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada por falsidade");
-                        } else {
-                            builder.append("Rejected by falseness");
-                        }
-                    } else if (result.equals("INVALID")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada por origem inválida");
-                        } else {
-                            builder.append("Rejected by invalid source");
-                        }
-                    } else if (result.equals("GREYLIST")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Atrasada por greylisting");
-                        } else {
-                            builder.append("Delayed by greylisting");
-                        }
-                    } else if (result.equals("SPAMTRAP") || result.equals("TRAP")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Descartado pela armadilha");
-                        } else {
-                            builder.append("Discarded by spamtrap");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("INEXISTENT")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada por inexistência");
-                        } else {
-                            builder.append("Rejected by non-existence");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("WHITE")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Entrega prioritária para");
-                        } else {
-                            builder.append("Priority delivery for");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("ACCEPT")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Entrega aceita para");
-                        } else {
-                            builder.append("Accepted for delivery");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("FLAG")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Marcada como suspeita para");
-                        } else {
-                            builder.append("Marked as suspect to");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("HOLD")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Entrega retida para");
-                        } else {
-                            builder.append("Delivery retained for");
-                        }
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    } else if (result.equals("NXDOMAIN")) {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("Rejeitada por domínio inexistente");
-                        } else {
-                            builder.append("Rejected by non-existent domain");
-                        }
-                    } else {
-                        builder.append(result);
-                        builder.append("<br>");
-                        builder.append(recipient);
-                    }
-                    builder.append("</td>\n");
                     builder.append("        </tr>\n");
                 }
             }
-            if (exceeded) {
-                builder.append("        <tr>\n");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("          <td colspan=\"5\" align=\"center\">Os registros excederam o limite máximo de visualização</td>\n");
-                } else {
-                    builder.append("          <td colspan=\"5\" align=\"center\">The records have exceeded the maximum limit display</td>\n");
-                }
-                builder.append("        </tr>\n");
-            }
         }
-        builder.append("      </tbody>\n");
-        builder.append("    </table>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        builder.append("  </body>\n");
-        builder.append("</html>\n");
         return builder.toString();
     }
     

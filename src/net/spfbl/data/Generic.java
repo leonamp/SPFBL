@@ -320,20 +320,31 @@ public class Generic {
         } else if (Domain.isHostname(token)) {
             return Domain.normalizeHostname(token, true);
         } else if (token.contains("#") || token.contains(".H.")) {
+            while (token.contains(".H.")) {
+                token = token.replace(".H.", ".$.");
+            }
             while (token.contains("##")) {
                 token = token.replace("##", "#");
             }
             String normal = token.replace('#', '0');
-            normal = normal.replace(".H.", ".a0.");
+            normal = normal.replace(".$.", ".a0.");
             if (Domain.isHostname(normal)) {
                 try {
                     String domain = Domain.extractDomain(normal, true);
                     if (normal.equals(domain)) {
                         // Domínio genérico.
-                        return Domain.normalizeHostname(token, true);
+                        token = Domain.normalizeHostname(token, true);
+                        while (token.contains(".$.")) {
+                            token = token.replace(".$.", ".H.");
+                        }
+                        return token;
                     } else if (token.endsWith(domain)) {
                         // Hostname genérico.
-                        return Domain.normalizeHostname(token, true);
+                        token = Domain.normalizeHostname(token, true);
+                        while (token.contains(".$.")) {
+                            token = token.replace(".$.", ".H.");
+                        }
+                        return token;
                     }
                 } catch (ProcessException ex) {
                 }

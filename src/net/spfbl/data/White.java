@@ -846,7 +846,7 @@ public class White {
         } else if ((token = normalizeTokenWhite(token)) == null) {
             throw new ProcessException("TOKEN INVALID");
         } else {
-            return addExact(client + ':' + token);
+            return addExact(client.toLowerCase() + ':' + token);
         }
     }
     

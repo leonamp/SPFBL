@@ -999,12 +999,12 @@ public abstract class Server extends Thread {
         long time = System.currentTimeMillis();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-//            WHOIS_CONNECTION_SEMAPHORE.acquire();
-            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire(3, TimeUnit.SECONDS)) {
+            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
                 try {
                     acquireWhoisIDQuery();
                     WhoisClient whoisClient = new WhoisClient();
                     try {
+                        whoisClient.setDefaultTimeout(3000);
                         whoisClient.connect(server);
                         InputStream inputStream = whoisClient.getInputStream(query);
                         int code;
@@ -1109,6 +1109,7 @@ public abstract class Server extends Thread {
                     acquireWhoisQuery();
                     WhoisClient whoisClient = new WhoisClient();
                     try {
+                        whoisClient.setDefaultTimeout(3000);
                         whoisClient.connect(server);
                         InputStream inputStream = whoisClient.getInputStream(query);
                         try {

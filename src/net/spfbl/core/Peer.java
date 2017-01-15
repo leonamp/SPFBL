@@ -849,43 +849,43 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return retainSet.add(token);
     }
     
-    @Deprecated
-    public String processReceive(String token) {
-        try {
-            if (!isValidBlock(token)) {
-                return "INVALID";
-            } else if (Generic.contains(token)) {
-                return "GENERIC";
-            } else if (Domain.isReserved(token)) {
-                return "RESERVED";
-            } else if (Ignore.contains(token)) {
-                return "IGNORED";
-            } else if (isReceiveReject()) {
-                return "REJECTED";
-            } else if (isReceiveDrop()) {
-                return "DROPPED";
-            } else if (isReceiveRetain()) {
-                if (addRetain(token)) {
-                    return "RETAINED";
-                } else {
-                    return "DROPPED";
-                }
-            } else if (Block.addExact(token)) {
-                if (isReceiveRepass()) {
-                    sendToOthers(token);
-                    return "REPASSED";
-                } else {
-                    sendToRepass(token);
-                    return "ADDED";
-                }
-            } else {
-                return "EXISTS";
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-            return ex.getMessage();
-        }
-    }
+//    @Deprecated
+//    public String processReceive(String token) {
+//        try {
+//            if (!isValidBlock(token)) {
+//                return "INVALID";
+//            } else if (Generic.contains(token)) {
+//                return "GENERIC";
+//            } else if (Domain.isReserved(token)) {
+//                return "RESERVED";
+//            } else if (Ignore.contains(token)) {
+//                return "IGNORED";
+//            } else if (isReceiveReject()) {
+//                return "REJECTED";
+//            } else if (isReceiveDrop()) {
+//                return "DROPPED";
+//            } else if (isReceiveRetain()) {
+//                if (addRetain(token)) {
+//                    return "RETAINED";
+//                } else {
+//                    return "DROPPED";
+//                }
+//            } else if (Block.addExact(token)) {
+//                if (isReceiveRepass()) {
+//                    sendToOthers(token);
+//                    return "REPASSED";
+//                } else {
+//                    sendToRepass(token);
+//                    return "ADDED";
+//                }
+//            } else {
+//                return "EXISTS";
+//            }
+//        } catch (Exception ex) {
+//            Server.logError(ex);
+//            return ex.getMessage();
+//        }
+//    }
     
     public String processBlock(String token) {
         try {
@@ -1237,17 +1237,17 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public static TreeSet<String> clearAllReputation(String key) {
-        TreeSet<String> clearSet = new TreeSet<String>();
-        for (Peer peer : getSet()) {
-            for (String token : peer.getAllReputations(key)) {
-                if (peer.clearReputation(token)) {
-                    clearSet.add(token);
-                }
-            }
-        }
-        return clearSet;
-    }
+//    public static TreeSet<String> clearAllReputation(String key) {
+//        TreeSet<String> clearSet = new TreeSet<String>();
+//        for (Peer peer : getSet()) {
+//            for (String token : peer.getAllReputations(key)) {
+//                if (peer.clearReputation(token)) {
+//                    clearSet.add(token);
+//                }
+//            }
+//        }
+//        return clearSet;
+//    }
     
     private synchronized boolean containsReputationExact(String key) {
         if (reputationMap2 == null) {

@@ -932,6 +932,21 @@ public final class AdministrationTCP extends Server {
                     } else {
                         result = "INVALID COMMAND\n";
                     }
+                } else if (token.equals("SUSPECT") && tokenizer.countTokens() == 1) {
+                    token = tokenizer.nextToken();
+                    Status status = SPF.getStatus(token);
+                    if (status == Status.RED) {
+                        if (Block.addExact(token)) {
+                            result = "BLOCKED\n";
+                            Server.logDebug("new BLOCK '" + token + "' added by SUSPECT.");
+                        } else {
+                            result = "RED\n";
+                        }
+                    } else if (status == Status.YELLOW) {
+                        result = "YELLOW\n";
+                    } else {
+                        result = "GREEN\n";
+                    }
                 } else if (token.equals("BLOCK") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -1353,7 +1368,9 @@ public final class AdministrationTCP extends Server {
                                     inexistentToken = inexistentToken.substring(index+1);
                                 }
                             }
-                            if (clientLocal == null && Trap.putInexistent(inexistentToken, timeString)) {
+                            if (NoReply.contains(inexistentToken, false)) {
+                                result = "NO REPLY\n";
+                            } else if (clientLocal == null && Trap.putInexistent(inexistentToken, timeString)) {
                                 result = "ADDED\n";
                             } else if (clientLocal != null && Trap.putInexistent(clientLocal, inexistentToken, timeString)) {
                                 result = "ADDED\n";
@@ -1631,6 +1648,13 @@ public final class AdministrationTCP extends Server {
                                 } else if (token.equals("RED") && tokenizer.countTokens() == 1) {
                                     token = tokenizer.nextToken();
                                     if (clientLocal.setActionRED(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else if (token.equals("YELLOW") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionYELLOW(token)) {
                                         result = "UPDATED " + clientLocal + "\n";
                                     } else {
                                         result = "ALREADY THIS VALUE\n";
