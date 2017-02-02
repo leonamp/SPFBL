@@ -4020,8 +4020,18 @@ case $1 in
 		# gera estatistica diaria
 		# saida em linha de comando
 		#
+		# Formato: spfbl.sh stats AAAA-MM-DD
+		# Exemplo: spfbl.sh stats 2017-01-31
+		#
+		# apenas "spfbl.sh stats" mostra o resultado do dia
+		#
 
-		TODAY=`date +%Y-%m-%d`
+		if [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+			TODAY=$2
+		else
+			TODAY=`date +%Y-%m-%d`
+		fi
+		
 		LOGPATH=/var/log/spfbl/
 
 		BLOCKED=$(grep -c BLOCKED "$LOGPATH"spfbl."$TODAY".log)
@@ -4047,6 +4057,7 @@ case $1 in
 
 		echo '=========================='
 		echo '= SPFBL Daily Statistics ='
+		echo '=      '"$TODAY"'        ='
 		echo '=========================='
 		echo '     WHITE:' $(echo "scale=0;($WHITE*100) / $TOTALES" | bc)'% - '"$WHITE"
 		echo '      PASS:' $(echo "scale=0;($PASS*100) / $TOTALES" | bc)'% - '"$PASS"
