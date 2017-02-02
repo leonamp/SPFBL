@@ -4021,7 +4021,13 @@ case $1 in
 		# saida em linha de comando
 		#
 
-		TODAY=`date +%Y-%m-%d`
+                # Escolhe a data de log
+                if [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                        TODAY=$2
+                else
+                        TODAY=`date +%Y-%m-%d`
+                fi
+
 		LOGPATH=/var/log/spfbl/
 
 		BLOCKED=$(grep -c BLOCKED "$LOGPATH"spfbl."$TODAY".log)
