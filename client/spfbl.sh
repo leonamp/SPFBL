@@ -2799,6 +2799,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#    5: hold message.
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2828,6 +2829,8 @@ case $1 in
 				exit 2
 			elif [[ $response == "CLEAR" ]]; then
 				exit 0
+			elif [[ $response == "HOLD" ]]; then
+				exit 5
 			elif [[ $response == "BLOCKED "* ]]; then
 				exit 1
 			else
@@ -3041,7 +3044,7 @@ case $1 in
 
 				while read -r message; do
 
-					ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: HOLD (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+					ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
 
 					if [ $? -eq 0 ]; then
 
