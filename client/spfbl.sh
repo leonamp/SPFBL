@@ -2801,6 +2801,7 @@ case $1 in
 		#    3: consulta inválida.
 		#    4: out of service.
 		#    5: hold message.
+		#    6: flag message.
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2832,6 +2833,8 @@ case $1 in
 				exit 0
 			elif [[ $response == "HOLD" ]]; then
 				exit 5
+			elif [[ $response == "FLAG" ]]; then
+				exit 6
 			elif [[ $response == "BLOCKED "* ]]; then
 				exit 1
 			else
@@ -3077,6 +3080,11 @@ case $1 in
 
 							# Manter a mensagem congelada.
 							echo "Message $message keep frozen."
+
+						elif [[ $response == "FLAG" ]]; then
+
+							# Liberar a mensagem congelada.
+							exim -Mt $message
 
 						else
 
