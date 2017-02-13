@@ -42,6 +42,7 @@ OTP_SECRET=""
 DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
 MAX_TIMEOUT="100"
+LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.10"
@@ -4029,61 +4030,63 @@ case $1 in
 		# apenas "spfbl.sh stats" mostra o resultado do dia
 		#
 
-    # Escolhe a data de log
-    if [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-        TODAY=$2
-    else
-        TODAY=`date +%Y-%m-%d`
-    fi
+		# Escolhe a data de log
+		if [ -d $LOGPATH ]; then
+			if [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+				TODAY=$2
+			else
+				TODAY=`date +%Y-%m-%d`
+			fi
 
-		LOGPATH=/var/log/spfbl/
+			BLOCKED=$(grep -c BLOCKED "$LOGPATH"spfbl."$TODAY".log)
+			FAIL=$(grep -c ' FAIL' "$LOGPATH"spfbl."$TODAY".log)
+			FLAG=$(grep -c FLAG "$LOGPATH"spfbl."$TODAY".log)
+			GREYLIST=$(grep -c GREYLIST "$LOGPATH"spfbl."$TODAY".log)
+			HOLD=$(grep -c HOLD "$LOGPATH"spfbl."$TODAY".log)
+			INTERRUPTED=$(grep -c INTERRUPTED "$LOGPATH"spfbl."$TODAY".log)
+			INVALID=$(grep -c INVALID "$LOGPATH"spfbl."$TODAY".log)
+			LISTED=$(grep -c LISTED "$LOGPATH"spfbl."$TODAY".log)
+			NEUTRAL=$(grep -c NEUTRAL "$LOGPATH"spfbl."$TODAY".log)
+			NONE=$(grep -c NONE "$LOGPATH"spfbl."$TODAY".log)
+			NXDOMAIN=$(grep -c NXDOMAIN "$LOGPATH"spfbl."$TODAY".log)
+			NXSENDER=$(grep -c NXSENDER "$LOGPATH"spfbl."$TODAY".log)
+			PASS=$(grep -c PASS "$LOGPATH"spfbl."$TODAY".log)
+			WHITE=$(grep -c WHITE "$LOGPATH"spfbl."$TODAY".log)
+			SOFTFAIL=$(grep -c SOFTFAIL "$LOGPATH"spfbl."$TODAY".log)
+			SPAMTRAP=$(grep -c SPAMTRAP "$LOGPATH"spfbl."$TODAY".log)
+			INEXISTENT=$(grep -c INEXISTENT "$LOGPATH"spfbl."$TODAY".log)
+			TIMEOUT=$(grep -c TIMEOUT "$LOGPATH"spfbl."$TODAY".log)
 
-		BLOCKED=$(grep -c BLOCKED "$LOGPATH"spfbl."$TODAY".log)
-		FAIL=$(grep -c ' FAIL' "$LOGPATH"spfbl."$TODAY".log)
-		FLAG=$(grep -c FLAG "$LOGPATH"spfbl."$TODAY".log)
-		GREYLIST=$(grep -c GREYLIST "$LOGPATH"spfbl."$TODAY".log)
-		HOLD=$(grep -c HOLD "$LOGPATH"spfbl."$TODAY".log)
-		INTERRUPTED=$(grep -c INTERRUPTED "$LOGPATH"spfbl."$TODAY".log)
-		INVALID=$(grep -c INVALID "$LOGPATH"spfbl."$TODAY".log)
-		LISTED=$(grep -c LISTED "$LOGPATH"spfbl."$TODAY".log)
-		NEUTRAL=$(grep -c NEUTRAL "$LOGPATH"spfbl."$TODAY".log)
-		NONE=$(grep -c NONE "$LOGPATH"spfbl."$TODAY".log)
-		NXDOMAIN=$(grep -c NXDOMAIN "$LOGPATH"spfbl."$TODAY".log)
-		NXSENDER=$(grep -c NXSENDER "$LOGPATH"spfbl."$TODAY".log)
-		PASS=$(grep -c PASS "$LOGPATH"spfbl."$TODAY".log)
-		WHITE=$(grep -c WHITE "$LOGPATH"spfbl."$TODAY".log)
-		SOFTFAIL=$(grep -c SOFTFAIL "$LOGPATH"spfbl."$TODAY".log)
-		SPAMTRAP=$(grep -c SPAMTRAP "$LOGPATH"spfbl."$TODAY".log)
-		INEXISTENT=$(grep -c INEXISTENT "$LOGPATH"spfbl."$TODAY".log)
-		TIMEOUT=$(grep -c TIMEOUT "$LOGPATH"spfbl."$TODAY".log)
+			TOTALES=$(echo $BLOCKED + $FLAG + $GREYLIST + $HOLD + $LISTED + $NXDOMAIN + $NXSENDER + $PASS + $WHITE + $TIMEOUT + $NONE + $SOFTFAIL + $NEUTRAL + $INTERRUPTED + $SPAMTRAP + $INEXISTENT + $INVALID + $FAIL | bc)
 
-		TOTALES=$(echo $BLOCKED + $FLAG + $GREYLIST + $HOLD + $LISTED + $NXDOMAIN + $NXSENDER + $PASS + $WHITE + $TIMEOUT + $NONE + $SOFTFAIL + $NEUTRAL + $INTERRUPTED + $SPAMTRAP + $INEXISTENT + $INVALID + $FAIL | bc)
-
-		echo '=========================='
-		echo '= SPFBL Daily Statistics ='
-		echo '=      '"$TODAY"'        ='
-		echo '=========================='
-		echo '     WHITE:' $(echo "scale=0;($WHITE*100) / $TOTALES" | bc)'% - '"$WHITE"
-		echo '      PASS:' $(echo "scale=0;($PASS*100) / $TOTALES" | bc)'% - '"$PASS"
-		echo '   BLOCKED:' $(echo "scale=0;($BLOCKED*100) / $TOTALES" | bc)'% - '"$BLOCKED"
-		echo '      FAIL:' $(echo "scale=0;($FAIL*100) / $TOTALES" | bc)'% - '"$FAIL"
-		echo '      FLAG:' $(echo "scale=0;($FLAG*100) / $TOTALES" | bc)'% - '"$FLAG"
-		echo '  GREYLIST:' $(echo "scale=0;($GREYLIST*100) / $TOTALES" | bc)'% - '"$GREYLIST"
-		echo '      HOLD:' $(echo "scale=0;($HOLD*100) / $TOTALES" | bc)'% - '"$HOLD"
-		echo '  INTRRPTD:' $(echo "scale=0;($INTERRUPTED*100) / $TOTALES" | bc)'% - '"$INTERRUPTED"
-		echo '   INVALID:' $(echo "scale=0;($INVALID*100) / $TOTALES" | bc)'% - '"$INVALID"
-		echo '    LISTED:' $(echo "scale=0;($LISTED*100) / $TOTALES" | bc)'% - '"$LISTED"
-		echo '   NEUTRAL:' $(echo "scale=0;($NEUTRAL*100) / $TOTALES" | bc)'% - '"$NEUTRAL"
-		echo '      NONE:' $(echo "scale=0;($NONE*100) / $TOTALES" | bc)'% - '"$NONE"
-		echo '  NXDOMAIN:' $(echo "scale=0;($NXDOMAIN*100) / $TOTALES" | bc)'% - '"$NXDOMAIN"
-		echo '  NXSENDER:' $(echo "scale=0;($NXSENDER*100) / $TOTALES" | bc)'% - '"$NXSENDER"
-		echo '  SOFTFAIL:' $(echo "scale=0;($SOFTFAIL*100) / $TOTALES" | bc)'% - '"$SOFTFAIL"
-		echo '  SPAMTRAP:' $(echo "scale=0;($SPAMTRAP*100) / $TOTALES" | bc)'% - '"$SPAMTRAP"
-		echo 'INEXISTENT:' $(echo "scale=0;($INEXISTENT*100) / $TOTALES" | bc)'% - '"$INEXISTENT"
-		echo '   TIMEOUT:' $(echo "scale=0;($TIMEOUT*100) / $TOTALES" | bc)'% - '"$TIMEOUT"
-		echo '  ----------------------'
-		echo '     TOTAL:' $(echo "scale=0;($TOTALES*100) / $TOTALES" | bc)'% - '"$TOTALES"
-		echo '=========================='
+			echo '=========================='
+			echo '= SPFBL Daily Statistics ='
+			echo '=      '"$TODAY"'        ='
+			echo '=========================='
+			echo '     WHITE:' $(echo "scale=0;($WHITE*100) / $TOTALES" | bc)'% - '"$WHITE"
+			echo '      PASS:' $(echo "scale=0;($PASS*100) / $TOTALES" | bc)'% - '"$PASS"
+			echo '   BLOCKED:' $(echo "scale=0;($BLOCKED*100) / $TOTALES" | bc)'% - '"$BLOCKED"
+			echo '      FAIL:' $(echo "scale=0;($FAIL*100) / $TOTALES" | bc)'% - '"$FAIL"
+			echo '      FLAG:' $(echo "scale=0;($FLAG*100) / $TOTALES" | bc)'% - '"$FLAG"
+			echo '  GREYLIST:' $(echo "scale=0;($GREYLIST*100) / $TOTALES" | bc)'% - '"$GREYLIST"
+			echo '      HOLD:' $(echo "scale=0;($HOLD*100) / $TOTALES" | bc)'% - '"$HOLD"
+			echo '  INTRRPTD:' $(echo "scale=0;($INTERRUPTED*100) / $TOTALES" | bc)'% - '"$INTERRUPTED"
+			echo '   INVALID:' $(echo "scale=0;($INVALID*100) / $TOTALES" | bc)'% - '"$INVALID"
+			echo '    LISTED:' $(echo "scale=0;($LISTED*100) / $TOTALES" | bc)'% - '"$LISTED"
+			echo '   NEUTRAL:' $(echo "scale=0;($NEUTRAL*100) / $TOTALES" | bc)'% - '"$NEUTRAL"
+			echo '      NONE:' $(echo "scale=0;($NONE*100) / $TOTALES" | bc)'% - '"$NONE"
+			echo '  NXDOMAIN:' $(echo "scale=0;($NXDOMAIN*100) / $TOTALES" | bc)'% - '"$NXDOMAIN"
+			echo '  NXSENDER:' $(echo "scale=0;($NXSENDER*100) / $TOTALES" | bc)'% - '"$NXSENDER"
+			echo '  SOFTFAIL:' $(echo "scale=0;($SOFTFAIL*100) / $TOTALES" | bc)'% - '"$SOFTFAIL"
+			echo '  SPAMTRAP:' $(echo "scale=0;($SPAMTRAP*100) / $TOTALES" | bc)'% - '"$SPAMTRAP"
+			echo 'INEXISTENT:' $(echo "scale=0;($INEXISTENT*100) / $TOTALES" | bc)'% - '"$INEXISTENT"
+			echo '   TIMEOUT:' $(echo "scale=0;($TIMEOUT*100) / $TOTALES" | bc)'% - '"$TIMEOUT"
+			echo '  ----------------------'
+			echo '     TOTAL:' $(echo "scale=0;($TOTALES*100) / $TOTALES" | bc)'% - '"$TOTALES"
+			echo '=========================='
+		else
+			echo "This command dont work without spfbl server stored in same server."
+		fi
 	;;
 	*)
 		head
