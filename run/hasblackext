@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# Executable verification inside compressed files.
+#
+# SPFBL is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# SPFBL is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
+#
+# Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
+# https://github.com/leonamp/SPFBL
+
+list="com|vbs|vbe|bat|pif|scr|prf|lnk|exe|shs|cpl|hta|hta|htm|jse|wsf|jar|js"
+
+if [ $(file "$1" | egrep -i -c "Zip archive data") -eq "1" ]; then
+    unzip -lL "$1" | egrep -i -c "^.+\.($list)$"
+elif [ $(file "$1" | egrep -i -c "RAR archive data") -eq "1" ]; then
+    unrar l "$1" | egrep -i -c "^.+\.($list)\b"
+elif [ $(file "$1" | egrep -i -c "tar archive") -eq "1" ]; then
+    tar -tvf "$1" | egrep -i -c "^.+\.($list)$"
+else
+    echo "0"
+fi

@@ -2835,7 +2835,7 @@ case $1 in
 				exit 5
 			elif [[ $response == "FLAG" ]]; then
 				exit 6
-			elif [[ $response == "BLOCKED "* ]]; then
+			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
 			else
 				exit 3

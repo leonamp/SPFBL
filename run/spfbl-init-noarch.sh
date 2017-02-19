@@ -31,9 +31,9 @@ start() {
 	cd /opt/spfbl/
         # Log personalizado caso nao deseja utilizar logrotate.d/spfbl
         if [ ! -f /etc/logrotate.d/spfbl ]; then
-            /usr/bin/java -jar /opt/spfbl/SPFBL.jar &
+            /usr/bin/java -jar -Xms512m -Xmx1536m /opt/spfbl/SPFBL.jar &
         else
-            /usr/bin/java -jar /opt/spfbl/SPFBL.jar &
+            /usr/bin/java -jar -Xms512m -Xmx1536m /opt/spfbl/SPFBL.jar &
         fi
         sleep 5
         ret=$(ps auxwf | grep java | grep SPFBL | grep -v grep | wc -l)

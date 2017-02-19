@@ -246,7 +246,7 @@ O ideia de se conectar a outros pool com semelhança de ideais de bloqueio serve
 
 ##### Como iniciar o serviço SPFBL
 
-https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---iniciar-o-servi%C3%A7o-SPFBL
+https://github.com/leonamp/SPFBL/wiki/Primeiros-passos-para-iniciar-o-SPFBL
 
 ##### Blocklist
 
@@ -320,6 +320,9 @@ Patreon:<br>
 
 Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+
+Página oficial:<br>
+<a href="http://spfbl.net">SPFBL oficial website</a>
 
 Palestra GTER 42:<br>
 [![GTER42](https://img.youtube.com/vi/7OAL9ulMEy4/0.jpg)](https://www.youtube.com/watch?v=7OAL9ulMEy4)
