@@ -278,7 +278,7 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
 ##### Integração com Exim
 
-https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim---SPFBL
+https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim-SPFBL
 
 ##### Integração com Exim do cPanel
 
