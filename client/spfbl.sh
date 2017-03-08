@@ -47,6 +47,11 @@ LOGPATH=/var/log/spfbl/
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.10"
 
+if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
+    touch /tmp/SPFBL_TIMEOUT_COUNT
+    chmod 777 /tmp/SPFBL_TIMEOUT_COUNT
+fi
+
 function head(){
 
 	echo "SPFBL v$version - by Leandro Rodrigues - leandro@spfbl.net"
