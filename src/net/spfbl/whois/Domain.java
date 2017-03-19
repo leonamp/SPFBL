@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
 import javax.naming.NameNotFoundException;
+import javax.naming.OperationNotSupportedException;
 import javax.naming.ServiceUnavailableException;
 import net.spfbl.core.Core;
 import org.apache.commons.lang3.SerializationUtils;
@@ -597,19 +598,26 @@ public class Domain implements Serializable, Comparable<Domain> {
                                 valor = null;
                             } else if (valor.startsWith("before ")) {
                                 index = line.indexOf(' ') - 1;
-                                valor = valor.substring(index);
+                                valor = valor.substring(index).trim();
                             }
-                            if (valor != null) {
+                            if (valor != null && valor.length() > 7) {
+                                valor = valor.substring(0, 8);
                                 createdNew = DATE_FORMATTER.parse(valor);
                             }
                         } else if (line.startsWith("changed:")) {
                             int index = line.indexOf(':') + 1;
                             String valor = line.substring(index).trim();
-                            changedNew = DATE_FORMATTER.parse(valor);
+                            if (valor.length() > 7) {
+                                valor = valor.substring(0, 8);
+                                changedNew = DATE_FORMATTER.parse(valor);
+                            }
                         } else if (line.startsWith("expires:")) {
                             int index = line.indexOf(':') + 1;
                             String valor = line.substring(index).trim();
-                            expiresNew = DATE_FORMATTER.parse(valor);
+                            if (valor.length() > 7) {
+                                valor = valor.substring(0, 8);
+                                expiresNew = DATE_FORMATTER.parse(valor);
+                            }
                         } else if (line.startsWith("status:")) {
                             int index = line.indexOf(':') + 1;
                             statusNew = line.substring(index).trim();
@@ -681,6 +689,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                         }
                     } catch (NumberFormatException ex) {
                         Server.logError(ex);
+                        Server.logError(line);
                     }
                 }
             } finally {
@@ -723,7 +732,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             throw ex;
         } catch (Exception ex) {
             Server.logError(ex);
-            throw new ProcessException("ERROR: PARSING", ex);
+            throw new ProcessException("ERROR: PARSING " + result, ex);
         }
     }
     
@@ -1091,6 +1100,8 @@ public class Domain implements Serializable, Comparable<Domain> {
             Server.logCheckDNS(time, host, "SERVFAIL");
         } catch (InvalidNameException ex) {
             Server.logCheckDNS(time, host, "INVALID");
+        } catch (OperationNotSupportedException ex) {
+            Server.logCheckDNS(time, host, "REFUSED");
         } catch (Exception ex) {
             // Houve uma falha indefinida para encontrar os registros.
             Server.logError(ex);

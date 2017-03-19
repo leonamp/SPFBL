@@ -364,10 +364,6 @@ public final class PeerUDP extends Server {
         return CONNECTION_POLL.poll();
     }
     
-    private synchronized Connection pollUsing() {
-        return CONNECTION_USE.poll();
-    }
-    
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
@@ -375,23 +371,6 @@ public final class PeerUDP extends Server {
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
-    }
-    
-    private synchronized void offerUsing(Connection connection) {
-        CONNECTION_USE.offer(connection);
-    }
-    
-    @Deprecated
-    public void interruptTimeout() {
-//        Connection connection = pollUsing();
-//        if (connection != null) {
-//            if (connection.isTimeout()) {
-//                offerUsing(connection);
-//                connection.interrupt();
-//            } else {
-//                offerUsing(connection);
-//            }
-//        }
     }
     
     /**

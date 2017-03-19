@@ -324,7 +324,11 @@ public class Trap {
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return dropExact(user.getEmail() + ':' + recipient.toLowerCase());
+            boolean dropped = dropExact(user.getEmail() + ':' + recipient.toLowerCase());
+            if (Domain.isValidEmail(recipient)) {
+                dropped |= dropExact(recipient.toLowerCase());
+            }
+            return dropped;
         }
     }
 
@@ -334,7 +338,11 @@ public class Trap {
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return dropExact(client.getEmail() + ':' + recipient.toLowerCase());
+            boolean dropped = dropExact(client.getEmail() + ':' + recipient.toLowerCase());
+            if (Domain.isValidEmail(recipient)) {
+                dropped |= dropExact(recipient.toLowerCase());
+            }
+            return dropped;
         }
     }
     
@@ -344,7 +352,11 @@ public class Trap {
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
-            return dropExact(client + ':' + recipient.toLowerCase());
+            boolean dropped = dropExact(client + ':' + recipient.toLowerCase());
+            if (Domain.isValidEmail(recipient)) {
+                dropped |= dropExact(recipient.toLowerCase());
+            }
+            return dropped;
         }
     }
 
@@ -561,6 +573,23 @@ public class Trap {
             userEmail = client.getEmail();
         }
         return getTime(userEmail, recipient);
+    }
+    
+    public static Long getTimeRecipient(Client client, User user, String recipient) {
+        // Definição do e-mail do usuário.
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        if (recipient == null) {
+            return null;
+        } else if (Domain.isValidEmail(recipient)) {
+            return getTime(userEmail, recipient);
+        } else {
+            return Long.MAX_VALUE;
+        }
     }
     
     public static Long getTime(String userEmail, String recipient) {

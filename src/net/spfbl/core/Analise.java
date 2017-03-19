@@ -657,7 +657,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     }
                 } else if (Domain.isHostname(mx)) {
                     tokenMX = mx;
-                    if (Block.containsDomain(mx)) {
+                    if (Block.containsDomain(mx, false)) {
                         statusMX = Status.BLOCK;
                         break;
                     } else if (Generic.contains(tokenMX)) {
@@ -682,7 +682,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             }
             if (Block.containsExact(tokenAddress)) {
                 statusAddress = Status.BLOCK;
-            } else if (Block.containsDomain(host)) {
+            } else if (Block.containsDomain(host, false)) {
                 statusAddress = Status.BLOCK;
             } else if (Generic.contains(host)) {
                 statusAddress = Status.GENERIC;
@@ -712,7 +712,7 @@ public class Analise implements Serializable, Comparable<Analise> {
         } catch (CommunicationException ex) {
             if (Block.containsExact(tokenAddress)) {
                 statusAddress = Status.BLOCK;
-            } else if (Block.containsDomain(host)) {
+            } else if (Block.containsDomain(host, false)) {
                 statusAddress = Status.BLOCK;
             } else if (Provider.containsExact(tokenAddress)) {
                 statusAddress = Status.PROVIDER;
@@ -727,7 +727,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             try {
                 if (Block.containsExact(tokenAddress)) {
                     statusAddress = Status.BLOCK;
-                } else if (Block.containsDomain(host)) {
+                } else if (Block.containsDomain(host, false)) {
                     statusAddress = Status.BLOCK;
                 } else if (Subnet.isValidIP(tokenMX)) {
                     addBlock(tokenAddress, "NXDOMAIN");
@@ -813,7 +813,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             try {
                 for (String ptr : Reverse.getPointerSet(ip)) {
                     nameList.add(ptr);
-                    if (Block.containsDomain(ptr)) {
+                    if (Block.containsDomain(ptr, false)) {
                         statusName = Status.BLOCK;
                     } else if (Block.containsREGEX(ptr)) {
                         statusName = Status.BLOCK;
@@ -878,7 +878,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusName = Status.INVALID;
             }
             for (String name : nameList) {
-                if (Block.containsDomain(name)) {
+                if (Block.containsDomain(name, false)) {
                     tokenName = name;
                     statusName = Status.BLOCK;
                     break;
@@ -942,27 +942,28 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
             }
             if (statusIP != Status.BLOCK && (statusName == Status.BLOCK || statusName == Status.NONE || statusName == Status.RESERVED)) {
-                String block;
-                if ((block = Block.add(ip)) != null) {
-                    Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusName + "'.");
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP == Status.DNSBL && statusName != Status.GREEN) {
-                String block;
-                if ((block = Block.add(ip)) != null) {
-                    Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusIP + "'.");
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP == Status.CLOSED && statusName == Status.RED) {
-                String block;
-                if ((block = Block.add(ip)) != null) {
-                    Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusIP + "'.");
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
+                }
+                statusIP = Status.BLOCK;
+            } else if (statusIP != Status.BLOCK && statusName == Status.INVALID && Generic.containsDomain(tokenName)) {
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if ((statusName == Status.INVALID || statusName == Status.GENERIC) && (statusIP == Status.CLOSED || statusIP == Status.RED || statusIP == Status.YELLOW)) {
-                String block;
-                if ((block = Block.add(ip)) != null) {
-                    Server.logDebug("new BLOCK '" + block + "' added by '" + tokenName + ";" + statusName + "'.");
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP == Status.BLOCK && (statusName == Status.PROVIDER || statusName == Status.IGNORE)) {
@@ -1071,6 +1072,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
             } finally {
                 SEMAPHORE.release();
+                Server.logTrace(getName() + " thread released.");
             }
         }
     }

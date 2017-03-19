@@ -248,6 +248,37 @@ public class Client implements Serializable, Comparable<Client> {
         return email;
     }
     
+    public boolean isEmailDomaim(String domain) {
+        String emailDomaim = getEmailDomaim();
+        if (emailDomaim == null || domain == null) {
+            return false;
+        } else {
+            int index = domain.indexOf('@') + 1;
+            domain = Domain.normalizeHostname(domain.substring(index), true);
+            emailDomaim = Domain.normalizeHostname(emailDomaim, true);
+            return emailDomaim.equals(domain);
+        }
+    }
+    
+    public String getEmailDomaim() {
+        String emailLocal = getEmail();
+        if (emailLocal == null) {
+            return null;
+        } else {
+            int index = emailLocal.indexOf('@') + 1;
+            return emailLocal.substring(index);
+        }
+    }
+    
+    public boolean isEmailPostmaster() {
+        String emailLocal = getEmail();
+        if (emailLocal == null) {
+            return false;
+        } else {
+            return emailLocal.startsWith("postmaster@");
+        }
+    }
+    
     public User getUser() {
         return User.get(email);
     }

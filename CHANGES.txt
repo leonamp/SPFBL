@@ -1,3 +1,21 @@
+### v2.6.1 ; release 19/03/2017:
+
+UPDT) retenção de bloqueios via P2P removido por ficar obsoleto.
+
+UPDT) aprimoramentos da ferramenta ANALISE.
+
+NEW) implementação da definição de conta de abuso.
+
+FIX) mensagens de e-mail passarama a ser enviada sem fila por conta de erros na entrega.
+
+FIX) correção no método hairCut dos registros de consulta.
+
+NEW) implementação de mensagens de alerta de renteção.
+
+NEW) implementação de mensagens de alerta de suspeita.
+
+NEW) bloqueio por HREF em partes do corpo em HTML.
+
 ### v2.5.1 ; release 15/01/2017:
 
 FIX) correção no timeout do WHOIS, que causava encavalamento de conexões SPFBL.

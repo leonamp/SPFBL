@@ -22,6 +22,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
@@ -213,7 +215,11 @@ public final class Reverse implements Serializable {
         this.lastQuery = System.currentTimeMillis();
     }
     
-    public static String getListed(String ip, String server, Set<String> valueSet) {
+    public static String getListedIP(String ip, String server, String... valueSet) {
+        return getListedIP(ip, server, Arrays.asList(valueSet));
+    }
+    
+    public static String getListedIP(String ip, String server, Collection<String> valueSet) {
         String host = Reverse.getHostReverse(ip, server);
         if (host == null) {
             return null;
@@ -240,10 +246,10 @@ public final class Reverse implements Serializable {
                 }
                 return null;
             } catch (CommunicationException ex) {
-                Server.logDebug("DNSBL service '" + server + "' unreachable.");
+                Server.logDebug("DNS service '" + server + "' unreachable.");
                 return null;
             } catch (ServiceUnavailableException ex) {
-                Server.logDebug("DNSBL service '" + server + "' unavailable.");
+                Server.logDebug("DNS service '" + server + "' unavailable.");
                 return null;
             } catch (NameNotFoundException ex) {
                 // Não listado.
@@ -255,8 +261,55 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public static boolean isListed(String ip, String dnsbl, String value) {
-        String host = Reverse.getHostReverse(ip, dnsbl);
+    public static String getListedHost(String host, String server, String... valueSet) {
+        return getListedHost(host, server, Arrays.asList(valueSet));
+    }
+    
+    public static String getListedHost(String host, String zone, Collection<String> valueSet) {
+        host = Domain.normalizeHostname(host, false);
+        if (host == null) {
+            return null;
+        } else {
+            try {
+                host = host + '.' + zone;
+                TreeSet<String> IPv4Set = null;
+                TreeSet<String> IPv6Set = null;
+                for (String value : valueSet) {
+                    if (SubnetIPv4.isValidIPv4(value)) {
+                        if (IPv4Set == null) {
+                            IPv4Set = getIPv4Set(host);
+                        }
+                        if (IPv4Set.contains(value)) {
+                            return value;
+                        }
+                    } else if (SubnetIPv6.isValidIPv6(value)) {
+                        if (IPv6Set == null) {
+                            IPv6Set = getIPv6Set(host);
+                        }
+                        if (IPv6Set.contains(value)) {
+                            return value;
+                        }
+                    }
+                }
+                return null;
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNS service '" + zone + "' unreachable.");
+                return null;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNS service '" + zone + "' unavailable.");
+                return null;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return null;
+            } catch (NamingException ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
+    public static boolean isListedIP(String ip, String zone, String value) {
+        String host = Reverse.getHostReverse(ip, zone);
         if (host == null) {
             return false;
         } else {
@@ -269,10 +322,10 @@ public final class Reverse implements Serializable {
                     return false;
                 }
             } catch (CommunicationException ex) {
-                Server.logDebug("DNSBL service '" + dnsbl + "' unreachable.");
+                Server.logDebug("DNS service '" + zone + "' unreachable.");
                 return false;
             } catch (ServiceUnavailableException ex) {
-                Server.logDebug("DNSBL service '" + dnsbl + "' unavailable.");
+                Server.logDebug("DNS service '" + zone + "' unavailable.");
                 return false;
             } catch (NameNotFoundException ex) {
                 // Não listado.
@@ -284,8 +337,38 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public static String getResult(String ip, String dnsbl) {
-        String host = Reverse.getHostReverse(ip, dnsbl);
+    public static boolean isListedHost(String host, String zone, String value) {
+        host = Domain.normalizeHostname(host, true);
+        if (host == null) {
+            return false;
+        } else {
+            try {
+                host = host + '.' + zone;
+                if (SubnetIPv4.isValidIPv4(value)) {
+                    return getIPv4Set(host).contains(value);
+                } else if (SubnetIPv6.isValidIPv6(value)) {
+                    return getIPv6Set(host).contains(value);
+                } else {
+                    return false;
+                }
+            } catch (CommunicationException ex) {
+                Server.logDebug("DNS service '" + zone + "' unreachable.");
+                return false;
+            } catch (ServiceUnavailableException ex) {
+                Server.logDebug("DNS service '" + zone + "' unavailable.");
+                return false;
+            } catch (NameNotFoundException ex) {
+                // Não listado.
+                return false;
+            } catch (NamingException ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+    
+    public static String getResult(String ip, String zone) {
+        String host = Reverse.getHostReverse(ip, zone);
         if (host == null) {
             return null;
         } else {
@@ -297,10 +380,10 @@ public final class Reverse implements Serializable {
                 }
                 return null;
             } catch (CommunicationException ex) {
-                Server.logDebug("DNSBL service '" + dnsbl + "' unreachable.");
+                Server.logDebug("DNS service '" + zone + "' unreachable.");
                 return null;
             } catch (ServiceUnavailableException ex) {
-                Server.logDebug("DNSBL service '" + dnsbl + "' unavailable.");
+                Server.logDebug("DNS service '" + zone + "' unavailable.");
                 return null;
             } catch (NameNotFoundException ex) {
                 // Não listado.
@@ -312,16 +395,16 @@ public final class Reverse implements Serializable {
         }
     }
     
-    public static String getHostReverse(String ip, String domain) {
+    public static String getHostReverse(String ip, String zone) {
         if (SubnetIPv4.isValidIPv4(ip)) {
-            String reverse = domain;
+            String reverse = zone;
             byte[] address = SubnetIPv4.split(ip);
             for (byte octeto : address) {
                 reverse = ((int) octeto & 0xFF) + "." + reverse;
             }
             return reverse;
         } else if (SubnetIPv6.isValidIPv6(ip)) {
-            String reverse = domain;
+            String reverse = zone;
             byte[] address = SubnetIPv6.splitByte(ip);
             for (byte octeto : address) {
                 String hexPart = Integer.toHexString((int) octeto & 0xFF);

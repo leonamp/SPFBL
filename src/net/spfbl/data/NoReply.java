@@ -133,13 +133,17 @@ public class NoReply {
     }
 
     public static boolean contains(String address, boolean inexistent) {
-        if (address.contains("bounce+")) {
+        if (address == null) {
+            return false;
+        } else if (address.contains("bounce+")) {
             return true;
         } else if (address.contains("bounce-")) {
             return true;
         } else if (address.contains("bounces-")) {
             return true;
         } else if (address.contains("-bounces@")) {
+            return true;
+        } else if (address.contains("-noreply@")) {
             return true;
         } else if (address.startsWith("return-")) {
             return true;

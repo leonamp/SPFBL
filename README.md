@@ -316,7 +316,7 @@ PayPal:<br>
 [![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=7FKHCPESUWH4L)
 
 Patreon:<br>
-<a href="https://www.patreon.com/user?u=2430613&ty=h">Patreon SPFBL project</a>
+<a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
 
 Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")

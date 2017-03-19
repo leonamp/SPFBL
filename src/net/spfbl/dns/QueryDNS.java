@@ -547,7 +547,6 @@ public final class QueryDNS extends Server {
                                                         ttl = 0;
                                                     }
                                                 } else if (zone.isDNSBL()) {
-                                                    Analise.processToday(clientQuery);
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
                                                     if (Block.containsCIDR(clientQuery)) {
                                                         if (status == SPF.Status.RED) {
@@ -563,13 +562,14 @@ public final class QueryDNS extends Server {
                                                             ttl = 259200; // Três dias.
                                                         }
                                                     } else if (status == SPF.Status.RED) {
+                                                        Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
                                                     } else {
+                                                        Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    Analise.processToday(clientQuery);
                                                     if (Block.containsCIDR(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
@@ -593,7 +593,6 @@ public final class QueryDNS extends Server {
                                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                                 // A consulta é um IPv6.
                                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-                                                Analise.processToday(clientQuery);
                                                 if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
                                                     if (Block.containsCIDR(clientQuery)) {
@@ -610,13 +609,14 @@ public final class QueryDNS extends Server {
                                                             ttl = 259200; // Três dias.
                                                         }
                                                     } else if (status == SPF.Status.RED) {
+                                                        Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
                                                     } else {
+                                                        Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    Analise.processToday(clientQuery);
                                                     if (Block.containsCIDR(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
@@ -640,7 +640,7 @@ public final class QueryDNS extends Server {
                                             } else if ((clientQuery = zone.extractDomain(host)) != null) {
                                                 if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
-                                                    if (Block.containsDomain(clientQuery)) {
+                                                    if (Block.containsDomain(clientQuery, true)) {
                                                         if (status == SPF.Status.RED) {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
@@ -660,8 +660,7 @@ public final class QueryDNS extends Server {
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    Analise.processToday(clientQuery);
-                                                    if (Block.containsDomain(clientQuery)) {
+                                                    if (Block.containsDomain(clientQuery, true)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
                                                     } else if (Ignore.containsCIDR(clientQuery)) {
@@ -822,10 +821,6 @@ public final class QueryDNS extends Server {
         return CONNECTION_POLL.poll();
     }
 
-    private synchronized Connection pollUsing() {
-        return CONNECTION_USE.poll();
-    }
-
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
@@ -833,23 +828,6 @@ public final class QueryDNS extends Server {
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
-    }
-
-    private synchronized void offerUsing(Connection connection) {
-        CONNECTION_USE.offer(connection);
-    }
-
-    @Deprecated
-    public void interruptTimeout() {
-//        Connection connection = pollUsing();
-//        if (connection != null) {
-//            if (connection.isTimeout()) {
-//                offerUsing(connection);
-//                connection.interrupt();
-//            } else {
-//                offerUsing(connection);
-//            }
-//        }
     }
 
     /**

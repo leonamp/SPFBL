@@ -25,7 +25,9 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,7 +56,7 @@ public class White {
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
-    
+
     /**
      * Conjunto de remetentes liberados.
      */
@@ -610,7 +612,7 @@ public class White {
             return false;
         } else if (token.contains("WHOIS/")) {
             if (WHOIS.dropExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -618,7 +620,7 @@ public class White {
             }
         } else if (token.contains("CIDR=")) {
             if (CIDR.dropExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -626,14 +628,14 @@ public class White {
             }
         } else if (token.contains("REGEX=")) {
             if (REGEX.dropExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         } else if (SET.dropExact(token)) {
-            Peer.releaseAll(token);
+//            Peer.releaseAll(token);
             CHANGED = true;
             return true;
         } else {
@@ -650,12 +652,71 @@ public class White {
         return set;
     }
 
+    public static String byTicket(
+            String ticket,
+            LinkedList<User> userResult
+    ) {
+        try {
+            byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
+            long date = byteArray[7] & 0xFF;
+            date <<= 8;
+            date += byteArray[6] & 0xFF;
+            date <<= 8;
+            date += byteArray[5] & 0xFF;
+            date <<= 8;
+            date += byteArray[4] & 0xFF;
+            date <<= 8;
+            date += byteArray[3] & 0xFF;
+            date <<= 8;
+            date += byteArray[2] & 0xFF;
+            date <<= 8;
+            date += byteArray[1] & 0xFF;
+            date <<= 8;
+            date += byteArray[0] & 0xFF;
+            if (System.currentTimeMillis() - date > 432000000) {
+                return "EXPIRED TICKET\n";
+            } else {
+                String query = Core.HUFFMAN.decode(byteArray, 8);
+                StringTokenizer tokenizer = new StringTokenizer(query, " ");
+                String command = tokenizer.nextToken();
+                if (command.equals("spam")) {
+                    String userEmail = null;
+                    while (tokenizer.hasMoreTokens()) {
+                        String token = tokenizer.nextToken();
+                        if (token.endsWith(":")) {
+                            userEmail = token.substring(0, token.length()-1);
+                        }
+                    }
+                    User user = User.get(userEmail);
+                    if (user == null) {
+                        return "QUERY NOT FOUND\n";
+                    } else {
+                        userResult.add(user);
+                        User.Query userQuery = user.getQuery(date);
+                        if (userQuery == null) {
+                            return "QUERY NOT FOUND\n";
+                        } else if (userQuery.whiteSender(date)) {
+                            userQuery.setResult("WHITE");
+                            return "ADDED\n";
+                        } else {
+                            return "ALREADY EXISTS\n";
+                        }
+                    }
+                } else {
+                    return null;
+                }
+            }
+        } catch (ProcessException ex) {
+            return null;
+        }
+    }
+    
     public static boolean addExact(String token) throws ProcessException {
         if (token == null) {
             return false;
         } else if (token.contains("WHOIS/")) {
             if (WHOIS.addExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -663,7 +724,7 @@ public class White {
             }
         } else if (token.contains("CIDR=")) {
             if (CIDR.addExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -671,14 +732,14 @@ public class White {
             }
         } else if (token.contains("REGEX=")) {
             if (REGEX.addExact(token)) {
-                Peer.releaseAll(token);
+//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         } else if (SET.addExact(token)) {
-            Peer.releaseAll(token);
+//            Peer.releaseAll(token);
             CHANGED = true;
             return true;
         } else {
@@ -794,15 +855,11 @@ public class White {
     }
     
     public static String normalizeTokenWhite(String token) throws ProcessException {
-        token = SPF.normalizeToken(token, true, true, true, false,
-//                true,
-                false);
+        token = SPF.normalizeToken(token, true, true, true, false, false, false);
         if (token == null) {
             return null;
         } else if (token.contains(";PASS")) {
             return token;
-//        } else if (token.contains(";FAIL")) {
-//            return token;
         } else if (token.contains(";SOFTFAIL")) {
             return token;
         } else if (token.contains(";NEUTRAL")) {
@@ -1028,7 +1085,7 @@ public class White {
         String white;
         while ((white = find(client, user, ip, sender, hostname, qualifier, recipient)) != null) {
             if (whiteSet.contains(white)) {
-                throw new ProcessException("FATAL BLOCK ERROR");
+                throw new ProcessException("FATAL WHITE ERROR " + white);
             } else if (dropExact(white)) {
                 if (user != null) {
                     Server.logInfo("false negative WHITE '" + white + "' detected by '" + user.getEmail() + "'.");
@@ -1042,7 +1099,7 @@ public class White {
         }
 //        while (dropExact(white = find(client, user, ip, sender, hostname, qualifier, recipient))) {
 //            if (whiteSet.contains(white)) {
-//                throw new ProcessException("FATAL WHITE ERROR");
+//                throw new ProcessException("FATAL WHITE ERROR " + white);
 //            } else if (user == null) {
 //                Server.logDebug("false negative WHITE '" + white + "' detected.");
 //            } else {

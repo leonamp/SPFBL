@@ -18,8 +18,6 @@ package net.spfbl.core;
 
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.sun.mail.smtp.SMTPAddressFailedException;
-import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
@@ -45,13 +43,13 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Locale;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeSet;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import javax.imageio.ImageIO;
@@ -64,7 +62,6 @@ import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
-import net.spfbl.data.NoReply;
 import net.spfbl.dns.QueryDNS;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -83,8 +80,8 @@ import org.apache.commons.codec.binary.Base64;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 5;
-    private static final byte RELEASE = 1;
+    private static final byte SUBVERSION = 6;
+    private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -206,6 +203,17 @@ public class Core {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
+        return getUnblockURL(userEmail, ip, sender, hostname, result, recipient);
+    }
+    
+    public static String getUnblockURL(
+            String userEmail,
+            String ip,
+            String sender,
+            String hostname,
+            String result,
+            String recipient
+            ) throws ProcessException {
         if (userEmail == null) {
             return null;
         } else if (ip == null) {
@@ -293,6 +301,102 @@ public class Core {
         }
     }
     
+    public static String getHoldingURL(User user, long time) throws ProcessException {
+        if (user == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = "holding";
+                    ticket += ' ' + user.getEmail();
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getUnholdURL(User user, long time) throws ProcessException {
+        if (user == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = "unhold";
+                    ticket += ' ' + user.getEmail();
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getBlockURL(User user, long time) throws ProcessException {
+        if (user == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getURL();
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = "block";
+                    ticket += ' ' + user.getEmail();
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
     public static String getWhiteURL(
             String white,
             String client,
@@ -340,20 +444,6 @@ public class Core {
                 } catch (Exception ex) {
                     throw new ProcessException("FATAL", ex);
                 }
-//                try {
-//                    String ticket = Server.getNewTicketDate();
-//                    ticket += ' ' + white;
-//                    ticket += ' ' + client;
-//                    ticket += ' ' + ip;
-//                    ticket += ' ' + sender;
-//                    ticket += ' ' + recipient;
-//                    ticket += hostname == null ? "" : ' ' + hostname;
-//                    ticket = Server.encrypt(ticket);
-//                    ticket = URLEncoder.encode(ticket, "UTF-8");
-//                    return url + ticket;
-//                } catch (Exception ex) {
-//                    throw new ProcessException("FATAL", ex);
-//                }
             }
         } else {
             return null;
@@ -367,18 +457,6 @@ public class Core {
             return complainHTTP.getURL();
         }
     }
-    
-//    public static String getSpamURL(String recipient) {
-//        if (complainHTTP == null) {
-//            return null;
-//        } else if (recipient == null) {
-//            return complainHTTP.getSpamURL();
-//        } else {
-//            int index = recipient.lastIndexOf('@');
-//            String domain = recipient.substring(index + 1).toLowerCase();
-//            return complainHTTP.getSpamURL(domain);
-//        }
-//    }
     
     public static String dropURL(String domain) {
         if (complainHTTP == null) {
@@ -428,12 +506,6 @@ public class Core {
         if (querySPF != null) {
             querySPF.interruptTimeout();
         }
-        if (queryDNSBL != null) {
-            queryDNSBL.interruptTimeout();
-        }
-        if (peerUDP != null) {
-            peerUDP.interruptTimeout();
-        }
     }
     
     public static boolean loadConfiguration() {
@@ -450,6 +522,7 @@ public class Core {
                     Core.setHostname(properties.getProperty("hostname"));
                     Core.setInterface(properties.getProperty("interface"));
                     Core.setAdminEmail(properties.getProperty("admin_email"));
+                    Core.setAbuseEmail(properties.getProperty("abuse_email"));
                     Core.setIsAuthSMTP(properties.getProperty("smtp_auth"));
                     Core.setStartTLSSMTP(properties.getProperty("smtp_starttls"));
                     Core.setHostSMTP(properties.getProperty("smtp_host"));
@@ -473,6 +546,7 @@ public class Core {
                     Core.setDeferTimeYELLOW(properties.getProperty("defer_time_yellow"));
                     Core.setDeferTimeRED(properties.getProperty("defer_time_black")); // Obsolete.
                     Core.setDeferTimeRED(properties.getProperty("defer_time_red"));
+                    Core.setDeferTimeHOLD(properties.getProperty("defer_time_hold"));
                     Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
@@ -501,6 +575,10 @@ public class Core {
         return ADMIN_EMAIL != null;
     }
     
+    public static boolean hasAbuseEmail() {
+        return ABUSE_EMAIL != null;
+    }
+    
     public static InternetAddress getAdminInternetAddress() {
         if (ADMIN_EMAIL == null) {
             return null;
@@ -513,13 +591,21 @@ public class Core {
                     return null;
                 }
             } else {
-                return user.getInternetAddress();
+                try {
+                    return user.getInternetAddress();
+                } catch (UnsupportedEncodingException ex) {
+                    return null;
+                }
             }
         }
     }
     
     public static String getAdminEmail() {
         return ADMIN_EMAIL;
+    }
+    
+    public static String getAbuseEmail() {
+        return ABUSE_EMAIL;
     }
     
     public static short getPortAdmin() {
@@ -573,6 +659,7 @@ public class Core {
     private static String HOSTNAME = null;
     private static String INTERFACE = null;
     private static String ADMIN_EMAIL = null;
+    private static String ABUSE_EMAIL = null;
     private static short PORT_ADMIN = 9875;
     private static short PORT_WHOIS = 0;
     private static short PORT_SPFBL = 9877;
@@ -674,6 +761,16 @@ public class Core {
                 Core.ADMIN_EMAIL = email.toLowerCase();
             } else {
                 Server.logError("invalid admin e-mail '" + email + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setAbuseEmail(String email) {
+        if (email != null && email.length() > 0) {
+            if (Domain.isEmail(email)) {
+                Core.ABUSE_EMAIL = email.toLowerCase();
+            } else {
+                Server.logError("invalid abuse e-mail '" + email + "'.");
             }
         }
     }
@@ -985,9 +1082,9 @@ public class Core {
         }
     }
     
-    private static byte DEFER_TIME_RED = 25;
+    private static short DEFER_TIME_RED = 1435;
     
-    public static byte getDeferTimeBLACK() {
+    public static short getDeferTimeRED() {
         return DEFER_TIME_RED;
     }
     
@@ -1002,10 +1099,34 @@ public class Core {
     }
     
     public static synchronized void setDeferTimeRED(int time) {
-        if (time < 0 || time > Integer.MAX_VALUE) {
+        if (time < 0 || time > Short.MAX_VALUE) {
             Server.logError("invalid DEFER time for RED '" + time + "'.");
         } else {
-            Core.DEFER_TIME_RED = (byte) time;
+            Core.DEFER_TIME_RED = (short) time;
+        }
+    }
+    
+    private static short DEFER_TIME_HOLD = 7175;
+    
+    public static short getDeferTimeHOLD() {
+        return DEFER_TIME_HOLD;
+    }
+    
+    public static void setDeferTimeHOLD(String time) {
+        if (time != null && time.length() > 0) {
+            try {
+                setDeferTimeHOLD(Integer.parseInt(time));
+            } catch (Exception ex) {
+                Server.logError("invalid DEFER time for HOLD '" + time + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setDeferTimeHOLD(int time) {
+        if (time < 0 || time > Short.MAX_VALUE) {
+            Server.logError("invalid DEFER time for HOLD '" + time + "'.");
+        } else {
+            Core.DEFER_TIME_HOLD = (short) time;
         }
     }
 
@@ -1176,61 +1297,65 @@ public class Core {
         }
     }
     
-    private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
+//    private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
     
-    public static void sendAllMessages() {
-        int count = MESSAGE_QUEUE.size();
-        while (count-- > 0) {
-            sendNextMessage();
-        }
-    }
+//    public static void sendAllMessages() {
+//        int count = MESSAGE_QUEUE.size();
+//        while (count-- > 0) {
+//            sendNextMessage();
+//        }
+//    }
     
-    public static void sendNextMessage() {
-        Message message = MESSAGE_QUEUE.poll();
-        if (message != null) {
-            try {
-                sendMessage(message);
-            } catch (ProcessException ex) {
-                Throwable cause = ex.getCause(SMTPAddressFailedException.class);
-                if (cause == null) {
-                    MESSAGE_QUEUE.offer(message);
-                    Server.logError(ex);
-                } else {
-                    SMTPAddressFailedException afEx = (SMTPAddressFailedException) cause;
-                    Server.logDebug("SMTP " + afEx.getMessage());
-                    try {
-                        InternetAddress address = afEx.getAddress();
-                        NoReply.add(address.getAddress());
-                    } catch (ProcessException ex2) {
-                        Server.logError(ex2);
-                    }
-                }
-            } catch (Exception ex) {
-                if (ex.getCause() instanceof SMTPSendFailedException) {
-                    SMTPSendFailedException smtpEx = (SMTPSendFailedException) ex.getCause();
-                    if (smtpEx.getReturnCode() / 100 == 5) {
-                        Server.logError("SMTP " + smtpEx.getMessage());
-                    } else if (smtpEx.getReturnCode() / 100 == 4) {
-                        MESSAGE_QUEUE.offer(message);
-                        Server.logDebug("SMTP " + smtpEx.getMessage());
-                    } else {
-                        MESSAGE_QUEUE.offer(message);
-                        Server.logError(ex);
-                    }
-                } else {
-                    MESSAGE_QUEUE.offer(message);
-                    Server.logError(ex);
-                }
-            }
-        }
-    }
+//    public static void sendNextMessage() {
+//        Message message = MESSAGE_QUEUE.poll();
+//        if (message != null) {
+//            try {
+//                sendMessage(message);
+//            } catch (ProcessException ex) {
+//                Throwable cause = ex.getCause(SMTPAddressFailedException.class);
+//                if (cause == null) {
+//                    MESSAGE_QUEUE.offer(message);
+//                    Server.logError(ex);
+//                } else {
+//                    SMTPAddressFailedException afEx = (SMTPAddressFailedException) cause;
+//                    Server.logDebug("SMTP " + afEx.getMessage());
+//                    try {
+//                        InternetAddress address = afEx.getAddress();
+//                        NoReply.add(address.getAddress());
+//                    } catch (ProcessException ex2) {
+//                        Server.logError(ex2);
+//                    }
+//                }
+//            } catch (Exception ex) {
+//                if (ex instanceof SMTPSendFailedException) {
+//                    SMTPSendFailedException smtpEx = (SMTPSendFailedException) ex;
+//                    if (smtpEx.getReturnCode() / 100 == 5) {
+//                        Server.logError("SMTP " + smtpEx.getMessage());
+//                    } else if (smtpEx.getReturnCode() / 100 == 4) {
+//                        MESSAGE_QUEUE.offer(message);
+//                        Server.logDebug("SMTP " + smtpEx.getMessage());
+//                    } else {
+//                        MESSAGE_QUEUE.offer(message);
+//                        Server.logError(ex);
+//                    }
+//                } else {
+//                    MESSAGE_QUEUE.offer(message);
+//                    Server.logError(ex);
+//                }
+//            }
+//        }
+//    }
     
-    public static boolean offerMessage(Message message) {
-        return MESSAGE_QUEUE.offer(message);
-    }
+//    public static boolean offerMessage(Message message) {
+//        return MESSAGE_QUEUE.offer(message);
+//    }
     
-    private static void sendMessage(Message message) throws Exception {
-        if (message != null && hasSMTP()) {
+    public static synchronized boolean sendMessage(Message message) throws Exception {
+        if (message == null) {
+            return false;
+        } else if (!hasSMTP()) {
+            return false;
+        } else {
             Server.logInfo("sending e-mail message.");
             Server.logSendMTP("authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
             Server.logSendMTP("start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
@@ -1240,23 +1365,30 @@ public class Core {
             props.put("mail.smtp.host", SMTP_HOST);
             props.put("mail.smtp.port", Short.toString(SMTP_PORT));
             props.put("mail.smtp.ssl.trust", SMTP_HOST);
-            Address[] recipients = message.getRecipients(Message.RecipientType.TO);
+            Address[] recipients = message.getAllRecipients();
+            TreeSet<String> recipientSet = new TreeSet<String>();
+            for (Address recipient : recipients) {
+                recipientSet.add(recipient.toString());
+            }
             Session session = Session.getDefaultInstance(props);
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
                 transport.setLocalHost(HOSTNAME);
                 Server.logSendMTP("connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
-                Server.logSendMTP("sending '" + message.getSubject() + "'.");
+                Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipientSet + ".");
                 transport.sendMessage(message, recipients);
-                Server.logSendMTP("message '" + message.getSubject() + "' sent.");
+                Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipientSet + ".");
+                return true;
             } catch (AuthenticationFailedException ex) {
                 Server.logSendMTP("authentication failed.");
+                return false;
             } catch (MailConnectException ex) {
                 Server.logSendMTP("connection failed.");
+                return false;
             } catch (MessagingException ex) {
                 Server.logSendMTP("messaging failed.");
-                throw new ProcessException("Falha de envio SMTP.", ex);
+                throw ex;
             } finally {
                 if (transport.isConnected()) {
                     transport.close();
@@ -1366,19 +1498,6 @@ public class Core {
         TIMER.cancel();
     }
     
-    private static class TimerSendMessage extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Enviar próxima mensagem de e-mail.
-                Core.sendAllMessages();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
     private static class TimerInterruptTimeout extends TimerTask {
         @Override
         public void run() {
@@ -1398,7 +1517,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro SPF mais consultado.
+//                Server.logTrace("BEGIN TimerRefreshSPF");
                 SPF.refreshSPF();
+//                Server.logTrace("END TimerRefreshSPF");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1411,7 +1532,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro HELO mais consultado.
+//                Server.logTrace("BEGIN TimerRefreshHELO");
                 SPF.refreshHELO();
+//                Server.logTrace("END TimerRefreshHELO");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1424,7 +1547,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro de IP reverso mais consultado.
+//                Server.logTrace("BEGIN TimerRefreshReverse");
                 Reverse.refreshLast();
+//                Server.logTrace("END TimerRefreshReverse");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1437,7 +1562,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registros WHOIS expirando.
+//                Server.logTrace("BEGIN TimerRefreshWHOIS");
                 Server.tryRefreshWHOIS();
+//                Server.logTrace("END TimerRefreshWHOIS");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1450,20 +1577,37 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros SPF expirados. 
+//                Server.logTrace("BEGIN TimerDropExpiredSPF");
                 SPF.dropExpiredSPF();
+//                Server.logTrace("END TimerDropExpiredSPF");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
         }
     }
     
-    private static class TimerSendHeloToAll extends TimerTask {
+    private static class TimerSendHoldingWarningMessages extends TimerTask {
         @Override
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Envio de PING para os peers cadastrados.
-                Peer.sendHeloToAll();
+//                Server.logTrace("BEGIN TimerSendHoldingWarningMessages");
+                User.sendHoldingWarning();
+//                Server.logTrace("END TimerSendHoldingWarningMessages");
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+    
+    private static class TimerSendSuspectWarningMessages extends TimerTask {
+        @Override
+        public void run() {
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+//                Server.logTrace("BEGIN TimerSendSuspectWarningMessages");
+                User.sendSuspectWarning();
+//                Server.logTrace("END TimerSendSuspectWarningMessages");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1476,7 +1620,10 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros de reputação expirados. 
+//                Server.logTrace("BEGIN TimerDropExpiredPeer");
+                Peer.sendHeloToAll();
                 Peer.dropExpired();
+//                Server.logTrace("END TimerDropExpiredPeer");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1489,7 +1636,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de DNS de HELO vencidos.
+//                Server.logTrace("BEGIN TimerDropExpiredHELO");
                 SPF.dropExpiredHELO();
+//                Server.logTrace("END TimerDropExpiredHELO");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1502,7 +1651,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de IP reverso vencidos.
+//                Server.logTrace("BEGIN TimerDropExpiredReverse");
                 Reverse.dropExpired();
+//                Server.logTrace("END TimerDropExpiredReverse");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1515,8 +1666,10 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas as distribuições e consultas vencidas.
+//                Server.logTrace("BEGIN TimerDropExpiredDistribution");
                 User.dropAllExpiredQuery();
                 SPF.dropExpiredDistribution();
+//                Server.logTrace("END TimerDropExpiredDistribution");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1529,7 +1682,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de atrazo programado vencidos.
+//                Server.logTrace("BEGIN TimerDropExpiredDefer");
                 Defer.dropExpired();
+//                Server.logTrace("END TimerDropExpiredDefer");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1542,7 +1697,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Armazena todos os registros atualizados durante a consulta.
+//                Server.logTrace("BEGIN TimerStoreCache");
                 Server.tryStoreCache(true);
+//                Server.logTrace("END TimerStoreCache");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1554,10 +1711,12 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+//                Server.logTrace("BEGIN TimerStoreCache");
                 // Apaga todos os arquivos de LOG vencidos.
                 Server.deleteLogExpired();
                 // Apaga todos as listas de analise vencidas.
                 Analise.dropExpired();
+//                Server.logTrace("END TimerStoreCache");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1585,19 +1744,19 @@ public class Core {
     }
     
     public static void startTimer() {
-        TIMER.schedule(new TimerSendMessage(), 30000, 60000); // Frequência de 1 minuto.
-        TIMER.schedule(new TimerInterruptTimeout(), 1000, 1000); // Frequência de 1 segundo.
+        TIMER.schedule(new TimerInterruptTimeout(), 10000, 10000); // Frequência de 10 segundos.
         TIMER.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
+        TIMER.schedule(new TimerSendHoldingWarningMessages(), 300000, 600000); // Frequência de 10 minutos.
         TIMER.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
-        TIMER.schedule(new TimerSendHeloToAll(), 1800000, 1800000); // Frequência de 30 minutos.
         TIMER.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerSendSuspectWarningMessages(), 2400000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
         if (CACHE_TIME_STORE > 0) {
             TIMER.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
@@ -1766,7 +1925,7 @@ public class Core {
             }
         }
         File file = File.createTempFile(Long.toString(Server.getNewUniqueTime()), ".png");
-        ImageIO.write(image, "png", file);
+        ImageIO.write(image, "PNG", file);
         Server.logTrace("QRCode temp file created at " + file.getAbsolutePath() + ".");
         file.deleteOnExit();
         return file;

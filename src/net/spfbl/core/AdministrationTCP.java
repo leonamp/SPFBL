@@ -26,6 +26,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -1069,7 +1070,7 @@ public final class AdministrationTCP extends Server {
                                     token = token.substring(index+1);
                                 }
                             }
-                            String block = Block.find(clientLocal, token, false);
+                            String block = Block.find(clientLocal, token, true, true, false);
                             result = (block == null ? "NONE" : block) + "\n";
                         }
                     } else if (token.equals("SHOW")) {
@@ -1752,6 +1753,40 @@ public final class AdministrationTCP extends Server {
                                     } else {
                                         result = "INVALID COMMAND\n";
                                     }
+                                } else if (token.equals("LOCAL") && tokenizer.hasMoreElements()) {
+                                    token = tokenizer.nextToken();
+                                    if (token.equals("TRUE")) {
+                                        user.setLocal(true);
+                                        result = "OK\n";
+                                    } else if (token.equals("FALSE")) {
+                                        user.setLocal(false);
+                                        result = "OK\n";
+                                    } else {
+                                        result = "INVALID COMMAND\n";
+                                    }
+                                } else {
+                                    result = "INVALID COMMAND\n";
+                                }
+                            } else {
+                                result = "INVALID COMMAND\n";
+                            }
+                        } else {
+                            result = "INVALID USER\n";
+                        }
+                    } else if (token.equals("TOTP") && tokenizer.hasMoreElements()) {
+                        token = tokenizer.nextToken();
+                        if (Domain.isValidEmail(token)) {
+                            User user = User.get(token);
+                            if (user == null) {
+                                result = "NOT FOUND\n";
+                            } else if (tokenizer.hasMoreElements()) {
+                                token = tokenizer.nextToken();
+                                if (token.equals("SEND") && !tokenizer.hasMoreElements()) {
+                                    if (user.sendTOTP()) {
+                                        result = "TOTP SENT\n";
+                                    } else {
+                                        result = "TOTP NOT SENT\n";
+                                    }
                                 } else {
                                     result = "INVALID COMMAND\n";
                                 }
@@ -1813,17 +1848,17 @@ public final class AdministrationTCP extends Server {
                             if (result.length() == 0) {
                                 result = "EMPTY\n";
                             }
-                        } else if (tokenizer.countTokens() == 1) {
-                            String address = tokenizer.nextToken();
-                            Peer peer = Peer.get(address);
-                            if (peer == null) {
-                                result = "NOT FOUND " + address + "\n";
-                            } else {
-                                result = peer + "\n";
-                                for (String confirm : peer.getRetationSet()) {
-                                    result += confirm + "\n";
-                                }
-                            }
+//                        } else if (tokenizer.countTokens() == 1) {
+//                            String address = tokenizer.nextToken();
+//                            Peer peer = Peer.get(address);
+//                            if (peer == null) {
+//                                result = "NOT FOUND " + address + "\n";
+//                            } else {
+//                                result = peer + "\n";
+//                                for (String confirm : peer.getRetationSet()) {
+//                                    result += confirm + "\n";
+//                                }
+//                            }
                         } else {
                             result = "INVALID COMMAND\n";
                         }
@@ -1857,90 +1892,81 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = "HELO NOT SENT local hostname is invalid\n";
                         }
-//                    } else if (token.equals("SEND") && tokenizer.countTokens() == 1) {
-//                        String address = tokenizer.nextToken();
-//                        Peer peer = Peer.get(address);
-//                        if (peer == null) {
-//                            result = "NOT FOUND " + address + "\n";
+//                    } else if (token.equals("RETENTION") && tokenizer.hasMoreElements()) {
+//                        token = tokenizer.nextToken();
+//                        if (token.equals("SHOW") && tokenizer.countTokens() == 1) {
+//                            token = tokenizer.nextToken();
+//                            if (token.equals("ALL")) {
+//                                TreeSet<String> retationSet = Peer.getAllRetationSet();
+//                                if (retationSet.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String tokenRetained : retationSet) {
+//                                        result += tokenRetained + '\n';
+//                                    }
+//                                }
+//                            } else if (Domain.isHostname(token)) {
+//                                Peer peer = Peer.get(token);
+//                                if (peer == null) {
+//                                    result = "PEER '" + token + "' NOT FOUND\n";
+//                                } else {
+//                                    TreeSet<String> retationSet = peer.getRetationSet();
+//                                    if (retationSet.isEmpty()) {
+//                                        result = "EMPTY\n";
+//                                    } else {
+//                                        for (String tokenRetained : retationSet) {
+//                                            result += tokenRetained + '\n';
+//                                        }
+//                                    }
+//                                }
+//                            } else {
+//                                result = "INVALID COMMAND\n";
+//                            }
+//                        } else if (token.equals("RELEASE")) {
+//                            token = tokenizer.nextToken();
+//                            if (token.equals("ALL")) {
+//                                TreeSet<String> returnSet = Peer.releaseAll();
+//                                if (returnSet.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String response : returnSet) {
+//                                        result += response + '\n';
+//                                    }
+//                                }
+//                            } else {
+//                                TreeSet<String> returnSet = Peer.releaseAll(token);
+//                                if (returnSet.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String response : returnSet) {
+//                                        result += response + '\n';
+//                                    }
+//                                }
+//                            }
+//                        } else if (token.equals("REJECT")) {
+//                            token = tokenizer.nextToken();
+//                            if (token.equals("ALL")) {
+//                                TreeSet<String> returnSet = Peer.rejectAll();
+//                                if (returnSet.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String response : returnSet) {
+//                                        result += response + '\n';
+//                                    }
+//                                }
+//                            } else {
+//                                TreeSet<String> returnSet = Peer.rejectAll(token);
+//                                if (returnSet.isEmpty()) {
+//                                    result = "EMPTY\n";
+//                                } else {
+//                                    for (String response : returnSet) {
+//                                        result += response + '\n';
+//                                    }
+//                                }
+//                            }
 //                        } else {
-//                            peer.sendAll();
-//                            result = "SENT TO " + address + "\n";
+//                            result = "INVALID COMMAND\n";
 //                        }
-                    } else if (token.equals("RETENTION") && tokenizer.hasMoreElements()) {
-                        token = tokenizer.nextToken();
-                        if (token.equals("SHOW") && tokenizer.countTokens() == 1) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> retationSet = Peer.getAllRetationSet();
-                                if (retationSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String tokenRetained : retationSet) {
-                                        result += tokenRetained + '\n';
-                                    }
-                                }
-                            } else if (Domain.isHostname(token)) {
-                                Peer peer = Peer.get(token);
-                                if (peer == null) {
-                                    result = "PEER '" + token + "' NOT FOUND\n";
-                                } else {
-                                    TreeSet<String> retationSet = peer.getRetationSet();
-                                    if (retationSet.isEmpty()) {
-                                        result = "EMPTY\n";
-                                    } else {
-                                        for (String tokenRetained : retationSet) {
-                                            result += tokenRetained + '\n';
-                                        }
-                                    }
-                                }
-                            } else {
-                                result = "INVALID COMMAND\n";
-                            }
-                        } else if (token.equals("RELEASE")) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> returnSet = Peer.releaseAll();
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            } else {
-                                TreeSet<String> returnSet = Peer.releaseAll(token);
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            }
-                        } else if (token.equals("REJECT")) {
-                            token = tokenizer.nextToken();
-                            if (token.equals("ALL")) {
-                                TreeSet<String> returnSet = Peer.rejectAll();
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            } else {
-                                TreeSet<String> returnSet = Peer.rejectAll(token);
-                                if (returnSet.isEmpty()) {
-                                    result = "EMPTY\n";
-                                } else {
-                                    for (String response : returnSet) {
-                                        result += response + '\n';
-                                    }
-                                }
-                            }
-                        } else {
-                            result = "INVALID COMMAND\n";
-                        }
                     } else {
                         result = "INVALID COMMAND\n";
                     }
@@ -2033,7 +2059,6 @@ public final class AdministrationTCP extends Server {
                             }
                             result = stringBuilder.toString();
                         }
-                        
                     } else if (binomialMap != null) {
                         if (binomialMap.isEmpty()) {
                             result = "EMPTY\n";

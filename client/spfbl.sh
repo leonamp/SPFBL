@@ -2409,6 +2409,57 @@ case $1 in
 			exit 1
 		fi
 	;;
+	'abuse')
+		# Parâmetros de entrada:
+		#
+		#    1. In-Reply-To: o message ID da mensagem denunciada.
+		#    2. From: o e-mail do denunciante.
+		#
+		#
+		# Códigos de saída:
+		#
+		#    0: processado com sucesso.
+		#    1: erro durante o processamento.
+		#    3: timeout de conexão.
+		#    4: out of service.
+
+		if [ $# -lt "3" ]; then
+			head
+			printf "Invalid Parameters. Syntax: $0 abuse In-Reply-To:<messageID> From:<from>\n"
+		else
+			messageID=$2
+			from=$3
+
+			response=$(echo $OTP_CODE"ABUSE $messageID $from" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+			if [[ $response == "" ]]; then
+				$(incrementTimeout)
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
+					response="TIMEOUT"
+				else
+					response="OUT OF SERVICE"
+				fi
+			else
+				$(resetTimeout)
+			fi
+
+			echo "$response"
+
+			if [[ $response == "OUT OF SERVICE" ]]; then
+				exit 3
+			elif [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "COMPLAINED "* ]]; then
+				exit 0
+			elif [[ $response == "BLOCKED "* ]]; then
+				exit 0
+			elif [[ $response == "ALREADY "* ]]; then
+				exit 0
+			else
+				exit 1
+			fi
+		fi
+	;;
 	'clear')
 		# Parâmetros de entrada:
 		#
@@ -2871,7 +2922,7 @@ case $1 in
 			if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 				# O parâmentro é uma URL de denúncia SPFBL.
 				url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
+			elif [[ $2 =~ ^[a-zA-Z0-9/+=_\;-]{44,}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then
@@ -3053,8 +3104,9 @@ case $1 in
 
 				while read -r message; do
 
-					ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
-
+					# ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD) (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+					
 					if [ $? -eq 0 ]; then
 
 						response=$(echo $OTP_CODE"HOLDING $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)

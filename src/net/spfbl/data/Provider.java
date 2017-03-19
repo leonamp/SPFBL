@@ -304,9 +304,7 @@ public class Provider {
     }
     
     private static String normalizeProvider(String token) throws ProcessException {
-        return SPF.normalizeToken(token, false, false, true, false,
-//                false,
-                false);
+        return SPF.normalizeToken(token, false, false, true, false, false, false);
     }
 
     public static boolean add(String address) throws ProcessException {

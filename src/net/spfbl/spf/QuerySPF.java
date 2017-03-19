@@ -29,7 +29,6 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.util.LinkedList;
 import java.util.StringTokenizer;
-import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import net.spfbl.data.Block;
@@ -257,7 +256,7 @@ public final class QuerySPF extends Server {
                                                     }
                                                 }
                                             } catch (Exception ex) {
-                                                Server.logError(ex);
+                                                // Do nothing.
                                             }
                                         }
                                         if (result == null) {
@@ -336,7 +335,7 @@ public final class QuerySPF extends Server {
                                             }
                                             user = User.get(userEmail);
                                             do {
-                                                String block = Block.find(userEmail, token, false);
+                                                String block = Block.find(userEmail, token, true, true, false);
                                                 if (block == null) {
                                                     result = "NONE\n";
                                                 } else if (ticket == null) {
@@ -423,7 +422,7 @@ public final class QuerySPF extends Server {
                                             result = "EMPTY\n";
                                         }
                                     } else if (line.startsWith("INEXISTENT ADD ")) {
-                                        query = line.substring(5).trim();
+                                        query = line.substring(11).trim();
                                         type = "INXST";
                                         // Mecanismo de adição de spamtrap.
                                         line = line.substring(15);
@@ -449,7 +448,7 @@ public final class QuerySPF extends Server {
                                             result = "INVALID COMMAND\n";
                                         }
                                     } else if (line.startsWith("INEXISTENT DROP ")) {
-                                        query = line.substring(5).trim();
+                                        query = line.substring(11).trim();
                                         type = "INXST";
                                         // Mecanismo de remoção de spamtrap.
                                         line = line.substring(16);
@@ -512,24 +511,28 @@ public final class QuerySPF extends Server {
                                         type = "WHITE";
                                         // Mecanismo de adição de whitelist.
                                         line = line.substring(10);
-                                        tokenizer = new StringTokenizer(line, " ");
-                                        while (tokenizer.hasMoreElements()) {
-                                            try {
-                                                String recipient = tokenizer.nextToken();
-                                                boolean added = White.add(client, recipient);
-                                                if (result == null) {
-                                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                                } else {
-                                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
-                                                }
-                                            } catch (ProcessException ex) {
-                                                if (result == null) {
-                                                    result = ex.getMessage() + "\n";
-                                                } else {
-                                                    result += ex.getMessage() + "\n";
+                                        LinkedList<User> userResult = new LinkedList<User>();
+                                        if ((result = White.byTicket(line, userResult)) == null) {
+                                            tokenizer = new StringTokenizer(line, " ");
+                                            while (tokenizer.hasMoreElements()) {
+                                                try {
+                                                    String recipient = tokenizer.nextToken();
+                                                    boolean added = White.add(client, recipient);
+                                                    if (result == null) {
+                                                        result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                    } else {
+                                                        result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                    }
+                                                } catch (ProcessException ex) {
+                                                    if (result == null) {
+                                                        result = ex.getMessage() + "\n";
+                                                    } else {
+                                                        result += ex.getMessage() + "\n";
+                                                    }
                                                 }
                                             }
                                         }
+                                        user = userResult.isEmpty() ? user : userResult.getLast();
                                         if (result == null) {
                                             result = "INVALID COMMAND\n";
                                         }
@@ -575,25 +578,28 @@ public final class QuerySPF extends Server {
                                                     index = messageID.indexOf('>');
                                                     if (index > 0) {
                                                         messageID = messageID.substring(0, index);
-                                                        result = user.whiteMessageBySender(messageID) + '\n';
+                                                        result = user.whiteByMessageID(messageID) + '\n';
                                                     }
                                                 }
                                             }
                                         } else if (Domain.isEmail(query)) {
-                                            String domain = Domain.extractHost(query, true);
+                                            String host = Domain.extractHost(query, true);
+                                            String domain = Domain.extractDomain(query, true);
                                             if (client == null) {
                                                 result = "ERROR: UNDEFINED CLIENT\n";
                                             } else if (!client.hasEmail()) {
                                                 result = "ERROR: CLIENT WITHOUT EMAIL\n";
                                             } else if (Block.containsExact(client.getEmail() + ":" + query)) {
                                                 result = "BLOCKED AS " + query + "\n";
+                                            } else if (Block.containsExact(client.getEmail() + ":" + host)) {
+                                                result = "BLOCKED AS " + host + "\n";
                                             } else if (Block.containsExact(client.getEmail() + ":" + domain)) {
                                                 result = "BLOCKED AS " + domain + "\n";
                                             } else {
-                                                if (Provider.containsExact(domain)) {
+                                                if (Provider.containsExact(host)) {
                                                     token = query;
                                                 } else {
-                                                    token = domain;
+                                                    token = host;
                                                 }
                                                 if (White.add(client, token)) {
                                                     result = "ADDED " + token + ";PASS\n";

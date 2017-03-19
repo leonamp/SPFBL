@@ -42,7 +42,6 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
@@ -57,7 +56,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -841,6 +839,13 @@ public abstract class Server extends Thread {
     public static void logAdministration(long time,
             InetAddress ipAddress, String command, String result) {
         String origin = Client.getOrigin(ipAddress);
+        if (result != null && result.length() > 1024) {
+            int index1 = result.indexOf('\n', 1024);
+            int index2 = result.indexOf(' ', 1024);
+            int index = Math.min(index1, index2);
+            index = Math.max(index, 1024);
+            result = result.substring(0, index) + "... too long";
+        }
         log(time, Core.Level.INFO, "ADMIN", origin + ": " + command, result);
     }
     
