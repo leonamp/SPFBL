@@ -1,0 +1,6 @@
+#! /usr/bin/dh-exec
+data           /usr/share/spfbl
+dist/*         /usr/share/spfbl
+lib/*.jar      /usr/share/spfbl/lib
+run/spfbl.conf /etc/spfbl
+client/spfbl.sh => /usr/sbin/spfbl

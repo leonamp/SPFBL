@@ -1,0 +1,7 @@
+Format: http://anonscm.debian.org/viewvc/dep/web/deps/dep5.mdwn?revision=173
+Upstream-Name: SPFBL
+Source: https://github.com/leonamp/SPFBL
+
+Files: *
+Copyright: 2017 Leandro Carlos Rodrigues
+License: GPL-3

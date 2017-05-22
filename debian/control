@@ -1,0 +1,16 @@
+Source: spfbl
+Section: mail
+Priority: optional
+Maintainer: Andre Nathan <andre@digirati.com.br>
+Build-Depends: debhelper (>= 9), dpkg-dev (>= 1.16.1), dh-systemd, dh-exec, adduser
+Standards-Version: 3.9.7
+Homepage: http://spfbl.net/
+Vcs-Git: https://github.com/leonamp/SPFBL.git
+Vcs-Browser: https://github.com/leonamp/SPFBL.git
+
+Package: spfbl
+Architecture: any
+Depends: ${misc:Depends}, java-runtime | default-jre | default-jre-headless, unzip, wget, git, bc, netcat
+Description: E-mail blacklist via SPF
+ The SPFBL server is an SPF verifier with blacklist, greylist,
+ whitelist and spamtrap functionality.
