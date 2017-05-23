@@ -4048,10 +4048,10 @@ case $1 in
 		else
 			file=$2
 			if [ -f $file ]; then
-				for line in `cat $file`; do
+				while read line; do
 					echo -n "Adding $line ... "
 					echo $OTP_CODE"$line" | nc $IP_SERVIDOR $PORTA_ADMIN
-				done
+				done < $file
 			else
 				echo "File not found."
 			fi
