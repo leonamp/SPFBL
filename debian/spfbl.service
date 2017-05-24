@@ -1,0 +1,18 @@
+[Unit]
+Description=spfbl daemon
+
+[Service]
+Type=simple
+
+User=spfbl
+Group=spfbl
+
+WorkingDirectory=/usr/share/spfbl
+ExecStart=/usr/bin/java -jar -Xms512m -Xmx1536m /usr/share/spfbl/SPFBL.jar
+ExecStop=/bin/sh -c '/bin/echo "STORE" | /bin/nc 127.0.0.1 9875'
+ExecStop=/bin/sh -c '/bin/echo "SHUTDOWN" | /bin/nc 127.0.0.1 9875'
+
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

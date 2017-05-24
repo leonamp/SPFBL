@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure)
+    adduser --system --quiet --no-create-home \
+	--home /usr/share/spfbl/data --group spfbl
+    chown -R spfbl:spfbl /usr/share/spfbl/data
+  ;;
+esac
+
+#DEBHELPER#

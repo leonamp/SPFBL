@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  purge|remove)
+    deluser  --quiet --system spfbl > /dev/null || true
+    delgroup --quiet --system spfbl > /dev/null || true
+  ;;
+esac
+
+#DEBHELPER#
