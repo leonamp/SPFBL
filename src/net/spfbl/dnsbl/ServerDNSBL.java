@@ -18,6 +18,7 @@
 package net.spfbl.dnsbl;
 
 import java.io.Serializable;
+import java.util.Locale;
 import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
 import net.spfbl.whois.Domain;
@@ -55,16 +56,12 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
         return message;
     }
 
-    public String getMessage(String token) {
-        try {
-            String url = Core.getDNSBLURL(token);
-            if (url == null) {
-                return message;
-            } else {
-                return url;
-            }
-        } catch (ProcessException ex) {
+    public String getMessage(Locale locale, String token) {
+        String url = Core.getURL(locale, token);
+        if (url == null) {
             return message;
+        } else {
+            return url;
         }
     }
 

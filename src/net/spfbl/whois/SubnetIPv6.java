@@ -21,6 +21,9 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.math.BigInteger;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.util.Arrays;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -179,6 +182,15 @@ public final class SubnetIPv6 extends Subnet {
         return reverse;
     }
     
+    public static boolean isSLAAC(String ip) {
+        if (SubnetIPv6.isValidIPv6(ip)) {
+            byte[] byteArray = splitByte(ip);
+            return (byteArray[11] & 0xFF) == 0xFF && (byteArray[12] & 0xFF) == 0xFE;
+        } else {
+            return false;
+        }
+    }
+    
     public static String expandIPv6(String ip) {
         short[] splitedIP = split(ip);
         int p1 = splitedIP[0] & 0xFFFF;
@@ -274,6 +286,28 @@ public final class SubnetIPv6 extends Subnet {
         return address;
     }
     
+    public static byte[] address(String ip) {
+        byte[] address = new byte[16];
+        short[] splitArray = split(ip);
+        address[0] = (byte) (splitArray[0] >>> 8 & 0xFFFF);
+        address[1] = (byte) (splitArray[0] & 0xFFFF);
+        address[2] = (byte) (splitArray[1] >>> 8 & 0xFFFF);
+        address[3] = (byte) (splitArray[1] & 0xFFFF);
+        address[4] = (byte) (splitArray[2] >>> 8 & 0xFFFF);
+        address[5] = (byte) (splitArray[2] & 0xFFFF);
+        address[6] = (byte) (splitArray[3] >>> 8 & 0xFFFF);
+        address[7] = (byte) (splitArray[3] & 0xFFFF);
+        address[8] = (byte) (splitArray[4] >>> 8 & 0xFFFF);
+        address[9] = (byte) (splitArray[4] & 0xFFFF);
+        address[10] = (byte) (splitArray[5] >>> 8 & 0xFFFF);
+        address[11] = (byte) (splitArray[5] & 0xFFFF);
+        address[12] = (byte) (splitArray[6] >>> 8 & 0xFFFF);
+        address[13] = (byte) (splitArray[6] & 0xFFFF);
+        address[14] = (byte) (splitArray[7] >>> 8 & 0xFFFF);
+        address[15] = (byte) (splitArray[7] & 0xFFFF);
+        return address;
+    }
+    
     /**
      * Retorna o endereço IP em inteiro de 64 bits da notação IP.
      * Para fins de roteamento, os primeiros 64 são suficientes.
@@ -333,15 +367,17 @@ public final class SubnetIPv6 extends Subnet {
     public static boolean isReservedIPv6(String ip) {
         if (ip == null) {
             return false;
-        } else if (SubnetIPv6.containsIP("::/128", ip)) {
+        } else if (SubnetIPv6.containsIP("0000::/8", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("::1/128", ip)) {
+        } else if (SubnetIPv6.containsIP("0100::/8", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("::ffff:0:0/96", ip)) {
+        } else if (SubnetIPv6.containsIP("0200::/7", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("100::/64", ip)) {
+        } else if (SubnetIPv6.containsIP("0400::/6", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("64:ff9b::/96", ip)) {
+        } else if (SubnetIPv6.containsIP("0800::/5", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("1000::/4", ip)) {
             return true;
         } else if (SubnetIPv6.containsIP("2001::/32", ip)) {
             return true;
@@ -353,9 +389,29 @@ public final class SubnetIPv6 extends Subnet {
             return true;
         } else if (SubnetIPv6.containsIP("2002::/16", ip)) {
             return true;
+        } else if (SubnetIPv6.containsIP("4000::/3", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("6000::/3", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("8000::/3", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("a000::/3", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("c000::/3", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("e000::/4", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("f000::/5", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("f800::/6", ip)) {
+            return true;
         } else if (SubnetIPv6.containsIP("fc00::/7", ip)) {
             return true;
+        } else if (SubnetIPv6.containsIP("fe00::/9", ip)) {
+            return true;
         } else if (SubnetIPv6.containsIP("fe80::/10", ip)) {
+            return true;
+        } else if (SubnetIPv6.containsIP("fec0::/10", ip)) {
             return true;
         } else if (SubnetIPv6.containsIP("ff00::/8", ip)) {
             return true;
@@ -364,11 +420,83 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
+    private static BigInteger ADDRESS_MIN = new BigInteger("0");
+    private static BigInteger ADDRESS_MAX = new BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16);
+    private static BigInteger ADDRESS_UNIT = new BigInteger("1");
+    private static BigInteger ADDRESS_OCTET = new BigInteger("FFFF", 16);
+    
     public static String getNextIPv6(String ip) {
         if (ip == null) {
             return null;
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            BigInteger address = new BigInteger(1, address(ip));
+            if (address.equals(ADDRESS_MAX)) {
+                return null;
+            } else {
+                address = address.add(ADDRESS_UNIT);
+                int p8 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p7 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p6 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p5 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p4 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p3 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p2 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p1 = address.and(ADDRESS_OCTET).intValue();
+                return Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8);
+            }
         } else {
-            throw new UnsupportedOperationException("NOT IMPLEMENTED YET");
+            return null;
+        }
+    }
+    public static String getPreviousIPv6(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            BigInteger address = new BigInteger(1, address(ip));
+            if (address.equals(ADDRESS_MIN)) {
+                return null;
+            } else {
+                address = address.subtract(ADDRESS_UNIT);
+                int p8 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p7 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p6 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p5 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p4 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p3 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p2 = address.and(ADDRESS_OCTET).intValue();
+                address = address.shiftRight(16);
+                int p1 = address.and(ADDRESS_OCTET).intValue();
+                return Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8);
+            }
+        } else {
+            return null;
         }
     }
     

@@ -147,6 +147,8 @@ public class NoReply {
             return true;
         } else if (address.startsWith("return-")) {
             return true;
+        } else if (address.startsWith("noreply-")) {
+            return true;
         } else if (address.startsWith("prvs=")) {
             return true;
         } else if (address.startsWith("msprvs1=")) {

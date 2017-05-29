@@ -21,6 +21,7 @@ import net.spfbl.core.ProcessException;
 import java.io.BufferedReader;
 import java.io.Serializable;
 import java.io.StringReader;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -83,11 +84,6 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         REFRESH_TIME = time;
     }
     
-    /**
-     * Formatação padrão dos campos de data do WHOIS.
-     */
-    private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
-    
     protected Subnet(String result) throws ProcessException {
         // Associação da chave primária final.
         this.inetnum = normalizeCIDR(refresh(result));
@@ -106,7 +102,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public abstract String getWhoisServer() throws ProcessException;
     
     public static String getFirstIP(String cidr) {
-        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        if (cidr == null) {
+            return null;
+        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.getFirstIPv4(cidr);
         } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
             return SubnetIPv6.getFirstIPv6(cidr);
@@ -116,7 +114,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String getLastIP(String cidr) {
-        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        if (cidr == null) {
+            return null;
+        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.getLastIPv4(cidr);
         } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
             return SubnetIPv6.getLastIPv6(cidr);
@@ -125,8 +125,22 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public static String getPreviousIP(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (SubnetIPv4.isValidIPv4(ip)) {
+            return SubnetIPv4.getPreviousIPv4(ip);
+        } else if (SubnetIPv6.isValidIPv6(ip)) {
+            return SubnetIPv6.getPreviousIPv6(ip);
+        } else {
+            return null;
+        }
+    }
+    
     public static String getNextIP(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (ip == null) {
+            return null;
+        } else if (SubnetIPv4.isValidIPv4(ip)) {
             return SubnetIPv4.getNextIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.getNextIPv6(ip);
@@ -135,14 +149,14 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
-    public static byte getMask(String cidr) {
+    public static short getMask(String cidr) {
         if (cidr == null) {
             return 0;
         } else if (cidr.contains("/")) {
             try {
                 int index = cidr.lastIndexOf('/') + 1;
                 String number = cidr.substring(index);
-                return Byte.parseByte(number);
+                return Short.parseShort(number);
             } catch (NumberFormatException ex) {
                 return 0;
             }
@@ -180,7 +194,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String expandIP(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (ip == null) {
+            return null;
+        } else if (SubnetIPv4.isValidIPv4(ip)) {
             return SubnetIPv4.expandIPv4(ip);
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             return SubnetIPv6.expandIPv6(ip);
@@ -190,7 +206,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String expandCIDR(String cidr) {
-        if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        if (cidr == null) {
+            return null;
+        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
             return SubnetIPv4.expandCIDRv4(cidr);
         } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
             return SubnetIPv6.expandCIDRv6(cidr);
@@ -222,6 +240,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             ArrayList<String> nameServerListNew = new ArrayList<String>();
             boolean reducedNew = false;
             String inetnumResult = null;
+            SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyyMMdd");
             BufferedReader reader = new BufferedReader(new StringReader(result));
             try {
                 String line;
@@ -283,14 +302,14 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         }
                         if (valor.length() > 7) {
                             valor = valor.substring(0, 8);
-                            createdNew = DATE_FORMATTER.parse(valor);
+                            createdNew = dateFormatter.parse(valor);
                         }
                     } else if (line.startsWith("changed:")) {
                         int index = line.indexOf(':') + 1;
                         String valor = line.substring(index).trim();
                         if (valor.length() > 7) {
                             valor = valor.substring(0, 8);
-                            changedNew = DATE_FORMATTER.parse(valor);
+                            changedNew = dateFormatter.parse(valor);
                         }
                     } else if (line.startsWith("nic-hdl-br:")) {
                         int index = line.indexOf(':') + 1;
@@ -586,7 +605,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         String result = "";
         String first = Subnet.getFirstIP(cidr);
         String last = Subnet.getLastIP(cidr);
-        byte mask = Subnet.getMask(cidr);
+        short mask = Subnet.getMask(cidr);
         int max = SubnetIPv4.isValidIPv4(first) ? 32 : 64;
         if (mask < max) {
             mask++;
@@ -718,13 +737,13 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             if (created == null) {
                 return null;
             } else {
-                return DATE_FORMATTER.format(created);
+                return new SimpleDateFormat("yyyyMMdd").format(created);
             }
         } else if (key.equals("changed")) {
             if (changed == null) {
                 return null;
             } else {
-                return DATE_FORMATTER.format(changed);
+                return new SimpleDateFormat("yyyyMMdd").format(changed);
             }
         } else if (key.equals("nserver")) {
             return nameServerList.toString();

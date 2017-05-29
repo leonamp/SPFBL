@@ -342,7 +342,7 @@ public class Ignore {
             return false;
         } else {
             // Verifica o remetente.
-            if (token.contains("@")) {
+            if (token.startsWith("@")) {
                 String sender = token.toLowerCase();
                 int index1 = sender.indexOf('@');
                 int index2 = sender.lastIndexOf('@');
@@ -364,6 +364,24 @@ public class Ignore {
                             return true;
                         }
                     }
+                    int index4 = sender.length();
+                    while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
+                        String subsender = sender.substring(0, index4 + 1);
+                        if (containsExact(subsender)) {
+                            return true;
+                        }
+                    }
+                }
+            } else if (token.contains("@")) {
+                String sender = token.toLowerCase();
+                int index1 = sender.indexOf('@');
+                int index2 = sender.lastIndexOf('@');
+                String part = sender.substring(0, index1 + 1);
+                if (containsExact(sender)) {
+                    return true;
+                } else if (containsExact(part)) {
+                    return true;
+                } else {
                     int index4 = sender.length();
                     while ((index4 = sender.lastIndexOf('.', index4 - 1)) > index2) {
                         String subsender = sender.substring(0, index4 + 1);
@@ -441,27 +459,29 @@ public class Ignore {
                 }
                 // Processo temporário de transição.
                 for (String token : set) {
-                    String client;
-                    String identifier;
-                    if (token.contains(":")) {
-                        int index = token.indexOf(':');
-                        client = token.substring(0, index);
-                        identifier = token.substring(index + 1);
-                    } else {
-                        client = null;
-                        identifier = token;
-                    }
-                    if (Subnet.isValidCIDR(identifier)) {
-                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                    }
-                    try {
-                        if (client == null) {
-                            addExact(identifier);
+                    if ((token = normalizeTokenCIDR(token)) != null) {
+                        String client;
+                        String identifier;
+                        if (token.contains(":")) {
+                            int index = token.indexOf(':');
+                            client = token.substring(0, index);
+                            identifier = token.substring(index + 1);
                         } else {
-                            addExact(client + ':' + identifier);
+                            client = null;
+                            identifier = token;
                         }
-                    } catch (ProcessException ex) {
-                        Server.logDebug("IGNORE CIDR " + identifier + " " + ex.getErrorMessage());
+                        if (Subnet.isValidCIDR(identifier)) {
+                            identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
+                        }
+                        try {
+                            if (client == null) {
+                                addExact(identifier);
+                            } else {
+                                addExact(client + ':' + identifier);
+                            }
+                        } catch (ProcessException ex) {
+                            Server.logDebug("IGNORE CIDR " + identifier + " " + ex.getErrorMessage());
+                        }
                     }
                 }
                 CHANGED = false;

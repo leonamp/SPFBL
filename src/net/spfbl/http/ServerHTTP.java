@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.http;
 
@@ -40,6 +40,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -52,9 +53,11 @@ import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
+import net.spfbl.core.Analise;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import static net.spfbl.core.Client.Permission.DNSBL;
+import static net.spfbl.core.Client.Permission.NONE;
 import net.spfbl.core.Core;
 import net.spfbl.core.Defer;
 import net.spfbl.core.ProcessException;
@@ -63,6 +66,7 @@ import net.spfbl.core.User;
 import net.spfbl.core.User.Query;
 import net.spfbl.core.User.Situation;
 import net.spfbl.data.Generic;
+import net.spfbl.data.Ignore;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
 import net.spfbl.data.Trap;
@@ -71,6 +75,7 @@ import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
+import net.spfbl.whois.SubnetIPv6;
 import net.tanesha.recaptcha.ReCaptcha;
 import net.tanesha.recaptcha.ReCaptchaFactory;
 import net.tanesha.recaptcha.ReCaptchaResponse;
@@ -177,7 +182,7 @@ public final class ServerHTTP extends Server {
         // Criando conexões.
         Server.logDebug("binding HTTP socket on port " + port + "...");
         SERVER = HttpServer.create(new InetSocketAddress(port), 0);
-        SERVER.createContext("/", new ComplainHandler());
+        SERVER.createContext("/", new AccessHandler());
         SERVER.setExecutor(null); // creates a default executor
         Server.logTrace(getName() + " thread allocation.");
     }
@@ -190,21 +195,23 @@ public final class ServerHTTP extends Server {
         }
     }
 
-    public String getDNSBLURL() {
+    public String getDNSBLURL(Locale locale) {
         if (HOSTNAME == null) {
             return null;
-        } else {
+        } else if (locale == null) {
             return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/dnsbl/";
+        } else {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/" + locale.getLanguage() + "/dnsbl/";
         }
     }
-    
-    public synchronized String getSpamURL(String domain) {
-        if (MAP.containsKey(domain)) {
-            return MAP.get(domain);
-        } else if (HOSTNAME == null) {
+
+    public String getURL(Locale locale) {
+        if (HOSTNAME == null) {
             return null;
+        } else if (locale == null) {
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/";
         } else {
-            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/spam/";
+            return "http://" + HOSTNAME + (PORT == 80 ? "" : ":" + PORT) + "/" + locale.getLanguage() + "/";
         }
     }
 
@@ -268,6 +275,17 @@ public final class ServerHTTP extends Server {
                         begin = Long.parseLong(value);
                     } catch (NumberFormatException ex) {
                         // Ignore.
+                    }
+                } else if ("filter".equals(key)) {
+                    if (value == null) {
+                        map.put(key, "");
+                    } else {
+                        value = Core.removerAcentuacao(value);
+                        value = value.replace(" ", "");
+                        value = value.toLowerCase();
+                        if (value.length() > 0) {
+                            map.put(key, value);
+                        }
                     }
                 } else {
                     map.put(key, value);
@@ -425,8 +443,20 @@ public final class ServerHTTP extends Server {
             return failTime + (failTime > 1 ? " semanas" : " semana");
         }
     }
+    
+    private static boolean isValidDomainOrIP(String token) {
+        if (Server.isValidTicket(token)) {
+            return false;
+        } else if (Subnet.isValidIP(token)) {
+            return true;
+        } else if (Domain.isHostname(token)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
 
-    private static class ComplainHandler implements HttpHandler {
+    private static class AccessHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) {
             try {
@@ -438,10 +468,28 @@ public final class ServerHTTP extends Server {
                 Locale locale = getLocale(exchange);
                 User user = getUser(exchange);
                 Client client = getClient(exchange);
+                String clientEmail = client == null ? null : client.getEmail();
                 String remoteAddress = getRemoteAddress(exchange);
                 String origin = getOrigin(remoteAddress, client, user);
                 command = URLDecoder.decode(command, "UTF-8");
                 Server.logTrace(request + " " + command);
+                int langIndex = command.indexOf('/', 1);
+                if (langIndex == 3 || langIndex == 4) {
+                    // Language mode.
+                    String lang = command.substring(1, langIndex).toLowerCase();
+                    if (lang.equals("en")) {
+                        locale = Locale.UK;
+                    } else if (lang.equals("pt")) {
+                        locale = new Locale("pt", "BR");
+                    } else {
+                        locale = Locale.US;
+                    }
+                    command = command.substring(langIndex);
+                } else if (clientEmail != null && clientEmail.endsWith(".br")) {
+                    locale = new Locale("pt", "BR");
+                } else if (clientEmail != null && clientEmail.endsWith(".pt")) {
+                    locale = new Locale("pt", "PT");
+                }
                 int code;
                 String result;
                 String type;
@@ -476,7 +524,7 @@ public final class ServerHTTP extends Server {
                         if (parameterMap.containsKey("query")) {
                             String query = (String) parameterMap.get("query");
                             if (Subnet.isValidIP(query) || Domain.isHostname(query)) {
-                                String url = Core.getDNSBLURL(query);
+                                String url = Core.getURL(locale, query);
                                 result = getRedirectHTML(url);
                             } else {
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -501,8 +549,8 @@ public final class ServerHTTP extends Server {
                         if (userLogin != null && userLogin.isEmail(userEmail)) {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             Long begin = (Long) parameterMap.get("begin");
-                            message = getControlPanel(locale, userLogin, begin);
-//                            message = getRedirectHTML(command);
+                            String filter = (String) parameterMap.get("filter");
+                            message = getControlPanel(locale, userLogin, begin, filter);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
                                     "Login do SPFBL",
@@ -615,37 +663,48 @@ public final class ServerHTTP extends Server {
                             result = "Forbidden\n";
                         } else {
                             long queryTime = Long.parseLong(command.substring(1));
-                            User.Query query = userLogin.getQuery(queryTime);
-                            if (query == null) {
-                                type = "QUERY";
-                                code = 403;
-                                result = "Forbidden\n";
-                            } else {
+                            if (queryTime == 0) {
                                 type = "QUERY";
                                 code = 200;
-                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                if (parameterMap.containsKey("POLICY")) {
-                                    String policy = (String) parameterMap.get("POLICY");
-                                    if (policy.startsWith("WHITE_")) {
-                                        query.white(queryTime, policy.substring(6));
-                                        query.processComplainForWhite();
-                                    } else if (policy.startsWith("BLOCK_")) {
-                                        query.block(queryTime, policy.substring(6));
-                                        query.processComplainForBlock();
+                                result = "";
+                            } else {
+                                User.Query query = userLogin.getQuery(queryTime);
+                                if (query == null) {
+                                    type = "QUERY";
+                                    code = 403;
+                                    result = "Forbidden\n";
+                                } else {
+                                    type = "QUERY";
+                                    code = 200;
+                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                    if (parameterMap.containsKey("POLICY")) {
+                                        String policy = (String) parameterMap.get("POLICY");
+                                        if (policy.startsWith("WHITE_")) {
+                                            query.white(queryTime, policy.substring(6));
+                                            query.processComplainForWhite();
+                                        } else if (policy.startsWith("BLOCK_")) {
+                                            query.block(queryTime, policy.substring(6));
+                                            query.processComplainForBlock();
+                                        }
                                     }
+                                    result = getControlPanel(locale, query, queryTime);
                                 }
-                                result = getControlPanel(locale, query, queryTime);
                             }
                         }
-                    } else if (command.startsWith("/dnsbl/")) {
+                    } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             title = "Página de checagem DNSBL";
                         } else {
                             title = "DNSBL check page";
                         }
-                        int index = command.indexOf('/', 1) + 1;
-                        String ip = command.substring(index);
+                        String ip;
+                        if (command.startsWith("/dnsbl/")) {
+                            int index = command.indexOf('/', 1) + 1;
+                            ip = command.substring(index);
+                        } else {
+                            ip = command.substring(1);
+                        }
                         if (Subnet.isValidIP(ip)) {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             if (parameterMap.containsKey("identifier")) {
@@ -684,12 +743,14 @@ public final class ServerHTTP extends Server {
                                                 + "due to an internal error.";
                                     }
                                     TreeSet<String> postmaterSet = getPostmaterSet(ip);
-                                    if (
-                                            client != null &&
-                                            client.hasPermission(DNSBL) &&
-                                            client.hasEmail()
-                                            ) {
-                                        postmaterSet.add(client.getEmail());
+                                    clientEmail = client == null || client.hasPermission(NONE) ? null : client.getEmail();
+                                    if (clientEmail != null) {
+                                        postmaterSet.add(clientEmail);
+                                    }
+                                    Client abuseClient = Client.getByIP(ip);
+                                    String abuseEmail = abuseClient == null || abuseClient.hasPermission(NONE) ? null : abuseClient.getEmail();
+                                    if (abuseEmail != null) {
+                                        postmaterSet.add(abuseEmail);
                                     }
                                     TreeSet<String> emailSet = (TreeSet<String>) parameterMap.get("identifier");
                                     for (String email : emailSet) {
@@ -734,443 +795,443 @@ public final class ServerHTTP extends Server {
                             code = 500;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "O identificador informado não é um IP nem um domínio válido.";
+                                message = "O identificador informado não é um IP válido.";
                             } else {
-                                message = "Informed identifier is not a valid IP or a valid domain.";
+                                message = "Informed identifier is not a valid IP domain.";
                             }
                             result = getMessageHMTL(title, message);
                         }
-                    } else if (command.startsWith("/spam/")) {
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String recipient = SPF.getRecipient(ticket);
-                            String clientTicket = SPF.getClient(ticket);
-                            clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                            if (parameterMap.containsKey("identifier")) {
-                                boolean valid = true;
-                                TreeSet<String> identifierSet = (TreeSet<String>) parameterMap.get("identifier");
-                                if (Core.hasRecaptchaKeys()) {
-                                    if (parameterMap.containsKey("recaptcha_challenge_field")
-                                            && parameterMap.containsKey("recaptcha_response_field")
-                                            ) {
-                                        // reCAPCHA convencional.
-                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                        if (recaptchaResponse == null) {
-                                            valid = false;
-                                        } else {
-                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                            valid = response.isValid();
-                                        }
-                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                        // TODO: novo reCAPCHA.
-                                        valid = false;
-                                    } else {
-                                        // reCAPCHA necessário.
-                                        valid = false;
-                                    }
-                                }
-                                TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
-                                tokenSet = SPF.expandTokenSet(tokenSet);
-                                if (valid) {
-                                    TreeSet<String> blockSet = new TreeSet<String>();
-                                    for (String identifier : identifierSet) {
-                                        if (tokenSet.contains(identifier)) {
-                                            long time2 = System.currentTimeMillis();
-                                            String block = clientTicket + identifier + '>' + recipient;
-                                            if (Block.addExact(block)) {
-                                                Server.logQuery(
-                                                        time2, "BLOCK",
-                                                        origin,
-                                                        "BLOCK ADD " + block,
-                                                        "ADDED"
-                                                        );
-                                            }
-                                            blockSet.add(identifier);
-                                        }
-                                    }
-                                    type = "HTTPC";
-                                    code = 200;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        result = "Bloqueados: " + blockSet + " >" + recipient + "\n";
-                                    } else {
-                                        result = "Blocked: " + blockSet + " >" + recipient + "\n";
-                                    }
-                                } else {
-                                    type = "HTTPC";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O desafio do reCAPTCHA não foi resolvido.";
-                                    } else {
-                                        message = "The CAPTCHA challenge has not been resolved.";
-                                    }
-                                    result = getComplainHMTL(locale, tokenSet, identifierSet, message, true);
-                                }
-                            } else {
-                                type = "HTTPC";
-                                code = 500;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    result = "Identificadores indefinidos.\n";
-                                } else {
-                                    result = "Undefined identifiers.\n";
-                                }
-                            }
-                        } catch (Exception ex) {
-                            type = "HTTPC";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
-                    } else if (command.startsWith("/release/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de liberação do SPFBL";
-                        } else {
-                            title = "SPFBL release page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            index = registry.indexOf(' ');
-                            Date date = Server.parseTicketDate(registry.substring(0, index));
-                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                // Ticket vencido com mais de 5 dias.
-                                type = "DEFER";
-                                code = 500;
-                                 String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Este ticket de liberação está vencido.";
-                                } else {
-                                    message = "This release ticket is expired.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                boolean valid = true;
-                                if (Core.hasRecaptchaKeys()) {
-                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                    if (parameterMap.containsKey("recaptcha_challenge_field")
-                                            && parameterMap.containsKey("recaptcha_response_field")
-                                            ) {
-                                        // reCAPCHA convencional.
-                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                        if (recaptchaResponse == null) {
-                                            valid = false;
-                                        } else {
-                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                            valid = response.isValid();
-                                        }
-                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                        // TODO: novo reCAPCHA.
-                                        valid = false;
-                                    } else {
-                                        // reCAPCHA necessário.
-                                        valid = false;
-                                    }
-                                }
-                                if (valid) {
-                                    String id = registry.substring(index + 1);
-                                    String message;
-                                    if (Defer.release(id)) {
-                                        String clientTicket = SPF.getClient(ticket);
-                                        String sender = SPF.getSender(ticket);
-                                        String recipient = SPF.getRecipient(ticket);
-                                        if (clientTicket != null && sender != null && recipient != null) {
-                                            if (White.addExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
-                                                Server.logDebug("WHITE ADD " + clientTicket + ":" + sender + ";PASS>" + recipient);
-                                            }
-                                        }
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Sua mensagem foi liberada com sucesso.";
-                                        } else {
-                                            message = "Your message has been successfully released.";
-                                        }
-                                    } else {
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Sua mensagem já havia sido liberada.";
-                                        } else {
-                                            message = "Your message had already been released.";
-                                        }
-                                    }
-                                    type = "DEFER";
-                                    code = 200;
-                                    result = getMessageHMTL(title, message);
-                                } else {
-                                    type = "DEFER";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O desafio reCAPTCHA não foi "
-                                                + "resolvido. Tente novamente.";
-                                    } else {
-                                        message = "The reCAPTCHA challenge "
-                                                + "was not resolved. Try again.";
-                                    }
-                                    result = getReleaseHMTL(locale, message);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            type = "SPFSP";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
-                    } else if (command.startsWith("/unblock/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de desbloqueio do SPFBL";
-                        } else {
-                            title = "SPFBL unblock page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                            Date date = Server.parseTicketDate(tokenizer.nextToken());
-                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                // Ticket vencido com mais de 5 dias.
-                                type = "BLOCK";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Este ticket de desbloqueio está vencido.";
-                                } else {
-                                    message = "This unblock ticket is expired.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                boolean valid = true;
-                                if (Core.hasRecaptchaKeys()) {
-                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                    if (parameterMap.containsKey("recaptcha_challenge_field")
-                                            && parameterMap.containsKey("recaptcha_response_field")
-                                            ) {
-                                        // reCAPCHA convencional.
-                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                        if (recaptchaResponse == null) {
-                                            valid = false;
-                                        } else {
-                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                            valid = response.isValid();
-                                        }
-                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                        // TODO: novo reCAPCHA.
-                                        valid = false;
-                                    } else {
-                                        // reCAPCHA necessário.
-                                        valid = false;
-                                    }
-                                }
-                                String clientTicket = tokenizer.nextToken();
-                                String ip = tokenizer.nextToken();
-                                if (!tokenizer.hasMoreTokens()) {
-                                    if (valid) {
-                                        String message;
-                                        if (Block.clearCIDR(ip, clientTicket)) {
-                                            TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
-                                            tokenSet.add(clientTicket);
-                                            String block;
-                                            for (String token : tokenSet) {
-                                                while ((block = Block.find(null, null, token, true, true, false)) != null) {
-                                                    if (Block.dropExact(block)) {
-                                                        Server.logInfo("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
-                                                    }
-                                                }
-                                            }
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O IP " + ip + " foi desbloqueado com sucesso.";
-                                            } else {
-                                                message = "The IP " + ip + " was successfully unblocked.";
-                                            }
-                                        } else {
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O IP " + ip + " já estava desbloqueado.";
-                                            } else {
-                                                message = "The IP " + ip + " was already unblocked.";
-                                            }
-                                        }
-                                        type = "BLOCK";
-                                        code = 200;
-                                        result = getMessageHMTL(title, message);
-                                    } else {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O desafio reCAPTCHA não foi resolvido. "
-                                                    + "Tente novamente.";
-                                        } else {
-                                            message = "The reCAPTCHA challenge was not resolved. "
-                                                    + "Try again.";
-                                        }
-                                        result = getUnblockDNSBLHMTL(locale, message);
-                                    }
-                                } else if (valid) {
-                                    String sender = tokenizer.nextToken();
-                                    String recipient = tokenizer.nextToken();
-                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                                    String mx = Domain.extractHost(sender, true);
-                                    String origem = Provider.containsExact(mx) ? sender : mx;
-                                    String white = origem + ">" + recipient;
-                                    String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
-                                    String message;
-                                    if (enviarDesbloqueio(url, sender, recipient, locale)) {
-                                        white = White.normalizeTokenWhite(white);
-                                        Block.addExact(white);
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "A solicitação de desbloqueio foi "
-                                                    + "enviada para o destinatário '" + recipient + "'.\n"
-                                                    + "Aguarde pelo desbloqueio sem enviar novas mensagens.";
-                                        } else {
-                                            message = "The release request was "
-                                                    + "sent to the recipient '" + recipient + "'.\n"
-                                                    + "Wait for the release without sending new messages.";
-                                        }
-                                    } else {
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Não foi possível enviar a solicitação de "
-                                                    + "desbloqueio para o destinatário "
-                                                    + "'" + recipient + "' devido a problemas técnicos.";
-                                        } else {
-                                            message = "Could not send the request release to the recipient "
-                                                    + "'" + recipient + "' due to technical problems.";
-                                        }
-                                    }
-                                    type = "BLOCK";
-                                    code = 200;
-                                    result = getMessageHMTL(title, message);
-                                } else {
-                                    type = "BLOCK";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O desafio reCAPTCHA não foi resolvido. "
-                                                + "Tente novamente.";
-                                    } else {
-                                        message = "The reCAPTCHA challenge was not resolved. "
-                                                + "Try again.";
-                                    }
-                                    result = getUnblockHMTL(locale, message);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            type = "SPFSP";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
-                    } else if (command.startsWith("/white/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de desbloqueio do SPFBL";
-                        } else {
-                            title = "SPFBL unblock page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                            Date date = Server.parseTicketDate(tokenizer.nextToken());
-                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                // Ticket vencido com mais de 5 dias.
-                                type = "WHITE";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Este ticket de desbloqueio está vencido.";
-                                } else {
-                                    message = "This release ticket is expired.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                boolean valid = true;
-                                if (Core.hasRecaptchaKeys()) {
-                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                    if (parameterMap.containsKey("recaptcha_challenge_field")
-                                            && parameterMap.containsKey("recaptcha_response_field")
-                                            ) {
-                                        // reCAPCHA convencional.
-                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                        if (recaptchaResponse == null) {
-                                            valid = false;
-                                        } else {
-                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                            valid = response.isValid();
-                                        }
-                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                        // TODO: novo reCAPCHA.
-                                        valid = false;
-                                    } else {
-                                        // reCAPCHA necessário.
-                                        valid = false;
-                                    }
-                                }
-                                if (valid) {
-                                    String white = tokenizer.nextToken();
-                                    client = Client.getByEmail(tokenizer.nextToken().replace(":", ""));
-                                    String ip = tokenizer.nextToken();
-                                    String sender = tokenizer.nextToken();
-                                    String recipient = tokenizer.nextToken();
-                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                    String message;
-                                    if (White.addExact(white)) {
-                                        Block.clear(client, user, ip, sender, hostname, "PASS", recipient);
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
-                                        } else {
-                                            message = "The unblock of sender '" + sender + "' has been successfully performed.";
-                                        }
-                                    } else {
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O desbloqueio do remetente '" + sender + "' já havia sido efetuado.";
-                                        } else {
-                                            message = "The unblock of sender '" + sender + "' had been made.";
-                                        }
-                                    }
-                                    type = "WHITE";
-                                    code = 200;
-                                    result = getMessageHMTL(title, message);
-                                } else {
-                                    type = "WHITE";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O desafio reCAPTCHA não foi resolvido. "
-                                                + "Tente novamente.";
-                                    } else {
-                                        message = "The reCAPTCHA challenge was not resolved. "
-                                                + "Try again.";
-                                    }
-                                    result = getWhiteHMTL(locale, message);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            type = "SPFSP";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
+//                    } else if (command.startsWith("/spam/")) {
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String recipient = SPF.getRecipient(ticket);
+//                            String clientTicket = SPF.getClient(ticket);
+//                            clientTicket = clientTicket == null ? "" : clientTicket + ':';
+//                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
+//                            if (parameterMap.containsKey("identifier")) {
+//                                boolean valid = true;
+//                                TreeSet<String> identifierSet = (TreeSet<String>) parameterMap.get("identifier");
+//                                if (Core.hasRecaptchaKeys()) {
+//                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+//                                            && parameterMap.containsKey("recaptcha_response_field")
+//                                            ) {
+//                                        // reCAPCHA convencional.
+//                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+//                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+//                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+//                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+//                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+//                                        if (recaptchaResponse == null) {
+//                                            valid = false;
+//                                        } else {
+//                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+//                                            valid = response.isValid();
+//                                        }
+//                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+//                                        // TODO: novo reCAPCHA.
+//                                        valid = false;
+//                                    } else {
+//                                        // reCAPCHA necessário.
+//                                        valid = false;
+//                                    }
+//                                }
+//                                TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+//                                tokenSet = SPF.expandTokenSet(tokenSet);
+//                                if (valid) {
+//                                    TreeSet<String> blockSet = new TreeSet<String>();
+//                                    for (String identifier : identifierSet) {
+//                                        if (tokenSet.contains(identifier)) {
+//                                            long time2 = System.currentTimeMillis();
+//                                            String block = clientTicket + identifier + '>' + recipient;
+//                                            if (Block.addExact(block)) {
+//                                                Server.logQuery(
+//                                                        time2, "BLOCK",
+//                                                        origin,
+//                                                        "BLOCK ADD " + block,
+//                                                        "ADDED"
+//                                                        );
+//                                            }
+//                                            blockSet.add(identifier);
+//                                        }
+//                                    }
+//                                    type = "HTTPC";
+//                                    code = 200;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        result = "Bloqueados: " + blockSet + " >" + recipient + "\n";
+//                                    } else {
+//                                        result = "Blocked: " + blockSet + " >" + recipient + "\n";
+//                                    }
+//                                } else {
+//                                    type = "HTTPC";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "O desafio do reCAPTCHA não foi resolvido.";
+//                                    } else {
+//                                        message = "The CAPTCHA challenge has not been resolved.";
+//                                    }
+//                                    result = getComplainHMTL(locale, tokenSet, identifierSet, message, true);
+//                                }
+//                            } else {
+//                                type = "HTTPC";
+//                                code = 500;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    result = "Identificadores indefinidos.\n";
+//                                } else {
+//                                    result = "Undefined identifiers.\n";
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "HTTPC";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
+//                    } else if (command.startsWith("/release/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de liberação do SPFBL";
+//                        } else {
+//                            title = "SPFBL release page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            index = registry.indexOf(' ');
+//                            Date date = Server.parseTicketDate(registry.substring(0, index));
+//                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                // Ticket vencido com mais de 5 dias.
+//                                type = "DEFER";
+//                                code = 500;
+//                                 String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Este ticket de liberação está vencido.";
+//                                } else {
+//                                    message = "This release ticket is expired.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else {
+//                                boolean valid = true;
+//                                if (Core.hasRecaptchaKeys()) {
+//                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+//                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+//                                            && parameterMap.containsKey("recaptcha_response_field")
+//                                            ) {
+//                                        // reCAPCHA convencional.
+//                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+//                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+//                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+//                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+//                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+//                                        if (recaptchaResponse == null) {
+//                                            valid = false;
+//                                        } else {
+//                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+//                                            valid = response.isValid();
+//                                        }
+//                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+//                                        // TODO: novo reCAPCHA.
+//                                        valid = false;
+//                                    } else {
+//                                        // reCAPCHA necessário.
+//                                        valid = false;
+//                                    }
+//                                }
+//                                if (valid) {
+//                                    String id = registry.substring(index + 1);
+//                                    String message;
+//                                    if (Defer.release(id)) {
+//                                        String clientTicket = SPF.getClient(ticket);
+//                                        String sender = SPF.getSender(ticket);
+//                                        String recipient = SPF.getRecipient(ticket);
+//                                        if (clientTicket != null && sender != null && recipient != null) {
+//                                            if (White.addExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+//                                                Server.logDebug("WHITE ADD " + clientTicket + ":" + sender + ";PASS>" + recipient);
+//                                            }
+//                                        }
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Sua mensagem foi liberada com sucesso.";
+//                                        } else {
+//                                            message = "Your message has been successfully released.";
+//                                        }
+//                                    } else {
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Sua mensagem já havia sido liberada.";
+//                                        } else {
+//                                            message = "Your message had already been released.";
+//                                        }
+//                                    }
+//                                    type = "DEFER";
+//                                    code = 200;
+//                                    result = getMessageHMTL(title, message);
+//                                } else {
+//                                    type = "DEFER";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "O desafio reCAPTCHA não foi "
+//                                                + "resolvido. Tente novamente.";
+//                                    } else {
+//                                        message = "The reCAPTCHA challenge "
+//                                                + "was not resolved. Try again.";
+//                                    }
+//                                    result = getReleaseHMTL(locale, message);
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "SPFSP";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
+//                    } else if (command.startsWith("/unblock/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de desbloqueio do SPFBL";
+//                        } else {
+//                            title = "SPFBL unblock page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+//                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+//                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                // Ticket vencido com mais de 5 dias.
+//                                type = "BLOCK";
+//                                code = 500;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Este ticket de desbloqueio está vencido.";
+//                                } else {
+//                                    message = "This unblock ticket is expired.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else {
+//                                boolean valid = true;
+//                                if (Core.hasRecaptchaKeys()) {
+//                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+//                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+//                                            && parameterMap.containsKey("recaptcha_response_field")
+//                                            ) {
+//                                        // reCAPCHA convencional.
+//                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+//                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+//                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+//                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+//                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+//                                        if (recaptchaResponse == null) {
+//                                            valid = false;
+//                                        } else {
+//                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+//                                            valid = response.isValid();
+//                                        }
+//                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+//                                        // TODO: novo reCAPCHA.
+//                                        valid = false;
+//                                    } else {
+//                                        // reCAPCHA necessário.
+//                                        valid = false;
+//                                    }
+//                                }
+//                                String clientTicket = tokenizer.nextToken();
+//                                String ip = tokenizer.nextToken();
+//                                if (!tokenizer.hasMoreTokens()) {
+//                                    if (valid) {
+//                                        String message;
+//                                        if (Block.clearCIDR(ip, clientTicket)) {
+//                                            TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
+//                                            tokenSet.add(clientTicket);
+//                                            String block;
+//                                            for (String token : tokenSet) {
+//                                                while ((block = Block.find(null, null, token, true, true, false)) != null) {
+//                                                    if (Block.dropExact(block)) {
+//                                                        Server.logInfo("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
+//                                                    }
+//                                                }
+//                                            }
+//                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                message = "O IP " + ip + " foi desbloqueado com sucesso.";
+//                                            } else {
+//                                                message = "The IP " + ip + " was successfully unblocked.";
+//                                            }
+//                                        } else {
+//                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                message = "O IP " + ip + " já estava desbloqueado.";
+//                                            } else {
+//                                                message = "The IP " + ip + " was already unblocked.";
+//                                            }
+//                                        }
+//                                        type = "BLOCK";
+//                                        code = 200;
+//                                        result = getMessageHMTL(title, message);
+//                                    } else {
+//                                        type = "BLOCK";
+//                                        code = 200;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "O desafio reCAPTCHA não foi resolvido. "
+//                                                    + "Tente novamente.";
+//                                        } else {
+//                                            message = "The reCAPTCHA challenge was not resolved. "
+//                                                    + "Try again.";
+//                                        }
+//                                        result = getUnblockDNSBLHMTL(locale, message);
+//                                    }
+//                                } else if (valid) {
+//                                    String sender = tokenizer.nextToken();
+//                                    String recipient = tokenizer.nextToken();
+//                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+//                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
+//                                    String mx = Domain.extractHost(sender, true);
+//                                    String origem = Provider.containsExact(mx) ? sender : mx;
+//                                    String white = origem + ">" + recipient;
+//                                    String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
+//                                    String message;
+//                                    if (enviarDesbloqueio(url, sender, recipient, locale)) {
+//                                        white = White.normalizeTokenWhite(white);
+//                                        Block.addExact(white);
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "A solicitação de desbloqueio foi "
+//                                                    + "enviada para o destinatário '" + recipient + "'.\n"
+//                                                    + "Aguarde pelo desbloqueio sem enviar novas mensagens.";
+//                                        } else {
+//                                            message = "The release request was "
+//                                                    + "sent to the recipient '" + recipient + "'.\n"
+//                                                    + "Wait for the release without sending new messages.";
+//                                        }
+//                                    } else {
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Não foi possível enviar a solicitação de "
+//                                                    + "desbloqueio para o destinatário "
+//                                                    + "'" + recipient + "' devido a problemas técnicos.";
+//                                        } else {
+//                                            message = "Could not send the request release to the recipient "
+//                                                    + "'" + recipient + "' due to technical problems.";
+//                                        }
+//                                    }
+//                                    type = "BLOCK";
+//                                    code = 200;
+//                                    result = getMessageHMTL(title, message);
+//                                } else {
+//                                    type = "BLOCK";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "O desafio reCAPTCHA não foi resolvido. "
+//                                                + "Tente novamente.";
+//                                    } else {
+//                                        message = "The reCAPTCHA challenge was not resolved. "
+//                                                + "Try again.";
+//                                    }
+//                                    result = getUnblockHMTL(locale, message);
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "SPFSP";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
+//                    } else if (command.startsWith("/white/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de desbloqueio do SPFBL";
+//                        } else {
+//                            title = "SPFBL unblock page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+//                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+//                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                // Ticket vencido com mais de 5 dias.
+//                                type = "WHITE";
+//                                code = 500;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Este ticket de desbloqueio está vencido.";
+//                                } else {
+//                                    message = "This release ticket is expired.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else {
+//                                boolean valid = true;
+//                                if (Core.hasRecaptchaKeys()) {
+//                                    HashMap<String,Object> parameterMap = getParameterMap(exchange);
+//                                    if (parameterMap.containsKey("recaptcha_challenge_field")
+//                                            && parameterMap.containsKey("recaptcha_response_field")
+//                                            ) {
+//                                        // reCAPCHA convencional.
+//                                        String recaptchaPublicKey = Core.getRecaptchaKeySite();
+//                                        String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+//                                        ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+//                                        String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+//                                        String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+//                                        if (recaptchaResponse == null) {
+//                                            valid = false;
+//                                        } else {
+//                                            ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+//                                            valid = response.isValid();
+//                                        }
+//                                    } else if (parameterMap.containsKey("g-recaptcha-response")) {
+//                                        // TODO: novo reCAPCHA.
+//                                        valid = false;
+//                                    } else {
+//                                        // reCAPCHA necessário.
+//                                        valid = false;
+//                                    }
+//                                }
+//                                if (valid) {
+//                                    String white = tokenizer.nextToken();
+//                                    String userEmail = tokenizer.nextToken().replace(":", "");
+//                                    String ip = tokenizer.nextToken();
+//                                    String sender = tokenizer.nextToken();
+//                                    String recipient = tokenizer.nextToken();
+//                                    String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+//                                    String message;
+//                                    if (White.addExact(white)) {
+//                                        Block.clear(userEmail, ip, sender, hostname, "PASS", recipient);
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
+//                                        } else {
+//                                            message = "The unblock of sender '" + sender + "' has been successfully performed.";
+//                                        }
+//                                    } else {
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "O desbloqueio do remetente '" + sender + "' já havia sido efetuado.";
+//                                        } else {
+//                                            message = "The unblock of sender '" + sender + "' had been made.";
+//                                        }
+//                                    }
+//                                    type = "WHITE";
+//                                    code = 200;
+//                                    result = getMessageHMTL(title, message);
+//                                } else {
+//                                    type = "WHITE";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "O desafio reCAPTCHA não foi resolvido. "
+//                                                + "Tente novamente.";
+//                                    } else {
+//                                        message = "The reCAPTCHA challenge was not resolved. "
+//                                                + "Try again.";
+//                                    }
+//                                    result = getWhiteHMTL(locale, message);
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "SPFSP";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
                     } else if (command.startsWith("/favicon.ico")) {
                         type = "HTTPC";
                         code = 403;
@@ -1179,195 +1240,244 @@ public final class ServerHTTP extends Server {
                         try {
                             String ticket = command.substring(1);
                             byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
-                            long date = byteArray[7] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[6] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[5] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[4] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[3] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[2] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[1] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[0] & 0xFF;
-                            if (System.currentTimeMillis() - date > 432000000) {
-                                String title;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    title = "Página do SPFBL";
-                                } else {
-                                    title = "SPFBL page";
-                                }
-                                type = "HTTPC";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Ticket expirado.";
-                                } else {
-                                    message = "Expired ticket.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                String query = Core.HUFFMAN.decode(byteArray, 8);
-                                StringTokenizer tokenizer = new StringTokenizer(query, " ");
-                                String operator = tokenizer.nextToken();
-                                if (operator.equals("spam")) {
-                                    String sender = null;
-                                    String recipient = null;
-                                    String clientTicket = null;
-                                    TreeSet<String> tokenSet = new TreeSet<String>();
-                                    while (tokenizer.hasMoreTokens()) {
-                                        String token = tokenizer.nextToken();
-                                        if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
-                                            recipient = token.substring(1);
-                                        } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
-                                            clientTicket = token.substring(0, token.length() - 1);
-                                        } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-                                            sender = token;
-                                            tokenSet.add(token);
-                                        } else if (Domain.isEmail(token)) {
-                                            sender = token;
-                                            tokenSet.add(token);
-                                        } else {
-                                            tokenSet.add(token);
-                                        }
-                                    }
-                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                                    HashMap<String, Object> parameterMap = getParameterMap(exchange);
-                                    if (parameterMap.containsKey("identifier")) {
-                                        boolean valid = true;
-                                        TreeSet<String> identifierSet = (TreeSet<String>) parameterMap.get("identifier");
-                                        if (Core.hasRecaptchaKeys()) {
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        tokenSet = SPF.expandTokenSet(tokenSet);
-                                        if (valid) {
-                                            TreeSet<String> blockSet = new TreeSet<String>();
-                                            for (String identifier : identifierSet) {
-                                                if (tokenSet.contains(identifier)) {
-                                                    long time2 = System.currentTimeMillis();
-                                                    String block = clientTicket + identifier + '>' + recipient;
-                                                    if (Block.addExact(block)) {
-                                                        Server.logQuery(
-                                                                time2, "BLOCK",
-                                                                origin,
-                                                                "BLOCK ADD " + block,
-                                                                "ADDED"
-                                                        );
-                                                    }
-                                                    blockSet.add(identifier);
-                                                }
-                                            }
-                                            type = "HTTPC";
-                                            code = 200;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                result = "Bloqueados: " + blockSet + " >" + recipient + "\n";
-                                            } else {
-                                                result = "Blocked: " + blockSet + " >" + recipient + "\n";
-                                            }
-                                        } else {
-                                            type = "HTTPC";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio do reCAPTCHA não foi resolvido.";
-                                            } else {
-                                                message = "The CAPTCHA challenge has not been resolved.";
-                                            }
-                                            result = getComplainHMTL(locale, tokenSet, identifierSet, message, true);
-                                        }
-                                    } else {
-                                        type = "HTTPC";
-                                        code = 500;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            result = "Identificadores indefinidos.\n";
-                                        } else {
-                                            result = "Undefined identifiers.\n";
-                                        }
-                                    }
-                                } else if (operator.equals("unblock")) {
+                            if (byteArray.length > 8) {
+                                long date = byteArray[7] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[6] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[5] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[4] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[3] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[2] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[1] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[0] & 0xFF;
+                                if (System.currentTimeMillis() - date > 432000000) {
                                     String title;
                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de desbloqueio do SPFBL";
+                                        title = "Página do SPFBL";
                                     } else {
-                                        title = "SPFBL unblock page";
+                                        title = "SPFBL page";
                                     }
-                                    try {
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
+                                    type = "HTTPC";
+                                    code = 500;
+                                    String message;
+                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                        message = "Ticket expirado.";
+                                    } else {
+                                        message = "Expired ticket.";
+                                    }
+                                    result = getMessageHMTL(title, message);
+                                } else {
+                                    String query = Core.HUFFMAN.decode(byteArray, 8);
+                                    StringTokenizer tokenizer = new StringTokenizer(query, " ");
+                                    String operator = tokenizer.nextToken();
+                                    if (operator.equals("spam")) {
+                                        String sender = null;
+                                        String recipient = null;
+                                        String clientTicket = null;
+                                        TreeSet<String> tokenSet = new TreeSet<String>();
+                                        while (tokenizer.hasMoreTokens()) {
+                                            String token = tokenizer.nextToken();
+                                            if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
+                                                recipient = token.substring(1);
+                                            } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
+                                                clientTicket = token.substring(0, token.length() - 1);
+                                            } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                                                sender = token;
+                                                tokenSet.add(token);
+                                            } else if (Domain.isEmail(token)) {
+                                                sender = token;
+                                                tokenSet.add(token);
                                             } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
+                                                tokenSet.add(token);
                                             }
                                         }
-                                        String clientTicket = tokenizer.nextToken();
-                                        String ip = tokenizer.nextToken();
-                                        if (!tokenizer.hasMoreTokens()) {
+                                        clientTicket = clientTicket == null ? "" : clientTicket + ':';
+                                        HashMap<String, Object> parameterMap = getParameterMap(exchange);
+                                        if (parameterMap.containsKey("identifier")) {
+                                            boolean valid = true;
+                                            TreeSet<String> identifierSet = (TreeSet<String>) parameterMap.get("identifier");
+                                            if (Core.hasRecaptchaKeys()) {
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            tokenSet = SPF.expandTokenSet(tokenSet);
                                             if (valid) {
+                                                TreeSet<String> blockSet = new TreeSet<String>();
+                                                for (String identifier : identifierSet) {
+                                                    if (tokenSet.contains(identifier)) {
+                                                        long time2 = System.currentTimeMillis();
+                                                        String block = clientTicket + identifier + '>' + recipient;
+                                                        if (Block.addExact(block)) {
+                                                            Server.logQuery(
+                                                                    time2, "BLOCK",
+                                                                    origin,
+                                                                    "BLOCK ADD " + block,
+                                                                    "ADDED"
+                                                            );
+                                                        }
+                                                        blockSet.add(identifier);
+                                                    }
+                                                }
+                                                type = "HTTPC";
+                                                code = 200;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    result = "Bloqueados: " + blockSet + " >" + recipient + "\n";
+                                                } else {
+                                                    result = "Blocked: " + blockSet + " >" + recipient + "\n";
+                                                }
+                                            } else {
+                                                type = "HTTPC";
+                                                code = 200;
                                                 String message;
-                                                if (Block.clearCIDR(ip, clientTicket)) {
-                                                    TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
-                                                    tokenSet.add(clientTicket);
-                                                    String block;
-                                                    for (String token : tokenSet) {
-                                                        while ((block = Block.find(null, null, token, true, true, false)) != null) {
-                                                            if (Block.dropExact(block)) {
-                                                                Server.logInfo("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "O desafio do reCAPTCHA não foi resolvido.";
+                                                } else {
+                                                    message = "The CAPTCHA challenge has not been resolved.";
+                                                }
+                                                result = getComplainHMTL(locale, tokenSet, identifierSet, message, true);
+                                            }
+                                        } else {
+                                            type = "HTTPC";
+                                            code = 500;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                result = "Identificadores indefinidos.\n";
+                                            } else {
+                                                result = "Undefined identifiers.\n";
+                                            }
+                                        }
+                                    } else if (operator.equals("unblock")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de desbloqueio do SPFBL";
+                                        } else {
+                                            title = "SPFBL unblock page";
+                                        }
+                                        try {
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            String clientTicket = tokenizer.nextToken();
+                                            String ip = tokenizer.nextToken();
+                                            if (!tokenizer.hasMoreTokens()) {
+                                                if (valid) {
+                                                    String message;
+                                                    if (Block.clearCIDR(ip, clientTicket)) {
+                                                        TreeSet<String> tokenSet = Reverse.getPointerSet(ip);
+                                                        tokenSet.add(clientTicket);
+                                                        String block;
+                                                        for (String token : tokenSet) {
+                                                            while ((block = Block.find(null, null, token, false, true, true, false)) != null) {
+                                                                if (Block.dropExact(block)) {
+                                                                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + clientTicket + "'.");
+                                                                }
                                                             }
                                                         }
-                                                    }
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "O IP " + ip + " foi desbloqueado com sucesso.";
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "O IP " + ip + " foi desbloqueado com sucesso.";
+                                                        } else {
+                                                            message = "The IP " + ip + " was successfully unblocked.";
+                                                        }
                                                     } else {
-                                                        message = "The IP " + ip + " was successfully unblocked.";
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "O IP " + ip + " já estava desbloqueado.";
+                                                        } else {
+                                                            message = "The IP " + ip + " was already unblocked.";
+                                                        }
+                                                    }
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    result = getMessageHMTL(title, message);
+                                                } else {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O desafio reCAPTCHA não foi resolvido. "
+                                                                + "Tente novamente.";
+                                                    } else {
+                                                        message = "The reCAPTCHA challenge was not resolved. "
+                                                                + "Try again.";
+                                                    }
+                                                    result = getUnblockDNSBLHMTL(locale, message);
+                                                }
+                                            } else if (valid) {
+                                                String sender = tokenizer.nextToken();
+                                                String recipient = tokenizer.nextToken();
+                                                String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                                clientTicket = clientTicket == null ? "" : clientTicket + ':';
+                                                String mx = Domain.extractHost(sender, true);
+                                                String origem = Provider.containsExact(mx) ? sender : mx;
+                                                String white = origem + ">" + recipient;
+                                                String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
+                                                String message;
+                                                if (enviarDesbloqueio(url, sender, recipient, locale)) {
+                                                    white = White.normalizeTokenWhite(white);
+                                                    Block.addExact(clientTicket + white);
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A solicitação de desbloqueio foi enviada para o destinatário '" + recipient + "'.\n"
+                                                                + "A fim de não prejudicar sua reputação, aguarde pelo desbloqueio sem enviar novas mensagens."
+                                                                + (NoReply.contains(sender, true) ? "" : "\nVocê receberá uma mensagem deste sistema assim que o destinatário autorizar o recebimento.");
+                                                    } else {
+                                                        message = "The release request was sent to the recipient '" + recipient + "'.\n"
+                                                                + "In order not to damage your reputation, wait for the release without sending new messages."
+                                                                + (NoReply.contains(sender, true) ? "" : "\nYou will receive a message from this system when the recipient authorize receipt.");
                                                     }
                                                 } else {
                                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "O IP " + ip + " já estava desbloqueado.";
+                                                        message = "Não foi possível enviar a solicitação de "
+                                                                + "desbloqueio para o destinatário "
+                                                                + "'" + recipient + "' devido a problemas técnicos.";
                                                     } else {
-                                                        message = "The IP " + ip + " was already unblocked.";
+                                                        message = "Could not send the request release to the recipient "
+                                                                + "'" + recipient + "' due to technical problems.";
                                                     }
                                                 }
                                                 type = "BLOCK";
@@ -1384,614 +1494,571 @@ public final class ServerHTTP extends Server {
                                                     message = "The reCAPTCHA challenge was not resolved. "
                                                             + "Try again.";
                                                 }
-                                                result = getUnblockDNSBLHMTL(locale, message);
+                                                result = getUnblockHMTL(locale, message);
                                             }
-                                        } else if (valid) {
-                                            String sender = tokenizer.nextToken();
-                                            String recipient = tokenizer.nextToken();
-                                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                            clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                                            String mx = Domain.extractHost(sender, true);
-                                            String origem = Provider.containsExact(mx) ? sender : mx;
-                                            String white = origem + ">" + recipient;
-                                            String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
-                                            String message;
-                                            if (enviarDesbloqueio(url, sender, recipient, locale)) {
-                                                white = White.normalizeTokenWhite(white);
-                                                Block.addExact(white);
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "A solicitação de desbloqueio foi enviada para o destinatário '" + recipient + "'.\n"
-                                                            + "A fim de não prejudicar sua reputação, aguarde pelo desbloqueio sem enviar novas mensagens."
-                                                            + (NoReply.contains(sender, true) ? "" : "\nVocê receberá uma mensagem deste sistema assim que o destinatário autorizar o recebimento.");
-                                                } else {
-                                                    message = "The release request was sent to the recipient '" + recipient + "'.\n"
-                                                            + "In order not to damage your reputation, wait for the release without sending new messages."
-                                                            + (NoReply.contains(sender, true) ? "" : "\nYou will receive a message from this system when the recipient authorize receipt.");
-                                                }
-                                            } else {
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Não foi possível enviar a solicitação de "
-                                                            + "desbloqueio para o destinatário "
-                                                            + "'" + recipient + "' devido a problemas técnicos.";
-                                                } else {
-                                                    message = "Could not send the request release to the recipient "
-                                                            + "'" + recipient + "' due to technical problems.";
-                                                }
-                                            }
-                                            type = "BLOCK";
-                                            code = 200;
-                                            result = getMessageHMTL(title, message);
+                                        } catch (Exception ex) {
+                                            type = "SPFSP";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("holding")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
                                         } else {
-                                            type = "BLOCK";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio reCAPTCHA não foi resolvido. "
-                                                        + "Tente novamente.";
-                                            } else {
-                                                message = "The reCAPTCHA challenge was not resolved. "
-                                                        + "Try again.";
-                                            }
-                                            result = getUnblockHMTL(locale, message);
+                                            title = "SPFBL release page";
                                         }
-                                    } catch (Exception ex) {
-                                        type = "SPFSP";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("holding")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    try {
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        if (valid) {
-                                            String email = tokenizer.nextToken();
-                                            User userLocal = User.get(email);
-                                            Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                            if (queryLocal == null) {
-                                                type = "HOLDN";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Este ticket de liberação não existe mais.";
-                                                } else {
-                                                    message = "This release ticket does not exist any more.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isResult("WHITE")) {
-                                                type = "HOLDN";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi entregue.";
-                                                } else {
-                                                    message = "This message has already been delivered.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isWhiteSender()) {
-                                                type = "HOLDN";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi liberada.";
-                                                } else {
-                                                    message = "This message has already been released.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isBlockSender()) {
-                                                type = "HOLDN";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem foi definitivamente bloqueada.";
-                                                } else {
-                                                    message = "This message has been permanently blocked.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isRecipientAdvised()) {
-                                                type = "HOLDN";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O destinatário ainda não decidiu pela liberação desta mensagem.";
-                                                } else {
-                                                    message = "The recipient has not yet decided to release this message.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.adviseRecipientHOLD(date)) {
-                                                type = "HOLDN";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Solicitação foi enviada com sucesso.";
-                                                } else {
-                                                    message = "Request was sent successfully.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else {
-                                                type = "HOLDN";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "A solicitação não pode ser envada por falha de sistema.";
-                                                } else {
-                                                    message = "The request can not be committed due to system failure.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            }
-                                        } else {
-                                            type = "HOLDN";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio reCAPTCHA não foi "
-                                                        + "resolvido. Tente novamente.";
-                                            } else {
-                                                message = "The reCAPTCHA challenge "
-                                                        + "was not resolved. Try again.";
-                                            }
-                                            result = getHoldingHMTL(locale, message);
-                                        }
-                                    } catch (Exception ex) {
-                                        type = "HOLDN";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("unhold")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    try {
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        if (valid) {
-                                            String email = tokenizer.nextToken();
-                                            User userLocal = User.get(email);
-                                            Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                            if (queryLocal == null) {
-                                                type = "UHOLD";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Este ticket de liberação não existe mais.";
-                                                } else {
-                                                    message = "This release ticket does not exist any more.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (!queryLocal.isHolding()) {
-                                                type = "UHOLD";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi entregue.";
-                                                } else {
-                                                    message = "This message has already been delivered.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isWhite()) {
-                                                type = "UHOLD";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi liberada e será entregue em breve.";
-                                                } else {
-                                                    message = "This message has already been released and will be delivered shortly.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.whiteSender(date)) {
-                                                type = "UHOLD";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "A mensagem foi liberada com sucesso e será entregue em breve.";
-                                                } else {
-                                                    message = "The message has been successfully released and will be delivered shortly.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else {
-                                                type = "UHOLD";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "A liberação não pode ser efetivada por falha de sistema.";
-                                                } else {
-                                                    message = "The release can not be effected due to system failure.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            }
-                                        } else {
-                                            type = "UHOLD";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio reCAPTCHA não foi "
-                                                        + "resolvido. Tente novamente.";
-                                            } else {
-                                                message = "The reCAPTCHA challenge "
-                                                        + "was not resolved. Try again.";
-                                            }
-                                            result = getHoldingHMTL(locale, message);
-                                        }
-                                    } catch (Exception ex) {
-                                        type = "UHOLD";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("block")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de bloqueio do SPFBL";
-                                    } else {
-                                        title = "SPFBL block page";
-                                    }
-                                    try {
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        if (valid) {
-                                            String email = tokenizer.nextToken();
-                                            User userLocal = User.get(email);
-                                            Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                            if (queryLocal == null) {
-                                                type = "BLOCK";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Este ticket de bloqueio não existe mais.";
-                                                } else {
-                                                    message = "This block ticket does not exist any more.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta remetente foi liberado por outro usuário.";
-                                                } else {
-                                                    message = "This sender has been released by another user.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta remetente já foi bloqueado.";
-                                                } else {
-                                                    message = "This message has already been discarded.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isResult("ACCEPT") && queryLocal.blockSender(date)) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O remetente foi bloqueado com sucesso.";
-                                                } else {
-                                                    message = "The sender was successfully blocked.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi descartada.";
-                                                } else {
-                                                    message = "This message has already been discarded.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isWhiteSender()) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem foi liberada por outro usuário.";
-                                                } else {
-                                                    message = "This message has been released by another user.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Esta mensagem já foi bloqueada e será descartada em breve.";
-                                                } else {
-                                                    message = "This message has already been blocked and will be discarded soon.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else if (queryLocal.blockSender(date)) {
-                                                type = "BLOCK";
-                                                code = 200;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "A mensagem foi bloqueada com sucesso e será descartada em breve.";
-                                                } else {
-                                                    message = "The message has been successfully blocked and will be discarded soon.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            } else {
-                                                type = "BLOCK";
-                                                code = 500;
-                                                String message;
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O bloqueio não pode ser efetivado por falha de sistema.";
-                                                } else {
-                                                    message = "The block can not be effected due to system failure.";
-                                                }
-                                                result = getMessageHMTL(title, message);
-                                            }
-                                        } else {
-                                            type = "BLOCK";
-                                            code = 200;
-                                            String message1;
-                                            String message2;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message1 = "A mensagem retida por suspeita de SPAM.";
-                                                message2 = "O desafio reCAPTCHA não foi resolvido. Tente novamente.";
-                                            } else {
-                                                message1 = "The message retained on suspicion of SPAM.";
-                                                message2 = "The reCAPTCHA challenge was not resolved. Try again.";
-                                            }
-                                            result = getBlockHMTL(locale, message1, message2);
-                                        }
-                                    } catch (Exception ex) {
-                                        type = "BLOCK";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("release")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    try {
-                                        
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        if (valid) {
-                                            String id = tokenizer.nextToken();
-                                            String message;
-                                            if (Defer.release(id)) {
-                                                String clientTicket = SPF.getClient(ticket);
-                                                String sender = SPF.getSender(ticket);
-                                                String recipient = SPF.getRecipient(ticket);
-                                                if (clientTicket != null && sender != null && recipient != null) {
-                                                    if (White.addExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
-                                                        Server.logDebug("WHITE ADD " + clientTicket + ":" + sender + ";PASS>" + recipient);
-                                                    }
-                                                }
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Sua mensagem foi liberada com sucesso.";
-                                                } else {
-                                                    message = "Your message has been successfully released.";
-                                                }
-                                            } else {
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Sua mensagem já havia sido liberada.";
-                                                } else {
-                                                    message = "Your message had already been released.";
-                                                }
-                                            }
-                                            type = "DEFER";
-                                            code = 200;
-                                            result = getMessageHMTL(title, message);
-                                        } else {
-                                            type = "DEFER";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio reCAPTCHA não foi "
-                                                        + "resolvido. Tente novamente.";
-                                            } else {
-                                                message = "The reCAPTCHA challenge "
-                                                        + "was not resolved. Try again.";
-                                            }
-                                            result = getReleaseHMTL(locale, message);
-                                        }
-                                    } catch (Exception ex) {
-                                        type = "SPFSP";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("white")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de desbloqueio do SPFBL";
-                                    } else {
-                                        title = "SPFBL unlock page";
-                                    }
-                                    try {
-                                        boolean valid = true;
-                                        if (Core.hasRecaptchaKeys()) {
-                                            HashMap<String,Object> parameterMap = getParameterMap(exchange);
-                                            if (parameterMap.containsKey("recaptcha_challenge_field")
-                                                    && parameterMap.containsKey("recaptcha_response_field")
-                                                    ) {
-                                                // reCAPCHA convencional.
-                                                String recaptchaPublicKey = Core.getRecaptchaKeySite();
-                                                String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
-                                                ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
-                                                String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
-                                                String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
-                                                if (recaptchaResponse == null) {
-                                                    valid = false;
-                                                } else {
-                                                    ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
-                                                    valid = response.isValid();
-                                                }
-                                            } else if (parameterMap.containsKey("g-recaptcha-response")) {
-                                                // TODO: novo reCAPCHA.
-                                                valid = false;
-                                            } else {
-                                                // reCAPCHA necessário.
-                                                valid = false;
-                                            }
-                                        }
-                                        if (valid) {
-                                            String white = White.normalizeTokenWhite(tokenizer.nextToken());
-                                            String clientTicket = tokenizer.nextToken();
-                                            white = clientTicket + white;
-                                            client = Client.getByEmail(clientTicket.replace(":", ""));
-                                            String ip = tokenizer.nextToken();
-                                            String sender = tokenizer.nextToken();
-                                            String recipient = tokenizer.nextToken();
-                                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                            String message;
-                                            if (White.addExact(white)) {
-                                                Block.clear(client, user, ip, sender, hostname, "PASS", recipient);
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
-                                                } else {
-                                                    message = "The unblock of sender '" + sender + "' has been successfully performed.";
-                                                }
-                                                if (!enviarConfirmacaoDesbloqueio(recipient, sender, locale)) {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message += "\nPor favor, informe ao remetente sobre o desbloqueio.";
+                                        try {
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
                                                     } else {
-                                                        message += "\nPlease inform the sender about the release.";
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            if (valid) {
+                                                String email = tokenizer.nextToken();
+                                                User userLocal = User.get(email);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                if (queryLocal == null) {
+                                                    type = "HOLDN";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Este ticket de liberação não existe mais.";
+                                                    } else {
+                                                        message = "This release ticket does not exist any more.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isResult("WHITE")) {
+                                                    type = "HOLDN";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi entregue.";
+                                                    } else {
+                                                        message = "This message has already been delivered.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isWhiteSender()) {
+                                                    type = "HOLDN";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi liberada.";
+                                                    } else {
+                                                        message = "This message has already been released.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isBlockSender()) {
+                                                    type = "HOLDN";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem foi definitivamente bloqueada.";
+                                                    } else {
+                                                        message = "This message has been permanently blocked.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isRecipientAdvised()) {
+                                                    type = "HOLDN";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O destinatário ainda não decidiu pela liberação desta mensagem.";
+                                                    } else {
+                                                        message = "The recipient has not yet decided to release this message.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.adviseRecipientHOLD(date)) {
+                                                    type = "HOLDN";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Solicitação foi enviada com sucesso.";
+                                                    } else {
+                                                        message = "Request was sent successfully.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else {
+                                                    type = "HOLDN";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A solicitação não pode ser envada por falha de sistema.";
+                                                    } else {
+                                                        message = "The request can not be committed due to system failure.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                }
+                                            } else {
+                                                type = "HOLDN";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "O desafio reCAPTCHA não foi "
+                                                            + "resolvido. Tente novamente.";
+                                                } else {
+                                                    message = "The reCAPTCHA challenge "
+                                                            + "was not resolved. Try again.";
+                                                }
+                                                result = getHoldingHMTL(locale, message);
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "HOLDN";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("unhold")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
+                                        } else {
+                                            title = "SPFBL release page";
+                                        }
+                                        try {
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            if (valid) {
+                                                String email = tokenizer.nextToken();
+                                                User userLocal = User.get(email);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                if (queryLocal == null) {
+                                                    type = "UHOLD";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Este ticket de liberação não existe mais.";
+                                                    } else {
+                                                        message = "This release ticket does not exist any more.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (!queryLocal.isHolding()) {
+                                                    type = "UHOLD";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi entregue.";
+                                                    } else {
+                                                        message = "This message has already been delivered.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isWhite()) {
+                                                    type = "UHOLD";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi liberada e será entregue em breve.";
+                                                    } else {
+                                                        message = "This message has already been released and will be delivered shortly.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.whiteSender(date)) {
+                                                    type = "UHOLD";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A mensagem foi liberada com sucesso e será entregue em breve.";
+                                                    } else {
+                                                        message = "The message has been successfully released and will be delivered shortly.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else {
+                                                    type = "UHOLD";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A liberação não pode ser efetivada por falha de sistema.";
+                                                    } else {
+                                                        message = "The release can not be effected due to system failure.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                }
+                                            } else {
+                                                type = "UHOLD";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "O desafio reCAPTCHA não foi "
+                                                            + "resolvido. Tente novamente.";
+                                                } else {
+                                                    message = "The reCAPTCHA challenge "
+                                                            + "was not resolved. Try again.";
+                                                }
+                                                result = getHoldingHMTL(locale, message);
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "UHOLD";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("block")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de bloqueio do SPFBL";
+                                        } else {
+                                            title = "SPFBL block page";
+                                        }
+                                        try {
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            if (valid) {
+                                                String email = tokenizer.nextToken();
+                                                User userLocal = User.get(email);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                if (queryLocal == null) {
+                                                    type = "BLOCK";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Este ticket de bloqueio não existe mais.";
+                                                    } else {
+                                                        message = "This block ticket does not exist any more.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta remetente foi liberado por outro usuário.";
+                                                    } else {
+                                                        message = "This sender has been released by another user.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta remetente já foi bloqueado.";
+                                                    } else {
+                                                        message = "This message has already been discarded.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isResult("ACCEPT") && queryLocal.blockSender(date)) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O remetente foi bloqueado com sucesso.";
+                                                    } else {
+                                                        message = "The sender was successfully blocked.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi descartada.";
+                                                    } else {
+                                                        message = "This message has already been discarded.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isWhiteSender()) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem foi liberada por outro usuário.";
+                                                    } else {
+                                                        message = "This message has been released by another user.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Esta mensagem já foi bloqueada e será descartada em breve.";
+                                                    } else {
+                                                        message = "This message has already been blocked and will be discarded soon.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else if (queryLocal.blockSender(date)) {
+                                                    type = "BLOCK";
+                                                    code = 200;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A mensagem foi bloqueada com sucesso e será descartada em breve.";
+                                                    } else {
+                                                        message = "The message has been successfully blocked and will be discarded soon.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                } else {
+                                                    type = "BLOCK";
+                                                    code = 500;
+                                                    String message;
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O bloqueio não pode ser efetivado por falha de sistema.";
+                                                    } else {
+                                                        message = "The block can not be effected due to system failure.";
+                                                    }
+                                                    result = getMessageHMTL(title, message);
+                                                }
+                                            } else {
+                                                type = "BLOCK";
+                                                code = 200;
+                                                String message1;
+                                                String message2;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message1 = "A mensagem retida por suspeita de SPAM.";
+                                                    message2 = "O desafio reCAPTCHA não foi resolvido. Tente novamente.";
+                                                } else {
+                                                    message1 = "The message retained on suspicion of SPAM.";
+                                                    message2 = "The reCAPTCHA challenge was not resolved. Try again.";
+                                                }
+                                                result = getBlockHMTL(locale, message1, message2);
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "BLOCK";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("release")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
+                                        } else {
+                                            title = "SPFBL release page";
+                                        }
+                                        try {
+
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
+                                                }
+                                            }
+                                            if (valid) {
+                                                String id = tokenizer.nextToken();
+                                                String message;
+                                                if (Defer.release(id)) {
+                                                    String clientTicket = SPF.getClient(ticket);
+                                                    String sender = SPF.getSender(ticket);
+                                                    String recipient = SPF.getRecipient(ticket);
+                                                    if (clientTicket != null && sender != null && recipient != null) {
+                                                        if (White.addExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+                                                            Server.logDebug("WHITE ADD " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                                                        }
+                                                    }
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Sua mensagem foi liberada com sucesso.";
+                                                    } else {
+                                                        message = "Your message has been successfully released.";
+                                                    }
+                                                } else {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Sua mensagem já havia sido liberada.";
+                                                    } else {
+                                                        message = "Your message had already been released.";
                                                     }
                                                 }
+                                                type = "DEFER";
+                                                code = 200;
+                                                result = getMessageHMTL(title, message);
                                             } else {
+                                                type = "DEFER";
+                                                code = 200;
+                                                String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O desbloqueio do remetente '" + sender + "' já havia sido efetuado.";
+                                                    message = "O desafio reCAPTCHA não foi "
+                                                            + "resolvido. Tente novamente.";
                                                 } else {
-                                                    message = "The unblock of sender '" + sender + "' had been made.";
+                                                    message = "The reCAPTCHA challenge "
+                                                            + "was not resolved. Try again.";
+                                                }
+                                                result = getReleaseHMTL(locale, message);
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "SPFSP";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("white")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de desbloqueio do SPFBL";
+                                        } else {
+                                            title = "SPFBL unlock page";
+                                        }
+                                        try {
+                                            boolean valid = true;
+                                            if (Core.hasRecaptchaKeys()) {
+                                                HashMap<String,Object> parameterMap = getParameterMap(exchange);
+                                                if (parameterMap.containsKey("recaptcha_challenge_field")
+                                                        && parameterMap.containsKey("recaptcha_response_field")
+                                                        ) {
+                                                    // reCAPCHA convencional.
+                                                    String recaptchaPublicKey = Core.getRecaptchaKeySite();
+                                                    String recaptchaPrivateKey = Core.getRecaptchaKeySecret();
+                                                    ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaPublicKey, recaptchaPrivateKey, true);
+                                                    String recaptchaChallenge = (String) parameterMap.get("recaptcha_challenge_field");
+                                                    String recaptchaResponse = (String) parameterMap.get("recaptcha_response_field");
+                                                    if (recaptchaResponse == null) {
+                                                        valid = false;
+                                                    } else {
+                                                        ReCaptchaResponse response = captcha.checkAnswer(remoteAddress, recaptchaChallenge, recaptchaResponse);
+                                                        valid = response.isValid();
+                                                    }
+                                                } else if (parameterMap.containsKey("g-recaptcha-response")) {
+                                                    // TODO: novo reCAPCHA.
+                                                    valid = false;
+                                                } else {
+                                                    // reCAPCHA necessário.
+                                                    valid = false;
                                                 }
                                             }
-                                            type = "WHITE";
-                                            code = 200;
-                                            result = getMessageHMTL(title, message);
-                                        } else {
-                                            type = "WHITE";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "O desafio reCAPTCHA não foi resolvido. "
-                                                        + "Tente novamente.";
+                                            if (valid) {
+                                                String white = White.normalizeTokenWhite(tokenizer.nextToken());
+                                                String clientTicket = tokenizer.nextToken();
+                                                white = clientTicket + white;
+                                                String userEmail = clientTicket.replace(":", "");
+                                                String ip = tokenizer.nextToken();
+                                                String sender = tokenizer.nextToken();
+                                                String recipient = tokenizer.nextToken();
+                                                String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                                String message;
+                                                if (White.addExact(white)) {
+                                                    Block.clear(userEmail, ip, sender, hostname, "PASS", recipient);
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O desbloqueio do remetente '" + sender + "' foi efetuado com sucesso.";
+                                                    } else {
+                                                        message = "The unblock of sender '" + sender + "' has been successfully performed.";
+                                                    }
+                                                    if (!enviarConfirmacaoDesbloqueio(recipient, sender, locale)) {
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message += "\nPor favor, informe ao remetente sobre o desbloqueio.";
+                                                        } else {
+                                                            message += "\nPlease inform the sender about the release.";
+                                                        }
+                                                    }
+                                                } else {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "O desbloqueio do remetente '" + sender + "' já havia sido efetuado.";
+                                                    } else {
+                                                        message = "The unblock of sender '" + sender + "' had been made.";
+                                                    }
+                                                }
+                                                type = "WHITE";
+                                                code = 200;
+                                                result = getMessageHMTL(title, message);
                                             } else {
-                                                message = "The reCAPTCHA challenge was not resolved. "
-                                                        + "Try again.";
+                                                type = "WHITE";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "O desafio reCAPTCHA não foi resolvido. "
+                                                            + "Tente novamente.";
+                                                } else {
+                                                    message = "The reCAPTCHA challenge was not resolved. "
+                                                            + "Try again.";
+                                                }
+                                                result = getWhiteHMTL(locale, message);
                                             }
-                                            result = getWhiteHMTL(locale, message);
+                                        } catch (Exception ex) {
+                                            type = "SPFSP";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
                                         }
-                                    } catch (Exception ex) {
-                                        type = "SPFSP";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                    } else {
+                                        type = "HTTPC";
+                                        code = 403;
+                                        result = "Forbidden\n";
                                     }
-                                } else {
-                                    type = "HTTPC";
-                                    code = 403;
-                                    result = "Forbidden\n";
                                 }
+                            } else {
+                                type = "HTTPC";
+                                code = 403;
+                                result = "Forbidden\n";
                             }
                         } catch (Exception ex) {
                             type = "HTTPC";
@@ -2017,7 +2084,8 @@ public final class ServerHTTP extends Server {
                         if (userLogin != null && userLogin.isEmail(userEmail)) {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             Long begin = (Long) parameterMap.get("begin");
-                            message = getControlPanel(locale, userLogin, begin);
+                            String filter = (String) parameterMap.get("filter");
+                            message = getControlPanel(locale, userLogin, begin, filter);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
                                     "Login do SPFBL",
@@ -2073,46 +2141,59 @@ public final class ServerHTTP extends Server {
                             result = "Forbidden\n";
                         } else {
                             long queryTime = Long.parseLong(command.substring(1));
-                            User.Query query = userLogin.getQuery(queryTime);
-                            if (query == null) {
-                                type = "QUERY";
-                                code = 403;
-                                result = "Forbidden\n";
-                            } else {
+                            if (queryTime == 0) {
                                 type = "QUERY";
                                 code = 200;
-                                result = getControlPanel(locale, query, queryTime);
+                                result = "";
+                            } else {
+                                User.Query query = userLogin.getQuery(queryTime);
+                                if (query == null) {
+                                    type = "QUERY";
+                                    code = 403;
+                                    result = "Forbidden\n";
+                                } else {
+                                    type = "QUERY";
+                                    code = 200;
+                                    result = getControlPanel(locale, query, queryTime);
+                                }
                             }
                         }
-                    } else if (command.startsWith("/dnsbl/")) {
+                    } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             title = "Página de checagem DNSBL";
                         } else {
                             title = "DNSBL check page";
                         }
-                        int index = command.indexOf('/', 1) + 1;
-                        String query = command.substring(index).trim();
+                        String query;
+                        if (command.startsWith("/dnsbl/")) {
+                            int index = command.indexOf('/', 1) + 1;
+                            query = command.substring(index).trim();
+                        } else {
+                            query = command.substring(1);
+                        }
                         if (Subnet.isValidIP(query)) {
+                            String ip = Subnet.normalizeIP(query);
                             type = "DNSBL";
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resultado da checagem DNSBL do IP " + query + ".";
+                                message = "Resultado da checagem DNSBL do IP " + ip + ".";
                             } else {
-                                message = "DNSBL checking the result of IP " + query + ".";
+                                message = "DNSBL checking the result of IP " + ip + ".";
                             }
-                            result = getDNSBLHTML(locale, client, query, message);
+                            result = getDNSBLHTML(locale, client, ip, message);
                         } else if (Domain.isHostname(query)) {
+                            String hostname = Domain.normalizeHostname(query, false);
                             type = "DNSBL";
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resultado da checagem DNSBL do domínio '" + query + "'.";
+                                message = "Resultado da checagem DNSBL do domínio '" + hostname + "'.";
                             } else {
-                                message = "DNSBL checking the result of domain " + query + ".";
+                                message = "DNSBL checking the result of domain " + hostname + ".";
                             }
-                            result = getDNSBLHTML(locale, client, query, message);
+                            result = getDNSBLHTML(locale, client, hostname, message);
                         } else {
                             type = "DNSBL";
                             code = 500;
@@ -2124,372 +2205,372 @@ public final class ServerHTTP extends Server {
                             }
                             result = getMessageHMTL(title, message);
                         }
-                    } else if (command.startsWith("/spam/")) {
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String recipient = SPF.getRecipient(ticket);
-                            boolean whiteBlockForm = recipient != null;
-                            TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
-                            TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
-                            tokenSet = SPF.expandTokenSet(tokenSet);
-                            TreeSet<String> selectionSet = new TreeSet<String>();
-                            String message;
-                            if (complainSet == null) {
-                                complainSet = SPF.getComplain(ticket);
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "A mensagem já havia sido denunciada antes.";
-                                } else {
-                                    message = "The message had been reported before.";
-                                }
-                            } else {
-                                String clientTicket = SPF.getClient(ticket);
-                                String sender = SPF.getSender(ticket);
-                                if (clientTicket != null && sender != null && recipient != null) {
-                                    if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
-                                        Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
-                                    }
-                                }
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "A mensagem foi denunciada com sucesso.";
-                                } else {
-                                    message = "The message has been reported as SPAM.";
-                                }
-                            }
-                            for (String token : complainSet) {
-                                if (!Subnet.isValidIP(token)) {
-                                    selectionSet.add(token);
-                                }
-                            }
-                            type = "SPFSP";
-                            code = 200;
-                            result = getComplainHMTL(locale, tokenSet, selectionSet, message, whiteBlockForm);
-                        } catch (Exception ex) {
-                            type = "SPFSP";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
-                    } else if (command.startsWith("/ham/")) {
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
-                            if (tokenSet == null) {
-                                type = "SPFHM";
-                                code = 404;
-                                result = "ALREADY REMOVED\n";
-                            } else {
-                                type = "SPFHM";
-                                code = 200;
-                                String recipient = SPF.getRecipient(ticket);
-                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
-                            }
-                        } catch (Exception ex) {
-                            type = "SPFHM";
-                            code = 500;
-                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                        }
-                    } else if (command.startsWith("/release/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de liberação do SPFBL";
-                        } else {
-                            title = "SPFBL release page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            index = registry.indexOf(' ');
-                            Date date = Server.parseTicketDate(registry.substring(0, index));
-                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                // Ticket vencido com mais de 5 dias.
-                                type = "DEFER";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Este ticket de liberação está vencido.";
-                                } else {
-                                    message = "This release ticket is expired.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                String id = registry.substring(index + 1);
-                                Defer defer = Defer.getDefer(date, id);
-                                if (defer == null) {
-                                    type = "DEFER";
-                                    code = 500;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Este ticket de liberação não existe ou já foi liberado antes.";
-                                    } else {
-                                        message = "This release ticket does not exist or has been released before.";
-                                    }
-                                    result = getMessageHMTL(title, message);
-                                } else if (defer.isReleased()) {
-                                    type = "DEFER";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Sua mensagem já havia sido liberada.";
-                                    } else {
-                                        message = "Your message had already been freed.";
-                                    }
-                                    result = getMessageHMTL(title, message);
-                                } else {
-                                    type = "DEFER";
-                                    code = 200;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Para liberar o recebimento da mensagem, "
-                                            + "resolva o desafio reCAPTCHA abaixo.";
-                                    } else {
-                                        message = "To release the receipt of the message, "
-                                            + "solve the CAPTCHA below.";
-                                    }
-                                    result = getReleaseHMTL(locale, message);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            type = "DEFER";
-                            code = 500;
-                            String message;
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Ocorreu um erro no processamento desta solicitação: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            } else {
-                                message = "There was an error processing this request: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            }
-                            result = getMessageHMTL(title, message);
-                        }
-                    } else if (command.startsWith("/unblock/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de desbloqueio do SPFBL";
-                        } else {
-                            title = "SPFBL unblock page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                            Date date = Server.parseTicketDate(tokenizer.nextToken());
-                            String clientTicket = tokenizer.nextToken();
-                            String ip = tokenizer.nextToken();
-                            if (!tokenizer.hasMoreTokens()) {
-                                type = "BLOCK";
-                                code = 200;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Para desbloquear o IP '" + ip + "'\n"
-                                            + "resolva o desafio reCAPTCHA abaixo.";
-                                } else {
-                                    message = "To unblock the IP '" + ip + "'\n"
-                                            + "solve the CAPTCHA below.";
-                                }
-                                result = getUnblockDNSBLHMTL(locale, message);
-                            } else {
-                                String sender = tokenizer.nextToken();
-                                String recipient = tokenizer.nextToken();
-                                String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                String mx = Domain.extractHost(sender, true);
-                                SPF.Qualifier qualifier = SPF.getQualifier(ip, sender, hostname, true);
-                                if (qualifier == SPF.Qualifier.PASS) {
-                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                                    String origem = Provider.containsExact(mx) ? sender : mx;
-                                    if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                        // Ticket vencido com mais de 5 dias.
-                                        type = "BLOCK";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Este ticket de desbloqueio está vencido.";
-                                        } else {
-                                            message = "This release ticket is expired.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (sender == null || recipient == null) {
-                                        type = "BLOCK";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Este ticket de desbloqueio não "
-                                                    + "contém remetente e destinatário.";
-                                        } else {
-                                            message = "This release ticket does not "
-                                                    + "contains the sender and recipient.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O destinatário '" + recipient + "' "
-                                                    + "já autorizou o recebimento de mensagens "
-                                                    + "do remetente '" + sender + "'.";
-                                        } else {
-                                            message = "The recipient '" + recipient + "' "
-                                                    + "already authorized receiving messages "
-                                                    + "from sender '" + sender + "'.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O destinatário '" + recipient + "' "
-                                                    + "não decidiu se quer receber mensagens "
-                                                    + "do remetente '" + sender + "'.\n"
-                                                    + "Para que a reputação deste remetente "
-                                                    + "não seja prejudicada neste sistema, "
-                                                    + "é necessário que ele pare de tentar "
-                                                    + "enviar mensagens para este "
-                                                    + "destinatário até a sua decisão.\n"
-                                                    + "Cada tentativa de envio por ele, "
-                                                    + "conta um ponto negativo na "
-                                                    + "reputação dele neste sistema.";
-                                        } else {
-                                            message = "The recipient '" + recipient + "' "
-                                                    + "not decided whether to receive messages "
-                                                    + "from sender '" + sender + "'.\n"
-                                                    + "For the reputation of the sender "
-                                                    + "is not impaired in this system, "
-                                                    + "it needs to stop trying to "
-                                                    + "send messages to this "
-                                                    + "recipient until its decision.\n"
-                                                    + "Each attempt to send him, "
-                                                    + "has a negative point in "
-                                                    + "reputation in this system.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
-                                                    + "diretamente para o destinatário '" + recipient + "',\n"
-                                                    + "resolva o desafio reCAPTCHA abaixo.";
-                                        } else {
-                                            message = "To request unblock the sender '" + sender + "'\n"
-                                                    + "directly to the recipient '" + recipient + "',\n"
-                                                    + "solve the challenge reCAPTCHA below.";
-                                        }
-                                        result = getUnblockHMTL(locale, message);
-                                    }
-                                } else {
-                                    type = "BLOCK";
-                                    code = 500;
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
-                                                + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema,\n"
-                                                + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
-                                                + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS,\n"
-                                                + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
-                                    } else {
-                                        message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
-                                                + "To be able to request unblocking to recipient, through this system,\n"
-                                                + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
-                                                + "After making this change, wait a few hours for DNS propagation,\n"
-                                                + "and re-access the same page to proceed with the unblock process.";
-                                    }
-                                    result = getMessageHMTL(title, message);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            Server.logError(ex);
-                            type = "BLOCK";
-                            code = 500;
-                            String message;
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Ocorreu um erro no processamento desta solicitação: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            } else {
-                                message = "There was an error processing this request: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            }
-                            result = getMessageHMTL(title, message);
-                        }
-                    } else if (command.startsWith("/white/")) {
-                        String title;
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            title = "Página de desbloqueio do SPFBL";
-                        } else {
-                            title = "SPFBL unblock page";
-                        }
-                        try {
-                            int index = command.indexOf('/', 1) + 1;
-                            String ticket = command.substring(index);
-                            ticket = URLDecoder.decode(ticket, "UTF-8");
-                            String registry = Server.decrypt(ticket);
-                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
-                            Date date = Server.parseTicketDate(tokenizer.nextToken());
-                            String white = tokenizer.nextToken();
-                            String clientTicket = tokenizer.nextToken();
-                            String ip = tokenizer.nextToken();
-                            String sender = tokenizer.nextToken();
-                            String recipient = tokenizer.nextToken();
-                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
-                                // Ticket vencido com mais de 5 dias.
-                                type = "WHITE";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message =  "Este ticket de desbloqueio está vencido.";
-                                } else {
-                                    message =  "This unblock ticket is expired.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else if (White.containsExact(white)) {
-                                type = "WHITE";
-                                code = 200;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Já houve liberação deste remetente '"
-                                            + "" + sender + "' pelo destinatário '"
-                                            + "" + recipient + "'.";
-                                } else {
-                                    message = "There have been release from this sender '"
-                                            + "" + sender + "' by recipient '"
-                                            + "" + recipient + "'.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                type = "WHITE";
-                                code = 200;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Para desbloquear este remetente '" + sender + "',\n"
-                                            + "resolva o desafio reCAPTCHA abaixo.";
-                                } else {
-                                    message = "To unblock this sender '" + sender + "',\n"
-                                            + "please solve the reCAPTCHA below.";
-                                }
-                                result = getWhiteHMTL(locale, message);
-                            }
-                        } catch (Exception ex) {
-                            type = "WHITE";
-                            code = 500;
-                            String message;
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Ocorreu um erro no processamento desta solicitação: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            } else {
-                                message = "There was an error processing this request: "
-                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                            }
-                            result = getMessageHMTL(title, message);
-                        }
+//                    } else if (command.startsWith("/spam/")) {
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String recipient = SPF.getRecipient(ticket);
+//                            boolean whiteBlockForm = recipient != null;
+//                            TreeSet<String> complainSet = SPF.addComplain(origin, ticket);
+//                            TreeSet<String> tokenSet = SPF.getTokenSet(ticket);
+//                            tokenSet = SPF.expandTokenSet(tokenSet);
+//                            TreeSet<String> selectionSet = new TreeSet<String>();
+//                            String message;
+//                            if (complainSet == null) {
+//                                complainSet = SPF.getComplain(ticket);
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "A mensagem já havia sido denunciada antes.";
+//                                } else {
+//                                    message = "The message had been reported before.";
+//                                }
+//                            } else {
+//                                String clientTicket = SPF.getClient(ticket);
+//                                String sender = SPF.getSender(ticket);
+//                                if (clientTicket != null && sender != null && recipient != null) {
+//                                    if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+//                                        Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
+//                                    }
+//                                }
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "A mensagem foi denunciada com sucesso.";
+//                                } else {
+//                                    message = "The message has been reported as SPAM.";
+//                                }
+//                            }
+//                            for (String token : complainSet) {
+//                                if (!Subnet.isValidIP(token)) {
+//                                    selectionSet.add(token);
+//                                }
+//                            }
+//                            type = "SPFSP";
+//                            code = 200;
+//                            result = getComplainHMTL(locale, tokenSet, selectionSet, message, whiteBlockForm);
+//                        } catch (Exception ex) {
+//                            type = "SPFSP";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
+//                    } else if (command.startsWith("/ham/")) {
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            TreeSet<String> tokenSet = SPF.deleteComplain(origin, ticket);
+//                            if (tokenSet == null) {
+//                                type = "SPFHM";
+//                                code = 404;
+//                                result = "ALREADY REMOVED\n";
+//                            } else {
+//                                type = "SPFHM";
+//                                code = 200;
+//                                String recipient = SPF.getRecipient(ticket);
+//                                result = "OK " + tokenSet + (recipient == null ? "" : " >" + recipient) + "\n";
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "SPFHM";
+//                            code = 500;
+//                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+//                        }
+//                    } else if (command.startsWith("/release/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de liberação do SPFBL";
+//                        } else {
+//                            title = "SPFBL release page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            index = registry.indexOf(' ');
+//                            Date date = Server.parseTicketDate(registry.substring(0, index));
+//                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                // Ticket vencido com mais de 5 dias.
+//                                type = "DEFER";
+//                                code = 500;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Este ticket de liberação está vencido.";
+//                                } else {
+//                                    message = "This release ticket is expired.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else {
+//                                String id = registry.substring(index + 1);
+//                                Defer defer = Defer.getDefer(date, id);
+//                                if (defer == null) {
+//                                    type = "DEFER";
+//                                    code = 500;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "Este ticket de liberação não existe ou já foi liberado antes.";
+//                                    } else {
+//                                        message = "This release ticket does not exist or has been released before.";
+//                                    }
+//                                    result = getMessageHMTL(title, message);
+//                                } else if (defer.isReleased()) {
+//                                    type = "DEFER";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "Sua mensagem já havia sido liberada.";
+//                                    } else {
+//                                        message = "Your message had already been freed.";
+//                                    }
+//                                    result = getMessageHMTL(title, message);
+//                                } else {
+//                                    type = "DEFER";
+//                                    code = 200;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "Para liberar o recebimento da mensagem, "
+//                                            + "resolva o desafio reCAPTCHA abaixo.";
+//                                    } else {
+//                                        message = "To release the receipt of the message, "
+//                                            + "solve the CAPTCHA below.";
+//                                    }
+//                                    result = getReleaseHMTL(locale, message);
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "DEFER";
+//                            code = 500;
+//                            String message;
+//                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                message = "Ocorreu um erro no processamento desta solicitação: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            } else {
+//                                message = "There was an error processing this request: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            }
+//                            result = getMessageHMTL(title, message);
+//                        }
+//                    } else if (command.startsWith("/unblock/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de desbloqueio do SPFBL";
+//                        } else {
+//                            title = "SPFBL unblock page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+//                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+//                            String clientTicket = tokenizer.nextToken();
+//                            String ip = tokenizer.nextToken();
+//                            if (!tokenizer.hasMoreTokens()) {
+//                                type = "BLOCK";
+//                                code = 200;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Para desbloquear o IP '" + ip + "'\n"
+//                                            + "resolva o desafio reCAPTCHA abaixo.";
+//                                } else {
+//                                    message = "To unblock the IP '" + ip + "'\n"
+//                                            + "solve the CAPTCHA below.";
+//                                }
+//                                result = getUnblockDNSBLHMTL(locale, message);
+//                            } else {
+//                                String sender = tokenizer.nextToken();
+//                                String recipient = tokenizer.nextToken();
+//                                String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+//                                String mx = Domain.extractHost(sender, true);
+//                                SPF.Qualifier qualifier = SPF.getQualifier2(ip, sender, hostname, true);
+//                                if (qualifier == SPF.Qualifier.PASS) {
+//                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
+//                                    String origem = Provider.containsExact(mx) ? sender : mx;
+//                                    if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                        // Ticket vencido com mais de 5 dias.
+//                                        type = "BLOCK";
+//                                        code = 500;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Este ticket de desbloqueio está vencido.";
+//                                        } else {
+//                                            message = "This release ticket is expired.";
+//                                        }
+//                                        result = getMessageHMTL(title, message);
+//                                    } else if (sender == null || recipient == null) {
+//                                        type = "BLOCK";
+//                                        code = 500;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Este ticket de desbloqueio não "
+//                                                    + "contém remetente e destinatário.";
+//                                        } else {
+//                                            message = "This release ticket does not "
+//                                                    + "contains the sender and recipient.";
+//                                        }
+//                                        result = getMessageHMTL(title, message);
+//                                    } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
+//                                        type = "BLOCK";
+//                                        code = 200;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "O destinatário '" + recipient + "' "
+//                                                    + "já autorizou o recebimento de mensagens "
+//                                                    + "do remetente '" + sender + "'.";
+//                                        } else {
+//                                            message = "The recipient '" + recipient + "' "
+//                                                    + "already authorized receiving messages "
+//                                                    + "from sender '" + sender + "'.";
+//                                        }
+//                                        result = getMessageHMTL(title, message);
+//                                    } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
+//                                        type = "BLOCK";
+//                                        code = 200;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "O destinatário '" + recipient + "' "
+//                                                    + "não decidiu se quer receber mensagens "
+//                                                    + "do remetente '" + sender + "'.\n"
+//                                                    + "Para que a reputação deste remetente "
+//                                                    + "não seja prejudicada neste sistema, "
+//                                                    + "é necessário que ele pare de tentar "
+//                                                    + "enviar mensagens para este "
+//                                                    + "destinatário até a sua decisão.\n"
+//                                                    + "Cada tentativa de envio por ele, "
+//                                                    + "conta um ponto negativo na "
+//                                                    + "reputação dele neste sistema.";
+//                                        } else {
+//                                            message = "The recipient '" + recipient + "' "
+//                                                    + "not decided whether to receive messages "
+//                                                    + "from sender '" + sender + "'.\n"
+//                                                    + "For the reputation of the sender "
+//                                                    + "is not impaired in this system, "
+//                                                    + "it needs to stop trying to "
+//                                                    + "send messages to this "
+//                                                    + "recipient until its decision.\n"
+//                                                    + "Each attempt to send him, "
+//                                                    + "has a negative point in "
+//                                                    + "reputation in this system.";
+//                                        }
+//                                        result = getMessageHMTL(title, message);
+//                                    } else {
+//                                        type = "BLOCK";
+//                                        code = 200;
+//                                        String message;
+//                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
+//                                                    + "diretamente para o destinatário '" + recipient + "',\n"
+//                                                    + "resolva o desafio reCAPTCHA abaixo.";
+//                                        } else {
+//                                            message = "To request unblock the sender '" + sender + "'\n"
+//                                                    + "directly to the recipient '" + recipient + "',\n"
+//                                                    + "solve the challenge reCAPTCHA below.";
+//                                        }
+//                                        result = getUnblockHMTL(locale, message);
+//                                    }
+//                                } else {
+//                                    type = "BLOCK";
+//                                    code = 500;
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
+//                                                + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema,\n"
+//                                                + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
+//                                                + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS,\n"
+//                                                + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
+//                                    } else {
+//                                        message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
+//                                                + "To be able to request unblocking to recipient, through this system,\n"
+//                                                + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
+//                                                + "After making this change, wait a few hours for DNS propagation,\n"
+//                                                + "and re-access the same page to proceed with the unblock process.";
+//                                    }
+//                                    result = getMessageHMTL(title, message);
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            Server.logError(ex);
+//                            type = "BLOCK";
+//                            code = 500;
+//                            String message;
+//                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                message = "Ocorreu um erro no processamento desta solicitação: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            } else {
+//                                message = "There was an error processing this request: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            }
+//                            result = getMessageHMTL(title, message);
+//                        }
+//                    } else if (command.startsWith("/white/")) {
+//                        String title;
+//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                            title = "Página de desbloqueio do SPFBL";
+//                        } else {
+//                            title = "SPFBL unblock page";
+//                        }
+//                        try {
+//                            int index = command.indexOf('/', 1) + 1;
+//                            String ticket = command.substring(index);
+//                            ticket = URLDecoder.decode(ticket, "UTF-8");
+//                            String registry = Server.decrypt(ticket);
+//                            StringTokenizer tokenizer = new StringTokenizer(registry, " ");
+//                            Date date = Server.parseTicketDate(tokenizer.nextToken());
+//                            String white = tokenizer.nextToken();
+//                            String clientTicket = tokenizer.nextToken();
+//                            String ip = tokenizer.nextToken();
+//                            String sender = tokenizer.nextToken();
+//                            String recipient = tokenizer.nextToken();
+//                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+//                            if (System.currentTimeMillis() - date.getTime() > 432000000) {
+//                                // Ticket vencido com mais de 5 dias.
+//                                type = "WHITE";
+//                                code = 500;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message =  "Este ticket de desbloqueio está vencido.";
+//                                } else {
+//                                    message =  "This unblock ticket is expired.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else if (White.containsExact(white)) {
+//                                type = "WHITE";
+//                                code = 200;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Já houve liberação deste remetente '"
+//                                            + "" + sender + "' pelo destinatário '"
+//                                            + "" + recipient + "'.";
+//                                } else {
+//                                    message = "There have been release from this sender '"
+//                                            + "" + sender + "' by recipient '"
+//                                            + "" + recipient + "'.";
+//                                }
+//                                result = getMessageHMTL(title, message);
+//                            } else {
+//                                type = "WHITE";
+//                                code = 200;
+//                                String message;
+//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                    message = "Para desbloquear este remetente '" + sender + "',\n"
+//                                            + "resolva o desafio reCAPTCHA abaixo.";
+//                                } else {
+//                                    message = "To unblock this sender '" + sender + "',\n"
+//                                            + "please solve the reCAPTCHA below.";
+//                                }
+//                                result = getWhiteHMTL(locale, message);
+//                            }
+//                        } catch (Exception ex) {
+//                            type = "WHITE";
+//                            code = 500;
+//                            String message;
+//                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                message = "Ocorreu um erro no processamento desta solicitação: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            } else {
+//                                message = "There was an error processing this request: "
+//                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+//                            }
+//                            result = getMessageHMTL(title, message);
+//                        }
                     } else if (command.startsWith("/favicon.ico")) {
                         type = "HTTPC";
                         code = 403;
@@ -2498,583 +2579,589 @@ public final class ServerHTTP extends Server {
                         try {
                             String ticket = command.substring(1);
                             byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
-                            long date = byteArray[7] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[6] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[5] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[4] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[3] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[2] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[1] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[0] & 0xFF;
-                            if (System.currentTimeMillis() - date > 432000000) {
-                                String title;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    title = "Página do SPFBL";
-                                } else {
-                                    title = "SPFBL page";
-                                }
-                                type = "HTTPC";
-                                code = 500;
-                                String message;
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Ticket expirado.";
-                                } else {
-                                    message = "Expired ticket.";
-                                }
-                                result = getMessageHMTL(title, message);
-                            } else {
-                                String query = Core.HUFFMAN.decode(byteArray, 8);
-                                StringTokenizer tokenizer = new StringTokenizer(query, " ");
-                                String operator = tokenizer.nextToken();
-                                if (operator.equals("spam")) {
-                                    try {
-                                        String sender = null;
-                                        String recipient = null;
-                                        String clientTicket = null;
-                                        TreeSet<String> tokenSet = new TreeSet<String>();
-                                        while (tokenizer.hasMoreTokens()) {
-                                            String token = tokenizer.nextToken();
-                                            if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
-                                                recipient = token.substring(1);
-                                            } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
-                                                clientTicket = token.substring(0, token.length() - 1);
-                                            } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-                                                sender = token;
-                                                tokenSet.add(token);
-                                            } else if (Domain.isEmail(token)) {
-                                                sender = token;
-                                                tokenSet.add(token);
-                                            } else {
-                                                tokenSet.add(token);
-                                            }
-                                        }
-                                        boolean whiteBlockForm = recipient != null;
-                                        TreeSet<String> complainSet = SPF.addComplain(origin, date, tokenSet, recipient);
-                                        tokenSet = SPF.expandTokenSet(tokenSet);
-                                        TreeSet<String> selectionSet = new TreeSet<String>();
-                                        String message;
-                                        if (complainSet == null) {
-                                            complainSet = SPF.getComplain(ticket);
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "A mensagem já havia sido denunciada antes.";
-                                            } else {
-                                                message = "The message had been reported before.";
-                                            }
-                                        } else {
-                                            if (clientTicket != null && sender != null && recipient != null) {
-                                                if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
-                                                    Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
-                                                }
-                                            }
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "A mensagem foi denunciada com sucesso.";
-                                            } else {
-                                                message = "The message has been reported as SPAM.";
-                                            }
-                                        }
-                                        for (String token : complainSet) {
-                                            if (!Subnet.isValidIP(token)) {
-                                                selectionSet.add(token);
-                                            }
-                                        }
-                                        type = "SPFSP";
-                                        code = 200;
-                                        result = getComplainHMTL(locale, tokenSet, selectionSet, message, whiteBlockForm);
-                                    } catch (Exception ex) {
-                                        type = "SPFSP";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
-                                    }
-                                } else if (operator.equals("unblock")) {
+                            if (byteArray.length > 8) {
+                                long date = byteArray[7] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[6] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[5] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[4] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[3] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[2] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[1] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[0] & 0xFF;
+                                if (System.currentTimeMillis() - date > 432000000) {
                                     String title;
                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de desbloqueio do SPFBL";
+                                        title = "Página do SPFBL";
                                     } else {
-                                        title = "SPFBL unblock page";
+                                        title = "SPFBL page";
                                     }
-                                    try {
-                                        String clientTicket = tokenizer.nextToken();
-                                        String ip = tokenizer.nextToken();
-                                        if (!tokenizer.hasMoreTokens()) {
-                                            type = "BLOCK";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Para desbloquear o IP '" + ip + "'\n"
-                                                        + "resolva o desafio reCAPTCHA abaixo.";
-                                            } else {
-                                                message = "To unblock the IP '" + ip + "'\n"
-                                                        + "solve the CAPTCHA below.";
+                                    type = "HTTPC";
+                                    code = 500;
+                                    String message;
+                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                        message = "Ticket expirado.";
+                                    } else {
+                                        message = "Expired ticket.";
+                                    }
+                                    result = getMessageHMTL(title, message);
+                                } else {
+                                    String query = Core.HUFFMAN.decode(byteArray, 8);
+                                    StringTokenizer tokenizer = new StringTokenizer(query, " ");
+                                    String operator = tokenizer.nextToken();
+                                    if (operator.equals("spam")) {
+                                        try {
+                                            String sender = null;
+                                            String recipient = null;
+                                            String clientTicket = null;
+                                            TreeSet<String> tokenSet = new TreeSet<String>();
+                                            while (tokenizer.hasMoreTokens()) {
+                                                String token = tokenizer.nextToken();
+                                                if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
+                                                    recipient = token.substring(1);
+                                                } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
+                                                    clientTicket = token.substring(0, token.length() - 1);
+                                                } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                                                    sender = token;
+                                                    tokenSet.add(token);
+                                                } else if (Domain.isEmail(token)) {
+                                                    sender = token;
+                                                    tokenSet.add(token);
+                                                } else {
+                                                    tokenSet.add(token);
+                                                }
                                             }
-                                            result = getUnblockDNSBLHMTL(locale, message);
+                                            boolean whiteBlockForm = recipient != null;
+                                            TreeSet<String> complainSet = SPF.addComplain(origin, date, tokenSet, recipient);
+                                            tokenSet = SPF.expandTokenSet(tokenSet);
+                                            TreeSet<String> selectionSet = new TreeSet<String>();
+                                            String message;
+                                            if (complainSet == null) {
+                                                complainSet = SPF.getComplain(ticket);
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "A mensagem já havia sido denunciada antes.";
+                                                } else {
+                                                    message = "The message had been reported before.";
+                                                }
+                                            } else {
+                                                if (clientTicket != null && sender != null && recipient != null) {
+                                                    if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+                                                        Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                                                    }
+                                                }
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "A mensagem foi denunciada com sucesso.";
+                                                } else {
+                                                    message = "The message has been reported as SPAM.";
+                                                }
+                                            }
+                                            for (String token : complainSet) {
+                                                if (!Subnet.isValidIP(token)) {
+                                                    selectionSet.add(token);
+                                                }
+                                            }
+                                            type = "SPFSP";
+                                            code = 200;
+                                            result = getComplainHMTL(locale, tokenSet, selectionSet, message, whiteBlockForm);
+                                        } catch (Exception ex) {
+                                            type = "SPFSP";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                        }
+                                    } else if (operator.equals("unblock")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de desbloqueio do SPFBL";
                                         } else {
-                                            String sender = tokenizer.nextToken();
-                                            String recipient = tokenizer.nextToken();
-                                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                            String mx = Domain.extractHost(sender, true);
-                                            SPF.Qualifier qualifier = SPF.getQualifier(ip, sender, hostname, true);
-                                            if (qualifier == SPF.Qualifier.PASS) {
-                                                clientTicket = clientTicket == null ? "" : clientTicket + ':';
-                                                String origem = Provider.containsExact(mx) ? sender : mx;
-                                                if (sender == null || recipient == null) {
+                                            title = "SPFBL unblock page";
+                                        }
+                                        try {
+                                            String clientTicket = tokenizer.nextToken();
+                                            String ip = tokenizer.nextToken();
+                                            if (!tokenizer.hasMoreTokens()) {
+                                                type = "BLOCK";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Para desbloquear o IP '" + ip + "'\n"
+                                                            + "resolva o desafio reCAPTCHA abaixo.";
+                                                } else {
+                                                    message = "To unblock the IP '" + ip + "'\n"
+                                                            + "solve the CAPTCHA below.";
+                                                }
+                                                result = getUnblockDNSBLHMTL(locale, message);
+                                            } else {
+                                                String sender = tokenizer.nextToken();
+                                                String recipient = tokenizer.nextToken();
+                                                String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                                String mx = Domain.extractHost(sender, true);
+                                                SPF.Qualifier qualifier = SPF.getQualifier2(ip, sender, hostname, true);
+                                                if (qualifier == SPF.Qualifier.PASS) {
+                                                    clientTicket = clientTicket == null ? "" : clientTicket + ':';
+                                                    String origem = Provider.containsExact(mx) ? sender : mx;
+                                                    if (sender == null || recipient == null) {
+                                                        type = "BLOCK";
+                                                        code = 500;
+                                                        String message;
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "Este ticket de desbloqueio não "
+                                                                    + "contém remetente e destinatário.";
+                                                        } else {
+                                                            message = "This release ticket does not "
+                                                                    + "contains the sender and recipient.";
+                                                        }
+                                                        result = getMessageHMTL(title, message);
+                                                    } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
+                                                        type = "BLOCK";
+                                                        code = 200;
+                                                        String message;
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "O destinatário '" + recipient + "' "
+                                                                    + "já autorizou o recebimento de mensagens "
+                                                                    + "do remetente '" + sender + "'.";
+                                                        } else {
+                                                            message = "The recipient '" + recipient + "' "
+                                                                    + "already authorized receiving messages "
+                                                                    + "from sender '" + sender + "'.";
+                                                        }
+                                                        result = getMessageHMTL(title, message);
+                                                    } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
+                                                        type = "BLOCK";
+                                                        code = 200;
+                                                        String message;
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message =  "O destinatário '" + recipient + "' "
+                                                                    + "não decidiu se quer receber mensagens "
+                                                                    + "do remetente '" + sender + "'.\n"
+                                                                    + "Para que a reputação deste remetente "
+                                                                    + "não seja prejudicada neste sistema, "
+                                                                    + "é necessário que ele pare de tentar "
+                                                                    + "enviar mensagens para este "
+                                                                    + "destinatário até a sua decisão.\n"
+                                                                    + "Cada tentativa de envio por ele, "
+                                                                    + "conta um ponto negativo na "
+                                                                    + "reputação dele neste sistema.";
+                                                        } else {
+                                                            message =  "The recipient '" + recipient + "' "
+                                                                    + "not decided whether to receive messages "
+                                                                    + "from sender '" + sender + "'.\n"
+                                                                    + "For the reputation of the sender "
+                                                                    + "is not impaired in this system, "
+                                                                    + "it needs to stop trying to "
+                                                                    + "send messages to this "
+                                                                    + "recipient until its decision.\n"
+                                                                    + "Each attempt to send him, "
+                                                                    + "has a negative point in "
+                                                                    + "reputation in this system.";
+                                                        }
+                                                        result = getMessageHMTL(title, message);
+                                                    } else {
+                                                        type = "BLOCK";
+                                                        code = 200;
+                                                        String message;
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
+                                                                    + "diretamente para o destinatário '" + recipient + "',\n"
+                                                                    + "resolva o desafio reCAPTCHA abaixo.";
+                                                        } else {
+                                                            message = "To request unblock the sender '" + sender + "'\n"
+                                                                    + "directly to the recipient '" + recipient + "',\n"
+                                                                    + "solve the challenge reCAPTCHA below.";
+                                                        }
+                                                        result = getUnblockHMTL(locale, message);
+                                                    }
+                                                } else {
                                                     type = "BLOCK";
                                                     code = 500;
                                                     String message;
                                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Este ticket de desbloqueio não "
-                                                                + "contém remetente e destinatário.";
+                                                        message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
+                                                                + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema,\n"
+                                                                + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
+                                                                + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS,\n"
+                                                                + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
                                                     } else {
-                                                        message = "This release ticket does not "
-                                                                + "contains the sender and recipient.";
+                                                        message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
+                                                                + "To be able to request unblocking to recipient, through this system,\n"
+                                                                + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
+                                                                + "After making this change, wait a few hours for DNS propagation,\n"
+                                                                + "and re-access the same page to proceed with the unblock process.";
                                                     }
                                                     result = getMessageHMTL(title, message);
-                                                } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
-                                                    type = "BLOCK";
-                                                    code = 200;
-                                                    String message;
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "O destinatário '" + recipient + "' "
-                                                                + "já autorizou o recebimento de mensagens "
-                                                                + "do remetente '" + sender + "'.";
-                                                    } else {
-                                                        message = "The recipient '" + recipient + "' "
-                                                                + "already authorized receiving messages "
-                                                                + "from sender '" + sender + "'.";
-                                                    }
-                                                    result = getMessageHMTL(title, message);
-                                                } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
-                                                    type = "BLOCK";
-                                                    code = 200;
-                                                    String message;
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message =  "O destinatário '" + recipient + "' "
-                                                                + "não decidiu se quer receber mensagens "
-                                                                + "do remetente '" + sender + "'.\n"
-                                                                + "Para que a reputação deste remetente "
-                                                                + "não seja prejudicada neste sistema, "
-                                                                + "é necessário que ele pare de tentar "
-                                                                + "enviar mensagens para este "
-                                                                + "destinatário até a sua decisão.\n"
-                                                                + "Cada tentativa de envio por ele, "
-                                                                + "conta um ponto negativo na "
-                                                                + "reputação dele neste sistema.";
-                                                    } else {
-                                                        message =  "The recipient '" + recipient + "' "
-                                                                + "not decided whether to receive messages "
-                                                                + "from sender '" + sender + "'.\n"
-                                                                + "For the reputation of the sender "
-                                                                + "is not impaired in this system, "
-                                                                + "it needs to stop trying to "
-                                                                + "send messages to this "
-                                                                + "recipient until its decision.\n"
-                                                                + "Each attempt to send him, "
-                                                                + "has a negative point in "
-                                                                + "reputation in this system.";
-                                                    }
-                                                    result = getMessageHMTL(title, message);
-                                                } else {
-                                                    type = "BLOCK";
-                                                    code = 200;
-                                                    String message;
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
-                                                                + "diretamente para o destinatário '" + recipient + "',\n"
-                                                                + "resolva o desafio reCAPTCHA abaixo.";
-                                                    } else {
-                                                        message = "To request unblock the sender '" + sender + "'\n"
-                                                                + "directly to the recipient '" + recipient + "',\n"
-                                                                + "solve the challenge reCAPTCHA below.";
-                                                    }
-                                                    result = getUnblockHMTL(locale, message);
                                                 }
+                                            }
+                                        } catch (Exception ex) {
+                                            Server.logError(ex);
+                                            type = "BLOCK";
+                                            code = 500;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Ocorreu um erro no processamento desta solicitação: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             } else {
-                                                type = "BLOCK";
+                                                message = "There was an error processing this request: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        }
+                                    } else if (operator.equals("holding")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
+                                        } else {
+                                            title = "SPFBL release page";
+                                        }
+                                        String email = tokenizer.nextToken();
+                                        User userLocal = User.get(email);
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        if (queryLocal == null) {
+                                            type = "HOLDN";
+                                            code = 500;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Este ticket de liberação não existe mais.";
+                                            } else {
+                                                message = "This release ticket does not exist any more.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isResult("WHITE")) {
+                                            type = "HOLDN";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi entregue.";
+                                            } else {
+                                                message = "This message has already been delivered.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isWhiteSender()) {
+                                            type = "HOLDN";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi liberada.";
+                                            } else {
+                                                message = "This message has already been released.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isBlockSender()) {
+                                            type = "HOLDN";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem foi definitivamente bloqueada.";
+                                            } else {
+                                                message = "This message has been permanently blocked.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isRecipientAdvised()) {
+                                            type = "HOLDN";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "O destinatário ainda não decidiu pela liberação desta mensagem.";
+                                            } else {
+                                                message = "The recipient has not yet decided to release this message.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else {
+                                            type = "HOLDN";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Para solicitar liberação desta mensagem, "
+                                                        + "resolva o CAPTCHA abaixo.";
+                                            } else {
+                                                message = "To request release of this message, "
+                                                    + "solve the CAPTCHA below.";
+                                            }
+                                            result = getHoldingHMTL(locale, message);
+                                        }
+                                    } else if (operator.equals("unhold")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
+                                        } else {
+                                            title = "SPFBL release page";
+                                        }
+                                        String email = tokenizer.nextToken();
+                                        User userLocal = User.get(email);
+                                        DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+                                        GregorianCalendar calendar = new GregorianCalendar();
+                                        calendar.setTimeInMillis(date);
+                                        Server.logTrace(dateFormat.format(calendar.getTime()));
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        if (queryLocal == null) {
+                                            type = "UHOLD";
+                                            code = 500;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Este ticket de liberação não existe mais.";
+                                            } else {
+                                                message = "This release ticket does not exist any more.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (!queryLocal.isHolding()) {
+                                            type = "UHOLD";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi entregue.";
+                                            } else {
+                                                message = "This message has already been delivered.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isWhite()) {
+                                            type = "UHOLD";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi liberada e será entregue em breve.";
+                                            } else {
+                                                message = "This message has already been released and will be delivered shortly.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else {
+                                            type = "UHOLD";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Para confirmar a liberação desta mensagem, "
+                                                        + "resolva o CAPTCHA abaixo.";
+                                            } else {
+                                                message = "To confirm the release of this message, "
+                                                    + "solve the CAPTCHA below.";
+                                            }
+                                            result = getHoldingHMTL(locale, message);
+                                        }
+                                    } else if (operator.equals("block")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de bloqueio do SPFBL";
+                                        } else {
+                                            title = "SPFBL block page";
+                                        }
+                                        String email = tokenizer.nextToken();
+                                        User userLocal = User.get(email);
+                                        DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+                                        GregorianCalendar calendar = new GregorianCalendar();
+                                        calendar.setTimeInMillis(date);
+                                        Server.logTrace(dateFormat.format(calendar.getTime()));
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        if (queryLocal == null) {
+                                            type = "BLOCK";
+                                            code = 500;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Este ticket de liberação não existe mais.";
+                                            } else {
+                                                message = "This release ticket does not exist any more.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta remetente foi liberado por outro usuário.";
+                                            } else {
+                                                message = "This sender has been released by another user.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta remetente já foi bloqueado.";
+                                            } else {
+                                                message = "This message has already been discarded.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isResult("ACCEPT")) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message1;
+                                            String message2;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message1 = "Mensagem com forte suspeita de SPAM.";
+                                                message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
+                                            } else {
+                                                message1 = "Message with strong suspicion of SPAM.";
+                                                message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
+                                            }
+                                            result = getBlockHMTL(locale, message1, message2);
+                                        } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi descartada.";
+                                            } else {
+                                                message = "This message has already been discarded.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isWhiteSender()) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem foi liberada por outro usuário.";
+                                            } else {
+                                                message = "This message has been released by another user.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Esta mensagem já foi bloqueada e será descartada em breve.";
+                                            } else {
+                                                message = "This message has already been blocked and will be discarded soon.";
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        } else {
+                                            type = "BLOCK";
+                                            code = 200;
+                                            String message1;
+                                            String message2;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message1 = "A mensagem foi retida por suspeita de SPAM.";
+                                                message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
+                                            } else {
+                                                message1 = "The message was retained on suspicion of SPAM.";
+                                                message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
+                                            }
+                                            result = getBlockHMTL(locale, message1, message2);
+                                        }
+                                    } else if (operator.equals("release")) {
+                                        String title;
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            title = "Página de liberação do SPFBL";
+                                        } else {
+                                            title = "SPFBL release page";
+                                        }
+                                        try {
+                                            String id = tokenizer.nextToken();
+                                            Defer defer = Defer.getDefer(date, id);
+                                            if (defer == null) {
+                                                type = "DEFER";
                                                 code = 500;
                                                 String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
-                                                            + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema,\n"
-                                                            + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
-                                                            + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS,\n"
-                                                            + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
+                                                    message = "Este ticket de liberação não existe ou já foi liberado antes.";
                                                 } else {
-                                                    message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
-                                                            + "To be able to request unblocking to recipient, through this system,\n"
-                                                            + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
-                                                            + "After making this change, wait a few hours for DNS propagation,\n"
-                                                            + "and re-access the same page to proceed with the unblock process.";
+                                                    message = "This release ticket does not exist or has been released before.";
                                                 }
                                                 result = getMessageHMTL(title, message);
+                                            } else if (defer.isReleased()) {
+                                                type = "DEFER";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Sua mensagem já havia sido liberada.";
+                                                } else {
+                                                    message = "Your message had already been freed.";
+                                                }
+                                                result = getMessageHMTL(title, message);
+                                            } else {
+                                                type = "DEFER";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Para liberar o recebimento da mensagem, "
+                                                        + "resolva o desafio reCAPTCHA abaixo.";
+                                                } else {
+                                                    message = "To release the receipt of the message, "
+                                                        + "solve the CAPTCHA below.";
+                                                }
+                                                result = getReleaseHMTL(locale, message);
                                             }
-                                        }
-                                    } catch (Exception ex) {
-                                        Server.logError(ex);
-                                        type = "BLOCK";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Ocorreu um erro no processamento desta solicitação: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                                        } else {
-                                            message = "There was an error processing this request: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    }
-                                } else if (operator.equals("holding")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    String email = tokenizer.nextToken();
-                                    User userLocal = User.get(email);
-                                    Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                    if (queryLocal == null) {
-                                        type = "HOLDN";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Este ticket de liberação não existe mais.";
-                                        } else {
-                                            message = "This release ticket does not exist any more.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isResult("WHITE")) {
-                                        type = "HOLDN";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi entregue.";
-                                        } else {
-                                            message = "This message has already been delivered.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isWhiteSender()) {
-                                        type = "HOLDN";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi liberada.";
-                                        } else {
-                                            message = "This message has already been released.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isBlockSender()) {
-                                        type = "HOLDN";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem foi definitivamente bloqueada.";
-                                        } else {
-                                            message = "This message has been permanently blocked.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isRecipientAdvised()) {
-                                        type = "HOLDN";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "O destinatário ainda não decidiu pela liberação desta mensagem.";
-                                        } else {
-                                            message = "The recipient has not yet decided to release this message.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else {
-                                        type = "HOLDN";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Para solicitar liberação desta mensagem, "
-                                                    + "resolva o CAPTCHA abaixo.";
-                                        } else {
-                                            message = "To request release of this message, "
-                                                + "solve the CAPTCHA below.";
-                                        }
-                                        result = getHoldingHMTL(locale, message);
-                                    }
-                                } else if (operator.equals("unhold")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    String email = tokenizer.nextToken();
-                                    User userLocal = User.get(email);
-                                    DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
-                                    GregorianCalendar calendar = new GregorianCalendar();
-                                    calendar.setTimeInMillis(date);
-                                    Server.logTrace(dateFormat.format(calendar.getTime()));
-                                    Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                    if (queryLocal == null) {
-                                        type = "UHOLD";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Este ticket de liberação não existe mais.";
-                                        } else {
-                                            message = "This release ticket does not exist any more.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (!queryLocal.isHolding()) {
-                                        type = "UHOLD";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi entregue.";
-                                        } else {
-                                            message = "This message has already been delivered.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isWhite()) {
-                                        type = "UHOLD";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi liberada e será entregue em breve.";
-                                        } else {
-                                            message = "This message has already been released and will be delivered shortly.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else {
-                                        type = "UHOLD";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Para confirmar a liberação desta mensagem, "
-                                                    + "resolva o CAPTCHA abaixo.";
-                                        } else {
-                                            message = "To confirm the release of this message, "
-                                                + "solve the CAPTCHA below.";
-                                        }
-                                        result = getHoldingHMTL(locale, message);
-                                    }
-                                } else if (operator.equals("block")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de bloqueio do SPFBL";
-                                    } else {
-                                        title = "SPFBL block page";
-                                    }
-                                    String email = tokenizer.nextToken();
-                                    User userLocal = User.get(email);
-                                    DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
-                                    GregorianCalendar calendar = new GregorianCalendar();
-                                    calendar.setTimeInMillis(date);
-                                    Server.logTrace(dateFormat.format(calendar.getTime()));
-                                    Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
-                                    if (queryLocal == null) {
-                                        type = "BLOCK";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Este ticket de liberação não existe mais.";
-                                        } else {
-                                            message = "This release ticket does not exist any more.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta remetente foi liberado por outro usuário.";
-                                        } else {
-                                            message = "This sender has been released by another user.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta remetente já foi bloqueado.";
-                                        } else {
-                                            message = "This message has already been discarded.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isResult("ACCEPT")) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message1;
-                                        String message2;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message1 = "Mensagem com forte suspeita de SPAM.";
-                                            message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
-                                        } else {
-                                            message1 = "Message with strong suspicion of SPAM.";
-                                            message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
-                                        }
-                                        result = getBlockHMTL(locale, message1, message2);
-                                    } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi descartada.";
-                                        } else {
-                                            message = "This message has already been discarded.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isWhiteSender()) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem foi liberada por outro usuário.";
-                                        } else {
-                                            message = "This message has been released by another user.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Esta mensagem já foi bloqueada e será descartada em breve.";
-                                        } else {
-                                            message = "This message has already been blocked and will be discarded soon.";
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    } else {
-                                        type = "BLOCK";
-                                        code = 200;
-                                        String message1;
-                                        String message2;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message1 = "A mensagem foi retida por suspeita de SPAM.";
-                                            message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
-                                        } else {
-                                            message1 = "The message was retained on suspicion of SPAM.";
-                                            message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
-                                        }
-                                        result = getBlockHMTL(locale, message1, message2);
-                                    }
-                                } else if (operator.equals("release")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de liberação do SPFBL";
-                                    } else {
-                                        title = "SPFBL release page";
-                                    }
-                                    try {
-                                        String id = tokenizer.nextToken();
-                                        Defer defer = Defer.getDefer(date, id);
-                                        if (defer == null) {
+                                        } catch (Exception ex) {
                                             type = "DEFER";
                                             code = 500;
                                             String message;
                                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Este ticket de liberação não existe ou já foi liberado antes.";
+                                                message = "Ocorreu um erro no processamento desta solicitação: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             } else {
-                                                message = "This release ticket does not exist or has been released before.";
+                                                message = "There was an error processing this request: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             }
                                             result = getMessageHMTL(title, message);
-                                        } else if (defer.isReleased()) {
-                                            type = "DEFER";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Sua mensagem já havia sido liberada.";
-                                            } else {
-                                                message = "Your message had already been freed.";
-                                            }
-                                            result = getMessageHMTL(title, message);
-                                        } else {
-                                            type = "DEFER";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Para liberar o recebimento da mensagem, "
-                                                    + "resolva o desafio reCAPTCHA abaixo.";
-                                            } else {
-                                                message = "To release the receipt of the message, "
-                                                    + "solve the CAPTCHA below.";
-                                            }
-                                            result = getReleaseHMTL(locale, message);
                                         }
-                                    } catch (Exception ex) {
-                                        type = "DEFER";
-                                        code = 500;
-                                        String message;
+                                    } else if (operator.equals("white")) {
+                                        String title;
                                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Ocorreu um erro no processamento desta solicitação: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+                                            title = "Página de desbloqueio do SPFBL";
                                         } else {
-                                            message = "There was an error processing this request: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+                                            title = "SPFBL unblock page";
                                         }
-                                        result = getMessageHMTL(title, message);
-                                    }
-                                } else if (operator.equals("white")) {
-                                    String title;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        title = "Página de desbloqueio do SPFBL";
+                                        try {
+                                            String white = White.normalizeTokenWhite(tokenizer.nextToken());
+                                            String clientTicket = tokenizer.nextToken();
+                                            white = clientTicket + white;
+                                            String ip = tokenizer.nextToken();
+                                            String sender = tokenizer.nextToken();
+                                            String recipient = tokenizer.nextToken();
+                                            String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                                            if (White.containsExact(white)) {
+                                                type = "WHITE";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Já houve liberação deste remetente '"
+                                                            + "" + sender + "' pelo destinatário '"
+                                                            + "" + recipient + "'.";
+                                                } else {
+                                                    message = "There have been release from this sender '"
+                                                            + "" + sender + "' by recipient '"
+                                                            + "" + recipient + "'.";
+                                                }
+                                                result = getMessageHMTL(title, message);
+                                            } else {
+                                                type = "WHITE";
+                                                code = 200;
+                                                String message;
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Para desbloquear este remetente '" + sender + "',\n"
+                                                            + "resolva o desafio reCAPTCHA abaixo.";
+                                                } else {
+                                                    message = "To unblock this sender '" + sender + "',\n"
+                                                            + "please solve the reCAPTCHA below.";
+                                                }
+                                                result = getWhiteHMTL(locale, message);
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "WHITE";
+                                            code = 500;
+                                            String message;
+                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                message = "Ocorreu um erro no processamento desta solicitação: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+                                            } else {
+                                                message = "There was an error processing this request: "
+                                                        + ex.getMessage() == null ? "undefined error." : ex.getMessage();
+                                            }
+                                            result = getMessageHMTL(title, message);
+                                        }
                                     } else {
-                                        title = "SPFBL unblock page";
+                                        type = "HTTPC";
+                                        code = 403;
+                                        result = "Forbidden\n";
                                     }
-                                    try {
-                                        String white = White.normalizeTokenWhite(tokenizer.nextToken());
-                                        String clientTicket = tokenizer.nextToken();
-                                        white = clientTicket + white;
-                                        String ip = tokenizer.nextToken();
-                                        String sender = tokenizer.nextToken();
-                                        String recipient = tokenizer.nextToken();
-                                        String hostname = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
-                                        if (White.containsExact(white)) {
-                                            type = "WHITE";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Já houve liberação deste remetente '"
-                                                        + "" + sender + "' pelo destinatário '"
-                                                        + "" + recipient + "'.";
-                                            } else {
-                                                message = "There have been release from this sender '"
-                                                        + "" + sender + "' by recipient '"
-                                                        + "" + recipient + "'.";
-                                            }
-                                            result = getMessageHMTL(title, message);
-                                        } else {
-                                            type = "WHITE";
-                                            code = 200;
-                                            String message;
-                                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message = "Para desbloquear este remetente '" + sender + "',\n"
-                                                        + "resolva o desafio reCAPTCHA abaixo.";
-                                            } else {
-                                                message = "To unblock this sender '" + sender + "',\n"
-                                                        + "please solve the reCAPTCHA below.";
-                                            }
-                                            result = getWhiteHMTL(locale, message);
-                                        }
-                                    } catch (Exception ex) {
-                                        type = "WHITE";
-                                        code = 500;
-                                        String message;
-                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                            message = "Ocorreu um erro no processamento desta solicitação: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                                        } else {
-                                            message = "There was an error processing this request: "
-                                                    + ex.getMessage() == null ? "undefined error." : ex.getMessage();
-                                        }
-                                        result = getMessageHMTL(title, message);
-                                    }
-                                } else {
-                                    type = "HTTPC";
-                                    code = 403;
-                                    result = "Forbidden\n";
                                 }
+                            } else {
+                                type = "HTTPC";
+                                code = 403;
+                                result = "Forbidden\n";
                             }
                         } catch (Exception ex) {
                             type = "HTTPC";
@@ -3129,74 +3216,80 @@ public final class ServerHTTP extends Server {
                         try {
                             String ticket = command.substring(1);
                             byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
-                            long date = byteArray[7] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[6] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[5] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[4] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[3] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[2] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[1] & 0xFF;
-                            date <<= 8;
-                            date += byteArray[0] & 0xFF;
-                            if (System.currentTimeMillis() - date > 432000000) {
-                                type = "HTTPC";
-                                code = 500;
-                                result = "EXPIRED TICKET.\n";
-                            } else {
-                                String query = Core.HUFFMAN.decode(byteArray, 8);
-                                StringTokenizer tokenizer = new StringTokenizer(query, " ");
-                                command = tokenizer.nextToken();
-                                if (command.equals("spam")) {
-                                    try {
-                                        type = "SPFSP";
-                                        code = 200;
-                                        String sender = null;
-                                        String recipient = null;
-                                        String clientTicket = null;
-                                        TreeSet<String> tokenSet = new TreeSet<String>();
-                                        while (tokenizer.hasMoreTokens()) {
-                                            String token = tokenizer.nextToken();
-                                            if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
-                                                recipient = token.substring(1);
-                                            } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
-                                                clientTicket = token.substring(0, token.length() - 1);
-                                            } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
-                                                sender = token;
-                                                tokenSet.add(token);
-                                            } else if (Domain.isEmail(token)) {
-                                                sender = token;
-                                                tokenSet.add(token);
-                                            } else {
-                                                tokenSet.add(token);
-                                            }
-                                        }
-                                        TreeSet<String> complainSet = SPF.addComplain(origin, date, tokenSet, recipient);
-                                        if (complainSet == null) {
-                                            result = "DUPLICATE COMPLAIN\n";
-                                        } else {
-                                            if (clientTicket != null && sender != null && recipient != null) {
-                                                if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
-                                                    Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                            if (byteArray.length > 8) {
+                                long date = byteArray[7] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[6] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[5] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[4] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[3] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[2] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[1] & 0xFF;
+                                date <<= 8;
+                                date += byteArray[0] & 0xFF;
+                                if (System.currentTimeMillis() - date > 432000000) {
+                                    type = "HTTPC";
+                                    code = 500;
+                                    result = "EXPIRED TICKET.\n";
+                                } else {
+                                    String query = Core.HUFFMAN.decode(byteArray, 8);
+                                    StringTokenizer tokenizer = new StringTokenizer(query, " ");
+                                    command = tokenizer.nextToken();
+                                    if (command.equals("spam")) {
+                                        try {
+                                            type = "SPFSP";
+                                            code = 200;
+                                            String sender = null;
+                                            String recipient = null;
+                                            String clientTicket = null;
+                                            TreeSet<String> tokenSet = new TreeSet<String>();
+                                            while (tokenizer.hasMoreTokens()) {
+                                                String token = tokenizer.nextToken();
+                                                if (token.startsWith(">") && Domain.isEmail(token.substring(1))) {
+                                                    recipient = token.substring(1);
+                                                } else if (token.endsWith(":") && Domain.isEmail(token.substring(0, token.length() - 1))) {
+                                                    clientTicket = token.substring(0, token.length() - 1);
+                                                } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                                                    sender = token;
+                                                    tokenSet.add(token);
+                                                } else if (Domain.isEmail(token)) {
+                                                    sender = token;
+                                                    tokenSet.add(token);
+                                                } else {
+                                                    tokenSet.add(token);
                                                 }
                                             }
-                                            result = "OK " + complainSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                                            TreeSet<String> complainSet = SPF.addComplain(origin, date, tokenSet, recipient);
+                                            if (complainSet == null) {
+                                                result = "DUPLICATE COMPLAIN\n";
+                                            } else {
+                                                if (clientTicket != null && sender != null && recipient != null) {
+                                                    if (White.dropExact(clientTicket + ":" + sender + ";PASS>" + recipient)) {
+                                                        Server.logDebug("WHITE DROP " + clientTicket + ":" + sender + ";PASS>" + recipient);
+                                                    }
+                                                }
+                                                result = "OK " + complainSet + (recipient == null ? "" : " >" + recipient) + "\n";
+                                            }
+                                        } catch (Exception ex) {
+                                            type = "SPFSP";
+                                            code = 500;
+                                            result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
                                         }
-                                    } catch (Exception ex) {
-                                        type = "SPFSP";
-                                        code = 500;
-                                        result = ex.getMessage() == null ? "Undefined error." : ex.getMessage() + "\n";
+                                    } else {
+                                        type = "HTTPC";
+                                        code = 403;
+                                        result = "Forbidden\n";
                                     }
-                                } else {
-                                    type = "HTTPC";
-                                    code = 403;
-                                    result = "Forbidden\n";
                                 }
+                            } else {
+                                type = "HTTPC";
+                                code = 403;
+                                result = "Forbidden\n";
                             }
                         } catch (Exception ex) {
                             type = "HTTPC";
@@ -3303,7 +3396,7 @@ public final class ServerHTTP extends Server {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
                 } else {
-                    builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/english/\">SPFBL.net</a></small><br>\n");
+                    builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
                 }
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
@@ -3586,13 +3679,13 @@ public final class ServerHTTP extends Server {
         }
         builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
+        builder.append("    <p><form method=\"POST\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       A sua mensagem está sendo rejeitada por bloqueio manual.<br>\n");
+            builder.append("       <p>A sua mensagem está sendo rejeitada por bloqueio manual.\n");
         } else {
-            builder.append("       Your message is being rejected by manual block.<br>\n");
+            builder.append("       <p>Your message is being rejected by manual block.\n");
         }
-        builder.append("       ");
+        builder.append("       <p>");
         StringTokenizer tokenizer = new StringTokenizer(message, "\n");
         while (tokenizer.hasMoreTokens()) {
             String line = tokenizer.nextToken();
@@ -3623,7 +3716,13 @@ public final class ServerHTTP extends Server {
 //            builder.append("</a>.<br>\n");
 //        }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3648,7 +3747,8 @@ public final class ServerHTTP extends Server {
         }
         builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
+        builder.append("    <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>\n");
+        builder.append("    <p><form method=\"POST\">\n");
         StringTokenizer tokenizer = new StringTokenizer(message, "\n");
         while (tokenizer.hasMoreTokens()) {
             String line = tokenizer.nextToken();
@@ -3672,9 +3772,11 @@ public final class ServerHTTP extends Server {
         }
         builder.append("    </form>\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
             builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
         } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/english/\">SPFBL.net</a></small><br>\n");
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
         }
         builder.append("  </body>\n");
         builder.append("</html>\n");
@@ -3730,7 +3832,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Release\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3765,7 +3873,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Login\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3813,7 +3927,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Send\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3867,7 +3987,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Release\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3921,7 +4047,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Request\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3978,7 +4110,13 @@ public final class ServerHTTP extends Server {
             builder.append("       <input type=\"submit\" value=\"Block\">\n");
         }
         builder.append("    </form>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -4068,7 +4206,7 @@ public final class ServerHTTP extends Server {
                             if (!NoReply.contains(email, true)) {
                                 emailSet.add(email);
                             }
-                            if (!Generic.contains(hostname) && SPF.matchHELO(ip, hostname)) {
+                            if (!Generic.containsGeneric(hostname) && SPF.matchHELO(ip, hostname)) {
                                 String subdominio = hostname;
                                 while (!subdominio.equals(domain)) {
                                     email = "postmaster@" + subdominio.substring(1);
@@ -4106,21 +4244,41 @@ public final class ServerHTTP extends Server {
         return emailSet;
     }
     
+    public static void main(String[] args) {
+        System.out.println(Subnet.isReservedIP("2605:9880:0:7b9:20c:29ff:fe3a:a3dd"));
+    }
+    
+    private static final HashMap<String,Boolean> openSMTP = new HashMap<String,Boolean>();
+    
     private static String getDNSBLHTML(
             Locale locale,
             Client client,
-            String query,
+            final String query,
             String message
             ) {
         StringBuilder builder = new StringBuilder();
-        if (client != null && client.hasEmail() && client.getEmail().endsWith(".br")) {
-            locale = new Locale("pt", "BR");
-        } else if (client != null && client.hasEmail() && client.getEmail().endsWith(".pt")) {
-            locale = new Locale("pt", "PT");
-        }
+        boolean isSLAAC = SubnetIPv6.isSLAAC(query) && !Subnet.isReservedIP(query);
+        Boolean isOpenSMTP = openSMTP.get(query);
         builder.append("<html>\n");
         builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        if (isSLAAC && isOpenSMTP == null) {
+            if (openSMTP.containsKey(query)) {
+                builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"3;");
+            } else {
+                builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"10;");
+                openSMTP.put(query, null);
+                new Thread() {
+                    @Override
+                    public void run() {
+                        openSMTP.put(query, Analise.isOpenSMTP(query, 3000));
+                    }
+                }.start();
+            }
+            builder.append(Core.getURL(locale, query));
+            builder.append("\">\n");
+        } else {
+            builder.append("    <meta charset=\"UTF-8\">\n");
+        }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
             builder.append("    <title>Página de checagem DNSBL</title>\n");
         } else {
@@ -4141,11 +4299,33 @@ public final class ServerHTTP extends Server {
                 } else {
                     builder.append("    <p>This is a reserved IP and for this reason is not addressed in this list.\n");
                 }
-            } else {
+            } else if (isSLAAC && isOpenSMTP == null) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Reversos encontrados:");
+                    builder.append("    <p>Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC).\n");
+                    builder.append("    <p>Estamos verificando se existe serviço SMTP neste IP. Aguarde...\n");
                 } else {
-                    builder.append("    <p>rDNS found:");
+                    builder.append("    <p>This IP contains network address autoconfiguration flag (SLAAC).\n");
+                    builder.append("    <p>We are checking if there is SMTP service on this IP. Wait...\n");
+                }
+            } else if (isSLAAC && !isOpenSMTP) {
+                openSMTP.remove(query);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC)<br>\n");
+                    builder.append("    mas não foi possível verificar se existe um serviço de e-mail válido nele.\n");
+                    builder.append("    <p>Se este IP está sendo usado por um servidor de e-mail legítimo,<br>\n");
+                    builder.append("    abra a porta 25 para que possamos verificar que existe um serviço SMTP nele.\n");
+                } else {
+                    builder.append("    <p>This IP contains network address autoconfiguration flag (SLAAC)<br>\n");
+                    builder.append("    but it was not possible to verify that there is a valid email service on it.\n");
+                    builder.append("    <p>If this IP is being used by genuine email server,<br>\n");
+                    builder.append("    open port 25 so we can check that there is a SMTP service on it.\n");
+                }
+            } else {
+                openSMTP.remove(query);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado:");
+                } else {
+                    builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
                 }
                 boolean generic = false;
                 Reverse reverse = Reverse.get(ip, true);
@@ -4158,15 +4338,26 @@ public final class ServerHTTP extends Server {
                     }
                     builder.append("    <br>\n");
                 } else {
+                    Client abuseClient = Client.getByIP(ip);
+                    String abuseEmail = abuseClient == null || abuseClient.hasPermission(NONE) ? null : abuseClient.getEmail();
+                    String clientEmail = client == null || client.hasPermission(NONE) ? null : client.getEmail();
                     builder.append("<br>\n");
                     builder.append("    <ul>\n");
                     String hostname = reverseSet.pollFirst();
-                    do  {
+                    do {
                         hostname = Domain.normalizeHostname(hostname, false);
                         builder.append("      <li>&lt;");
                         builder.append(hostname);
                         builder.append("&gt; ");
-                        if (SPF.matchHELO(ip, hostname, true)) {
+                        if (Generic.containsDynamic(hostname)) {
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("<a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> ");
+                                builder.append("de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>.</li>\n");
+                            } else {
+                                builder.append("<a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> ");
+                                builder.append("<a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.</li>\n");
+                            }
+                        } else if (SPF.matchHELO(ip, hostname, true)) {
                             String domain;
                             try {
                                 domain = Domain.extractDomain(hostname, false);
@@ -4185,18 +4376,27 @@ public final class ServerHTTP extends Server {
                                 } else {
                                     builder.append("reserved domain.</li>\n");
                                 }
-                            } else if (Generic.contains(domain)) {
+                            } else if (Generic.containsGeneric(domain)) {
+                                if (abuseEmail != null) {
+                                    emailSet.add(abuseEmail);
+                                }
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                                     builder.append("domínio genérico.</li>\n");
                                 } else {
                                     builder.append("generic domain.</li>\n");
                                 }
-                            } else if (Generic.contains(hostname)) {
+                            } else if (Generic.containsGeneric(hostname)) {
                                 emailSet.add("postmaster@" + domain);
+                                if (abuseEmail != null) {
+                                    emailSet.add(abuseEmail);
+                                }
+                                if (clientEmail != null) {
+                                    emailSet.add(clientEmail);
+                                }
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    builder.append("reverso genérico.</li>\n");
+                                    builder.append("<a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genérico</a>.</li>\n");
                                 } else {
-                                    builder.append("generic rDNS.</li>\n");
+                                    builder.append("<a target=\"_blank\" href=\"http://spfbl.net/en/generic/\">generic rDNS</a>.</li>\n");
                                 }
                             } else {
                                 int loop = 0;
@@ -4206,17 +4406,26 @@ public final class ServerHTTP extends Server {
                                     int index = subdominio.indexOf('.', 1) + 1;
                                     subdominio = subdominio.substring(index);
                                 }
+                                if (abuseEmail != null) {
+                                    emailSet.add(abuseEmail);
+                                }
+                                if (clientEmail != null) {
+                                    emailSet.add(clientEmail);
+                                }
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    builder.append("FCrDNS válido.</li>\n");
+                                    builder.append("<a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.</li>\n");
                                 } else {
-                                    builder.append("valid FCrDNS.</li>\n");
+                                    builder.append("valid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.</li>\n");
                                 }
                             }
                         } else {
+                            if (abuseEmail != null) {
+                                emailSet.add(abuseEmail);
+                            }
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("FCrDNS inválido.</li>\n");
+                                builder.append("<a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> inválido.</li>\n");
                             } else {
-                                builder.append("invalid FCrDNS.</li>\n");
+                                builder.append("invalid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.</li>\n");
                             }
                         }
                     } while ((hostname = reverseSet.pollFirst()) != null);
@@ -4228,7 +4437,7 @@ public final class ServerHTTP extends Server {
                     boolean blocked = Block.containsCIDR(ip);
                     if (blocked || distribution.isRed(ip)) {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("    Este IP ");
+                            builder.append("    <p>Este IP ");
                             if (blocked) {
                                 builder.append("foi bloqueado");
                             } else {
@@ -4236,18 +4445,20 @@ public final class ServerHTTP extends Server {
                             }
                             builder.append(" por má reputação com ");
                             builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                            builder.append(" de pontos negativos.<br>\n");
                             builder.append("    <br>\n");
                             builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
-                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-                            builder.append("    cuja rejeição SMTP tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
-                            builder.append("    onde este ponto expira em uma semana.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para<br>\n");
+                            builder.append("    os destinatários com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a> na camada SMTP.<br>\n");
+//                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
+//                            builder.append("    cuja rejeição SMTP tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,<br>\n");
+//                            builder.append("    onde este ponto expira em uma semana.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                         } else {
-                            builder.append("    This IP ");
+                            builder.append("    <p>This IP ");
                             if (blocked) {
                                 builder.append("was blocked");
                             } else {
@@ -4255,101 +4466,103 @@ public final class ServerHTTP extends Server {
                             }
                             builder.append(" by poor reputation in ");
                             builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" of negative points of total amount sent.<br>\n");
+                            builder.append(" of negative points.<br>\n");
                             builder.append("    <br>\n");
                             builder.append("    In order for this IP to be removed from this list,<br>\n");
-                            builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
-                            builder.append("    whose SMTP rejection has the prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
-                            builder.append("    where this point expires in a week.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                            builder.append("    it is necessary that the source MTA reduce the sending volume for<br>\n");
+                            builder.append("    the recipients with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a> at SMTP layer.<br>\n");
+//                            builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
+//                            builder.append("    whose SMTP rejection has the prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,<br>\n");
+//                            builder.append("    where this point expires in a week.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                         }
                     } else {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("    Este IP não está listado neste sistema porém sua reputação está com ");
+                            builder.append("    <p>Este IP não está listado neste sistema porém sua reputação está com ");
                             builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" de pontos negativos do volume total de envio.<br>\n");
+                            builder.append(" de pontos negativos.<br>\n");
                             builder.append("    <br>\n");
                             builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
                             builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
                             builder.append("    <br>\n");
-                            builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
-                            builder.append("    tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Cada rejeição SMTP com este prefixo");
-                            builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                            builder.append("    Para evitar que isto ocorra, reduza os envios com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a>.<br>\n");
+//                            builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
+//                            builder.append("    tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    Cada rejeição SMTP com este prefixo");
+//                            builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
                         } else {
-                            builder.append("    This IP is not listed in this system but its reputation is with ");
+                            builder.append("    <p>This IP is not listed in this system but its reputation is with ");
                             builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" of negative points of total sending.<br>\n");
+                            builder.append(" of negative points.<br>\n");
                             builder.append("    <br>\n");
                             builder.append("    If this reputation have significant increase in the number of negative points,");
                             builder.append("    this IP will automatically be listed in the system.<br>\n");
                             builder.append("    <br>\n");
-                            builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
-                            builder.append("    has prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Each SMTP rejection with this prefix");
-                            builder.append("    automatically generates a new negative point in this system.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                            builder.append("    To prevent this from occurring, reduce sending with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a>.<br>\n");
+//                            builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
+//                            builder.append("    has prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    Each SMTP rejection with this prefix");
+//                            builder.append("    automatically generates a new negative point in this system.<br>\n");
+//                            builder.append("    <br>\n");
+//                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                         }
                     }
                 } else if (emailSet.isEmpty()) {
+                    boolean good = SPF.isGood(ip);
                     boolean blocked = Block.containsCIDR(ip);
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         if (blocked) {
-                            builder.append("    Este IP foi bloqueado por não ter reverso válido.<br>\n");
+                            builder.append("    Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
+                        } else if (good) {
+                            builder.append("    Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
                         } else {
-                            builder.append("    Este IP não está bloqueado porém não tem um reverso válido.<br>\n");
+                            builder.append("    Este IP não está bloqueado porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
                         }
                         if (generic) {
-                            builder.append("    Não serão aceitos reversos genéricos, veja o <a href=\"http://www.spamcannibal.org/statsgeneric.html\">critério de registro genérico</a>.<br>\n");
+                            builder.append("    <p>Não serão aceitos <a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genéricos</a>.<br>\n");
                         }
-                        builder.append("    Cadastre um DNS reverso válido para este IP, que aponte para o mesmo IP.<br>\n");
+                        builder.append("    <p>Cadastre um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido para este IP, que aponte para o mesmo IP.<br>\n");
                         if (blocked) {
-                            builder.append("    O DNS reverso deve estar sob seu próprio domínio para que a liberação seja efetivada.<br>\n");
+                            builder.append("    O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> deve estar sob seu próprio domínio para que a liberação seja efetivada.<br>\n");
                         } else {
-                            builder.append("    Qualquer IP com FCrDNS inválido pode ser incluido a qualquer momento nesta lista.<br>\n");
+                            builder.append("    Qualquer IP com <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> inválido pode ser bloqueado a qualquer momento.<br>\n");
                         }
                     } else {
                         if (blocked) {
-                            builder.append("    This IP has been blocked because have none valid rDNS.<br>\n");
+                            builder.append("    This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.<br>\n");
+                        } else if (good) {
+                            builder.append("    This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
                         } else {
-                            builder.append("    This IP isn't blocked but have none valid rDNS.<br>\n");
+                            builder.append("    This IP isn't blocked but have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.<br>\n");
                         }
                         if (generic) {
-                            builder.append("    Generic rDNS will not be accepted, see the <a href=\"http://www.spamcannibal.org/statsgeneric.html\">generic PTR record criteria</a>.<br>\n");
+                            builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/en/generic/\"Generic rDNS</a> will not be accepted.<br>\n");
                         }
-                        builder.append("    Register a valid rDNS for this IP, which points to the same IP.<br>\n");
+                        builder.append("    <p>Register a valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> for this IP, which points to the same IP.<br>\n");
                         if (blocked) {
-                            builder.append("    The rDNS must be registered under your own domain for us to be able to delist your system.<br>\n");
+                            builder.append("    The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain for us to be able to delist your system.<br>\n");
                         } else {
-                            builder.append("    Any IP with invalid FCrDNS can be included at any time in this list.<br>\n");
+                            builder.append("    Any IP with invalid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a> can be blocked at any time.<br>\n");
                         }
                     }
                 } else if (Block.containsCIDR(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    Este IP foi bloqueado, porém a reputação dele não está mais ruim.<br>\n");
+                        builder.append("    <p>Este IP foi bloqueado, porém a reputação dele não está mais ruim.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    E-mails para envio de chave de desbloqueio:<br>\n");
                     } else {
-                        builder.append("    This IP has been blocked, but it's reputation is not bad anymore.<br>\n");
+                        builder.append("    <p>This IP has been blocked, but it's reputation is not bad anymore.<br>\n");
                         builder.append("    <br>\n");
                         builder.append("    E-mails to send unblock key:<br>\n");
                     }
                     builder.append("    <ul>\n");
-                    if (
-                            client != null &&
-                            client.hasPermission(DNSBL) &&
-                            client.hasEmail()
-                            ) {
-                        emailSet.add(client.getEmail());
-                    }
                     TreeSet<String> sendSet = new TreeSet<String>();
                     String email = emailSet.pollFirst();
                     do  {
@@ -4402,11 +4615,11 @@ public final class ServerHTTP extends Server {
                         }
                         builder.append("      <br>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("      O DNS reverso do IP deve estar sob seu próprio domínio.<br>\n");
-                            builder.append("      Não aceitamos DNS reversos com domínios de terceiros.<br>\n");
+                            builder.append("      O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> do IP deve estar sob seu próprio domínio.<br>\n");
+                            builder.append("      Não aceitamos <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> com domínios de terceiros.<br>\n");
                         } else {
-                            builder.append("      The rDNS must be registered under your own domain.<br>\n");
-                            builder.append("      We do not accept rDNS with third-party domains.<br>\n");
+                            builder.append("      The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain.<br>\n");
+                            builder.append("      We do not accept <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> with third-party domains.<br>\n");
                         }
                         if (Core.hasRecaptchaKeys()) {
                             builder.append("      <br>\n");
@@ -4434,14 +4647,42 @@ public final class ServerHTTP extends Server {
                         }
                         builder.append("    </form>\n");
                     }
-                } else {
+                } else if (SPF.isGood(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    Nenhum bloqueio foi encontrado para este IP.<br>\n");
+                        builder.append("    <p>Este IP está com reputação extremamente boa<br>\n");
+                        builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                    } else {
+                        builder.append("    <p>This IP is extremely good reputation<br>\n");
+                        builder.append("    and therefore has been whitelisted.<br>\n");
+                    }
+                 } else if (Ignore.containsCIDR(ip)) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    <p>Este IP está marcado como serviço essencial<br>\n");
+                        builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                    } else {
+                        builder.append("    <p>This IP is marked as an essential service<br>\n");
+                        builder.append("    and therefore has been whitelisted.<br>\n");
+                    }
+                } else if (White.containsIP(ip)) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    <p>Este IP está marcado como serviço de mensagem estritamente<br>\n");
+                        builder.append("    corporativo e por isso foi colocado em lista branca.<br>\n");
+                        builder.append("    <p>Se você tiver recebido alguma mensagem promocional deste IP,<br>\n");
+                        builder.append("    sem prévia autorização, faça uma denuncia para abuse@spfbl.net.<br>\n");
+                    } else {
+                        builder.append("    <p>This IP is marked as strictly corporate message<br>\n");
+                        builder.append("    service and therefore has been whitelisted.<br>\n");
+                        builder.append("    <p>If you received any promotional message from this IP,<br>\n");
+                        builder.append("    without permission, make a complaint to abuse@spfbl.net.<br>\n");
+                    }
+               } else {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    <p>Nenhum bloqueio foi encontrado para este IP.<br>\n");
                         builder.append("    Se este IP estiver sendo rejeitado por algum MTA,<br>\n");
                         builder.append("    aguarde a propagação de DNS deste serviço.<br>\n");
                         builder.append("    O tempo de propagação pode levar alguns dias.<br>\n");
                     } else {
-                        builder.append("    No block was found for this IP.<br>\n");
+                        builder.append("    <p>No block was found for this IP.<br>\n");
                         builder.append("    If this IP is being rejected by some MTA,<br>\n");
                         builder.append("    wait for the DNS propagation of this service.<br>\n");
                         builder.append("    The propagation time can take a few days.<br>\n");
@@ -4450,12 +4691,36 @@ public final class ServerHTTP extends Server {
             }
         } else if (Domain.isHostname(query)) {
             Distribution distribution;
-            query = Domain.normalizeHostname(query, true);
-            if ((distribution = SPF.getDistribution(query, true)).isNotGreen(query)) {
-                float probability = distribution.getSpamProbability(query);
-                boolean blocked = Block.containsDomain(query, false);
+            String domain = Domain.normalizeHostname(query, true);
+            if (domain.equals(".test") || domain.equals(".invalid")) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    Este domínio ");
+                    builder.append("    <p>Este é um domínio reservado e por este motivo não é abordado nesta lista.\n");
+                } else {
+                    builder.append("    <p>This is a reserved domain and for this reason is not addressed in this list.\n");
+                }
+            } else if (Generic.containsDynamic(domain)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este hostname está listado por referência a um padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>.\n");
+                    if (Core.hasAdminEmail()) {
+                        builder.append("    <p>Se você discorda que se trata de hostname com padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>,<br>\n");
+                        builder.append("    entre em contato conosco através do e-mail ");
+                        builder.append(Core.getAdminEmail());
+                        builder.append(".\n");
+                    }
+                } else {
+                    builder.append("    <p>This hostname is listed by reference to a <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern.\n");
+                    if (Core.hasAdminEmail()) {
+                        builder.append("    <p>If you disagree that this is hostname with <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern,<br>\n");
+                        builder.append("    contact us by email ");
+                        builder.append(Core.getAdminEmail());
+                        builder.append(".\n");
+                    }
+                }
+            } else if ((distribution = SPF.getDistribution(domain, true)).isNotGreen(domain)) {
+                float probability = distribution.getSpamProbability(domain);
+                boolean blocked = Block.containsDomain(domain, false);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este domínio ");
                     if (blocked) {
                         builder.append("foi bloqueado");
                     } else {
@@ -4484,7 +4749,7 @@ public final class ServerHTTP extends Server {
                     builder.append(Core.PERCENT_FORMAT.format(probability));
                     builder.append(" of negative points of total sending.<br>\n");
                     builder.append("    <br>\n");
-                    builder.append("    In order for this domain can be removed from this list,<br>\n");
+                    builder.append("    In order to remove this domain from this list,<br>\n");
                     builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
                     builder.append("    whose SMTP rejection has prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
                     builder.append("    <br>\n");
@@ -4493,39 +4758,76 @@ public final class ServerHTTP extends Server {
                     builder.append("    <br>\n");
                     builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
                 }
-            } else if (Block.containsDomain(query, false)) {
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    Este domínio está listado por bloqueio manual.<br>\n");
-                    if (Core.hasAdminEmail()) {
-                        builder.append("    <br>\n");
-                        builder.append("    Para que este domínio seja removido desta lista,<br>\n");
-                        builder.append("    é necessário enviar uma solicitação para ");
-                        builder.append(Core.getAdminEmail());
-                        builder.append(".<br>\n");
+            } else if (Block.containsDomain(domain, true)) {
+                if (Reverse.isInexistentDomain(domain)) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    <p>Este domínio está listado por não existir oficialmente.<br>\n");
+                    } else {
+                        builder.append("    <p>This domain is listed because it does not exist officially.<br>\n");
                     }
                 } else {
-                    builder.append("    This domain is listed by manual block.<br>\n");
-                    if (Core.hasAdminEmail()) {
-                        builder.append("    <br>\n");
-                        builder.append("    In order for this domain to be removed from this list,<br>\n");
-                        builder.append("    You must send a request to ");
-                        builder.append(Core.getAdminEmail());
-                        builder.append(".<br>\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        builder.append("    <p>Este domínio está listado por bloqueio manual.<br>\n");
+                        if (Core.hasAdminEmail()) {
+                            builder.append("    <br>\n");
+                            builder.append("    Para que este domínio seja removido desta lista,<br>\n");
+                            builder.append("    é necessário enviar uma solicitação para ");
+                            builder.append(Core.getAdminEmail());
+                            builder.append(".<br>\n");
+                        }
+                    } else {
+                        builder.append("    <p>This domain is listed by manual block.<br>\n");
+                        if (Core.hasAdminEmail()) {
+                            builder.append("    <br>\n");
+                            builder.append("    In order to remove this domain from this list,<br>\n");
+                            builder.append("    you must send a request to ");
+                            builder.append(Core.getAdminEmail());
+                            builder.append(".<br>\n");
+                        }
                     }
+                }
+            } else if (SPF.isGood(domain)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este domínio está com reputação extremamente boa<br>\n");
+                    builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                } else {
+                    builder.append("    <p>This domain is extremely good reputation<br>\n");
+                    builder.append("    and therefore has been whitelisted.<br>\n");
+                }
+            } else if (Ignore.containsHost(domain)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este domínio está marcado como serviço essencial<br>\n");
+                    builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                } else {
+                    builder.append("    <p>This domain is marked as an essential service<br>\n");
+                    builder.append("    and therefore has been whitelisted.<br>\n");
+                }
+            } else if (White.containsDomain(domain)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("    <p>Este domínio está marcado como serviço de mensagem estritamente<br>\n");
+                    builder.append("    corporativo e por isso foi colocado em lista branca.<br>\n");
+                    builder.append("    <p>Se você tiver recebido alguma mensagem promocional deste domínio,<br>\n");
+                    builder.append("    sem prévia autorização, faça uma denuncia para abuse@spfbl.net.<br>\n");
+                } else {
+                    builder.append("    <p>This domain is marked as strictly corporate message<br>\n");
+                    builder.append("    service and therefore has been whitelisted.<br>\n");
+                    builder.append("    <p>If you received any promotional message from this domain,<br>\n");
+                    builder.append("    without permission, make a complaint to abuse@spfbl.net.<br>\n");
                 }
             } else {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    Nenhum bloqueio foi encontrado para este domínio.<br>\n");
+                    builder.append("    <p>Nenhum bloqueio foi encontrado para este domínio.<br>\n");
                 } else {
-                    builder.append("    No block was found for this domain.<br>\n");
+                    builder.append("    <p>No block was found for this domain.<br>\n");
                 }
             }
         }
-        builder.append("    <br>\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <p><small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
             builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
         } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/english/\">SPFBL.net</a></small><br>\n");
+            builder.append("    <p><small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
         }
         builder.append("  </body>\n");
         builder.append("</html>\n");
@@ -5075,7 +5377,15 @@ public final class ServerHTTP extends Server {
                     builder.append(helo);
                     builder.append("</strike>");
                 }
-            } else if (Generic.containsDomain(hostname)) {
+            } else if (Generic.containsDynamicDomain(hostname)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    builder.append("<small><i>Dinâmico</i></small>");
+                } else {
+                    builder.append("<small><i>Dynamic</i></small>");
+                }
+                builder.append("<br>");
+                builder.append(hostname);
+            } else if (Generic.containsGenericDomain(hostname)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("<small><i>Genérico</i></small>");
                 } else {
@@ -5349,10 +5659,11 @@ public final class ServerHTTP extends Server {
     private static String getControlPanel(
             Locale locale,
             User user,
-            Long begin
+            Long begin,
+            String filter
             ) {
         StringBuilder builder = new StringBuilder();
-        if (begin == null) {
+        if (begin == null && filter == null) {
             if (user.getEmail().endsWith(".br")) {
                 locale = new Locale("pt", "BR");
             } else if (user.getEmail().endsWith(".pt")) {
@@ -5369,7 +5680,7 @@ public final class ServerHTTP extends Server {
             // Styled page.
             builder.append("    <style type=\"text/css\">\n");
             builder.append("      body {\n");
-            builder.append("        margin:180px 0px 0px 0px;\n");
+            builder.append("        margin:180px 0px 30px 0px;\n");
             builder.append("        background:lightgray;\n");
             builder.append("      }\n");
             builder.append("      iframe {\n");
@@ -5386,6 +5697,16 @@ public final class ServerHTTP extends Server {
             builder.append("        z-index:1;\n");
             builder.append("        width:100%;\n");
             builder.append("        height:180px;\n");
+            builder.append("      }\n");
+            builder.append("      .bottom {\n");
+            builder.append("        background-color:lightgray;\n");
+            builder.append("        border-width: 0px 0px 0px 0px;\n");
+            builder.append("        position:fixed;\n");
+            builder.append("        bottom:0px;\n");
+            builder.append("        margin:auto;\n");
+            builder.append("        z-index:1;\n");
+            builder.append("        width:100%;\n");
+            builder.append("        height:30px;\n");
             builder.append("      }\n");
             builder.append("      .button {\n");
             builder.append("          background-color: #4CAF50;\n");
@@ -5468,12 +5789,23 @@ public final class ServerHTTP extends Server {
             builder.append("        text-shadow: -1px -1px 1px rgba(0, 0, 0, 0.1);\n");
             builder.append("        border-right: 1px solid #C1C3D1;\n");
             builder.append("      }\n");
+            builder.append("      input[type=text], select {\n");
+            builder.append("        width: 400px;\n");
+            builder.append("        padding: 0px 4px;\n");
+            builder.append("        margin: 1px 0;\n");
+            builder.append("        display: inline-block;\n");
+            builder.append("        background: #b4b9d2;\n");
+            builder.append("        border: 1px solid #ccc;\n");
+            builder.append("        border-radius: 4px;\n");
+            builder.append("        box-sizing: border-box;\n");
+            builder.append("      }\n");
             builder.append("    </style>\n");
             // JavaScript functions.
-            TreeSet<Long> queryKeySet = user.getQueryKeySet(null);
+            TreeSet<Long> queryKeySet = user.getQueryKeySet(null, null);
             builder.append("    <script type=\"text/javascript\" src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js\"></script>\n");
             builder.append("    <script type=\"text/javascript\">\n");
             builder.append("      window.onbeforeunload = function () {\n");
+            builder.append("        document.getElementById('filterField').value = '';\n");
             builder.append("        window.scrollTo(0, 0);\n");
             builder.append("      }\n");
             builder.append("      var last = ");
@@ -5483,12 +5815,19 @@ public final class ServerHTTP extends Server {
                 builder.append(queryKeySet.last());
             }
             builder.append(";\n");
+            builder.append("      var filterText = '';\n");
             builder.append("      function view(query) {\n");
-            builder.append("        if (last != query) {\n");
+            builder.append("        if (query == undefined || query == 0) {\n");
+            builder.append("          var viewer = document.getElementById('viewer');\n");
+            builder.append("          viewer.src = 'about:blank';\n");
+            builder.append("          last = 0;\n");
+            builder.append("        } else if (last != query) {\n");
             builder.append("          var viewer = document.getElementById('viewer');\n");
             builder.append("          viewer.addEventListener('load', function() {\n");
-            builder.append("            document.getElementById(last).className = 'tr';\n");
-            builder.append("            document.getElementById(last).className = 'click';\n");
+            builder.append("            if (document.getElementById(last)) {\n");
+            builder.append("              document.getElementById(last).className = 'tr';\n");
+            builder.append("              document.getElementById(last).className = 'click';\n");
+            builder.append("            }\n");
             builder.append("            document.getElementById(query).className = 'highlight';\n");
             builder.append("            last = query;\n");
             builder.append("          });\n");
@@ -5507,22 +5846,47 @@ public final class ServerHTTP extends Server {
             } else {
                 builder.append("        columnMore.innerHTML = 'loading more records';\n");
             }
-            builder.append("        $.post('");
+            builder.append("        $.post(\n");
+            builder.append("          '");
             builder.append(Core.getURL());
             builder.append(user.getEmail());
-            builder.append("', {begin:query},\n");
-            builder.append("        function(data, status){;\n");
-            builder.append("          if (status == 'success') {\n");
-            builder.append("            rowMore.parentNode.removeChild(rowMore);\n");
-            builder.append("            $('#tableBody').append(data);\n");
-            builder.append("          } else {\n");
+            builder.append("',\n");
+            builder.append("          {filter:filterText,begin:query},\n");
+            builder.append("          function(data, status) {\n");
+            builder.append("            if (status == 'success') {\n");
+            builder.append("              rowMore.parentNode.removeChild(rowMore);\n");
+            builder.append("              $('#tableBody').append(data);\n");
+            builder.append("            } else {\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("            alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
+                builder.append("              alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
             } else {
-                builder.append("            alert('There was a system crash while trying to perform this operation.');\n");
+                builder.append("              alert('There was a system crash while trying to perform this operation.');\n");
             }
+            builder.append("            }\n");
             builder.append("          }\n");
-            builder.append("        });\n");
+            builder.append("        );\n");
+            builder.append("      }\n");
+            builder.append("      function refresh() {\n");
+            builder.append("        filterText = document.getElementById('filterField').value;\n");
+            builder.append("        $.post(\n");
+            builder.append("          '");
+            builder.append(Core.getURL());
+            builder.append(user.getEmail());
+            builder.append("',\n");
+            builder.append("          {filter:filterText},\n");
+            builder.append("          function(data, status) {\n");
+            builder.append("            if (status == 'success') {\n");
+            builder.append("              $('#tableBody').html(data);\n");
+            builder.append("              view($('#tableBody tr').attr('id'));\n");
+            builder.append("            } else {\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("              alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
+            } else {
+                builder.append("              alert('There was a system crash while trying to perform this operation.');\n");
+            }
+            builder.append("            }\n");
+            builder.append("          }\n");
+            builder.append("        );\n");
             builder.append("      }\n");
             builder.append("    </script>\n");
             builder.append("  </head>\n");
@@ -5606,11 +5970,24 @@ public final class ServerHTTP extends Server {
                 builder.append("      </tbody>\n");
                 builder.append("    </table>\n");
             }
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+            builder.append("    <div class=\"bottom\">\n");
+            builder.append("      <table>\n");
+            builder.append("        <tr>\n");
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                builder.append("          <th>Pesquisar <input type=\"text\" id=\"filterField\" name=\"filterField\" onkeydown=\"if (event.keyCode == 13) refresh();\" autofocus></th>\n");
+            } else {
+                builder.append("          <th>Search <input type=\"text\" id=\"filterField\" name=\"filterField\" onkeydown=\"if (event.keyCode == 13) refresh();\" autofocus></th>\n");
+            }
+            builder.append("          <th style=\"text-align:right;\"><small>");
+            builder.append("Powered by <a target=\"_blank\" href=\"http://spfbl.net/\" style=\"color: #b4b9d2;\">SPFBL.net</a></small>");
+            builder.append("</th>\n");
+            builder.append("        </tr>\n");
+            builder.append("      <table>\n");
+            builder.append("    </div>\n");
             builder.append("  </body>\n");
             builder.append("</html>\n");
         } else {
-            TreeSet<Long> queryKeySet = user.getQueryKeySet(begin);
+            TreeSet<Long> queryKeySet = user.getQueryKeySet(begin, filter);
             if (queryKeySet.isEmpty()) {
                 builder.append("        <tr>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -5670,12 +6047,12 @@ public final class ServerHTTP extends Server {
         }
         builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    ");
+        builder.append("    <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+        builder.append("    <p>");
         builder.append(message);
-        builder.append("<br>\n");
-        builder.append("    <br>\n");
+        builder.append("\n");
         if (Core.hasPortDNSBL()) {
-            builder.append("    <form method=\"POST\">\n");
+            builder.append("    <p><form method=\"POST\">\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("      Para consultar uma reputação no serviço DNSBL, digite um IP ou um domínio:<br>\n");
             } else {
@@ -5698,7 +6075,13 @@ public final class ServerHTTP extends Server {
             }
         }
         builder.append("    <br>\n");
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -5733,7 +6116,13 @@ public final class ServerHTTP extends Server {
         if (whiteBlockForm) {
             writeBlockFormHTML(locale, builder, tokenSet, selectionSet);
         }
-        builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        } else {
+            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a><br>\n");
+            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+        }
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();

@@ -1,3 +1,26 @@
+### v2.7.0 ; release 28/05/2017:
+
+FIX) correção na definição de reputação para remetentes freemail.
+
+FIX) correção na criação do firewall com ip6tables para IPv6.
+
+FIX) correção na estrutura de dados da lista WHITE.
+
+NEW) implementação de padrão de rDNS de IP dinâmico.
+
+NEW) implementação de verificação SLAAC para IPv6.
+
+NEW) implementação das configurações para pacote Debian.
+
+UPDT) aprimoramentos da ferramenta ANALISE.
+
+UPDT) aprimoramentos no serviço de DNSBL.
+
+UPDT) envio de e-mail com URL de liberação ao remetente bloqueado.
+
+UPDT) implementação da última em registros BLOCK, para ser possível limpar registros que não são usados a muito tempo.
+
+
 ### v2.6.1 ; release 19/03/2017:
 
 UPDT) retenção de bloqueios via P2P removido por ficar obsoleto.

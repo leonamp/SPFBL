@@ -56,6 +56,8 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -128,17 +130,30 @@ public abstract class Server extends Thread {
     
     private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
     
-    /**
-     * Armazenamento de cache em disco.
-     */
-    public static boolean tryStoreCache(boolean simplify) {
-        if (SEMAPHORE_STORE.tryAcquire()) {
+    private static class Store extends Thread {
+        
+        public Store() {
+            super("BCKGROUND");
+            super.setPriority(MIN_PRIORITY);
+        }
+        
+        @Override
+        public void run() {
             try {
-                storeAll(simplify, true);
-                return true;
+                storeAll(true, true);
             } finally {
                 SEMAPHORE_STORE.release();
             }
+        }
+    }
+    
+    /**
+     * Armazenamento de cache em disco.
+     */
+    public static boolean tryStoreCache() {
+        if (SEMAPHORE_STORE.tryAcquire()) {
+            new Store().start();
+            return true;
         } else {
             return false;
         }
@@ -175,7 +190,7 @@ public abstract class Server extends Thread {
         Reverse.store();
         Generic.store();
         Block.store(simplify);
-        White.store();
+        White.store(simplify);
         Trap.store();
         Ignore.store();
         Provider.store();
@@ -279,6 +294,19 @@ public abstract class Server extends Thread {
                 return new String(message, "UTF8");
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: DECRYPTION", ex);
+            }
+        }
+    }
+    
+    public static boolean isValidTicket(String code) {
+        if (code == null) {
+            return false;
+        } else {
+            try {
+                decryptToByteArrayURLSafe(code);
+                return true;
+            } catch (ProcessException ex) {
+                return false;
             }
         }
     }

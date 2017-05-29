@@ -335,7 +335,7 @@ public final class QuerySPF extends Server {
                                             }
                                             user = User.get(userEmail);
                                             do {
-                                                String block = Block.find(userEmail, token, true, true, false);
+                                                String block = Block.find(userEmail, token, true, true, true, false);
                                                 if (block == null) {
                                                     result = "NONE\n";
                                                 } else if (ticket == null) {
@@ -456,7 +456,7 @@ public final class QuerySPF extends Server {
                                         while (tokenizer.hasMoreElements()) {
                                             try {
                                                 String recipient = tokenizer.nextToken();
-                                                boolean droped = Trap.drop(client, recipient);
+                                                boolean droped = Trap.drop(user, client, recipient);
                                                 if (result == null) {
                                                     result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
                                                 } else {

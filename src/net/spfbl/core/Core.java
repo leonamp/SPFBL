@@ -18,6 +18,7 @@ package net.spfbl.core;
 
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
@@ -30,15 +31,20 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.BindException;
+import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -59,6 +65,7 @@ import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
+import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -80,7 +87,7 @@ import org.apache.commons.codec.binary.Base64;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 6;
+    private static final byte SUBVERSION = 7;
     private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
@@ -172,13 +179,28 @@ public class Core {
         }
     }
     
-    public static String getDNSBLURL(String token) throws ProcessException {
+    public static String getDNSBLURL(Locale locale, String token) {
         if (complainHTTP == null) {
             return null;
         } else if (token == null) {
             return null;
         } else {
-            String url = complainHTTP.getDNSBLURL();
+            String url = complainHTTP.getDNSBLURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                return url + token;
+            }
+        }
+    }
+    
+    public static String getURL(Locale locale, String token) {
+        if (complainHTTP == null) {
+            return null;
+        } else if (token == null) {
+            return null;
+        } else {
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -193,7 +215,6 @@ public class Core {
             String ip,
             String sender,
             String hostname,
-            String result,
             String recipient
             ) throws ProcessException {
         // Definição do e-mail do usuário.
@@ -203,7 +224,7 @@ public class Core {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
-        return getUnblockURL(userEmail, ip, sender, hostname, result, recipient);
+        return getUnblockURL(userEmail, ip, sender, hostname, recipient);
     }
     
     public static String getUnblockURL(
@@ -211,7 +232,6 @@ public class Core {
             String ip,
             String sender,
             String hostname,
-            String result,
             String recipient
             ) throws ProcessException {
         if (userEmail == null) {
@@ -1386,6 +1406,9 @@ public class Core {
             } catch (MailConnectException ex) {
                 Server.logSendMTP("connection failed.");
                 return false;
+            } catch (SMTPSendFailedException ex) {
+                Server.logSendMTP("messaging failed.");
+                return false;
             } catch (MessagingException ex) {
                 Server.logSendMTP("messaging failed.");
                 throw ex;
@@ -1586,6 +1609,18 @@ public class Core {
         }
     }
     
+    private static class TimerCheckAccessSMTP extends TimerTask {
+        @Override
+        public void run() {
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+                Analise.checkAccessSMTP();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+    
     private static class TimerSendHoldingWarningMessages extends TimerTask {
         @Override
         public void run() {
@@ -1608,6 +1643,20 @@ public class Core {
 //                Server.logTrace("BEGIN TimerSendSuspectWarningMessages");
                 User.sendSuspectWarning();
 //                Server.logTrace("END TimerSendSuspectWarningMessages");
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+    
+    private static class TimerSendBlockedWarningMessages extends TimerTask {
+        @Override
+        public void run() {
+            try {
+                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
+//                Server.logTrace("BEGIN TimerSendBlockedWarningMessages");
+                User.sendBlockedWarning();
+//                Server.logTrace("END TimerSendBlockedWarningMessages");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1698,7 +1747,7 @@ public class Core {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Armazena todos os registros atualizados durante a consulta.
 //                Server.logTrace("BEGIN TimerStoreCache");
-                Server.tryStoreCache(true);
+                Server.tryStoreCache();
 //                Server.logTrace("END TimerStoreCache");
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -1757,10 +1806,12 @@ public class Core {
         TIMER.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerSendSuspectWarningMessages(), 2400000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerSendBlockedWarningMessages(), 3600000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
         if (CACHE_TIME_STORE > 0) {
             TIMER.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
         }
+        TIMER.schedule(new TimerCheckAccessSMTP(), 0, 86400000); // Frequência de 24 horas.
     }
     
     public static String removerAcentuacao(String text) {

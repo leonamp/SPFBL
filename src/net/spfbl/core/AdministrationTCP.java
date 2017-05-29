@@ -26,7 +26,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -298,6 +297,49 @@ public final class AdministrationTCP extends Server {
                             analise.add(last);
                         }
                         result = "QUEUED\n";
+                    } else if (Domain.isHostname(token)) {
+                        String hostname =  Domain.normalizeHostname(token, false);
+                        if (tokenizer.hasMoreTokens()) {
+                            String name = tokenizer.nextToken();
+                            Analise analise = Analise.get(name, true);
+                            if (analise.add(hostname)) {
+                                result = "QUEUED\n";
+                            } else {
+                                result = "ALREADY EXISTS\n";
+                            }
+                        } else if (Domain.isReserved(hostname)) {
+                            result = "RESERVED DOMAIN\n";
+                        } else if (Domain.isDomain(hostname)) {
+                            String domain = "@" + hostname;
+                            StringBuilder builder = new StringBuilder();
+                            builder.append(domain);
+                            builder.append(' ');
+                            Analise.process(domain, builder, 3000);
+                            builder.append('\n');
+                            result = builder.toString();
+                        } else {
+                            StringBuilder builder = new StringBuilder();
+                            TreeSet<String> ipSet = Analise.getIPSet(hostname);
+                            if (ipSet == null) {
+                                if (Block.tryAdd(hostname)) {
+                                    Server.logDebug("new BLOCK '" + hostname + "' added by 'NXDOMAIN'.");
+                                }
+                                result = "NXDOMAIN\n";
+                            } else if (ipSet.isEmpty()) {
+                                if (Block.tryAdd(hostname)) {
+                                    Server.logDebug("new BLOCK '" + hostname + "' added by 'NONE'.");
+                                }
+                                result = "NO ADDRESS\n";
+                            } else {
+                                for (String ip : ipSet) {
+                                    builder.append(ip);
+                                    builder.append(' ');
+                                    Analise.process(ip, builder, 3000);
+                                    builder.append('\n');
+                                }
+                                result = builder.toString();
+                            }
+                        }
                     } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
                         String address = "@" + Domain.normalizeHostname(token.substring(1), false);
                         if (tokenizer.hasMoreTokens()) {
@@ -429,13 +471,15 @@ public final class AdministrationTCP extends Server {
                         StringBuilder builder = new StringBuilder();
                         builder.append("#!/bin/bash\n\n");
                         builder.append("# Flush all rules.\n");
-                        builder.append("iptables -F\n\n");
+                        builder.append("iptables -F\n");
+                        builder.append("ip6tables -F\n\n");
                         builder.append("### SPFBL ADMIN\n\n");
                         clientMap = Client.getMap(Permission.ALL);
                         for (Object key : clientMap.keySet()) {
                             if (key instanceof User) {
+                                User user = (User) key;
                                 builder.append("# Accept user ");
-                                builder.append(key);
+                                builder.append(user.getContact());
                                 builder.append(".\n");
                             } else if (key.equals("NXDOMAIN")) {
                                 builder.append("# Accept not identified networks.\n");
@@ -445,13 +489,24 @@ public final class AdministrationTCP extends Server {
                                 builder.append(".\n");
                             }
                             for (Client clientLocal : clientMap.get(key)) {
-                                builder.append("iptables -A INPUT -i ");
-                                builder.append(Core.getInterface());
-                                builder.append(" -s ");
-                                builder.append(clientLocal.getCIDR());
-                                builder.append(" -p tcp --dport ");
-                                builder.append(Core.getPortAdmin());
-                                builder.append(" -j ACCEPT\n");
+                                String cidr = clientLocal.getCIDR();
+                                if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                                    builder.append("iptables -A INPUT -i ");
+                                    builder.append(Core.getInterface());
+                                    builder.append(" -s ");
+                                    builder.append(cidr);
+                                    builder.append(" -p tcp --dport ");
+                                    builder.append(Core.getPortAdmin());
+                                    builder.append(" -j ACCEPT\n");
+                                } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+                                    builder.append("ip6tables -A INPUT -i ");
+                                    builder.append(Core.getInterface());
+                                    builder.append(" -s ");
+                                    builder.append(cidr);
+                                    builder.append(" -p tcp --dport ");
+                                    builder.append(Core.getPortAdmin());
+                                    builder.append(" -j ACCEPT\n");
+                                }
                             }
                             builder.append("\n");
                         }
@@ -461,7 +516,17 @@ public final class AdministrationTCP extends Server {
                         builder.append(" -p tcp --dport ");
                         builder.append(Core.getPortAdmin());
                         builder.append(" -j LOG --log-prefix \"ADMIN \"\n");
+                        builder.append("ip6tables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortAdmin());
+                        builder.append(" -j LOG --log-prefix \"ADMIN \"\n");
                         builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortAdmin());
+                        builder.append(" -j DROP\n");
+                        builder.append("ip6tables -A INPUT -i ");
                         builder.append(Core.getInterface());
                         builder.append(" -p tcp --dport ");
                         builder.append(Core.getPortAdmin());
@@ -474,7 +539,17 @@ public final class AdministrationTCP extends Server {
                             builder.append(" -p tcp --dport \n");
                             builder.append(Core.getPortWHOIS());
                             builder.append(" -j LOG --log-prefix \"WHOIS \"\n");
+                            builder.append("ip6tables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport \n");
+                            builder.append(Core.getPortWHOIS());
+                            builder.append(" -j LOG --log-prefix \"WHOIS \"\n");
                             builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport ");
+                            builder.append(Core.getPortWHOIS());
+                            builder.append(" -j DROP\n");
+                            builder.append("ip6tables -A INPUT -i ");
                             builder.append(Core.getInterface());
                             builder.append(" -p tcp --dport ");
                             builder.append(Core.getPortWHOIS());
@@ -486,10 +561,20 @@ public final class AdministrationTCP extends Server {
                             builder.append(Core.getInterface());
                             builder.append(" -p tcp --dport ");
                             builder.append(Core.getPortHTTP());
+                            builder.append(" -j ACCEPT\n");
+                            builder.append("ip6tables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p tcp --dport ");
+                            builder.append(Core.getPortHTTP());
                             builder.append(" -j ACCEPT\n\n");
                         }
                         builder.append("### SPFBL P2P\n\n");
                         builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p udp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j ACCEPT\n");
+                        builder.append("ip6tables -A INPUT -i ");
                         builder.append(Core.getInterface());
                         builder.append(" -p udp --dport ");
                         builder.append(Core.getPortSPFBL());
@@ -498,8 +583,9 @@ public final class AdministrationTCP extends Server {
                         clientMap = Client.getMap(Permission.SPFBL);
                         for (Object key : clientMap.keySet()) {
                             if (key instanceof User) {
+                                User user = (User) key;
                                 builder.append("# Accept user ");
-                                builder.append(key);
+                                builder.append(user.getContact());
                                 builder.append(".\n");
                             } else if (key.equals("NXDOMAIN")) {
                                 builder.append("# Accept not identified networks.\n");
@@ -509,13 +595,24 @@ public final class AdministrationTCP extends Server {
                                 builder.append(".\n");
                             }
                             for (Client clientLocal : clientMap.get(key)) {
-                                builder.append("iptables -A INPUT -i ");
-                                builder.append(Core.getInterface());
-                                builder.append(" -s ");
-                                builder.append(clientLocal.getCIDR());
-                                builder.append(" -p tcp --dport ");
-                                builder.append(Core.getPortSPFBL());
-                                builder.append(" -j ACCEPT\n");
+                                String cidr = clientLocal.getCIDR();
+                                if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                                    builder.append("iptables -A INPUT -i ");
+                                    builder.append(Core.getInterface());
+                                    builder.append(" -s ");
+                                    builder.append(clientLocal.getCIDR());
+                                    builder.append(" -p tcp --dport ");
+                                    builder.append(Core.getPortSPFBL());
+                                    builder.append(" -j ACCEPT\n");
+                                } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+                                    builder.append("ip6tables -A INPUT -i ");
+                                    builder.append(Core.getInterface());
+                                    builder.append(" -s ");
+                                    builder.append(clientLocal.getCIDR());
+                                    builder.append(" -p tcp --dport ");
+                                    builder.append(Core.getPortSPFBL());
+                                    builder.append(" -j ACCEPT\n");
+                                }
                             }
                             builder.append("\n");
                         }
@@ -525,7 +622,17 @@ public final class AdministrationTCP extends Server {
                         builder.append(" -p tcp --dport ");
                         builder.append(Core.getPortSPFBL());
                         builder.append(" -j LOG --log-prefix \"SPFBL \"\n");
+                        builder.append("ip6tables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j LOG --log-prefix \"SPFBL \"\n");
                         builder.append("iptables -A INPUT -i ");
+                        builder.append(Core.getInterface());
+                        builder.append(" -p tcp --dport ");
+                        builder.append(Core.getPortSPFBL());
+                        builder.append(" -j DROP\n");
+                        builder.append("ip6tables -A INPUT -i ");
                         builder.append(Core.getInterface());
                         builder.append(" -p tcp --dport ");
                         builder.append(Core.getPortSPFBL());
@@ -535,8 +642,9 @@ public final class AdministrationTCP extends Server {
                             clientMap = Client.getMap(Permission.NONE);
                             for (Object key : clientMap.keySet()) {
                                 if (key instanceof User) {
+                                    User user = (User) key;
                                     builder.append("# Drop user ");
-                                    builder.append(key);
+                                    builder.append(user.getContact());
                                     builder.append(".\n");
                                 } else if (key.equals("NXDOMAIN")) {
                                     builder.append("# Drop not identified networks.\n");
@@ -546,18 +654,34 @@ public final class AdministrationTCP extends Server {
                                     builder.append(".\n");
                                 }
                                 for (Client clientLocal : clientMap.get(key)) {
-                                    builder.append("iptables -A INPUT -i ");
-                                    builder.append(Core.getInterface());
-                                    builder.append(" -s ");
-                                    builder.append(clientLocal.getCIDR());
-                                    builder.append(" -p udp --dport ");
-                                    builder.append(Core.getPortDNSBL());
-                                    builder.append(" -j DROP\n");
+                                    String cidr = clientLocal.getCIDR();
+                                    if (SubnetIPv4.isValidCIDRv4(cidr)) {
+                                        builder.append("iptables -A INPUT -i ");
+                                        builder.append(Core.getInterface());
+                                        builder.append(" -s ");
+                                        builder.append(clientLocal.getCIDR());
+                                        builder.append(" -p udp --dport ");
+                                        builder.append(Core.getPortDNSBL());
+                                        builder.append(" -j DROP\n");
+                                    } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+                                        builder.append("ip6tables -A INPUT -i ");
+                                        builder.append(Core.getInterface());
+                                        builder.append(" -s ");
+                                        builder.append(clientLocal.getCIDR());
+                                        builder.append(" -p udp --dport ");
+                                        builder.append(Core.getPortDNSBL());
+                                        builder.append(" -j DROP\n");
+                                    }
                                 }
                                 builder.append("\n");
                             }
                             builder.append("# Accept all others.\n");
                             builder.append("iptables -A INPUT -i ");
+                            builder.append(Core.getInterface());
+                            builder.append(" -p udp --dport ");
+                            builder.append(Core.getPortDNSBL());
+                            builder.append(" -j ACCEPT\n");
+                            builder.append("ip6tables -A INPUT -i ");
                             builder.append(Core.getInterface());
                             builder.append(" -p udp --dport ");
                             builder.append(Core.getPortDNSBL());
@@ -646,8 +770,8 @@ public final class AdministrationTCP extends Server {
                     }
                 } else if (token.equals("STORE") && !tokenizer.hasMoreTokens()) {
                     // Comando para gravar o cache em disco.
-                    if (tryStoreCache(false)) {
-                        result = "OK\n";
+                    if (tryStoreCache()) {
+                        result = "STARTING STORE\n";
                     } else {
                         result = "ALREADY STORING\n";
                     }
@@ -1033,7 +1157,7 @@ public final class AdministrationTCP extends Server {
                         token = tokenizer.nextToken();
                         if (Subnet.isValidIP(token)) {
                             String ip = Subnet.normalizeIP(token);
-                            int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                            int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 128;
                             if ((token = Block.clearCIDR(ip, mask)) == null) {
                                 result = "NOT FOUND\n";
                             } else {
@@ -1070,7 +1194,7 @@ public final class AdministrationTCP extends Server {
                                     token = token.substring(index+1);
                                 }
                             }
-                            String block = Block.find(clientLocal, token, true, true, false);
+                            String block = Block.find(clientLocal, token, true, true, true, false);
                             result = (block == null ? "NONE" : block) + "\n";
                         }
                     } else if (token.equals("SHOW")) {
@@ -1107,7 +1231,7 @@ public final class AdministrationTCP extends Server {
                         while (tokenizer.hasMoreElements()) {
                             try {
                                 String genericToken = tokenizer.nextToken();
-                                if ((genericToken = Generic.add(genericToken)) == null) {
+                                if ((genericToken = Generic.addGeneric(genericToken)) == null) {
                                     result += "ALREADY EXISTS\n";
                                  } else {
                                     result += "ADDED " + genericToken + "\n";
@@ -1125,7 +1249,7 @@ public final class AdministrationTCP extends Server {
                             if (tokenizer.hasMoreTokens()) {
                                 result = "INVALID COMMAND\n";
                             } else {
-                                if (Generic.dropAll()) {
+                                if (Generic.dropGenericAll()) {
                                     result += "DROPPED\n";
                                 } else {
                                     result += "EMPTY\n";
@@ -1134,7 +1258,7 @@ public final class AdministrationTCP extends Server {
                         } else {
                             do {
                                 try {
-                                    if (Generic.drop(token)) {
+                                    if (Generic.dropGeneric(token)) {
                                         result += "DROPPED\n";
                                     } else {
                                         result += "NOT FOUND\n";
@@ -1149,11 +1273,74 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
                         token = tokenizer.nextToken();
-                        String generic = Generic.find(token);
+                        String generic = Generic.findGeneric(token);
                         result = (generic == null ? "NONE" : generic) + "\n";
                     } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
                         StringBuilder builder = new StringBuilder();
-                        for (String sender : Generic.get()) {
+                        for (String sender : Generic.getGeneric()) {
+                            builder.append(sender);
+                            builder.append('\n');
+                        }
+                        result = builder.toString();
+                        if (result.length() == 0) {
+                            result = "EMPTY\n";
+                        }
+                    } else {
+                        result = "INVALID COMMAND\n";
+                    }
+                } else if (token.equals("DYNAMIC") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreElements()) {
+                            try {
+                                String genericToken = tokenizer.nextToken();
+                                if ((genericToken = Generic.addDynamic(genericToken)) == null) {
+                                    result += "ALREADY EXISTS\n";
+                                 } else {
+                                    result += "ADDED " + genericToken + "\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result += ex.getMessage() + "\n";
+                            }
+                        }
+                        if (result.length() == 0) {
+                            result = "INVALID COMMAND\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ALL")) {
+                            if (tokenizer.hasMoreTokens()) {
+                                result = "INVALID COMMAND\n";
+                            } else {
+                                if (Generic.dropDynamicAll()) {
+                                    result += "DROPPED\n";
+                                } else {
+                                    result += "EMPTY\n";
+                                }
+                            }
+                        } else {
+                            do {
+                                try {
+                                    if (Generic.dropDynamic(token)) {
+                                        result += "DROPPED\n";
+                                    } else {
+                                        result += "NOT FOUND\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result += ex.getMessage() + "\n";
+                                }
+                            } while (tokenizer.hasMoreElements());
+                            if (result.length() == 0) {
+                                result = "INVALID COMMAND\n";
+                            }
+                        }
+                    } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
+                        token = tokenizer.nextToken();
+                        String generic = Generic.findDynamic(token);
+                        result = (generic == null ? "NONE" : generic) + "\n";
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        StringBuilder builder = new StringBuilder();
+                        for (String sender : Generic.getDynamic()) {
                             builder.append(sender);
                             builder.append('\n');
                         }
@@ -1371,6 +1558,12 @@ public final class AdministrationTCP extends Server {
                             }
                             if (NoReply.contains(inexistentToken, false)) {
                                 result = "NO REPLY\n";
+                            } else if (timeString == null) {
+                                if (Trap.addInexistentForever(inexistentToken)) {
+                                    result = "ADDED\n";
+                                } else {
+                                    result = "ALREADY EXISTS\n";
+                                }
                             } else if (clientLocal == null && Trap.putInexistent(inexistentToken, timeString)) {
                                 result = "ADDED\n";
                             } else if (clientLocal != null && Trap.putInexistent(clientLocal, inexistentToken, timeString)) {
@@ -1842,23 +2035,14 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (token.equals("SHOW")) {
                         if (!tokenizer.hasMoreTokens()) {
-                            for (Peer peer : Peer.getSet()) {
-                                result += peer + "\n";
-                            }
-                            if (result.length() == 0) {
+                            TreeSet<Peer> peerSet = Peer.getSet();
+                            if (peerSet.isEmpty()) {
                                 result = "EMPTY\n";
+                            } else {
+                                for (Peer peer : peerSet) {
+                                    result += peer + "\n";
+                                }
                             }
-//                        } else if (tokenizer.countTokens() == 1) {
-//                            String address = tokenizer.nextToken();
-//                            Peer peer = Peer.get(address);
-//                            if (peer == null) {
-//                                result = "NOT FOUND " + address + "\n";
-//                            } else {
-//                                result = peer + "\n";
-//                                for (String confirm : peer.getRetationSet()) {
-//                                    result += confirm + "\n";
-//                                }
-//                            }
                         } else {
                             result = "INVALID COMMAND\n";
                         }

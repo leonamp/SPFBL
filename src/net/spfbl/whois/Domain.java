@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.io.StringReader;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -96,11 +97,6 @@ public class Domain implements Serializable, Comparable<Domain> {
     private int queries = 1; // Contador de consultas.
     
     private static int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
-    
-    /**
-     * Formatação padrão dos campos de data do WHOIS.
-     */
-    public static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
     /**
      * Atualiza o tempo de expiração do registro de domínio.
@@ -226,7 +222,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             beginIndex = address.lastIndexOf('.');
             int endIndex = address.length();
             if (pontuacao) {
-                return address.substring(beginIndex, endIndex);
+                return "." + address.substring(beginIndex + 1, endIndex);
             } else {
                 return address.substring(beginIndex + 1, endIndex);
             }
@@ -309,7 +305,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 address = address.toLowerCase();
                 return Pattern.matches(
                         "^\\.?"
-                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
                         + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
                         + "\\.?$", address
                         );
@@ -530,6 +526,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             ArrayList<String> nameServerListNew = new ArrayList<String>();
             boolean reducedNew = false;
             String domainResult = null;
+            SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyyMMdd");
             BufferedReader reader = new BufferedReader(new StringReader(result));
             try {
                 String line;
@@ -602,21 +599,21 @@ public class Domain implements Serializable, Comparable<Domain> {
                             }
                             if (valor != null && valor.length() > 7) {
                                 valor = valor.substring(0, 8);
-                                createdNew = DATE_FORMATTER.parse(valor);
+                                createdNew = dateFormatter.parse(valor);
                             }
                         } else if (line.startsWith("changed:")) {
                             int index = line.indexOf(':') + 1;
                             String valor = line.substring(index).trim();
                             if (valor.length() > 7) {
                                 valor = valor.substring(0, 8);
-                                changedNew = DATE_FORMATTER.parse(valor);
+                                changedNew = dateFormatter.parse(valor);
                             }
                         } else if (line.startsWith("expires:")) {
                             int index = line.indexOf(':') + 1;
                             String valor = line.substring(index).trim();
                             if (valor.length() > 7) {
                                 valor = valor.substring(0, 8);
-                                expiresNew = DATE_FORMATTER.parse(valor);
+                                expiresNew = dateFormatter.parse(valor);
                             }
                         } else if (line.startsWith("status:")) {
                             int index = line.indexOf(':') + 1;
@@ -664,6 +661,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                             handle.setEmail(e_mail);
                             handle.setCreated(created2);
                             handle.setChanged(changed2);
+                        } else if (line.startsWith("ticket:")) {
+                            // Do nothing.
                         } else if (line.startsWith("% No match for domain")) {
                             throw new ProcessException("ERROR: DOMAIN NOT FOUND");
                         } else if (line.startsWith("% release process: ")) {
@@ -783,19 +782,19 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (created == null) {
                 return null;
             } else {
-                return DATE_FORMATTER.format(created);
+                return new SimpleDateFormat("yyyyMMdd").format(created);
             }
         } else if (key.equals("expires")) {
             if (expires == null) {
                 return null;
             } else {
-                return DATE_FORMATTER.format(expires);
+                return new SimpleDateFormat("yyyyMMdd").format(expires);
             }
         } else if (key.equals("changed")) {
             if (changed == null) {
                 return null;
             } else {
-                return DATE_FORMATTER.format(changed);
+                return new SimpleDateFormat("yyyyMMdd").format(changed);
             }
         } else if (key.equals("provider")) {
             return provider;

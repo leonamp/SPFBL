@@ -1292,6 +1292,175 @@ case $1 in
 			;;
 		esac
 	;;
+	'dynamic')
+		case $2 in
+			'add')
+				# Parâmetros de entrada:
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar dynamic.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 dynamic add host\n"
+				else
+					host=$3
+
+					response=$(echo "DYNAMIC ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ADDED" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'find')
+				# Códigos de saída:
+				#
+				#    0: adicionado com sucesso.
+				#    1: erro ao tentar adicionar dynamic.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 dynamic find <token>\n"
+				else
+					token=$3
+
+					response=$(echo "DYNAMIC FIND $token" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					else
+						exit 0
+					fi
+				fi
+			;;
+			'drop')
+				# Parâmetros de entrada:
+				#
+				#
+				#
+				# Códigos de saída:
+				#
+				#    0: desbloqueado com sucesso.
+				#    1: erro ao tentar adicionar dynamic.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "3" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 dynamic drop host\n"
+				else
+					host=$3
+
+					response=$(echo "DYNAMIC DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "DROPPED" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'show')
+				# Códigos de saída:
+				#
+				#    0: visualizado com sucesso.
+				#    1: erro ao tentar visualizar dynamic.
+				#    2: timeout de conexão.
+				#    3: out of service.
+
+				if [ $# -lt "2" ]; then
+					head
+					printf "Faltando parametro(s).\nSintaxe: $0 dynamic show\n"
+				else
+					response=$(echo "DYNAMIC SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					else
+						exit 0
+					fi
+				fi
+			;;
+			*)
+				head
+				printf "Syntax:\n    $0 dynamic add recipient\n    $0 dynamic drop recipient\n    $0 dynamic show\n"
+			;;
+		esac
+	;;
 	'white')
 		case $2 in
 			'add')
@@ -2430,7 +2599,7 @@ case $1 in
 			messageID=$2
 			from=$3
 
-			response=$(echo $OTP_CODE"ABUSE $messageID $from" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo $OTP_CODE"ABUSE $messageID $from" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)

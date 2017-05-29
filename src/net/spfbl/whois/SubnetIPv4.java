@@ -299,6 +299,26 @@ public final class SubnetIPv4 extends Subnet {
         return 0xFFFFFFFF << 32 - mask;
     }
     
+    public static String getPreviousIPv4(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (isValidIPv4(ip)) {
+            int address = getAddressIP(ip);
+            if (address == 0x00000000) {
+                return null;
+            } else {
+                address--;
+                int octet1 = (address >> 24 & 0xFF);
+                int octet2 = (address >> 16 & 0xFF);
+                int octet3 = (address >> 8 & 0xFF);
+                int octet4 = (address & 0xFF);
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+            }
+        } else {
+            return null;
+        }
+    }
+    
     public static String getNextIPv4(String ip) {
         if (ip == null) {
             return null;

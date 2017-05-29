@@ -18,6 +18,7 @@
 package net.spfbl.dns;
 
 import java.io.Serializable;
+import java.util.Locale;
 import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
 import net.spfbl.dnsbl.ServerDNSBL;
@@ -81,19 +82,22 @@ public class Zone implements Serializable, Comparable<Zone> {
         return type == Type.DNSWL;
     }
 
-    public String getMessage(String token) {
-        try {
-            if (type == Type.DNSBL) {
-                String url = Core.getDNSBLURL(token);
-                if (url == null) {
-                    return message;
-                } else {
-                    return url;
-                }
-            } else {
+    public String getMessage(Locale locale, String token) {
+        if (type == Type.DNSBL) {
+            String url = Core.getURL(locale, token);
+            if (url == null) {
                 return message;
+            } else {
+                return url;
             }
-        } catch (ProcessException ex) {
+        } else if (type == Type.DNSWL) {
+            String url = Core.getURL(locale, token);
+            if (url == null) {
+                return message;
+            } else {
+                return url;
+            }
+        } else {
             return message;
         }
     }

@@ -37,7 +37,10 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Client.Permission;
 import net.spfbl.core.Core;
+import net.spfbl.core.NormalDistribution;
+import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
+import net.spfbl.data.White;
 import net.spfbl.dnsbl.ServerDNSBL;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
@@ -96,8 +99,7 @@ public final class QueryDNS extends Server {
         } else if (server.getHostName().equals(ret.getHostName())) {
             return false;
         } else {
-            CHANGED = true;
-            return true;
+            return CHANGED = true;
         }
     }
 
@@ -106,8 +108,7 @@ public final class QueryDNS extends Server {
         if (zone.equals(ret)) {
             return false;
         } else {
-            CHANGED = true;
-            return true;
+            return CHANGED = true;
         }
     }
 
@@ -199,7 +200,7 @@ public final class QueryDNS extends Server {
                 return false;
             } else {
                 server.setMessage(message);
-                return true;
+                return CHANGED = true;
             }
         } else {
             return false;
@@ -377,7 +378,7 @@ public final class QueryDNS extends Server {
         private final Semaphore SEMAPHORE = new Semaphore(0);
 
         private long time = 0;
-
+        
         public Connection() {
             super("DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
@@ -395,14 +396,14 @@ public final class QueryDNS extends Server {
             this.SEMAPHORE.release();
         }
 
-        private boolean isTimeout() {
-            if (time == 0) {
-                return false;
-            } else {
-                int interval = (int) (System.currentTimeMillis() - time) / 1000;
-                return interval > 60;
-            }
-        }
+//        private boolean isTimeout() {
+//            if (time == 0) {
+//                return false;
+//            } else {
+//                int interval = (int) (System.currentTimeMillis() - time) / 1000;
+//                return interval > 60;
+//            }
+//        }
 
         /**
          * Fecha esta conexão liberando a thread.
@@ -433,6 +434,59 @@ public final class QueryDNS extends Server {
             PACKET = null;
         }
         
+        private NormalDistribution frequency = null;
+        private long last = 0;
+        private final int limit = 10;
+        
+        private long getIdleTimeMillis() {
+            if (last == 0) {
+                return 0;
+            } else {
+                return System.currentTimeMillis() - last;
+            }
+        }
+        
+        private boolean isDead() {
+            int frequencyInt = frequency.getMaximumInt();
+            long idleTimeInt = getIdleTimeMillis();
+            return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
+        }
+        
+        private boolean isAbusing() {
+            if (frequency == null) {
+                return false;
+            } else if (isDead()) {
+                return false;
+            } else {
+                return frequency.getMaximumInt() < limit;
+            }
+        }
+        
+        private Float getInterval() {
+            long current = System.currentTimeMillis();
+            Float interval;
+            if (last == 0) {
+                interval = null;
+            } else {
+                interval = (float) (current - last);
+            }
+            last = current;
+            return interval;
+        }
+        
+        private boolean addQuery() {
+            Float interval = getInterval();
+            if (interval == null) {
+                return false;
+            } else if (frequency == null) {
+                frequency = new NormalDistribution(interval < 1000 ? 1000 : interval);
+                return true;
+            } else {
+                frequency.addElement(interval);
+                return true;
+            }
+        }
+
         private boolean interrupted = false;
 
         /**
@@ -472,14 +526,17 @@ public final class QueryDNS extends Server {
                                     if (client == null) {
                                         result = "IGNORED";
                                     } else if (client.hasPermission(Permission.NONE)) {
+                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
-                                    } else if (client.isAbusing()) {
+                                    } else if (this.isAbusing() && client.isAbusing()) {
+                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
                                     } else {
+                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         long ttl = 3600; // Uma hora padrão.
@@ -553,11 +610,14 @@ public final class QueryDNS extends Server {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
                                                         } else if (status == SPF.Status.YELLOW) {
+                                                            Analise.processToday(clientQuery);
                                                             result = "127.0.0.2";
                                                             ttl = 432000; // Cinco dias.
                                                         } else if (client.isPassive()) {
+                                                            Analise.processToday(clientQuery);
                                                             result = "NXDOMAIN";
                                                         } else {
+                                                            Analise.processToday(clientQuery);
                                                             result = "127.0.0.3";
                                                             ttl = 259200; // Três dias.
                                                         }
@@ -570,7 +630,11 @@ public final class QueryDNS extends Server {
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    if (Block.containsCIDR(clientQuery)) {
+                                                    SPF.Status status = SPF.getStatus(clientQuery, false);
+                                                    if (status != SPF.Status.GREEN) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else if (Block.containsCIDR(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
                                                     } else if (Ignore.containsCIDR(clientQuery)) {
@@ -583,6 +647,8 @@ public final class QueryDNS extends Server {
                                                     } else if (SPF.isGood(clientQuery)) {
                                                         result = "127.0.0.2";
                                                         ttl = 259200; // Três dias.
+                                                    } else if (White.containsIP(clientQuery)) {
+                                                        result = "127.0.0.4";
                                                     } else {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
@@ -593,18 +659,36 @@ public final class QueryDNS extends Server {
                                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                                 // A consulta é um IPv6.
                                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
-                                                if (zone.isDNSBL()) {
+                                                if (clientQuery.equals("0:0:0:0:0:ffff:7f00:1")) {
+                                                    // Consulta de teste para negativo.
+                                                    result = "NXDOMAIN";
+                                                } else if (clientQuery.equals("0:0:0:0:0:ffff:7f00:2")) {
+                                                    // Consulta de teste para positivo.
+                                                    result = "127.0.0.2";
+                                                    ttl = 0;
+                                                } else if (clientQuery.equals("0:0:0:0:0:ffff:7f00:3")) {
+                                                    if (client.isPassive()) {
+                                                        result = "NXDOMAIN";
+                                                    } else {
+                                                        // Consulta de teste para positivo.
+                                                        result = "127.0.0.3";
+                                                        ttl = 0;
+                                                    }
+                                                } else if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
                                                     if (Block.containsCIDR(clientQuery)) {
                                                         if (status == SPF.Status.RED) {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
                                                         } else if (status == SPF.Status.YELLOW) {
+                                                            Analise.processToday(clientQuery);
                                                             result = "127.0.0.2";
                                                             ttl = 432000; // Cinco dias.
                                                         } else if (client.isPassive()) {
+                                                            Analise.processToday(clientQuery);
                                                             result = "NXDOMAIN";
                                                         } else {
+                                                            Analise.processToday(clientQuery);
                                                             result = "127.0.0.3";
                                                             ttl = 259200; // Três dias.
                                                         }
@@ -612,12 +696,21 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
+                                                    } else if (status == SPF.Status.YELLOW) {
+                                                        Analise.processToday(clientQuery);
+                                                        result = "NXDOMAIN";
+                                                    } else if (SubnetIPv6.isSLAAC(clientQuery)) {
+                                                        result = "NXDOMAIN";
                                                     } else {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    if (Block.containsCIDR(clientQuery)) {
+                                                    SPF.Status status = SPF.getStatus(clientQuery, false);
+                                                    if (status != SPF.Status.GREEN) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else if (Block.containsCIDR(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
                                                     } else if (Ignore.containsCIDR(clientQuery)) {
@@ -630,6 +723,8 @@ public final class QueryDNS extends Server {
                                                     } else if (SPF.isGood(clientQuery)) {
                                                         result = "127.0.0.2";
                                                         ttl = 259200; // Três dias.
+                                                    } else if (White.containsIP(clientQuery)) {
+                                                        result = "127.0.0.4";
                                                     } else {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
@@ -638,9 +733,25 @@ public final class QueryDNS extends Server {
                                                     result = "NXDOMAIN";
                                                 }
                                             } else if ((clientQuery = zone.extractDomain(host)) != null) {
-                                                if (zone.isDNSBL()) {
+                                                if (clientQuery.equals(".invalid")) {
+                                                    // Consulta de teste para negativo.
+                                                    result = "NXDOMAIN";
+                                                } else if (clientQuery.equals(".test")) {
+                                                    // Consulta de teste para positivo.
+                                                    result = "127.0.0.2";
+                                                    ttl = 0;
+                                                } else if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
-                                                    if (Block.containsDomain(clientQuery, true)) {
+                                                    if (Generic.containsDynamic(clientQuery)) {
+                                                        Analise.processToday(clientQuery);
+                                                        if (status == SPF.Status.GREEN) {
+                                                            result = "127.0.0.3";
+                                                            ttl = 432000; // Cinco dias.
+                                                        } else {
+                                                            result = "127.0.0.2";
+                                                            ttl = 604800; // Sete dias.
+                                                        }
+                                                    } else if (Block.containsDomain(clientQuery, true)) {
                                                         if (status == SPF.Status.RED) {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
@@ -654,16 +765,25 @@ public final class QueryDNS extends Server {
                                                             ttl = 259200; // Três dias.
                                                         }
                                                     } else if (status == SPF.Status.RED) {
+                                                        Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
                                                     } else {
+                                                        Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
                                                     }
                                                 } else if (zone.isDNSWL()) {
-                                                    if (Block.containsDomain(clientQuery, true)) {
+                                                    SPF.Status status = SPF.getStatus(clientQuery, false);
+                                                    if (status != SPF.Status.GREEN) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
-                                                    } else if (Ignore.containsCIDR(clientQuery)) {
+                                                    } else if (Generic.containsGenericSoft(clientQuery)) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else if (Block.containsDomain(clientQuery, true)) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else if (Ignore.containsHost(clientQuery)) {
                                                         if (SPF.isGood(clientQuery)) {
                                                             result = "127.0.0.2";
                                                         } else {
@@ -673,6 +793,8 @@ public final class QueryDNS extends Server {
                                                     } else if (SPF.isGood(clientQuery)) {
                                                         result = "127.0.0.2";
                                                         ttl = 259200; // Três dias.
+                                                    } else if (White.containsDomain(clientQuery)) {
+                                                        result = "127.0.0.4";
                                                     } else {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
@@ -695,7 +817,7 @@ public final class QueryDNS extends Server {
                                             if (zone == null) {
                                                 result = "NXDOMAIN";
                                             } else {
-                                                String information = zone.getMessage(clientQuery);
+                                                String information = zone.getMessage(null, clientQuery);
                                                 if (information == null) {
                                                     result = "NXDOMAIN";
                                                 } else {

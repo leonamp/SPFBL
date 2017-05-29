@@ -22,10 +22,11 @@ import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,41 +52,103 @@ public class Generic {
     /**
      * Conjunto de zonas de reversos genericos.
      */
-    private static class SET {
+    private static class MAP {
         
-        private static final HashSet<String> SET = new HashSet<String>();
+        private static final HashMap<String,Boolean> MAP = new HashMap<String,Boolean>();
         
         public static synchronized boolean isEmpty() {
-            return SET.isEmpty();
+            return MAP.isEmpty();
         }
         
-        public static synchronized void clear() {
-            SET.clear();
+        public static synchronized void clearGeneric() {
+            MAP.clear();
             CHANGED = true;
         }
         
-        public static synchronized TreeSet<String> getAll() {
+        public static synchronized void clearDynamic() {
+            for (String key : MAP.keySet()) {
+                MAP.put(key, false);
+            }
+        }
+        
+        public static synchronized TreeSet<String> getGenericAll() {
             TreeSet<String> set = new TreeSet<String>();
-            set.addAll(SET);
+            set.addAll(MAP.keySet());
             return set;
         }
         
-        private static synchronized boolean addExact(String token) {
-            return CHANGED = SET.add(token);
+        public static synchronized TreeSet<String> getDynamicAll() {
+            TreeSet<String> set = new TreeSet<String>();
+            for (String key : MAP.keySet()) {
+                if (MAP.get(key)) {
+                    set.add(key);
+                }
+            }
+            return set;
         }
         
-        private static synchronized boolean dropExact(String token) {
-            return CHANGED = SET.remove(token);
+        public static synchronized TreeMap<String,Boolean> getMapAll() {
+            TreeMap<String,Boolean> map = new TreeMap<String,Boolean>();
+            map.putAll(MAP);
+            return map;
         }
         
-        public static synchronized boolean contains(String token) {
-            return SET.contains(token);
+        private static synchronized boolean addGenericExact(String token) {
+            if (MAP.containsKey(token)) {
+                return false;
+            } else {
+                Boolean old = MAP.put(token, false);
+                boolean changed = old == null || old.equals(true);
+                CHANGED |= changed;
+                return changed;
+            }
+        }
+        
+        private static synchronized boolean addDynamicExact(String token) {
+            Boolean old = MAP.put(token, true);
+            boolean changed = old == null || old.equals(false);
+            CHANGED |= changed;
+            return changed;
+        }
+        
+        private static synchronized boolean putExact(String token, boolean dyn) {
+            Boolean old = MAP.put(token, dyn);
+            boolean changed = old == null || !old.equals(dyn);
+            CHANGED |= changed;
+            return changed;
+        }
+        
+        private static synchronized boolean dropGenericExact(String token) {
+            boolean changed = MAP.remove(token) != null;
+            CHANGED |= changed;
+            return changed;
+        }
+        
+        private static synchronized boolean dropDynamicExact(String token) {
+            Boolean dyn = MAP.get(token);
+            if (dyn == null) {
+                return false;
+            } else if (dyn) {
+                MAP.put(token, false);
+                return CHANGED = true;
+            } else {
+                return false;
+            }
+        }
+        
+        public static synchronized boolean containsGeneric(String token) {
+            return MAP.containsKey(token);
+        }
+        
+        public static synchronized boolean containsDynamic(String token) {
+            Boolean dyn = MAP.get(token);
+            if (dyn == null) {
+                return false;
+            } else {
+                return dyn;
+            }
         }
     }
-    
-//    private static void logTrace(long time, String message) {
-//        Server.log(time, Core.Level.TRACE, "GRDNS", message, (String) null);
-//    }
     
     /**
      * Conjunto de REGEX para bloqueio.
@@ -174,24 +237,6 @@ public class Generic {
             return MAP.get(client);
         }
         
-        public static boolean contains(String client, String regex) {
-            if (regex == null) {
-                return false;
-            } else {
-                ArrayList<Pattern> patternList = getClientList(client);
-                if (patternList == null) {
-                    return false;
-                } else {
-                    for (Pattern pattern : patternList) {
-                        if (regex.equals(pattern.pattern())) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        }
-        
         private static String get(
                 Collection<String> tokenList
                 ) throws ProcessException {
@@ -217,7 +262,7 @@ public class Generic {
         }
     }
     
-    public static boolean dropExact(String token) {
+    public static boolean dropGenericExact(String token) {
         if (token == null) {
             return false;
         } else if (token.contains("REGEX=")) {
@@ -226,20 +271,37 @@ public class Generic {
             } else {
                 return false;
             }
-        } else if (SET.dropExact(token)) {
+        } else if (MAP.dropGenericExact(token)) {
+            return CHANGED = true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean dropDynamicExact(String token) {
+        if (token == null) {
+            return false;
+        } else if (token.contains("REGEX=")) {
+            return false;
+        } else if (MAP.dropDynamicExact(token)) {
             return CHANGED = true;
         } else {
             return false;
         }
     }
 
-    public static boolean dropAll() {
-        SET.clear();
+    public static boolean dropGenericAll() {
+        MAP.clearGeneric();
         REGEX.clear();
         return CHANGED = true;
     }
+    
+    public static boolean dropDynamicAll() {
+        MAP.clearDynamic();
+        return CHANGED = true;
+    }
 
-    public static boolean addExact(String token) throws ProcessException {
+    private static boolean addGenericExact(String token) throws ProcessException {
         if (token == null) {
             return false;
         } else if (token.contains("REGEX=")) {
@@ -248,20 +310,53 @@ public class Generic {
             } else {
                 return false;
             }
-        } else if (SET.addExact(token)) {
+        } else if (MAP.addGenericExact(token)) {
             return CHANGED = true;
         } else {
             return false;
         }
     }
     
-    public static TreeSet<String> getAll() throws ProcessException {
-        TreeSet<String> blockSet = SET.getAll();
-        blockSet.addAll(REGEX.getAll());
-        return blockSet;
+    private static boolean addDynamicExact(String token) throws ProcessException {
+        if (token == null) {
+            return false;
+        } else if (token.contains("REGEX=")) {
+            return false;
+        } else if (MAP.addDynamicExact(token)) {
+            return CHANGED = true;
+        } else {
+            return false;
+        }
     }
     
-    public static boolean containsDomain(String address) {
+    public static TreeSet<String> getGenericAll() throws ProcessException {
+        TreeSet<String> set = MAP.getGenericAll();
+        set.addAll(REGEX.getAll());
+        return set;
+    }
+    
+    public static TreeSet<String> getDynamicAll() throws ProcessException {
+        TreeSet<String> set = MAP.getDynamicAll();
+        return set;
+    }
+    
+    public static TreeMap<String,Boolean> getMapAll() throws ProcessException {
+        TreeMap<String,Boolean> map = MAP.getMapAll();
+        for (String key : REGEX.getAll()) {
+            map.put(key, false);
+        }
+        return map;
+    }
+    
+    public static boolean containsGenericExact(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            return MAP.containsGeneric(address);
+        }
+    }
+    
+    public static boolean containsGenericDomain(String address) {
         if (address == null) {
             return false;
         } else {
@@ -276,7 +371,7 @@ public class Generic {
                     do {
                         index = hostname.indexOf('.') + 1;
                         hostname = hostname.substring(index);
-                        if (SET.contains('.' + hostname)) {
+                        if (MAP.containsGeneric('.' + hostname)) {
                             return true;
                         } else {
                             regexList.addFirst('.' + hostname);
@@ -291,24 +386,29 @@ public class Generic {
         }
     }
 
-    public static boolean containsExact(String token) {
-        if (token.contains("REGEX=")) {
-            int index = token.indexOf('=');
-            String regex = token.substring(index+1);
-            index = token.lastIndexOf(':', index);
-            String client;
-            if (index == -1) {
-                client = null;
-            } else {
-                client = token.substring(0, index);
-            }
-            return REGEX.contains(client, regex);
+    public static boolean containsDynamicDomain(String address) {
+        if (address == null) {
+            return false;
         } else {
-            return SET.contains(token);
+            int index = address.indexOf('@') + 1;
+            address = address.substring(index);
+            String hostname = Domain.normalizeHostname(address, true);
+            if (hostname == null) {
+                return false;
+            } else {
+                do {
+                    index = hostname.indexOf('.') + 1;
+                    hostname = hostname.substring(index);
+                    if (MAP.containsDynamic('.' + hostname)) {
+                        return true;
+                    }
+                } while (hostname.contains("."));
+                return false;
+            }
         }
     }
 
-    private static String normalizeTokenGeneric(String token) {
+    private static String normalizeToken(String token, boolean regex) {
         if (token == null) {
             return null;
         } else if (Subnet.isValidIP(token)) {
@@ -316,9 +416,11 @@ public class Generic {
         } else if (Domain.isEmail(token)) {
             return null;
         } else if (SPF.isREGEX(token)) {
-            return token;
-        } else if (Domain.isHostname(token)) {
-            return Domain.normalizeHostname(token, true);
+            if (regex) {
+                return token;
+            } else {
+                return null;
+            }
         } else if (token.contains("#") || token.contains(".H.")) {
             while (token.contains(".H.")) {
                 token = token.replace(".H.", ".$.");
@@ -350,6 +452,8 @@ public class Generic {
                 }
             }
             return null;
+        } else if (Domain.isHostname(token)) {
+            return Domain.normalizeHostname(token, true);
         } else {
             return null;
         }
@@ -357,48 +461,84 @@ public class Generic {
     
     public static boolean tryAdd(String token) {
         try {
-            return add(token) != null;
+            return addGeneric(token) != null;
         } catch (ProcessException ex) {
             return false;
         }
     }
 
-    public static String add(String token) throws ProcessException {
-        if ((token = normalizeTokenGeneric(token)) == null) {
+    public static String addGeneric(String token) throws ProcessException {
+        if ((token = normalizeToken(token, true)) == null) {
             throw new ProcessException("TOKEN INVALID");
-        } else if (addExact(token)) {
+        } else if (addGenericExact(token)) {
             return token;
         } else {
             return null;
         }
     }
     
-    public static boolean drop(String token) throws ProcessException {
-        if ((token = normalizeTokenGeneric(token)) == null) {
+    public static String addDynamic(String token) throws ProcessException {
+        if ((token = normalizeToken(token, false)) == null) {
             throw new ProcessException("TOKEN INVALID");
-        } else if (dropExact(token)) {
+        } else if (addDynamicExact(token)) {
+            return token;
+        } else {
+            return null;
+        }
+    }
+    
+    public static boolean dropGeneric(String token) throws ProcessException {
+        if ((token = normalizeToken(token, true)) == null) {
+            throw new ProcessException("TOKEN INVALID");
+        } else if (dropGenericExact(token)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean dropDynamic(String token) throws ProcessException {
+        if ((token = normalizeToken(token, false)) == null) {
+            throw new ProcessException("TOKEN INVALID");
+        } else if (dropDynamicExact(token)) {
             return true;
         } else {
             return false;
         }
     }
 
-    public static TreeSet<String> get() throws ProcessException {
+    public static TreeSet<String> getGeneric() throws ProcessException {
         TreeSet<String> genericSet = new TreeSet<String>();
-        for (String token : getAll()) {
+        for (String token : getGenericAll()) {
             genericSet.add(token);
         }
         return genericSet;
     }
     
-    public static boolean contains(String token) {
-        return find(token) != null;
+    public static TreeSet<String> getDynamic() throws ProcessException {
+        TreeSet<String> genericSet = new TreeSet<String>();
+        for (String token : getDynamicAll()) {
+            genericSet.add(token);
+        }
+        return genericSet;
+    }
+    
+    public static boolean containsGeneric(String token) {
+        return findGeneric(token) != null;
+    }
+    
+    public static boolean containsGenericSoft(String token) {
+        return findGenericSoft(token) != null;
+    }
+    
+    public static boolean containsDynamic(String token) {
+        return findDynamic(token) != null;
     }
     
     public static String convertDomainToMask(String host) {
-        if (host == null) {
+        if ((host = Domain.normalizeHostname(host, true)) == null) {
             return null;
-        } else if (Domain.isHostname(host)) {
+        } else {
             try {
                 String domain = Domain.extractDomain(host, true);
                 String mask = domain.replace('0', '#');
@@ -422,34 +562,39 @@ public class Generic {
             } catch (ProcessException ex) {
                 return null;
             }
-        } else {
-            return null;
         }
     }
     
-//    public static String getHostMask(String host) {
-//        if (host == null) {
-//            return null;
-//        } else if (Domain.isHostname(host)) {
-//            host = Domain.normalizeHostname(host, true);
-//            do {
-//                int index = host.indexOf('.') + 1;
-//                host = host.substring(index);
-//                String token2 = '.' + host;
-//                if (SET.contains(token2)) {
-//                    return null;
-//                }
-//            } while (host.contains("."));
-//            return convertHostToMask(host);
-//        } else {
-//            return null;
-//        }
-//    }
-    
     public static String convertHostToMask(String host) {
-        if (host == null) {
+        if ((host = Domain.normalizeHostname(host, true)) == null) {
             return null;
-        } else if (Domain.isHostname(host)) {
+        } else if (host.contains("mail")) {
+            return null;
+        } else if (host.contains("http")) {
+            return null;
+        } else if (host.contains("smtp")) {
+            return null;
+        } else if (host.contains("cpanel")) {
+            return null;
+        } else if (host.contains("relay")) {
+            return null;
+        } else if (host.contains("mta")) {
+            return null;
+        } else if (host.contains("zimbra")) {
+            return null;
+        } else if (host.contains("correio")) {
+            return null;
+        } else if (host.contains("newsletter")) {
+            return null;
+        } else if (host.contains("bounce")) {
+            return null;
+        } else if (host.contains("gateway")) {
+            return null;
+        } else if (host.contains("mbox")) {
+            return null;
+        } else if (host.startsWith(".www")) {
+            return null;
+        } else {
             try {
                 String domain = Domain.extractDomain(host, true);
                 int index = host.length() - domain.length();
@@ -465,9 +610,6 @@ public class Generic {
                     mask = mask.replace('7', '#');
                     mask = mask.replace('8', '#');
                     mask = mask.replace('9', '#');
-                    while (mask.contains("##")) {
-                        mask = mask.replace("##", "#");
-                    }
                     StringTokenizer tokenizer = new StringTokenizer(mask, ".");
                     while (tokenizer.hasMoreTokens()) {
                         String token = tokenizer.nextToken();
@@ -479,19 +621,36 @@ public class Generic {
                         subMask = subMask.replace('f', 'H');
                         if (subMask.contains("H")) {
                             subMask = subMask.replace('#', 'H');
-                            while (subMask.contains("HH")) {
-                                subMask = subMask.replace("HH", "H");
-                            }
-                            if (subMask.equals("H")) {
-                                mask = mask.replace('.' + token + '.', ".H.");
-                                if (mask.endsWith('.' + token)) {
-                                    mask = mask.replace('.' + token, ".H");
+                            if (subMask.contains("HHHH")) {
+                                while (subMask.contains("HH")) {
+                                    subMask = subMask.replace("HH", "H");
+                                }
+                                if (subMask.equals("H")) {
+                                    mask = mask.replace('.' + token + '.', ".H.");
+                                    if (mask.endsWith('.' + token)) {
+                                        mask = mask.replace('.' + token, ".H");
+                                    }
                                 }
                             }
                         }
                     }
+                    while (mask.contains("##")) {
+                        mask = mask.replace("##", "#");
+                    }
                     mask += domain;
                     if (mask.equals(host)) {
+                        return null;
+                    } else if (mask.startsWith(".pm#")) {
+                        return null;
+                    } else if (mask.startsWith(".mx#")) {
+                        return null;
+                    } else if (mask.startsWith(".pop#")) {
+                        return null;
+                    } else if (mask.startsWith(".ns#")) {
+                        return null;
+                    } else if (mask.startsWith(".dns#")) {
+                        return null;
+                    } else if (mask.startsWith(".out#")) {
                         return null;
                     } else {
                         return mask;
@@ -502,12 +661,10 @@ public class Generic {
             } catch (ProcessException ex) {
                 return null;
             }
-        } else {
-            return null;
         }
     }
     
-    public static String find(
+    public static String findGeneric(
             String token
             ) {
         String mask = null;
@@ -521,13 +678,13 @@ public class Generic {
                 int index = host.indexOf('.') + 1;
                 host = host.substring(index);
                 String token2 = '.' + host;
-                if (SET.contains(token2)) {
+                if (MAP.containsGeneric(token2)) {
                     return token2;
                 }
                 regexList.addFirst(token2);
             } while (host.contains("."));
             if ((host = convertDomainToMask(token)) != null) {
-                if (SET.contains(host)) {
+                if (MAP.containsGeneric(host)) {
                     return host;
                 }
             }
@@ -537,7 +694,7 @@ public class Generic {
                     int index = host.indexOf('.') + 1;
                     host = host.substring(index);
                     String token2 = '.' + host;
-                    if (SET.contains(token2)) {
+                    if (MAP.containsGeneric(token2)) {
                         return token2;
                     }
                     regexList.addFirst(token2);
@@ -547,18 +704,7 @@ public class Generic {
             int index = token.lastIndexOf('@') + 1;
             token = token.substring(index);
             token = Domain.normalizeHostname(token, true);
-            if (token != null) {
-                String host = token;
-                do {
-                    index = host.indexOf('.') + 1;
-                    host = host.substring(index);
-                    String token2 = '.' + host;
-                    if (SET.contains(token2)) {
-                        return token2;
-                    }
-                    regexList.addFirst(token2);
-                } while (host.contains("."));
-            }
+            return findGeneric(token);
         } else {
             regexList.add(token);
         }
@@ -579,7 +725,7 @@ public class Generic {
                                 if ((subMask = Generic.convertDomainToMask(subMask)) != null) {
                                     Matcher matcher = pattern.matcher(subMask.replace('#', '0'));
                                     if (matcher.matches()) {
-                                        if (addExact(subMask)) {
+                                        if (addGenericExact(subMask)) {
                                             Block.clear(subMask.replace('#', '0'), "GENERIC");
                                             Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
                                             return subMask;
@@ -589,7 +735,7 @@ public class Generic {
                             } else {
                                 Matcher matcher = pattern.matcher(subMask.replace('#', '0').replace(".H.", ".0a."));
                                 if (matcher.matches()) {
-                                    if (addExact(subMask)) {
+                                    if (addGenericExact(subMask)) {
                                         Block.clear(subMask.replace('#', '0').replace(".H.", ".0a."), "GENERIC");
                                         Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
                                         return subMask;
@@ -607,6 +753,106 @@ public class Generic {
         }
         return null;
     }
+    
+    public static String findGenericSoft(
+            String token
+            ) {
+        if (token == null) {
+            return null;
+        } else if (Domain.isHostname(token)) {
+            token = Domain.normalizeHostname(token, true);
+            String host = token;
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token2 = '.' + host;
+                if (MAP.containsGeneric(token2)) {
+                    return token2;
+                }
+            } while (host.contains("."));
+            if ((host = convertDomainToMask(token)) != null) {
+                if (MAP.containsGeneric(host)) {
+                    return host;
+                }
+            }
+            if ((host = convertHostToMask(token)) != null) {
+                do {
+                    int index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token2 = '.' + host;
+                    if (MAP.containsGeneric(token2)) {
+                        return token2;
+                    }
+                } while (host.contains("."));
+            }
+        } else if (token.contains("@")) {
+            int index = token.lastIndexOf('@') + 1;
+            token = token.substring(index);
+            token = Domain.normalizeHostname(token, true);
+            if (token != null) {
+                String host = token;
+                do {
+                    index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token2 = '.' + host;
+                    if (MAP.containsGeneric(token2)) {
+                        return token2;
+                    }
+                } while (host.contains("."));
+            }
+        }
+        return null;
+    }
+    
+    public static String findDynamic(
+            String token
+            ) {
+        if (token == null) {
+            return null;
+        } else if (Domain.isHostname(token)) {
+            token = Domain.normalizeHostname(token, true);
+            String host = token;
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token2 = '.' + host;
+                if (MAP.containsDynamic(token2)) {
+                    return token2;
+                }
+            } while (host.contains("."));
+            if ((host = convertDomainToMask(token)) != null) {
+                if (MAP.containsDynamic(host)) {
+                    return host;
+                }
+            }
+            if ((host = convertHostToMask(token)) != null) {
+                do {
+                    int index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token2 = '.' + host;
+                    if (MAP.containsDynamic(token2)) {
+                        return token2;
+                    }
+                } while (host.contains("."));
+            }
+        } else if (token.contains("@")) {
+            int index = token.lastIndexOf('@') + 1;
+            token = token.substring(index);
+            token = Domain.normalizeHostname(token, true);
+            if (token != null) {
+                String host = token;
+                do {
+                    index = host.indexOf('.') + 1;
+                    host = host.substring(index);
+                    String token2 = '.' + host;
+                    if (MAP.containsDynamic(token2)) {
+                        return token2;
+                    }
+                } while (host.contains("."));
+            }
+        }
+        return null;
+    }
 
     public static void store() {
         if (CHANGED) {
@@ -614,10 +860,22 @@ public class Generic {
                 Server.logTrace("storing generic.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/generic.set");
-                TreeSet<String> set = getAll();
+                TreeSet<String> set = getGenericAll();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(set, outputStream);
+                    CHANGED = false;
+                } finally {
+                    outputStream.close();
+                }
+                Server.logStore(time, file);
+                Server.logTrace("storing generic.map");
+                time = System.currentTimeMillis();
+                file = new File("./data/generic.map");
+                TreeMap<String,Boolean> map = getMapAll();
+                outputStream = new FileOutputStream(file);
+                try {
+                    SerializationUtils.serialize(map, outputStream);
                     CHANGED = false;
                 } finally {
                     outputStream.close();
@@ -631,8 +889,30 @@ public class Generic {
 
     public static void load() {
         long time = System.currentTimeMillis();
-        File file = new File("./data/generic.set");
+        File file = new File("./data/generic.map");
         if (file.exists()) {
+            try {
+                Map<String,Boolean> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                for (String token : map.keySet()) {
+                    boolean dyn = map.get(token);
+                    if (token.startsWith("REGEX=")) {
+                        REGEX.addExact(token);
+                    } else {
+                        MAP.putExact(token, dyn);
+                    }
+                }
+                CHANGED = false;
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        } else if ((file = new File("./data/generic.set")).exists()) {
             try {
                 Set<String> set;
                 FileInputStream fileInputStream = new FileInputStream(file);
@@ -645,7 +925,7 @@ public class Generic {
                     if (token.startsWith("REGEX=")) {
                         REGEX.addExact(token);
                     } else {
-                        SET.addExact(token);
+                        MAP.addGenericExact(token);
                     }
                 }
                 CHANGED = false;

@@ -22,12 +22,13 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
@@ -63,14 +64,14 @@ public class Block {
      */
     private static class SET {
         
-        private static final HashSet<String> SET = new HashSet<String>();
+        private static final HashMap<String,Long> MAP = new HashMap<String,Long>();
         
         public static synchronized boolean isEmpty() {
-            return SET.isEmpty();
+            return MAP.isEmpty();
         }
         
         public static synchronized void clear() {
-            SET.clear();
+            MAP.clear();
         }
         
         public static TreeSet<String> get(User user) {
@@ -81,9 +82,9 @@ public class Block {
             }
         }
         
-        public static synchronized TreeSet<String> get(String user) {
+        public static TreeSet<String> get(String user) {
             TreeSet<String> resultSet = new TreeSet<String>();
-            for (String token : SET) {
+            for (String token : getAll()) {
                 if (user == null && !token.contains(":")) {
                     resultSet.add(token);
                 } else if (user != null && token.startsWith(user + ':')) {
@@ -94,38 +95,49 @@ public class Block {
             return resultSet;
         }
         
-        public static synchronized int getAll(OutputStream outputStream) throws Exception {
+        public static int getAll(OutputStream outputStream) throws Exception {
             int count = 0;
-            for (String token : SET) {
+            for (String token : getAll()) {
                 outputStream.write(token.getBytes("UTF-8"));
                 outputStream.write('\n');
                 count++;
             }
             return count;
         }
+        
+        public static synchronized TreeMap<String,Long> getMap() {
+            TreeMap<String,Long> map = new TreeMap<String,Long>();
+            map.putAll(MAP);
+            return map;
+        }
                 
         public static synchronized TreeSet<String> getAll() {
             TreeSet<String> set = new TreeSet<String>();
-            set.addAll(SET);
+            set.addAll(MAP.keySet());
             return set;
         }
         
+        private static synchronized void putExact(String token, Long last) {
+            MAP.put(token, last);
+        }
+        
         private static synchronized boolean addExact(String token) {
-            return SET.add(token);
+            return MAP.put(token, System.currentTimeMillis()) == null;
         }
         
         private static synchronized boolean dropExact(String token) {
-            return SET.remove(token);
+            return MAP.remove(token) != null;
         }
         
         public static synchronized boolean contains(String token) {
-            return SET.contains(token);
+            if (MAP.containsKey(token)) {
+                MAP.put(token, System.currentTimeMillis());
+                return CHANGED = true;
+            } else {
+                return false;
+            }
         }
     }
-    
-//    private static void logTrace(long time, String message) {
-//        Server.log(time, Core.Level.TRACE, "BLOCK", message, (String) null);
-//    }
     
     /**
      * Conjunto de critperios WHOIS para bloqueio.
@@ -938,10 +950,10 @@ public class Block {
         private static boolean split(String cidr) {
             if (CIDR.dropExact(cidr)) {
                 cidr = cidr.substring(5);
-                byte mask = Subnet.getMask(cidr);
+                short mask = Subnet.getMask(cidr);
                 String first = Subnet.getFirstIP(cidr);
                 String last = Subnet.getLastIP(cidr);
-                int max = SubnetIPv4.isValidIPv4(first) ? 32 : 64;
+                int max = SubnetIPv4.isValidIPv4(first) ? 32 : 128;
                 if (mask < max) {
                     mask++;
                     String cidr1 = first + "/" + mask;
@@ -1006,10 +1018,10 @@ public class Block {
                     String cidrExtended = cidrSet.first();
                     do {
                         try {
-                            if (cidrExtended.contains(".")) {
+                            if (SubnetIPv4.isValidCIDRv4(cidrExtended)) {
                                 String cidrSmaller = SubnetIPv4.normalizeCIDRv4(cidrExtended);
-                                int mask = Subnet.getMask(cidrSmaller);
-                                if (mask > 16) {
+                                short mask = Subnet.getMask(cidrSmaller);
+                                if (mask > 8) {
                                     String ipFirst = SubnetIPv4.getFirstIPv4(cidrSmaller);
                                     String cidrBigger = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + (mask - 1));
                                     ipFirst = SubnetIPv4.getFirstIPv4(cidrBigger);
@@ -1019,7 +1031,22 @@ public class Block {
                                         String cidr2 = SubnetIPv4.normalizeCIDRv4(ipLast + "/" + mask);
                                         if (CIDR.contains((String) null, cidr2)) {
                                             CIDR.addExact(cidrBigger, true);
-                                            Server.logTrace("CIDR " + cidr1 + " and " + cidr2 + " simplified to " + cidrBigger + ".");
+                                        }
+                                    }
+                                }
+                            } else if (SubnetIPv6.isValidCIDRv6(cidrExtended)) {
+                                String cidrSmaller = SubnetIPv6.normalizeCIDRv6(cidrExtended);
+                                short mask = Subnet.getMask(cidrSmaller);
+                                if (mask > 16) {
+                                    String ipFirst = SubnetIPv6.getFirstIPv6(cidrSmaller);
+                                    String cidrBigger = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + (mask - 1));
+                                    ipFirst = SubnetIPv6.getFirstIPv6(cidrBigger);
+                                    String ipLast = SubnetIPv6.getLastIPv6(cidrBigger);
+                                    String cidr1 = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + mask);
+                                    if (CIDR.contains((String) null, cidr1)) {
+                                        String cidr2 = SubnetIPv6.normalizeCIDRv6(ipLast + "/" + mask);
+                                        if (CIDR.contains((String) null, cidr2)) {
+                                            CIDR.addExact(cidrBigger, true);
                                         }
                                     }
                                 }
@@ -1300,6 +1327,16 @@ public class Block {
             return SET.contains(user.getEmail() + ":" + token);
         }
     }
+    
+    public static boolean containsExact(String user, String token) {
+        if (token == null) {
+            return false;
+        } else if (user == null) {
+            return SET.contains(token);
+        } else {
+            return SET.contains(user + ":" + token);
+        }
+    }
 
     public static boolean containsExact(String token) {
         if (token.contains("WHOIS/")) {
@@ -1410,6 +1447,14 @@ public class Block {
             return token;
         } else {
             return null;
+        }
+    }
+    
+    public static boolean tryOverlap(String cidr) {
+        try {
+            return overlap(cidr);
+        } catch (ProcessException ex) {
+            return false;
         }
     }
     
@@ -1673,9 +1718,20 @@ public class Block {
     
     public static void clear(String token, String name) {
         try {
+            if (SubnetIPv4.isValidIPv4(token)) {
+                String ip = SubnetIPv4.normalizeIPv4(token);
+                if (Block.clearCIDR(ip, 32) != null) {
+                    Server.logInfo("false positive BLOCK '" + ip + "/32' detected by '" + name + "'.");
+                }
+            } else if (SubnetIPv6.isValidIPv6(token)) {
+                String ip = SubnetIPv6.normalizeIPv6(token);
+                if (Block.clearCIDR(ip, 64) != null) {
+                    Server.logInfo("false positive BLOCK '" + ip + "/64' detected by '" + name + "'.");
+                }
+            }
             TreeSet<String> blockSet = new TreeSet<String>();
             String block;
-            while ((block = Block.find(null, null, token, true, true, false)) != null) {
+            while ((block = Block.find(null, null, token, false, true, true, false)) != null) {
                 if (blockSet.contains(block)) {
                     throw new ProcessException("FATAL BLOCK ERROR " + block);
                 } else if (Block.drop(block)) {
@@ -1690,9 +1746,20 @@ public class Block {
     
     public static void clear(User user, String token, String name) {
         try {
-            TreeSet<String> blockSet = new TreeSet<String>();
             String block;
-            while ((block = Block.find(null, user, token, true, true, false)) != null) {
+            if (SubnetIPv4.isValidIPv4(token)) {
+                String ip = SubnetIPv4.normalizeIPv4(token);
+                if ((block = Block.clearCIDR(ip, 32)) != null) {
+                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
+                }
+            } else if (SubnetIPv6.isValidIPv6(token)) {
+                String ip = SubnetIPv6.normalizeIPv6(token);
+                if ((block = Block.clearCIDR(ip, 64)) != null) {
+                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
+                }
+            }
+            TreeSet<String> blockSet = new TreeSet<String>();
+            while ((block = Block.find(null, user, token, false, true, true, false)) != null) {
                 if (blockSet.contains(block)) {
                     throw new ProcessException("FATAL BLOCK ERROR " + block);
                 } else if (Block.drop(block)) {
@@ -1723,16 +1790,14 @@ public class Block {
     }
     
     public static String clearCIDR(String ip, int mask) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (Subnet.isValidIP(ip)) {
             String cidr;
-            while ((cidr = CIDR.get(null, ip)) != null && Subnet.getMask(cidr) < mask) {
-                CIDR.split(cidr);
+            while ((cidr = CIDR.get(null, ip)) != null) {
+                if (!CIDR.split(cidr)) {
+                    return cidr;
+                }
             }
-            if (CIDR.dropExact(cidr)) {
-                return cidr;
-            } else {
-                return null;
-            }
+            return null;
         } else {
             return null;
         }
@@ -1756,6 +1821,7 @@ public class Block {
     public static String find(
             User user,
             String token,
+            boolean findDNSBL,
             boolean findREGEX,
             boolean findWHOIS
             )  {
@@ -1764,7 +1830,7 @@ public class Block {
         if (user != null) {
             userEmail = user.getEmail();
         }
-        return find(userEmail, token, findREGEX, findWHOIS, false);
+        return find(userEmail, token, findDNSBL, findREGEX, findWHOIS, false);
     }
     
     public static String findHREF(
@@ -1782,6 +1848,7 @@ public class Block {
     public static String find(
             User user,
             String token,
+            boolean findDNSBL,
             boolean findREGEX,
             boolean findWHOIS,
             boolean autoBlock
@@ -1791,13 +1858,14 @@ public class Block {
         if (user != null) {
             userEmail = user.getEmail();
         }
-        return find(userEmail, token, findREGEX, findWHOIS, autoBlock);
+        return find(userEmail, token, findDNSBL, findREGEX, findWHOIS, autoBlock);
     }
     
     public static String find(
             Client client,
             User user,
             String token,
+            boolean findDNSBL,
             boolean findREGEX,
             boolean findWHOIS,
             boolean autoBlock
@@ -1809,7 +1877,7 @@ public class Block {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
-        return find(userEmail, token, findREGEX, findWHOIS, autoBlock);
+        return find(userEmail, token, findDNSBL, findREGEX, findWHOIS, autoBlock);
     }
     
     public static String findHREF(
@@ -1831,6 +1899,7 @@ public class Block {
     public static String find(
             String userEmail,
             String token,
+            boolean findDNSBL,
             boolean findREGEX,
             boolean findWHOIS,
             boolean autoBlock
@@ -1903,13 +1972,13 @@ public class Block {
                 return userEmail + ':' + token;
             } else if ((cidr = CIDR.get(userEmail, token)) != null) {
                 return cidr;
-            } else if ((dnsbl = DNSBL.get(userEmail, token)) != null) {
+            } else if (findDNSBL && (dnsbl = DNSBL.get(userEmail, token)) != null) {
                 return dnsbl;
             }
             Reverse reverse = Reverse.get(token);
             if (reverse != null) {
                 for (String host : reverse.getAddressSet()) {
-                    String block = find(userEmail, host, findREGEX, findWHOIS, autoBlock);
+                    String block = find(userEmail, host, findDNSBL, findREGEX, findWHOIS, autoBlock);
                     if (block != null) {
                         return block;
                     }
@@ -2059,51 +2128,67 @@ public class Block {
             String qualifier,
             String recipient
             ) throws ProcessException {
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        clear(userEmail, ip, sender, hostname, qualifier, recipient);
+    }
+    
+    public static void clear(
+            String userEmail,
+            String ip,
+            String sender,
+            String hostname,
+            String qualifier,
+            String recipient
+            ) throws ProcessException {
         String block;
         int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
         if ((block = Block.clearCIDR(ip, mask)) != null) {
-            if (user == null) {
+            if (userEmail == null) {
                 Server.logInfo("false positive BLOCK '" + block + "' detected.");
             } else {
-                Server.logInfo("false positive BLOCK '" + block + "' detected by '" + user.getEmail() + "'.");
+                Server.logInfo("false positive BLOCK '" + block + "' detected by '" + userEmail + "'.");
             }
         }
         TreeSet<String> blockSet = new TreeSet<String>();
-        while ((block = find(client, user, ip, sender, hostname, qualifier, recipient, true, true, false)) != null) {
+        while ((block = find(userEmail, ip, sender, hostname, qualifier, recipient, false, true, true, false)) != null) {
             if (blockSet.contains(block)) {
                 throw new ProcessException("FATAL BLOCK ERROR " + block);
             } else if (dropExact(block)) {
-                if (user != null) {
-                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + user.getEmail() + "'.");
-                } else if (client != null && client.hasEmail()) {
-                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + client.getEmail() + "'.");
-                } else {
+                if (userEmail == null) {
                     Server.logInfo("false positive BLOCK '" + block + "' detected.");
+                } else {
+                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + userEmail + "'.");
                 }
             }
             blockSet.add(block);
         }
-//        while (dropExact(block = find(client, user, ip, sender, hostname, qualifier, recipient, false))) {
-//            if (blockSet.contains(block)) {
-//                throw new ProcessException("FATAL BLOCK ERROR " + block);
-//            } else if (user == null) {
-//                Server.logInfo("false positive BLOCK '" + block + "' detected.");
-//            } else {
-//                Server.logInfo("false positive BLOCK '" + block + "' detected by '" + user.getEmail() + "'.");
-//            }
-//            blockSet.add(block);
-//        }
     }
 
     public static boolean contains(Client client, User user,
             String ip, String sender, String helo,
             String qualifier, String recipient,
-            boolean findREGEX, boolean findWHOIS, boolean autoblock
+            boolean findDNSBL, boolean findREGEX,
+            boolean findWHOIS, boolean autoblock
             ) throws ProcessException {
         return find(client, user, ip, sender, helo, qualifier, recipient,
-                findREGEX, findWHOIS, autoblock) != null;
+                findDNSBL, findREGEX, findWHOIS, autoblock) != null;
     }
-
+    
+    public static boolean contains(String userEmail,
+            String ip, String sender, String helo,
+            String qualifier, String recipient,
+            boolean findDNSBL, boolean findREGEX,
+            boolean findWHOIS, boolean autoblock
+            ) throws ProcessException {
+        return find(userEmail, ip, sender, helo, qualifier, recipient,
+                findDNSBL, findREGEX, findWHOIS, autoblock) != null;
+    }
+    
     public static String find(
             Client client,
             User user,
@@ -2112,6 +2197,32 @@ public class Block {
             String hostname,
             String qualifier,
             String recipient,
+            boolean findDNSBL,
+            boolean findREGEX,
+            boolean findWHOIS,
+            boolean autoblock
+            ) {
+        // Definição do e-mail do usuário.
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        return find(
+                userEmail, ip, sender, hostname, qualifier,
+                recipient, findDNSBL, findREGEX, findWHOIS, autoblock
+        );
+    }
+
+    public static String find(
+            String userEmail,
+            String ip,
+            String sender,
+            String hostname,
+            String qualifier,
+            String recipient,
+            boolean findDNSBL,
             boolean findREGEX,
             boolean findWHOIS,
             boolean autoblock
@@ -2121,21 +2232,22 @@ public class Block {
         }
         TreeSet<String> whoisSet = new TreeSet<String>();
         TreeSet<String> regexSet = new TreeSet<String>();
-        // Definição do e-mail do usuário.
-        String userEmail = null;
-        if (user != null) {
-            userEmail = user.getEmail();
-        } else if (client != null) {
-            userEmail = client.getEmail();
-        }
+        
         // Definição do destinatário.
         String recipientDomain;
         if (recipient != null && recipient.contains("@")) {
             int index = recipient.indexOf('@');
             recipient = recipient.toLowerCase();
             if (recipient.startsWith("postmaster@") && !recipient.equals(userEmail)) {
-                // Não pode haver bloqueio para o postmaster.
-                return null;
+                // Não pode haver bloqueio para o postmaster,
+                // exceto se o bloqueio for especifico do postmaster.
+                String mx = Domain.extractHost(sender, true);
+                String token = (Provider.containsExact(mx) ? sender : mx) + ">" + recipient;
+                if (Block.containsExact(userEmail, token)) {
+                    return userEmail == null ? token : userEmail + ":" + token;
+                } else {
+                    return null;
+                }
             } else {
                 recipientDomain = recipient.substring(index);
             }
@@ -2199,13 +2311,13 @@ public class Block {
                 return userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain;
             } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
                 return cidr;
-            } else if ((dnsbl = DNSBL.get(userEmail, ip)) != null) {
+            } else if (findDNSBL && (dnsbl = DNSBL.get(userEmail, ip)) != null) {
                 return dnsbl;
             }
             Reverse reverse = Reverse.get(ip);
             if (reverse != null) {
                 for (String host : reverse.getAddressSet()) {
-                    String block = find(client, user, host, findREGEX, findWHOIS, autoblock);
+                    String block = find(userEmail, host, findDNSBL, findREGEX, findWHOIS, autoblock);
                     if (block != null) {
                         return block;
                     }
@@ -2250,9 +2362,12 @@ public class Block {
         // Verifica o remetente.
         if (sender != null && sender.contains("@")) {
             sender = sender.toLowerCase();
-            if (sender.startsWith("srs0=")) {
+            if (sender.startsWith("srs0=") || sender.startsWith("srs0+")) {
                 int index = sender.lastIndexOf('@');
                 String senderOriginal = sender.substring(0, index);
+                if (senderOriginal.startsWith("srs0+")) {
+                    senderOriginal = senderOriginal.replaceFirst("^srs0\\+", "srs0=");
+                }
                 StringTokenizer tokenizer = new StringTokenizer(senderOriginal, "=");
                 if (tokenizer.countTokens() == 5) {
                     tokenizer.nextToken();
@@ -2261,7 +2376,7 @@ public class Block {
                     String senderDomain = tokenizer.nextToken();
                     String part = tokenizer.nextToken();
                     senderOriginal = part + '@' + senderDomain;
-                    String block = Block.find(userEmail, senderOriginal, true, true, false);
+                    String block = Block.find(userEmail, senderOriginal, false, true, true, false);
                     if (block != null) {
                         return block;
                     }
@@ -2456,7 +2571,7 @@ public class Block {
             if (value == null || value.length() == 0) {
                 return 0;
             } else {
-                Date date = Domain.DATE_FORMATTER.parse(value);
+                Date date = new SimpleDateFormat("yyyyMMdd").parse(value);
                 long time = date.getTime() / (1000 * 60 * 60 * 24);
                 long today = System.currentTimeMillis() / (1000 * 60 * 60 * 24);
                 return (int) (today - time);
@@ -2584,40 +2699,34 @@ public class Block {
 
     public static void store(boolean simplify) {
         if (CHANGED) {
-            try {
+            if (simplify) {
                 Server.logTrace("simplifing block.set");
-                if (simplify) {
-                    CIDR.simplify();
-                }
+                CIDR.simplify();
+            }
+            try {
                 Server.logTrace("storing block.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/block.set");
-//                TreeSet<String> genericSet = new TreeSet<String>();
-//                TreeSet<String> tokenSet = new TreeSet<String>();
-//                for (String token : getAll()) {
-//                    if (simplify
-//                            && genericSet.size() < 100
-//                            && Domain.isHostname(token)
-//                            && Generic.contains(token)
-//                            ) {
-//                        // Até final da transição.
-//                        genericSet.add(token);
-//                        Server.logDebug("BLOCK '" + token + "' removed by GENERIC.");
-//                        Block.dropExact(token);
-//                    } else {
-//                        tokenSet.add(token);
-//                    }
-//                }
-//                for (String token : genericSet) {
-//                    String regex = Block.REGEX.find(token);
-//                    if (Block.REGEX.dropExact(regex)) {
-//                        Server.logDebug("BLOCK '" + regex + "' removed by GENERIC.");
-//                    }
-//                }
                 TreeSet<String> tokenSet = getAll();
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
                     SerializationUtils.serialize(tokenSet, outputStream);
+                    CHANGED = false;
+                } finally {
+                    outputStream.close();
+                }
+                Server.logStore(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+            try {
+                Server.logTrace("storing block.map");
+                long time = System.currentTimeMillis();
+                File file = new File("./data/block.map");
+                TreeMap<String,Long> tokenMap = SET.getMap();
+                FileOutputStream outputStream = new FileOutputStream(file);
+                try {
+                    SerializationUtils.serialize(tokenMap, outputStream);
                     CHANGED = false;
                 } finally {
                     outputStream.close();
@@ -2667,6 +2776,28 @@ public class Block {
                         REGEX.addExact(client, identifier);
                     } else {
                         SET.addExact(token);
+                    }
+                }
+                CHANGED = false;
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        file = new File("./data/block.map");
+        if (file.exists()) {
+            try {
+                Map<String,Long> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                for (String token : map.keySet()) {
+                    Long last = map.get(token);
+                    if (last != null) {
+                        SET.putExact(token, last);
                     }
                 }
                 CHANGED = false;

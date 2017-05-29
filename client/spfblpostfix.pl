@@ -124,7 +124,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL IP or sender is invalid.\n\n"
+            "action=554 5.7.1 SPFBL hostname and sender are both invalids.\n\n"
         );
     }
     elsif ( $result =~ /^INVALID / ) {

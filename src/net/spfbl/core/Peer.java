@@ -100,7 +100,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public enum Receive {
         ACCEPT, // Aceita imediatamente os bloqueios sem repassar.
-        REJECT, // Ignora todos os bloqueios recebidos.
+        REJECT, // Ignora todos os bloqueios e reputação recebidos.
         DROP, // Decarta todos os bloqueios recebidos e manda o firewall dropar.
         CONFIRM, // Obsoleto.
         REPUTATION, // Aceitar somente tabela de reputação.
@@ -1130,7 +1130,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     + (receive == null ? "" : " " + receive.name())
 //                    + (retainSet == null ? "" : " " + retainSet.size())
                     + " " + getFrequencyLiteral() + " " + reputationMax
-                    + " " + user;
+                    + " " + user.getContact();
         }
     }
     
@@ -1142,7 +1142,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         try {
             if (!SPF.isValidReputation(key)) {
                 return "INVALID";
-            } else if (Generic.contains(key)) {
+            } else if (Generic.containsGenericSoft(key)) {
                 return "GENERIC";
             } else if (Domain.isReserved(key)) {
                 return "RESERVED";

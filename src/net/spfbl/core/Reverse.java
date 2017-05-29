@@ -27,11 +27,8 @@ import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -418,6 +415,18 @@ public final class Reverse implements Serializable {
             return reverse;
         } else {
             return null;
+        }
+    }
+    
+    public static boolean isInexistentDomain(String hostname) {
+        try {
+            hostname = Domain.normalizeHostname(hostname, false);
+            Server.getAttributesDNS(hostname, new String[]{"NS"});
+            return false;
+        } catch (NameNotFoundException ex) {
+            return true;
+        } catch (NamingException ex) {
+            return false;
         }
     }
     
