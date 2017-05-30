@@ -45,7 +45,7 @@ MAX_TIMEOUT="100"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.10"
+version="2.11"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -4339,6 +4339,7 @@ case $1 in
 		printf "    $0 query ip email helo recipient\n"
 		printf "    $0 trap { add recipient | drop recipient | show }\n"
 		printf "    $0 noreply { add recipient | drop recipient | show }\n"
+		printf "    $0 abuse In-Reply-To:<messageID> From:<from>\n"
 		printf "\n"
 		printf "Admin Commands:\n"
 		printf "    $0 shutdown\n"
@@ -4355,6 +4356,7 @@ case $1 in
 		printf "    $0 superblock { add sender | drop sender | show [all] | split | overlap }\n"
 		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
 		printf "    $0 analise <ip> or { show | dump | drop }\n"
+		printf "    $0 dynamic { add host | find token | drop host | show }\n"
 		printf "    $0 dump\n"
 		printf "    $0 load path\n"
 		printf "    $0 backup days [days to retain backup, default 60]\n"
