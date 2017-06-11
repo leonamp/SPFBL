@@ -83,7 +83,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isRegistryExpired() {
-        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > REFRESH_TIME;
     }
     

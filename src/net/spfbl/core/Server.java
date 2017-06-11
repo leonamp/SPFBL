@@ -394,12 +394,12 @@ public abstract class Server extends Thread {
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
-    public static final int HOUR_TIME = 1000 * 60 * 60;
+    public static final long HOUR_TIME = 1000L * 60L * 60L;
     
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
-    public static final int DAY_TIME = HOUR_TIME * 24;
+    public static final long DAY_TIME = HOUR_TIME * 24L;
         
     /**
      * Registra uma linha de LOG

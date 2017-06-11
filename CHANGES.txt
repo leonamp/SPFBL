@@ -1,3 +1,14 @@
+### v2.7.1 ; release 11/06/2017:
+
+NEW) implementação de verificação de domínios em grace time no registro.br.
+
+UPDT) aprimoramento da estrutura BLOCK com objetivo de limpeza automática.
+
+FIX) correção da manipulação de dados na ferramenta ANALISE.
+
+FIX) correção das constantes de tempo.
+
+
 ### v2.7.0 ; release 28/05/2017:
 
 FIX) correção na definição de reputação para remetentes freemail.

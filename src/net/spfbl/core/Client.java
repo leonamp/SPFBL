@@ -55,6 +55,7 @@ public class Client implements Serializable, Comparable<Client> {
     private Action actionBLOCK = Action.REJECT;
     private Action actionRED = Action.FLAG;
     private Action actionYELLOW = Action.DEFER;
+    private Action actionGRACE = Action.DEFER;
     
     public enum Permission {
         NONE,
@@ -223,6 +224,25 @@ public class Client implements Serializable, Comparable<Client> {
             throw new ProcessException("INVALID YELLOW ACTION");
         }
     }
+    
+    public boolean setActionGRACE(String action) throws ProcessException {
+        try {
+            return setActionGRACE(Action.valueOf(action));
+        } catch (Exception ex) {
+            throw new ProcessException("INVALID GRACE ACTION");
+        }
+    }
+    
+    public boolean setActionGRACE(Action action) throws ProcessException {
+        if (action == null) {
+            throw new ProcessException("INVALID GRACE ACTION");
+        } else if (this.actionGRACE == action) {
+            return false;
+        } else {
+            this.actionGRACE = action;
+            return CHANGED = true;
+        }
+    }
 
     public boolean setLimit(String limit) throws ProcessException {
         try {
@@ -380,6 +400,10 @@ public class Client implements Serializable, Comparable<Client> {
     
     public Action getActionYELLOW() {
         return actionYELLOW;
+    }
+    
+    public Action getActionGRACE() {
+        return actionGRACE;
     }
     
     /**
@@ -789,6 +813,9 @@ public class Client implements Serializable, Comparable<Client> {
                         }
                         if (client.actionYELLOW == null) {
                             client.actionYELLOW = Action.DEFER;
+                        }
+                        if (client.actionGRACE == null) {
+                            client.actionGRACE = Action.DEFER;
                         }
                         if (client.personality == null) {
                             client.personality = Personality.RATIONAL;

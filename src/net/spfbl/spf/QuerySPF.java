@@ -583,23 +583,23 @@ public final class QuerySPF extends Server {
                                                 }
                                             }
                                         } else if (Domain.isEmail(query)) {
-                                            String host = Domain.extractHost(query, true);
-                                            String domain = Domain.extractDomain(query, true);
+                                            String mx = Domain.extractHost(query, true);
+                                            String domain = "." + Domain.extractDomain(query, false);
                                             if (client == null) {
                                                 result = "ERROR: UNDEFINED CLIENT\n";
                                             } else if (!client.hasEmail()) {
                                                 result = "ERROR: CLIENT WITHOUT EMAIL\n";
                                             } else if (Block.containsExact(client.getEmail() + ":" + query)) {
                                                 result = "BLOCKED AS " + query + "\n";
-                                            } else if (Block.containsExact(client.getEmail() + ":" + host)) {
-                                                result = "BLOCKED AS " + host + "\n";
+                                            } else if (Block.containsExact(client.getEmail() + ":" + mx)) {
+                                                result = "BLOCKED AS " + mx + "\n";
                                             } else if (Block.containsExact(client.getEmail() + ":" + domain)) {
                                                 result = "BLOCKED AS " + domain + "\n";
                                             } else {
-                                                if (Provider.containsExact(host)) {
+                                                if (Provider.containsExact(mx)) {
                                                     token = query;
                                                 } else {
-                                                    token = host;
+                                                    token = mx;
                                                 }
                                                 if (White.add(client, token)) {
                                                     result = "ADDED " + token + ";PASS\n";

@@ -68,8 +68,6 @@ public class User implements Serializable, Comparable<User> {
     private String name;
     private boolean trusted = false;
     private boolean local = false;
-    private boolean usingSubject = false; // Obsoleto
-    private boolean usingMessageID = false; // Obsoleto
     private boolean usingHeader = false;
 
     /**
@@ -144,16 +142,6 @@ public class User implements Serializable, Comparable<User> {
     
     public boolean isUsingHeader() {
         return usingHeader;
-    }
-    
-    @Deprecated
-    public boolean isUsingSubject() {
-        return usingSubject;
-    }
-    
-    @Deprecated
-    public boolean isUsingMessageID() {
-        return usingMessageID;
     }
     
     public boolean isPostmaster() {
@@ -314,9 +302,10 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    private static final int QUERY_MAX = 4096;
     
     private synchronized void hairCutQuery() {
-        if (queryMap != null && queryMap.size() > 16384) {
+        if (queryMap != null && queryMap.size() > QUERY_MAX) {
             Long time = 0L;
             Query query;
             do {
@@ -327,7 +316,7 @@ public class User implements Serializable, Comparable<User> {
                         CHANGED = true;
                     }
                 }
-            } while (queryMap.size() > 16384);
+            } while (queryMap.size() > QUERY_MAX);
         }
     }
 
@@ -717,7 +706,7 @@ public class User implements Serializable, Comparable<User> {
     
     public static void sendHoldingWarning() {
         for (User user : getSet()) {
-            if (user.isUsingSubject()) {
+            if (user.isUsingHeader()) {
                 HashSet<String> keySet = new HashSet<String>();
                 TreeSet<Long> timeSet = user.getTimeSet();
                 long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
@@ -768,7 +757,7 @@ public class User implements Serializable, Comparable<User> {
     
     public static void sendSuspectWarning() {
         for (User user : getSet()) {
-            if (user.isUsingSubject() && user.isUsingMessageID()) {
+            if (user.isUsingHeader()) {
                 HashSet<String> keySet = new HashSet<String>();
                 TreeSet<Long> timeSet = user.getTimeSet();
                 long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
@@ -801,7 +790,7 @@ public class User implements Serializable, Comparable<User> {
     
     public static void sendBlockedWarning() {
         for (User user : getSet()) {
-            if (user.isUsingSubject() && user.isUsingMessageID()) {
+            if (user.isUsingHeader()) {
                 HashSet<String> keySet = new HashSet<String>();
                 TreeSet<Long> timeSet = user.getTimeSet();
                 long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
@@ -874,19 +863,19 @@ public class User implements Serializable, Comparable<User> {
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("       <p>Sua chave TOTP no sistema SPFBL em ");
+                    builder.append("       <p>Sua chave <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> no sistema SPFBL em ");
                     builder.append(Core.getHostname());
                     builder.append(":\n");
                     builder.append("       <p><img src=\"cid:qrcode\">\n");
                     builder.append("       <p>Carregue o QRCode acima em seu Google Authenticator<br>\n");
-                    builder.append("       ou em outro aplicativo TOTP de sua peferência.\n");
+                    builder.append("       ou em outro aplicativo <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> de sua peferência.\n");
                 } else {
-                    builder.append("       <p>Your TOTP key in SPFBL system at ");
+                    builder.append("       <p>Your <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> key in SPFBL system at ");
                     builder.append(Core.getHostname());
                     builder.append(":\n");
                     builder.append("       <p><img src=\"cid:qrcode\">\n");
                     builder.append("       <p>Load QRCode above on your Google Authenticator<br>\n");
-                    builder.append("       or on other application TOTP of your choice.\n");
+                    builder.append("       or on other application <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> of your choice.\n");
                 }
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
@@ -2108,7 +2097,6 @@ public class User implements Serializable, Comparable<User> {
                 }
                 if (!subject.equals(this.subject)) {
                     this.subject = subject;
-                    User.this.usingSubject = true;
                     CHANGED = true;
                 }
             }
@@ -2126,7 +2114,6 @@ public class User implements Serializable, Comparable<User> {
                         messageID = messageID.substring(0, index);
                         if (!messageID.equals(this.messageID)) {
                             this.messageID = messageID;
-                            User.this.usingMessageID = true;
                             CHANGED = true;
                         }
                     }
@@ -2420,17 +2407,19 @@ public class User implements Serializable, Comparable<User> {
                             builder.append("  </head>\n");
                             builder.append("  <body>\n");
                             if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {
-                                builder.append("    <p>Esta mensagem, enviada por ");
+                                builder.append("    <p>Esta mensagem, cujo assunto foi preservado e havia sido enviada por ");
                                 builder.append(mailFrom);
                                 builder.append(", foi entregue em sua caixa postal por haver nenhuma suspeita sobre ela.\n");
                                 builder.append("    <p>Informações mais recentes levantam forte suspeita de que esta mensagem seria SPAM.\n");
-                                builder.append("    <p>Se você concorda com esta nova interpretação, acesse esta URL para bloquear o remetente:<br>\n");
+                                builder.append("    <p>Se você concorda com esta nova interpretação, acesse esta URL para bloquear o remetente\n");
+                                builder.append("    e para contribuir para o combate de SPAM na Internet:<br>\n");
                             } else {
-                                builder.append("    <p>This message, sent by ");
+                                builder.append("    <p>This message, whose subject was preserved and sent by ");
                                 builder.append(mailFrom);
                                 builder.append(", was delivered to your mailbox because there was no suspicion about it.\n");
                                 builder.append("    <p>More recent information raises strong suspicion that this message would be SPAM.\n");
-                                builder.append("    <p>If you agree with this new interpretation, access this URL to block the sender:<br>\n");
+                                builder.append("    <p>If you agree with this new interpretation, access this URL to block the sender\n");
+                                builder.append("    and contribute to the fight against spam on the Internet:<br>\n");
                             }
                             builder.append("    <a href=\"");
                             builder.append(url);
@@ -2442,14 +2431,18 @@ public class User implements Serializable, Comparable<User> {
                                 if (abuseEmail != null) {
                                     if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {
                                         builder.append("    <p>Se você receber qualquer mensagem de SPAM,\n");
-                                        builder.append("    você pode encaminhar a mensagem de SPAM para ");
+                                        builder.append("    poderá encaminhar a mensagem de SPAM para ");
                                         builder.append(abuseEmail);
                                         builder.append(".\n");
+                                        builder.append("    Este remetente poderá ser bloqueado automaticamente\n");
+                                        builder.append("    no caso de recebermos muitas denuncias contra ele.\n");
                                     } else {
                                         builder.append("    <p>If you receive any SPAM message,\n");
                                         builder.append("    you can forward the SPAM message to ");
                                         builder.append(abuseEmail);
                                         builder.append(".\n");
+                                        builder.append("    This sender may be automatically blocked if\n");
+                                        builder.append("    we receive too many complaints against him.\n");
                                     }
                                 }
                                 if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {

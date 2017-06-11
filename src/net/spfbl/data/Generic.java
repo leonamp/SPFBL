@@ -582,6 +582,8 @@ public class Generic {
             return null;
         } else if (host.contains("zimbra")) {
             return null;
+        } else if (host.contains("postfix")) {
+            return null;
         } else if (host.contains("correio")) {
             return null;
         } else if (host.contains("newsletter")) {
@@ -593,6 +595,8 @@ public class Generic {
         } else if (host.contains("mbox")) {
             return null;
         } else if (host.startsWith(".www")) {
+            return null;
+        } else if (host.startsWith(".mx-")) {
             return null;
         } else {
             try {

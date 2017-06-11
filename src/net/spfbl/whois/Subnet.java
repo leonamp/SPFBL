@@ -404,7 +404,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isRegistryExpired() {
-        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > REFRESH_TIME;
     }
     
@@ -413,7 +413,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
      * @return verdadeiro se o registro atual expirou três dia.
      */
     public boolean isRegistryExpired3() {
-        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
         return expiredTime > 3;
     }
     

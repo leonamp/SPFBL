@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -49,6 +50,7 @@ import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
 import net.spfbl.data.Provider;
+import net.spfbl.data.White;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
@@ -106,11 +108,10 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     private final String name; // Nome do processo.
+    private Semaphore semaphoreSet = new Semaphore(1);
     private final TreeSet<String> ipSet = new TreeSet<String>(); // Lista dos IPs a serem analisados.
     private final TreeSet<String> processSet = new TreeSet<String>(); // Lista dos IPs em processamento.
-    
-    private TreeMap<String,String> resultMap = null; // Obsoleto.
-    private TreeSet<String> resultSet = new TreeSet<String>(); // Lista dos resultados das analises.
+    private final TreeSet<String> resultSet = new TreeSet<String>(); // Lista dos resultados das analises.
     private transient FileWriter resultWriter = null;
     
     private long last = System.currentTimeMillis();
@@ -119,16 +120,22 @@ public class Analise implements Serializable, Comparable<Analise> {
         this.name = normalizeName(name);
     }
     
-    private synchronized Analise duplicate() {
+    private Analise duplicate() throws InterruptedException {
         Analise clone = new Analise(this.name);
+        semaphoreSet.acquire();
         clone.ipSet.addAll(this.ipSet);
         clone.processSet.addAll(this.processSet);
         clone.resultSet.addAll(this.resultSet);
+        semaphoreSet.release();
         clone.last = this.last;
         return clone;
     }
     
-    public String getName(){
+    public String getRealName() {
+        return name;
+    }
+    
+    public String getName() {
         try {
             return URLDecoder.decode(name, "UTF-8");
         } catch (Exception ex) {
@@ -137,7 +144,32 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
-    public synchronized boolean contains(String token) {
+    private boolean containsFullSet(String ip) {
+        if (!semaphoreSet.tryAcquire()) {
+            return true;
+        } else if (ipSet.contains(ip)) {
+            semaphoreSet.release();
+            return true;
+        } else if (processSet.contains(ip)) {
+            semaphoreSet.release();
+            return true;
+        } else if (resultSet.contains(ip)) {
+            semaphoreSet.release();
+            return true;
+        } else {
+            semaphoreSet.release();
+            return false;
+        }
+    }
+    
+    private boolean containsResultSet(String ip) throws InterruptedException {
+        semaphoreSet.acquire();
+        boolean contains = resultSet.contains(ip);
+        semaphoreSet.release();
+        return contains;
+    }
+    
+    public boolean contains(String token) {
         if (Subnet.isValidIP(token)) {
             token = Subnet.normalizeIP(token);
         } else if (Domain.isHostname(token)) {
@@ -147,18 +179,10 @@ public class Analise implements Serializable, Comparable<Analise> {
         } else {
             return false;
         }
-        if (ipSet.contains(token)) {
-            return true;
-        } else if (processSet.contains(token)) {
-            return true;
-        } else if (resultSet.contains(token)) {
-            return true;
-        } else {
-            return false;
-        }
+        return containsFullSet(token);
     }
     
-    public synchronized boolean add(String token) {
+    public boolean add(String token) {
         if (Subnet.isValidIP(token)) {
             token = Subnet.normalizeIP(token);
         } else if (!token.startsWith("@") && Domain.isDomain(token)) {
@@ -170,20 +194,31 @@ public class Analise implements Serializable, Comparable<Analise> {
         } else {
             return false;
         }
-        if (ipSet.contains(token)) {
+        return addNew(token);
+    }
+    
+    private boolean addNew(String token) {
+        if (!run) {
+            return false;
+        } else if (!semaphoreSet.tryAcquire()) {
+            return false;
+        } else if (ipSet.contains(token)) {
+            semaphoreSet.release();
             return false;
         } else if (processSet.contains(token)) {
+            semaphoreSet.release();
             return false;
         } else if (resultSet.contains(token)) {
+            semaphoreSet.release();
             return false;
-        } else if (run && ipSet.add(token)) {
+        } else if (ipSet.add(token)) {
+            semaphoreSet.release();
             if (SEMAPHORE.tryAcquire()) {
                 Process process = new Process();
                 process.start();
             }
             last = System.currentTimeMillis();
-            CHANGED = true;
-            return true;
+            return CHANGED = true;
         } else {
             return false;
         }
@@ -201,8 +236,8 @@ public class Analise implements Serializable, Comparable<Analise> {
         return new File("./data/" + name + ".csv");
     }
     
-    public synchronized TreeSet<String> getResultSet() {
-        TreeMap<String,String> map = new TreeMap<String,String>();
+    private void whiteFullSet(TreeMap<String,String> map) throws InterruptedException {
+        semaphoreSet.acquire();
         for (String ip: ipSet) {
             map.put(ip, "WAITING");
         }
@@ -212,6 +247,12 @@ public class Analise implements Serializable, Comparable<Analise> {
         for (String ip: resultSet) {
             map.put(ip, "LOST");
         }
+        semaphoreSet.release();
+    }
+    
+    public TreeSet<String> getResultFullSet() throws InterruptedException {
+        TreeMap<String,String> map = new TreeMap<String,String>();
+        whiteFullSet(map);
         File resultFile = getResultFile();
         if (resultFile.exists()) {
             try {
@@ -221,10 +262,16 @@ public class Analise implements Serializable, Comparable<Analise> {
                     String line;
                     while ((line = bufferedReader.readLine()) != null) {
                         int index = line.indexOf(' ');
-                        String ip = line.substring(0, index);
-                        if (resultSet.contains(ip)) {
-                            String result = line.substring(index+1);
-                            map.put(ip, result);
+                        if (index > 0) {
+                            String ip = line.substring(0, index);
+                            try {
+                                if (containsResultSet(ip)) {
+                                    String result = line.substring(index + 1);
+                                    map.put(ip, result);
+                                }
+                            } catch (InterruptedException ex) {
+                                Server.logError(ex);
+                            }
                         }
                     }
                 } finally {
@@ -249,25 +296,45 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public void dump(StringBuilder builder) {
-        for (String line : getResultSet()) {
-            builder.append(line);
-            builder.append('\n');
+        try {
+            for (String line : getResultFullSet()) {
+                builder.append(line);
+                builder.append('\n');
+            }
+        } catch (InterruptedException ex) {
+            builder.append("BUSY\n");
         }
     }
     
-    private synchronized String pollFirst() {
-        String ip = ipSet.pollFirst();
-        if (ip == null) {
+    private String pollFirst() {
+        try {
+            semaphoreSet.acquire();
+            String ip = ipSet.pollFirst();
+            if (ip == null) {
+                semaphoreSet.release();
+                return null;
+            } else {
+                processSet.add(ip);
+                semaphoreSet.release();
+                CHANGED = true;
+                return ip;
+            }
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
             return null;
-        } else {
-            processSet.add(ip);
-            CHANGED = true;
-            return ip;
         }
     }
     
-    private synchronized boolean dropProcess(String token) {
-        return processSet.remove(token);
+    private boolean dropProcess(String token) {
+        try {
+            semaphoreSet.acquire();
+            boolean removed = processSet.remove(token);
+            semaphoreSet.release();
+            return removed;
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
+            return false;
+        }
     }
     
     public static void dropExpired() {
@@ -284,7 +351,7 @@ public class Analise implements Serializable, Comparable<Analise> {
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isExpired() {
-        int time = (int) (System.currentTimeMillis() - last) / Server.DAY_TIME;
+        long time = (System.currentTimeMillis() - last) / Server.DAY_TIME;
         return time >= ANALISE_EXPIRES;
     }
     
@@ -292,8 +359,9 @@ public class Analise implements Serializable, Comparable<Analise> {
         return !ipSet.isEmpty();
     }
     
-    private synchronized boolean addResult(String token, String result) {
+    private boolean addResult(String token, String result) {
         try {
+            semaphoreSet.acquire();
             if (processSet.remove(token) && resultSet.add(token)) {
                 CHANGED = true;
                 if (resultWriter == null) {
@@ -306,11 +374,16 @@ public class Analise implements Serializable, Comparable<Analise> {
                     resultWriter.close();
                     resultWriter = null;
                 }
+                semaphoreSet.release();
                 return true;
             } else {
+                semaphoreSet.release();
                 return false;
             }
-        } catch (Exception ex) {
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
+            return false;
+        } catch (IOException ex) {
             Server.logError(ex);
             return false;
         }
@@ -488,11 +561,21 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     @Override
-    public synchronized String toString() {
-        return getName() + " "
-                + ipSet.size() + " "
-                + processSet.size() + " "
-                + resultSet.size();
+    public String toString() {
+        if (semaphoreSet.tryAcquire()) {
+            String result = getName() + " "
+                    + ipSet.size() + " "
+                    + processSet.size() + " "
+                    + resultSet.size();
+            semaphoreSet.release();
+            return result;
+        } else {
+            return getName() + " BUSY";
+        }
+    }
+    
+    private int getProcessSetSize() {
+        return processSet.size();
     }
     
     /**
@@ -504,15 +587,15 @@ public class Analise implements Serializable, Comparable<Analise> {
      */
     private static final HashMap<String,Analise> MAP = new HashMap<String,Analise>();
     
-    private synchronized static int getProcessTotal() {
+    private static synchronized int getProcessTotal() {
         int total = 0;
         for (Analise analise : MAP.values()) {
-            total += analise.processSet.size();
+            total += analise.getProcessSetSize();
         }
         return total;
     }
     
-    public synchronized static TreeSet<Analise> getAnaliseSet() {
+    public static synchronized TreeSet<Analise> getAnaliseSet() {
         TreeSet<Analise> queue = new TreeSet<Analise>();
         queue.addAll(QUEUE);
         return queue;
@@ -523,13 +606,20 @@ public class Analise implements Serializable, Comparable<Analise> {
         for (String name : getNameSet()) {
             Analise analise = get(name, false);
             if (analise != null) {
-                queue.add(analise.duplicate());
+                try {
+                    Analise clone = analise.duplicate();
+                    if (clone != null) {
+                        queue.add(clone);
+                    }
+                } catch (InterruptedException ex) {
+                    Server.logError(ex);
+                }
             }
         }
         return queue;
     }
     
-    public synchronized static TreeSet<String> getNameSet() {
+    public static synchronized TreeSet<String> getNameSet() {
         TreeSet<String> queue = new TreeSet<String>();
         for (String name : MAP.keySet()) {
             try {
@@ -559,7 +649,7 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
-    public synchronized static Analise get(String name, boolean create) {
+    public static synchronized Analise get(String name, boolean create) {
         name = normalizeName(name);
         Analise analise = MAP.get(name);
         if (analise == null && create) {
@@ -570,38 +660,48 @@ public class Analise implements Serializable, Comparable<Analise> {
         return analise;
     }
     
-    public synchronized static void add(Analise analise) {
-        Analise analiseDropped = MAP.put(analise.name, analise);
+    public static synchronized void add(Analise analise) {
+        Analise analiseDropped = MAP.put(analise.getRealName(), analise);
         if (analiseDropped != null) {
             QUEUE.remove(analiseDropped);
         }
         QUEUE.add(analise);
     }
     
-    public synchronized static Analise drop(String name) {
+    private void clearSet() throws InterruptedException {
+        semaphoreSet.acquire();
+        ipSet.clear();
+        processSet.clear();
+        semaphoreSet.release();
+    }
+    
+    public static synchronized Analise drop(String name) {
         name = normalizeName(name);
         Analise analise;
         if ((analise = MAP.remove(name)) != null) {
-            analise.ipSet.clear();
-            analise.processSet.clear();
-            if (analise.resultWriter != null) {
-                try {
-                    analise.resultWriter.close();
-                } catch (Exception ex) {
-                    Server.logError(ex);
+            try {
+                analise.clearSet();
+                if (analise.resultWriter != null) {
+                    try {
+                        analise.resultWriter.close();
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                    }
                 }
+                File resultFile = analise.getResultFile();
+                if (!resultFile.delete()) {
+                    resultFile.deleteOnExit();
+                }
+                QUEUE.remove(analise);
+                CHANGED = true;
+            } catch (InterruptedException ex) {
+                Server.logError(ex);
             }
-            File resultFile = analise.getResultFile();
-            if (!resultFile.delete()) {
-                resultFile.deleteOnExit();
-            }
-            QUEUE.remove(analise);
-            CHANGED = true;
         }
         return analise;
     }
     
-    private synchronized static Analise getNextWait() {
+    private static synchronized Analise getNextWait() {
         // Rotaciona para distribuir os processos.
         Analise analise = QUEUE.poll();
         if (analise == null) {
@@ -617,43 +717,46 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
-    public static void processToday(String token) {
+    public static boolean processToday(String token) {
         if (ANALISE_EXPIRES > 0) {
-            boolean process;
             if (token == null) {
-                process = false;
+                return false;
             } else if (ANALISE_IP && Subnet.isValidIP(token)) {
                 token = Subnet.normalizeIP(token);
-                process = true;
             } else if (Domain.isReserved(token)) {
-                process = false;
+                return false;
             } else if (ANALISE_MX && !token.startsWith("@") && Domain.isDomain(token)) {
                 token = "@" + Domain.normalizeHostname(token, false);
-                process = true;
             } else if (ANALISE_IP && Domain.isHostname(token)) {
                 token = Domain.normalizeHostname(token, true);
-                process = true;
             } else if (ANALISE_MX && token.startsWith("@") && Domain.isHostname(token.substring(1))) {
                 token = "@" + Domain.isHostname(token.substring(1));
-                process = true;
-            } else {
-                process = false;
-            }
-            if (process) {
-                boolean contains = false;
-                for (Analise analise : Analise.getAnaliseSet()) {
-                    if (analise.contains(token)) {
-                        contains = true;
-                        break;
+            } else if (ANALISE_IP && Subnet.isValidCIDR(token)) {
+                String cidr = Subnet.normalizeCIDR(token);
+                String last = Subnet.getLastIP(cidr);
+                String ip = Subnet.getFirstIP(cidr);
+                processToday(ip);
+                if (!ip.equals(last)) {
+                    while (!last.equals(ip = Subnet.getNextIP(ip))) {
+                        processToday(ip);
                     }
+                    processToday(last);
                 }
-                if (!contains) {
-                    Date today = new Date();
-                    String name = Core.SQL_FORMAT.format(today);
-                    Analise analise = Analise.get(name, true);
-                    analise.add(token);
+                return false;
+            } else {
+                return false;
+            }
+            for (Analise analise : Analise.getAnaliseSet()) {
+                if (analise.contains(token)) {
+                    return false;
                 }
             }
+            Date today = new Date();
+            String name = Core.SQL_FORMAT.format(today);
+            Analise analise = Analise.get(name, true);
+            return analise.add(token);
+        } else {
+            return false;
         }
     }
     
@@ -662,7 +765,7 @@ public class Analise implements Serializable, Comparable<Analise> {
      */
     public enum Status {
 
-        WHITE, // Obsoleto.
+        WHITE,
         GRAY, // Obsoleto.
         BLACK, // Obsoleto.
         GREEN,
@@ -857,7 +960,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     tokenMX = ip;
                     if (Block.containsCIDR(ip)) {
                         statusMX = Status.BLOCK;
-                        addBlock(tokenAddress, "'" + ip + ";BLOCK'");
+                        addBlock(tokenAddress, ip + ";BLOCK");
                         break;
                     } else if (hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout, 3)) instanceof Status) {
                         statusMX = (Status) response;
@@ -918,21 +1021,21 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusAddress = Status.PROVIDER;
             } else if (Ignore.contains(tokenAddress)) {
                 statusAddress = Status.IGNORE;
-            } else if (statusMX == Status.BLOCK && statusAddress == Status.GENERIC && addBlock(tokenAddress, "'" + tokenAddress + ";GENERIC'")) {
+            } else if (statusMX == Status.BLOCK && statusAddress == Status.GENERIC && addBlock(tokenAddress, tokenAddress + ";GENERIC")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusMX == Status.GENERIC && statusAddress == Status.GENERIC && addBlock(tokenAddress, "'" + tokenAddress + ";GENERIC'")) {
+            } else if (statusMX == Status.GENERIC && statusAddress == Status.GENERIC && addBlock(tokenAddress, tokenAddress + ";GENERIC")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusMX == Status.DYNAMIC && addBlock(tokenAddress, "'" + tokenMX + ";DYNAMIC'")) {
+            } else if (statusMX == Status.DYNAMIC && addBlock(tokenAddress, tokenMX + ";DYNAMIC")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusMX == Status.GENERIC && addBlock(tokenAddress, "'" + tokenMX + ";GENERIC'")) {
+            } else if (statusMX == Status.GENERIC && addBlock(tokenAddress, tokenMX + ";GENERIC")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusMX == Status.CLOSED && addBlock(tokenAddress, "'" + tokenMX + ";CLOSED'")) {
+            } else if (statusMX == Status.CLOSED && addBlock(tokenAddress, tokenMX + ";CLOSED")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusAddress == Status.RED && statusMX == Status.UNAVAILABLE && addBlock(tokenAddress, "'" + tokenMX + ";UNAVAILABLE'")) {
+            } else if (statusAddress == Status.RED && statusMX == Status.UNAVAILABLE && addBlock(tokenAddress, tokenMX + ";UNAVAILABLE")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusAddress == Status.RED && statusMX == Status.RED && addBlock(tokenAddress, "'" + tokenMX + ";RED'")) {
+            } else if (statusAddress == Status.RED && statusMX == Status.RED && addBlock(tokenAddress, tokenMX + ";RED")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusAddress == Status.RED && statusMX == Status.BLOCK && addBlock(tokenAddress, "'" + tokenMX + ";BLOCK'")) {
+            } else if (statusAddress == Status.RED && statusMX == Status.BLOCK && addBlock(tokenAddress, tokenMX + ";BLOCK")) {
                 statusAddress = Status.BLOCK;
             } else if ((dist = SPF.getDistribution(tokenAddress, false)) == null) {
                 probability = 0.0f;
@@ -967,7 +1070,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     addBlock(tokenAddress, "NXDOMAIN");
                     statusAddress = Status.BLOCK;
                     if (Block.tryAdd(tokenMX)) {
-                        Server.logDebug("new BLOCK '" + tokenMX + "' added by NXDOMAIN.");
+                        Server.logDebug("new BLOCK '" + tokenMX + "' added by 'NXDOMAIN'.");
                         Peer.sendBlockToAll(tokenMX);
                     }
                 } else if (Domain.isReserved(tokenMX)) {
@@ -983,7 +1086,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                         // Fazer nada.
                     }
                     if (Block.addExact(domain)) {
-                        Server.logDebug("new BLOCK '" + domain + "' added by NXDOMAIN.");
+                        Server.logDebug("new BLOCK '" + domain + "' added by 'NXDOMAIN'.");
                         Peer.sendBlockToAll(domain);
                     }
                     statusAddress = Status.BLOCK;
@@ -1041,12 +1144,25 @@ public class Analise implements Serializable, Comparable<Analise> {
     private static boolean addBlock(String token, String by) {
         try {
             if (Block.addExact(token)) {
-                Server.logDebug("new BLOCK '" + token + "' added by " + by + ".");
+                Server.logDebug("new BLOCK '" + token + "' added by '" + by + "'.");
                 Peer.sendBlockToAll(token);
             }
             return true;
         } catch (Exception ex) {
             Server.logError(ex);
+            return false;
+        }
+    }
+    
+    private static boolean hasReverse(String ip) {
+        try {
+            TreeSet<String> reverseSet = Reverse.getPointerSet(ip);
+            if (reverseSet == null) {
+                return false;
+            } else {
+                return !reverseSet.isEmpty();
+            }
+        } catch (NamingException ex) {
             return false;
         }
     }
@@ -1080,7 +1196,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                         statusName = Status.GENERIC;
                     } else {
                         try {
-                            if (Provider.containsDomain(ptr)) {
+                            if (White.containsDomain(ptr)) {
+                                if (Reverse.getAddressSet(ptr).contains(ip)) {
+                                    statusName = Status.WHITE;
+                                }
+                            } else if (Provider.containsDomain(ptr)) {
                                 if (Reverse.getAddressSet(ptr).contains(ip)) {
                                     statusName = Status.PROVIDER;
                                 }
@@ -1101,7 +1221,9 @@ public class Analise implements Serializable, Comparable<Analise> {
             } catch (NamingException ex) {
                 statusName = Status.NONE;
             }
-            if (Block.containsCIDR(ip)) {
+            if (White.containsIP(ip)) {
+                statusIP = Status.WHITE;
+            } else if (Block.containsCIDR(ip)) {
                 statusIP = Status.BLOCK;
             } else if (Provider.containsCIDR(ip)) {
                 statusIP = Status.PROVIDER;
@@ -1111,9 +1233,9 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusIP = Status.DNSBL;
             } else if (statusName == Status.TIMEOUT && hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                 statusIP = (Status) response;
-            } else if (statusName == Status.UNAVAILABLE &&  hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+            } else if (statusName == Status.UNAVAILABLE && hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                 statusIP = (Status) response;
-            } else if (statusName == Status.NONE &&  hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+            } else if (statusName == Status.NONE && hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                 statusIP = (Status) response;
             } else if (dist == null) {
                 statusIP = Status.GREEN;
@@ -1135,30 +1257,34 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusName = Status.INVALID;
             }
             for (String name : nameList) {
-                if (Generic.containsDynamic(name)) {
-                    tokenName = name;
-                    statusName = Status.DYNAMIC;
-                    break;
-                } else if (Block.containsDomain(name, false)) {
-                    tokenName = name;
-                    statusName = Status.BLOCK;
-                    break;
-                } else if (Block.containsREGEX(name)) {
-                    tokenName = name;
-                    statusName = Status.BLOCK;
-                    break;
-                } else if (Block.containsWHOIS(name)) {
-                    tokenName = name;
-                    statusName = Status.BLOCK;
-                    break;
-                } else if (Generic.containsGeneric(name)) {
-                    tokenName = name;
-                    statusName = Status.GENERIC;
-                    break;
+                    if (Generic.containsDynamic(name)) {
+                        tokenName = name;
+                        statusName = Status.DYNAMIC;
+                        break;
+                    } else if (Block.containsDomain(name, false)) {
+                        tokenName = name;
+                        statusName = Status.BLOCK;
+                        break;
+                    } else if (Block.containsREGEX(name)) {
+                        tokenName = name;
+                        statusName = Status.BLOCK;
+                        break;
+                    } else if (Block.containsWHOIS(name)) {
+                        tokenName = name;
+                        statusName = Status.BLOCK;
+                        break;
+                    } else if (Generic.containsGeneric(name)) {
+                        tokenName = name;
+                        statusName = Status.GENERIC;
+                        break;
                 } else {
                     try {
                         if (Reverse.getAddressSet(name).contains(ip)) {
-                            if (Provider.containsDomain(name)) {
+                            if (White.containsDomain(name)) {
+                                tokenName = name;
+                                statusName = Status.WHITE;
+                                break;
+                            } else if (Provider.containsDomain(name)) {
                                 tokenName = name;
                                 statusName = Status.PROVIDER;
                                 break;
@@ -1177,18 +1303,21 @@ public class Analise implements Serializable, Comparable<Analise> {
                                 }
                             }
                         }
+                    } catch (NameNotFoundException ex) {
+                        tokenName = name;
+                        statusName = Status.NXDOMAIN;
                     } catch (NamingException ex) {
                         // Fazer nada.
                     }
                 }
             }
-            if (statusName == Status.INVALID) {
+            if (statusName == Status.INVALID || statusName == Status.NXDOMAIN) {
                 try {
                     String domain = Domain.extractDomain(tokenName, true);
                     if (!Reverse.hasValidNameServers(domain)) {
                         if (Block.addExact(domain)) {
                             statusName = Status.BLOCK;
-                            Server.logDebug("new BLOCK '" + domain + "' added by NXDOMAIN.");
+                            Server.logDebug("new BLOCK '" + domain + "' added by 'NXDOMAIN'.");
                             Peer.sendBlockToAll(domain);
                         }
                     }
@@ -1220,12 +1349,23 @@ public class Analise implements Serializable, Comparable<Analise> {
                 Analise.processToday(next);
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && statusName == Status.NONE) {
-                String token = ip + (SubnetIPv4.isValidIPv4(ip) ? "/32" : "/64");
+                boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
+                String token = ip + (ipv4 ? "/32" : "/64");
                 String cidr = Subnet.normalizeCIDR(token);
                 if (Block.tryOverlap(cidr)) {
                     Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
                 } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                if (ipv4) {
+                    cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String next = Subnet.getFirstIP(cidr);
+                    for (int index = 0; index < 256; index++) {
+                        if (!hasReverse(next) && Block.tryAdd(next)) {
+                            Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";" + statusName + "'.");
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && (statusName == Status.BLOCK || statusName == Status.RESERVED)) {
@@ -1420,25 +1560,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
                 for (Analise analise : set) {
                     try {
+                        if (analise.semaphoreSet == null) {
+                            analise.semaphoreSet = new Semaphore(1);
+                        }
                         analise.ipSet.addAll(analise.processSet);
                         analise.processSet.clear();
-                        if (analise.resultMap != null) {
-                            // Conversão para o modo de gravação em disco.
-                            analise.resultSet = new TreeSet<String>();
-                            File resultFile = analise.getResultFile();
-                            analise.resultWriter = new FileWriter(resultFile, false);
-                            for (String ip : analise.resultMap.keySet()) {
-                                String result = analise.resultMap.get(ip);
-                                analise.resultSet.add(ip);
-                                analise.resultWriter.write(ip + " " + result + "\n");
-                            }
-                            if (analise.ipSet.isEmpty()) {
-                                analise.resultWriter.close();
-                                analise.resultWriter = null;
-                            }
-                            analise.resultMap.clear();
-                            analise.resultMap = null;
-                        }
                         add(analise);
                     } catch (Exception ex) {
                         Server.logError(ex);

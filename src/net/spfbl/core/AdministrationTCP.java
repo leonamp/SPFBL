@@ -1063,7 +1063,7 @@ public final class AdministrationTCP extends Server {
                     if (status == Status.RED) {
                         if (Block.addExact(token)) {
                             result = "BLOCKED\n";
-                            Server.logDebug("new BLOCK '" + token + "' added by SUSPECT.");
+                            Server.logDebug("new BLOCK '" + token + "' added by 'SUSPECT'.");
                         } else {
                             result = "RED\n";
                         }
@@ -1378,6 +1378,43 @@ public final class AdministrationTCP extends Server {
                             }
                         }
                         if (result.length() == 0) {
+                            result = "INVALID COMMAND\n";
+                        }
+                    } else if (token.equals("SENDER") && tokenizer.hasMoreTokens()) {
+                        String userEmail = null;
+                        String sender = tokenizer.nextToken();
+                        int index = sender.indexOf(':');
+                        if (index != -1) {
+                            String prefix = sender.substring(0, index);
+                            if (Domain.isEmail(prefix)) {
+                                userEmail = prefix;
+                                sender = sender.substring(index+1);
+                            }
+                        }
+                        if (Domain.isEmail(sender)) {
+                            String mx = Domain.extractHost(sender, true);
+                            String domain = "." + Domain.extractDomain(sender, false);
+                            if (userEmail == null) {
+                                result = "ERROR: UNDEFINED USER\n";
+                            } else if (Block.containsExact(userEmail + ":" + sender)) {
+                                result = "BLOCKED AS " + sender + "\n";
+                            } else if (Block.containsExact(userEmail + ":" + mx)) {
+                                result = "BLOCKED AS " + mx + "\n";
+                            } else if (Block.containsExact(userEmail + ":" + domain)) {
+                                result = "BLOCKED AS " + domain + "\n";
+                            } else {
+                                if (Provider.containsExact(mx)) {
+                                    token = sender;
+                                } else {
+                                    token = mx;
+                                }
+                                if (White.add(userEmail, token)) {
+                                    result = "ADDED " + userEmail + ":" + token + ";PASS\n";
+                                } else {
+                                    result = "ALREADY EXISTS " + userEmail + ":" + token + ";PASS\n";
+                                }
+                            }
+                        } else {
                             result = "INVALID COMMAND\n";
                         }
                     } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
@@ -1849,6 +1886,13 @@ public final class AdministrationTCP extends Server {
                                 } else if (token.equals("YELLOW") && tokenizer.countTokens() == 1) {
                                     token = tokenizer.nextToken();
                                     if (clientLocal.setActionYELLOW(token)) {
+                                        result = "UPDATED " + clientLocal + "\n";
+                                    } else {
+                                        result = "ALREADY THIS VALUE\n";
+                                    }
+                                } else if (token.equals("GRACE") && tokenizer.countTokens() == 1) {
+                                    token = tokenizer.nextToken();
+                                    if (clientLocal.setActionGRACE(token)) {
                                         result = "UPDATED " + clientLocal + "\n";
                                     } else {
                                         result = "ALREADY THIS VALUE\n";

@@ -31,20 +31,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.BindException;
-import java.net.HttpURLConnection;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -65,10 +60,10 @@ import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
-import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.data.Block;
 import net.spfbl.dns.QueryDNS;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -88,7 +83,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 7;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -1282,7 +1277,7 @@ public class Core {
         }
     }
     
-    private static short REPUTATION_LIMIT = 1024;
+    private static final short REPUTATION_LIMIT = 1024;
     
     public static short getReputationLimit() {
         return REPUTATION_LIMIT;
@@ -1718,6 +1713,7 @@ public class Core {
 //                Server.logTrace("BEGIN TimerDropExpiredDistribution");
                 User.dropAllExpiredQuery();
                 SPF.dropExpiredDistribution();
+                Block.dropExpired();
 //                Server.logTrace("END TimerDropExpiredDistribution");
             } catch (Exception ex) {
                 Server.logError(ex);

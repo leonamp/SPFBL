@@ -24,7 +24,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.io.StringReader;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -33,6 +32,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
@@ -111,17 +112,12 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isRegistryExpired() {
-        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
-        return expiredTime > REFRESH_TIME;
-    }
-    
-    /**
-     * Verifica se o registro atual expirou três dia.
-     * @return verdadeiro se o registro atual expirou três dia.
-     */
-    public boolean isRegistryExpired3() {
-        int expiredTime = (int) (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
-        return expiredTime > 3;
+        long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        if (isGraceTime()) {
+            return expiredTime > 0;
+        } else {
+            return expiredTime > REFRESH_TIME;
+        }
     }
     
     /**
@@ -550,7 +546,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                             int index = line.indexOf(':') + 1;
                             owneridNew = line.substring(index).trim();
                         } else if (line.startsWith("p.a. to:")) {
-                        // Este cammpo "p.a. to" (power of attorney to) 
+                            // Este cammpo "p.a. to" (power of attorney to) 
                             // é equivalente ao ownerid. A diferença é que 
                             // neste caso é o ownerid do procurador invés 
                             // do próprio dono extrangeiro representado.
@@ -753,6 +749,76 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     public Handle getBillingHandle() {
         return Handle.getHandle(billing_c);
+    }
+    
+    public static boolean isGraceTime(String address) {
+        try {
+            if (address == null) {
+                return false;
+            } else if (address.endsWith(".br")) {
+                Domain domain = Domain.getDomain(address);
+                if (domain == null) {
+                    return false;
+                } else {
+                    return domain.isGraceTime();
+                }
+            } else {
+                return false;
+            }
+        } catch (ProcessException ex) {
+            if (ex.isErrorMessage("WAITING")) {
+                return true;
+            } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+                return false;
+            } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+                return false;
+            } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                return false;
+            } else {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+    
+    public int getLifeTime() {
+        if (created == null) {
+            return 0;
+        } else {
+            return (int) ((System.currentTimeMillis() - created.getTime()) / 86400000);
+        }
+    }
+    
+    public boolean isGraceTime() {
+        if (expires == null && getLifeTime() < 7) {
+            String domain = getDomain();
+            int beginIndex = domain.indexOf('.', 1);
+            int endIndex = domain.length();
+            String tld = domain.substring(beginIndex, endIndex);
+            if (tld.equals(".br")) {
+                return false;
+            } else if (tld.equals(".edu.br")) {
+                return false;
+            } else if (tld.equals(".mil.br")) {
+                return false;
+            } else if (tld.equals(".gov.br")) {
+                return false;
+            } else if (tld.equals(".leg.br")) {
+                return false;
+            } else if (tld.equals(".def.br")) {
+                return false;
+            } else if (tld.equals(".jus.br")) {
+                return false;
+            } else if (tld.equals(".mp.br")) {
+                return false;
+            } else {
+                return tld.endsWith(".br");
+            }
+//        } else {
+//            return expires.equals(created);
+        } else {
+            return false;
+        }
     }
     
     /**

@@ -58,7 +58,7 @@ public class Block {
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
-
+    
     /**
      * Conjunto de remetentes bloqueados.
      */
@@ -1207,6 +1207,19 @@ public class Block {
             }
 //            logTrace(time, "CIDR lookup for '" + ip + "'.");
             return result;
+        }
+    }
+
+    public static void dropExpired() {
+        long max = System.currentTimeMillis() - Server.DAY_TIME * 40L;
+        TreeMap<String,Long> map = SET.getMap();
+        for (String token : map.keySet()) {
+            Long time = map.get(token);
+            if (time == null || time < max) {
+                if (SET.dropExact(token)) {
+                    Server.logDebug("expired BLOCK '" + token + "'.");
+                }
+            }
         }
     }
 
