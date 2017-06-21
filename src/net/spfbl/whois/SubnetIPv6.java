@@ -837,7 +837,7 @@ public final class SubnetIPv6 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing subnet6.map");
+//                Server.logTrace("storing subnet6.map");
                 long time = System.currentTimeMillis();
                 TreeMap<String,SubnetIPv6> map = getMap();
                 File file = new File("./data/subnet6.map");

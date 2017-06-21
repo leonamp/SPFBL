@@ -625,7 +625,7 @@ public final class SubnetIPv4 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing subnet4.map");
+//                Server.logTrace("storing subnet4.map");
                 long time = System.currentTimeMillis();
                 TreeMap<Long,SubnetIPv4> map = getMap();
                 File file = new File("./data/subnet4.map");

@@ -1795,7 +1795,7 @@ public final class SPF implements Serializable {
         private static void store() {
             if (isChanged()) {
                 try {
-                    Server.logTrace("storing spf.map");
+//                    Server.logTrace("storing spf.map");
                     long time = System.currentTimeMillis();
                     File file = new File("./data/spf.map");
                     HashMap<String,SPF> map = getMap();
@@ -2075,7 +2075,7 @@ public final class SPF implements Serializable {
                                     userQuery.setResult("REJECT");
                                     return "REMOVE";
                                 }
-                            } else if (userQuery.hasRed()) {
+                            } else if (userQuery.hasTokenRed() || userQuery.hasClusterRed()) {
                                 return "HOLD";
                             } else if (userQuery.hasYellow()) {
                                 long lifeTimeMin = (System.currentTimeMillis() - date) / 1000 / 60;
@@ -2440,7 +2440,7 @@ public final class SPF implements Serializable {
         private static void store(boolean clone) {
             if (isChanged()) {
                 try {
-                    Server.logTrace("storing distribution.map");
+//                    Server.logTrace("storing distribution.map");
                     long time = System.currentTimeMillis();
                     File file = new File("./data/distribution.map");
                     HashMap<String,Distribution> map;
@@ -2824,7 +2824,12 @@ public final class SPF implements Serializable {
             return "DNSBL=" + server + ';' + value;
         } else if (canHREF && token.startsWith("HREF=")) {
             int index = token.indexOf('=');
-            return "HREF=" + normalizeToken(token.substring(index + 1), false, false, false, false, false, false);
+            String value = token.substring(index + 1);
+            if (Owner.isOwnerID(value)) {
+                return "HREF=" + Owner.normalizeID(value);
+            } else {
+                return "HREF=" + normalizeToken(value, false, false, false, false, false, false);
+            }
         } else {
             token = Core.removerAcentuacao(token);
             String recipient = "";
@@ -3063,7 +3068,7 @@ public final class SPF implements Serializable {
         private static void store() {
             if (isChanged()) {
                 try {
-                    Server.logTrace("storing guess.map");
+//                    Server.logTrace("storing guess.map");
                     long time = System.currentTimeMillis();
                     File file = new File("./data/guess.map");
                     HashMap<String,String> map = getMap();
@@ -3231,7 +3236,6 @@ public final class SPF implements Serializable {
 
             private static final long serialVersionUID = 1L;
             
-            private Attributes attributes = null; // Obsoleto
             private TreeSet<String> addressSet = null;
             private String address4 = null;
             private String address6 = null;
@@ -3247,7 +3251,6 @@ public final class SPF implements Serializable {
                 long time = System.currentTimeMillis();
                 try {
                     TreeSet<String> ipv4Set = new TreeSet<String>();
-                    TreeSet<String> ipv6Set = new TreeSet<String>();
                     Attributes attributesA = Server.getAttributesDNS(
                             hostname, new String[]{"A"});
                     if (attributesA != null) {
@@ -3263,19 +3266,20 @@ public final class SPF implements Serializable {
                                 }
                             }
                         }
-                        Attributes attributesAAAA = Server.getAttributesDNS(
-                                hostname, new String[]{"AAAA"});
-                        if (attributesAAAA != null) {
-                            Enumeration enumerationAAAA = attributesAAAA.getAll();
-                            while (enumerationAAAA.hasMoreElements()) {
-                                Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
-                                NamingEnumeration enumeration = attributeAAAA.getAll();
-                                while (enumeration.hasMoreElements()) {
-                                    String address = (String) enumeration.next();
-                                    if (SubnetIPv6.isValidIPv6(address)) {
-                                        address = SubnetIPv6.normalizeIPv6(address);
-                                        ipv6Set.add(address);
-                                    }
+                    }
+                    TreeSet<String> ipv6Set = new TreeSet<String>();
+                    Attributes attributesAAAA = Server.getAttributesDNS(
+                            hostname, new String[]{"AAAA"});
+                    if (attributesAAAA != null) {
+                        Enumeration enumerationAAAA = attributesAAAA.getAll();
+                        while (enumerationAAAA.hasMoreElements()) {
+                            Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
+                            NamingEnumeration enumeration = attributeAAAA.getAll();
+                            while (enumeration.hasMoreElements()) {
+                                String address = (String) enumeration.next();
+                                if (SubnetIPv6.isValidIPv6(address)) {
+                                    address = SubnetIPv6.normalizeIPv6(address);
+                                    ipv6Set.add(address);
                                 }
                             }
                         }
@@ -3309,7 +3313,6 @@ public final class SPF implements Serializable {
                     this.address6 = null;
                     Server.logLookupHELO(time, hostname, "ERROR " + ex.getClass() + " " + ex.getExplanation());
                 } finally {
-                    this.attributes = null;
                     this.queryCount = 0;
                     CHANGED = true;
                 }
@@ -3346,46 +3349,6 @@ public final class SPF implements Serializable {
             public boolean isExpired14() {
                 return System.currentTimeMillis() - lastQuery > 1209600000;
             }
-
-//            @Deprecated
-//            private synchronized void update() {
-//                if (attributes != null) {
-//                    TreeSet<String> ipv4Set = new TreeSet<String>();
-//                    TreeSet<String> ipv6Set = new TreeSet<String>();
-//                    Enumeration enumeration = attributes.getAll();
-//                    while (enumeration.hasMoreElements()) {
-//                        try {
-//                            Attribute attribute = (Attribute) enumeration.nextElement();
-//                            NamingEnumeration namingEnumeration = attribute.getAll();
-//                            while (namingEnumeration.hasMoreElements()) {
-//                                String address = (String) namingEnumeration.next();
-//                                if (SubnetIPv4.isValidIPv4(address)) {
-//                                    address = SubnetIPv4.normalizeIPv4(address);
-//                                    ipv4Set.add(address);
-//                                } else if (SubnetIPv6.isValidIPv6(address)) {
-//                                    address = SubnetIPv6.normalizeIPv6(address);
-//                                    ipv6Set.add(address);
-//                                }
-//                            }
-//                        } catch (NamingException ex) {
-//                        }
-//                    }
-//                    this.addressSet = new TreeSet<String>();
-//                    this.addressSet.addAll(ipv4Set);
-//                    this.addressSet.addAll(ipv6Set);
-//                    if (ipv4Set.size() == 1) {
-//                        this.address4 = ipv4Set.first();
-//                    } else {
-//                        this.address4 = null;
-//                    }
-//                    if (ipv6Set.size() == 1) {
-//                        this.address6 = ipv6Set.first();
-//                    } else {
-//                        this.address6 = null;
-//                    }
-//                    this.attributes = null;
-//                }
-//            }
         }
         
         public static String getUniqueIPv4(String helo) {
@@ -3477,7 +3440,7 @@ public final class SPF implements Serializable {
         private static void store() {
             if (CHANGED) {
                 try {
-                    Server.logTrace("storing helo.map");
+//                    Server.logTrace("storing helo.map");
                     long time = System.currentTimeMillis();
                     File file = new File("./data/helo.map");
                     HashMap<String,HELO> map = getMap();
@@ -3621,7 +3584,7 @@ public final class SPF implements Serializable {
                 }
                 if (hostname == null) {
                     Server.logDebug("no rDNS for " + ip + ".");
-                } else if (Domain.isReserved(hostname)) {
+                } else if (Domain.isOfficialTLD(hostname)) {
                     return "action=554 5.7.1 SPFBL "
                             + hostname + " is a reserved domain.\n\n";
                 } else {
@@ -3652,7 +3615,7 @@ public final class SPF implements Serializable {
                 if (sender == null) {
                     spf = null;
                     result = "NONE";
-                } else if (Domain.isReserved(sender)) {
+                } else if (Domain.isOfficialTLD(sender)) {
                     spf = null;
                     result = "NONE";
                 } else if (Generic.containsGeneric(sender)) {
@@ -3813,7 +3776,7 @@ public final class SPF implements Serializable {
                     // Bloquear automaticamente IP com reputação vermelha.
                     if (SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
-                            Server.logDebug("new BLOCK '" + ip + "' added by '" + recipient + ";FAIL'.");
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";FAIL'.");
                         }
                     }
                     Analise.processToday(ip);
@@ -3840,7 +3803,7 @@ public final class SPF implements Serializable {
                     );
                     return "action=554 5.7.1 SPFBL "
                             + sender + " is not a valid e-mail address.\n\n";
-                } else if (sender != null && Domain.isReserved(sender)) {
+                } else if (sender != null && Domain.isOfficialTLD(sender)) {
                     // Bloquear automaticamente IP com reputação vermelha.
                     if (SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
@@ -3974,7 +3937,7 @@ public final class SPF implements Serializable {
                     return "action=PREPEND "
                             + "Received-SPFBL: PASS "
                             + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n\n";
-                } else if (SPF.hasRed(tokenSet)) {
+                } else if (SPF.hasRed(tokenSet) || Analise.isCusterRED(ip, sender, hostname)) {
                     Analise.processToday(ip);
                     Analise.processToday(mx);
                     Action action = client == null ? Action.REJECT : client.getActionRED();
@@ -4906,7 +4869,7 @@ public final class SPF implements Serializable {
                             }
                             if (hostname == null) {
                                 Server.logDebug("no rDNS for " + ip + ".");
-                            } else if (Domain.isReserved(hostname)) {
+                            } else if (Domain.isOfficialTLD(hostname)) {
                                 return "INVALID\n";
                             } else {
                                 // Verificação de pilha dupla,
@@ -4946,7 +4909,7 @@ public final class SPF implements Serializable {
                             if (sender == null) {
                                 spf = null;
                                 result = "NONE";
-                            } else if (Domain.isReserved(sender)) {
+                            } else if (Domain.isOfficialTLD(sender)) {
                                 spf = null;
                                 result = "NONE";
                             } else if (Generic.containsGeneric(sender)) {
@@ -5168,7 +5131,7 @@ public final class SPF implements Serializable {
                                 // Bloquear automaticamente IP com reputação vermelha.
                                 if (SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
-                                        Server.logDebug("new BLOCK '" + ip + "' added by '" + recipient + ";FAIL'.");
+                                        Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";FAIL'.");
                                     }
                                 }
                                 Analise.processToday(ip);
@@ -5192,7 +5155,7 @@ public final class SPF implements Serializable {
                                         result, recipient, tokenSet, "INVALID"
                                 );
                                 return "INVALID\n";
-                            } else if (sender != null && Domain.isReserved(sender)) {
+                            } else if (sender != null && Domain.isOfficialTLD(sender)) {
                                 // Bloquear automaticamente IP com reputação vermelha.
                                 if (SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
@@ -5323,7 +5286,7 @@ public final class SPF implements Serializable {
                                         result, recipient, tokenSet, "ACCEPT"
                                 );
                                 return "PASS " + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n";
-                            } else if (SPF.hasRed(tokenSet)) {
+                            } else if (SPF.hasRed(tokenSet) || Analise.isCusterRED(ip, sender, hostname)) {
                                 Analise.processToday(ip);
                                 Analise.processToday(mx);
                                 Action action = client == null ? Action.REJECT : client.getActionRED();
@@ -5528,8 +5491,8 @@ public final class SPF implements Serializable {
         if (
                 Core.hasSMTP()
                 && Core.hasAdminEmail()
-                && Domain.isEmail(remetente)
-                && Domain.isEmail(destinatario)
+                && Domain.isValidEmail(remetente)
+                && Domain.isValidEmail(destinatario)
                 && url != null
                 && !NoReply.contains(remetente, true)
                 ) {

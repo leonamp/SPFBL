@@ -705,7 +705,7 @@ public class Trap {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing trap.map");
+//                Server.logTrace("storing trap.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/trap.map");
                 HashMap<String,Long> map = getMap();

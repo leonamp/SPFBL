@@ -325,7 +325,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     public static void store() {
         if (AS_CHANGED) {
             try {
-                Server.logTrace("storing as.map");
+//                Server.logTrace("storing as.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,AutonomousSystem> map = getMap();
                 File file = new File("./data/as.map");

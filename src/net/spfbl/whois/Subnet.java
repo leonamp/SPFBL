@@ -312,30 +312,43 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                             changedNew = dateFormatter.parse(valor);
                         }
                     } else if (line.startsWith("nic-hdl-br:")) {
-                        int index = line.indexOf(':') + 1;
-                        String nic_hdl_br = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String person = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String e_mail;
-                        if (reducedNew) {
-                            e_mail = null;
-                        } else {
-                            e_mail = line.substring(index).trim();
-                            line = reader.readLine().trim();
-                            index = line.indexOf(':') + 1;
+                        try {
+                            String person = null;
+                            String e_mail = null;
+                            String created2 = null;
+                            String changed2 = null;
+                            String provider2 = null;
+                            String country2 = null;
+                            int index = line.indexOf(':') + 1;
+                            String nic_hdl_br = line.substring(index).trim();
+                            while ((line = reader.readLine().trim()).length() > 0) {
+                                index = line.indexOf(':') + 1;
+                                if (line.startsWith("person:")) {
+                                    person = line.substring(index).trim();
+                                } else if (line.startsWith("e-mail:")) {
+                                    e_mail = line.substring(index).trim();
+                                } else if (line.startsWith("created:")) {
+                                    created2 = line.substring(index).trim();
+                                } else if (line.startsWith("changed:")) {
+                                    changed2 = line.substring(index).trim();
+                                } else if (line.startsWith("provider:")) {
+                                    provider2 = line.substring(index).trim();
+                                } else if (line.startsWith("country:")) {
+                                    country2 = line.substring(index).trim();
+                                } else {
+                                    Server.logError("Linha não reconhecida: " + line);
+                                }
+                            }
+                            Handle handle = Handle.getHandle(nic_hdl_br);
+                            handle.setPerson(person);
+                            handle.setEmail(e_mail);
+                            handle.setCreated(created2);
+                            handle.setChanged(changed2);
+                            handle.setProvider(provider2);
+                            handle.setCountry(country2);
+                        } catch (ProcessException ex) {
+                            Server.logError(ex);
                         }
-                        String created2 = line.substring(index).trim();
-                        line = reader.readLine().trim();
-                        index = line.indexOf(':') + 1;
-                        String changed2 = line.substring(index).trim();
-                        Handle handle = Handle.getHandle(nic_hdl_br);
-                        handle.setPerson(person);
-                        handle.setEmail(e_mail);
-                        handle.setCreated(created2);
-                        handle.setChanged(changed2);
                     } else if (line.startsWith("% Not assigned.")) {
                         throw new ProcessException("ERROR: SUBNET NOT ASSIGNED");
                     } else if (line.startsWith("% Permission denied.")) {

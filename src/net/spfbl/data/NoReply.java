@@ -200,7 +200,7 @@ public class NoReply {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing noreply.set");
+//                Server.logTrace("storing noreply.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/noreply.set");
                 TreeSet<String> set = getAll();

@@ -928,7 +928,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing peer.map");
+//                Server.logTrace("storing peer.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Peer> map = getMap();
                 File file = new File("./data/peer.map");
@@ -1144,7 +1144,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "INVALID";
             } else if (Generic.containsGenericSoft(key)) {
                 return "GENERIC";
-            } else if (Domain.isReserved(key)) {
+            } else if (Domain.isOfficialTLD(key)) {
                 return "RESERVED";
             } else if (Subnet.isReservedIP(key)) {
                 return "RESERVED";

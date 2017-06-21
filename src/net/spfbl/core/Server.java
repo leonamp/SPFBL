@@ -178,6 +178,18 @@ public abstract class Server extends Thread {
     private static void storeAll(boolean simplify, boolean clone) {
         Client.store();
         User.store();
+        Peer.store();
+        Provider.store();
+        Ignore.store();
+        Generic.store();
+        Trap.store();
+        NoReply.store();
+        QueryDNS.store();
+        White.store(simplify);
+        Analise.store();
+        Reverse.store();
+        Defer.store();
+        SPF.store(clone);
         Owner.store();
         Domain.store();
         AutonomousSystem.store();
@@ -185,19 +197,7 @@ public abstract class Server extends Thread {
         SubnetIPv6.store();
         Handle.store();
         NameServer.store();
-        Peer.store();
-        Analise.store();
-        Reverse.store();
-        Generic.store();
         Block.store(simplify);
-        White.store(simplify);
-        Trap.store();
-        Ignore.store();
-        Provider.store();
-        SPF.store(clone);
-        NoReply.store();
-        Defer.store();
-        QueryDNS.store();
         System.gc();
     }
 

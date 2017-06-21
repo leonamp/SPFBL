@@ -1,0 +1,114 @@
+/* http://meyerweb.com/eric/tools/css/reset/ 
+   v2.0 | 20110126
+   License: none (public domain)
+*/
+
+html, body, div, span, applet, object, iframe,h1, h2, h3, h4, h5, h6, p, blockquote, pre,a, abbr, acronym, address, big, cite, code,del, dfn, em, img, ins, kbd, q, s, samp,small, strike, strong, sub, sup, tt, var,b, u, i, center,dl, dt, dd, ol, ul, li,fieldset, form, label, legend,table, caption, tbody, tfoot, thead, tr, th, td,article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,time, mark, audio, video { margin: 0;	padding: 0;	border: 0;	font-size: 100%;	font: inherit;	vertical-align: baseline;}
+article, aside, details, figcaption, figure,footer, header, hgroup, menu, nav, section {display: block;}
+body {line-height: 1;}
+blockquote, q {quotes: none;}
+blockquote:before, blockquote:after,q:before, q:after {content: '';content: none;}
+table {border-collapse: collapse;border-spacing: 0;}
+
+/*custom css*/
+body {
+	font-family:  "Helvetica Neue",Helvetica,Arial,sans-serif
+}
+a:link {
+	text-decoration: none;
+	color: black;
+}
+a:visited {
+	text-decoration: none;
+	color: black;
+}
+a:hover {
+	text-decoration: underline;
+	color: black;
+}
+a:active {
+    text-decoration: underline;
+	color: white;
+}
+#container {
+	width: 468px;
+	height: auto;
+	margin: 10px auto;
+}
+#divlogo {
+	width: 100%;
+	height: 100%;
+	text-align: center;
+	background-color: white;
+}
+#logo {
+	display: block;
+}
+#divmsg{
+	margin: 5px auto;
+}
+#titulo {
+	display: block;
+	padding: 3px 0;
+	width: 100%;
+	text-align: center;
+	background-color: #fbc99a;
+	border-radius: 10px;
+}
+#divtexto {
+	padding: 10px 0;
+	display: block;
+	width: 100%;
+	text-align: justify;
+	font-size: 14px;
+}
+#recaptcha_widget_div{
+	margin: 0 auto;
+	display: block;
+	width: 318px;
+}
+#divcaptcha {
+	padding: 20px 0;
+	text-align: center;
+}
+#btngo{
+	margin: 5px auto;
+	background-color: #337ab7;
+	border: none;
+	color: white;
+	padding: 5px 20px;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+	font-size: 15px;
+	border-radius: 5px;
+}
+#divfooter {
+	background-color: #dbdbdb;
+	font-size: 11px;
+	width: 100%;
+	height: 20px;
+}
+#divanuncio {
+	width: 250px;
+	display: inline;
+	float: left;
+	padding: 5px 0 0 5px;
+}
+#divpowered {
+	width: 150px;
+	display: inline;
+	float: right;
+	text-align: right;
+	padding: 5px 5px 0 0;
+}
+li {
+    margin-left: 10%;
+    list-style-type: disc;
+}
+input {
+    margin-left: 5%;
+}
+p {
+    padding: 5px 0;
+}

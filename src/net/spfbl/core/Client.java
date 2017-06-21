@@ -767,7 +767,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing client.map");
+//                Server.logTrace("storing client.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Client> map = getMap();
                 File file = new File("./data/client.map");

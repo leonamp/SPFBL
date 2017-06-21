@@ -324,7 +324,7 @@ public class Owner implements Serializable, Comparable<Owner> {
     public static void store() {
         if (OWNER_CHANGED) {
             try {
-                Server.logTrace("storing owner.map");
+//                Server.logTrace("storing owner.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Owner> map = getMap();
                 File file = new File("./data/owner.map");

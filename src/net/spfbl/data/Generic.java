@@ -723,7 +723,7 @@ public class Generic {
                         index = mask.length();
                         while ((index = mask.lastIndexOf('.', index-1)) >= 0) {
                             String subMask = mask.substring(index);
-                            if (Domain.isReserved(subMask)) {
+                            if (Domain.isOfficialTLD(subMask)) {
                                 // Do nothing.
                             } else if (Domain.isDomain(subMask)) {
                                 if ((subMask = Generic.convertDomainToMask(subMask)) != null) {
@@ -861,7 +861,7 @@ public class Generic {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing generic.set");
+//                Server.logTrace("storing generic.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/generic.set");
                 TreeSet<String> set = getGenericAll();
@@ -873,7 +873,7 @@ public class Generic {
                     outputStream.close();
                 }
                 Server.logStore(time, file);
-                Server.logTrace("storing generic.map");
+//                Server.logTrace("storing generic.map");
                 time = System.currentTimeMillis();
                 file = new File("./data/generic.map");
                 TreeMap<String,Boolean> map = getMapAll();

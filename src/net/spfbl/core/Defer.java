@@ -256,7 +256,7 @@ public class Defer implements Serializable, Comparable<Defer> {
     public static void store() {
         if (isChanged()) {
             try {
-                Server.logTrace("storing defer.map");
+//                Server.logTrace("storing defer.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/defer.map");
                 HashMap<String,Defer> map = getMap();

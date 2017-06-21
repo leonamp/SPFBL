@@ -232,6 +232,35 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = builder.toString();
                         }
+                    } else if (token.equals("CLUSTER") && tokenizer.countTokens() == 1) {
+                        token = tokenizer.nextToken();
+                        if (token.equals("RED")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterRED(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else if (token.equals("TLD")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterTLD(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else if (token.equals("MASK")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterMask(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else {
+                            result = "INVALID COMMAND\n";
+                        }
                     } else if (token.equals("DROP") && tokenizer.countTokens() == 1) {
                         token = tokenizer.nextToken();
                         TreeSet<String> nameSet;
@@ -307,7 +336,7 @@ public final class AdministrationTCP extends Server {
                             } else {
                                 result = "ALREADY EXISTS\n";
                             }
-                        } else if (Domain.isReserved(hostname)) {
+                        } else if (Domain.isOfficialTLD(hostname)) {
                             result = "RESERVED DOMAIN\n";
                         } else if (Domain.isDomain(hostname)) {
                             String domain = "@" + hostname;
@@ -1169,19 +1198,19 @@ public final class AdministrationTCP extends Server {
                         } else{
                             result = "INVALID COMMAND\n";
                         }
-                    } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
-                        token = tokenizer.nextToken();
-                        if (Subnet.isValidCIDR(token)) {
-                            String cidr = token;
-                            if (Block.drop(cidr)) {
-                                result += "DROPPED " + cidr + "\n";
-                                result += Subnet.splitCIDR(cidr);
-                            } else {
-                                result = "NOT FOUND\n";
-                            }
-                        } else {
-                            result = "INVALID COMMAND\n";
-                        }
+//                    } else if (token.equals("SPLIT") && tokenizer.hasMoreTokens()) {
+//                        token = tokenizer.nextToken();
+//                        if (Subnet.isValidCIDR(token)) {
+//                            String cidr = token;
+//                            if (Block.drop(cidr)) {
+//                                result += "DROPPED " + cidr + "\n";
+//                                result += Subnet.splitCIDR(cidr);
+//                            } else {
+//                                result = "NOT FOUND\n";
+//                            }
+//                        } else {
+//                            result = "INVALID COMMAND\n";
+//                        }
                     } else if (token.equals("FIND") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreElements()) {
                             token = tokenizer.nextToken();

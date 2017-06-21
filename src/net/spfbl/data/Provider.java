@@ -391,7 +391,7 @@ public class Provider {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing provider.set");
+//                Server.logTrace("storing provider.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/provider.set");
                 TreeSet<String> set = getAll();

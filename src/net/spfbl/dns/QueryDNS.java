@@ -285,7 +285,7 @@ public final class QueryDNS extends Server {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing zone.map");
+//                Server.logTrace("storing zone.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/zone.map");
                 HashMap<String,Zone> map = getMap();
@@ -395,15 +395,6 @@ public final class QueryDNS extends Server {
             this.time = time;
             this.SEMAPHORE.release();
         }
-
-//        private boolean isTimeout() {
-//            if (time == 0) {
-//                return false;
-//            } else {
-//                int interval = (int) (System.currentTimeMillis() - time) / 1000;
-//                return interval > 60;
-//            }
-//        }
 
         /**
          * Fecha esta conexão liberando a thread.
@@ -625,6 +616,9 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
+//                                                    } else if (Block.containsHREF(clientQuery)) {
+//                                                        result = "127.0.0.4";
+//                                                        ttl = 86400; // Um dia.
                                                     } else {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
@@ -696,6 +690,9 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
+//                                                    } else if (Block.containsHREF(clientQuery)) {
+//                                                        result = "127.0.0.4";
+//                                                        ttl = 86400; // Um dia.
                                                     } else if (status == SPF.Status.YELLOW) {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
@@ -767,6 +764,9 @@ public final class QueryDNS extends Server {
                                                     } else if (status == SPF.Status.RED) {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
+                                                        ttl = 86400; // Um dia.
+                                                    } else if (Block.containsHREF(clientQuery)) {
+                                                        result = "127.0.0.4";
                                                         ttl = 86400; // Um dia.
                                                     } else {
                                                         Analise.processToday(clientQuery);

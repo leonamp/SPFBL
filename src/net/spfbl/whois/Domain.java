@@ -22,6 +22,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
 import java.io.StringReader;
 import java.text.SimpleDateFormat;
@@ -159,7 +160,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static boolean isReserved(String address) {
+    public static boolean isOfficialTLD(String address) {
         if (address.contains("@")) {
             int index = address.lastIndexOf('@') + 1;
             address = '.' + address.substring(index);
@@ -194,7 +195,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             boolean pontuacao) throws ProcessException {
         if ((address = extractHost(address, true)) == null) {
             return null;
-        } else if (isReserved(address)) {
+        } else if (isOfficialTLD(address)) {
             throw new ProcessException("ERROR: RESERVED");
         } else {
             int lastIndex = address.length() - 1;
@@ -253,10 +254,14 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         }
         beginIndex = address.lastIndexOf('.');
-        if (ponto) {
-            return address.substring(beginIndex-1);
-        } else {
+        if (beginIndex == -1) {
+            return (ponto ? "." : "") + address;
+        } else if (beginIndex == 0) {
+            return ponto ? address : address.substring(1);
+        } else if (ponto) {
             return address.substring(beginIndex);
+        } else {
+            return address.substring(beginIndex+1);
         }
     }
     
@@ -401,7 +406,7 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @param address o endereço a ser verificado.
      * @return verdadeiro se o endereço é um TLD válido.
      */
-    public static boolean isTLD(String address) {
+    public static boolean isValidTLD(String address) {
         address = address.trim();
         address = address.toLowerCase();
         return Pattern.matches(
@@ -446,7 +451,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Corrigir TLD sem ponto.
             tld = "." + tld;
         }
-        if (Domain.isTLD(tld)) {
+        if (Domain.isValidTLD(tld)) {
             tld = tld.toLowerCase();
             if (TLD_SET.add(tld)) {
                 // Atualiza flag de atualização.
@@ -485,7 +490,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Corrigir TLD sem ponto.
             tld = "." + tld;
         }
-        if (Domain.isTLD(tld)) {
+        if (Domain.isValidTLD(tld)) {
             tld = tld.toLowerCase();
             return dropExactTLD(tld);
         } else {
@@ -633,30 +638,43 @@ public class Domain implements Serializable, Comparable<Domain> {
                             int index = line.indexOf(':') + 1;
                             providerNew = line.substring(index).trim();
                         } else if (line.startsWith("nic-hdl-br:")) {
-                            int index = line.indexOf(':') + 1;
-                            String nic_hdl_br = line.substring(index).trim();
-                            line = reader.readLine().trim();
-                            index = line.indexOf(':') + 1;
-                            String person = line.substring(index).trim();
-                            line = reader.readLine().trim();
-                            index = line.indexOf(':') + 1;
-                            String e_mail;
-                            if (reducedNew) {
-                                e_mail = null;
-                            } else {
-                                e_mail = line.substring(index).trim();
-                                line = reader.readLine().trim();
-                                index = line.indexOf(':') + 1;
+                            try {
+                                String person = null;
+                                String e_mail = null;
+                                String created2 = null;
+                                String changed2 = null;
+                                String provider2 = null;
+                                String country2 = null;
+                                int index = line.indexOf(':') + 1;
+                                String nic_hdl_br = line.substring(index).trim();
+                                while ((line = reader.readLine().trim()).length() > 0) {
+                                    index = line.indexOf(':') + 1;
+                                    if (line.startsWith("person:")) {
+                                        person = line.substring(index).trim();
+                                    } else if (line.startsWith("e-mail:")) {
+                                        e_mail = line.substring(index).trim();
+                                    } else if (line.startsWith("created:")) {
+                                        created2 = line.substring(index).trim();
+                                    } else if (line.startsWith("changed:")) {
+                                        changed2 = line.substring(index).trim();
+                                    } else if (line.startsWith("provider:")) {
+                                        provider2 = line.substring(index).trim();
+                                    } else if (line.startsWith("country:")) {
+                                        country2 = line.substring(index).trim();
+                                    } else {
+                                        Server.logError("Linha não reconhecida: " + line);
+                                    }
+                                }
+                                Handle handle = Handle.getHandle(nic_hdl_br);
+                                handle.setPerson(person);
+                                handle.setEmail(e_mail);
+                                handle.setCreated(created2);
+                                handle.setChanged(changed2);
+                                handle.setProvider(provider2);
+                                handle.setCountry(country2);
+                            } catch (ProcessException ex) {
+                                Server.logError(ex);
                             }
-                            String created2 = line.substring(index).trim();
-                            line = reader.readLine().trim();
-                            index = line.indexOf(':') + 1;
-                            String changed2 = line.substring(index).trim();
-                            Handle handle = Handle.getHandle(nic_hdl_br);
-                            handle.setPerson(person);
-                            handle.setEmail(e_mail);
-                            handle.setCreated(created2);
-                            handle.setChanged(changed2);
                         } else if (line.startsWith("ticket:")) {
                             // Do nothing.
                         } else if (line.startsWith("% No match for domain")) {
@@ -1039,7 +1057,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static void storeDomain() {
         if (DOMAIN_CHANGED) {
             try {
-                Server.logTrace("storing domain.map");
+//                Server.logTrace("storing domain.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/domain.map");
                 HashMap<String,Domain> map = getDomainMap();
@@ -1067,7 +1085,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private static void storeTLD() {
         if (TLD_CHANGED) {
             try {
-                Server.logTrace("storing tld.map");
+//                Server.logTrace("storing tld.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/tld.set");
                 TreeSet<String> set = getSetTLD();
@@ -1332,7 +1350,9 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     public static String getOwnerID(String address) {
-        if (address.endsWith(".br")) {
+        if (address == null) {
+            return null;
+        } else if (address.endsWith(".br")) {
             try {
                 Domain domain = getDomain(address);
                 if (domain == null) {
@@ -1341,13 +1361,23 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return domain.get("ownerid", false);
                 }
             } catch (ProcessException ex) {
-                if (ex.getMessage().equals("ERROR: NSLOOKUP")) {
+                if (ex.isErrorMessage("NSLOOKUP")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
+                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
+                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+                    return null;
+                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+                    return null;
+                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
+                    return null;
+                } else if (ex.isErrorMessage("RESERVED")) {
+                    return null;
+                } else if (ex.isErrorMessage("WAITING")) {
                     return null;
                 } else {
                     Server.logError(ex);

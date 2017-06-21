@@ -18,14 +18,49 @@
 # Projeto SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 
-list="com|vbs|vbe|bat|pif|scr|prf|lnk|exe|shs|cpl|hta|hta|htm|jse|wsf|jar|js"
+list="com|vbs|vbe|bat|pif|scr|prf|lnk|exe|shs|cpl|hta|jse|wsf|jar|js"
+content=$(file "$1")
 
-if [ $(file "$1" | egrep -i -c "Zip archive data") -eq "1" ]; then
-    unzip -lL "$1" | egrep -i -c "^.+\.($list)$"
-elif [ $(file "$1" | egrep -i -c "RAR archive data") -eq "1" ]; then
-    unrar l "$1" | egrep -i -c "^.+\.($list)\b"
-elif [ $(file "$1" | egrep -i -c "tar archive") -eq "1" ]; then
-    tar -tvf "$1" | egrep -i -c "^.+\.($list)$"
+if [ $? -ne 0 ]; then
+    echo "0"
+    exit 0
+elif [[ $content =~ "Zip archive data" ]]; then
+    content=$(unzip -Z -1 "$1")
+    for line in $content; do
+        if [[ $line =~ \.html?$ ]]; then
+            # Check HTML redir command.
+            if [ $(unzip -c "$1" $line | egrep -c -i "<meta[^>]+http-equiv *= *\"?refresh\"?[^>]+>") -ne "0" ]; then
+                echo "1"
+                exit 1
+            fi
+        elif [[ $line =~ \.($list)$ ]]; then
+            echo "1"
+            exit 1
+        fi
+    done
+    echo "0"
+    exit 0
+elif [[ $content =~ "RAR archive data" ]]; then
+    content=$(unrar l "$1")
+    for line in $content; do
+        if [[ $line =~ \.($list)$ ]]; then
+            echo "1"
+            exit 1
+        fi
+    done
+    echo "0"
+    exit 0
+elif [[ $content =~ "tar archive" ]]; then
+    content=$(tar -tvf "$1")
+    for line in $content; do
+        if [[ $line =~ \.($list)$ ]]; then
+            echo "1"
+            exit 1
+        fi
+    done
+    echo "0"
+    exit 0
 else
     echo "0"
+    exit 0
 fi

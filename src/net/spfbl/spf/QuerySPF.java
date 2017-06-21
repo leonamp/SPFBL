@@ -583,29 +583,33 @@ public final class QuerySPF extends Server {
                                                 }
                                             }
                                         } else if (Domain.isEmail(query)) {
-                                            String mx = Domain.extractHost(query, true);
-                                            String domain = "." + Domain.extractDomain(query, false);
-                                            if (client == null) {
-                                                result = "ERROR: UNDEFINED CLIENT\n";
-                                            } else if (!client.hasEmail()) {
-                                                result = "ERROR: CLIENT WITHOUT EMAIL\n";
-                                            } else if (Block.containsExact(client.getEmail() + ":" + query)) {
-                                                result = "BLOCKED AS " + query + "\n";
-                                            } else if (Block.containsExact(client.getEmail() + ":" + mx)) {
-                                                result = "BLOCKED AS " + mx + "\n";
-                                            } else if (Block.containsExact(client.getEmail() + ":" + domain)) {
-                                                result = "BLOCKED AS " + domain + "\n";
-                                            } else {
-                                                if (Provider.containsExact(mx)) {
-                                                    token = query;
+                                            try {
+                                                String mx = Domain.extractHost(query, true);
+                                                String domain = "." + Domain.extractDomain(query, false);
+                                                if (client == null) {
+                                                    result = "ERROR: UNDEFINED CLIENT\n";
+                                                } else if (!client.hasEmail()) {
+                                                    result = "ERROR: CLIENT WITHOUT EMAIL\n";
+                                                } else if (Block.containsExact(client.getEmail() + ":" + query)) {
+                                                    result = "BLOCKED AS " + query + "\n";
+                                                } else if (Block.containsExact(client.getEmail() + ":" + mx)) {
+                                                    result = "BLOCKED AS " + mx + "\n";
+                                                } else if (Block.containsExact(client.getEmail() + ":" + domain)) {
+                                                    result = "BLOCKED AS " + domain + "\n";
                                                 } else {
-                                                    token = mx;
+                                                    if (Provider.containsExact(mx)) {
+                                                        token = query;
+                                                    } else {
+                                                        token = mx;
+                                                    }
+                                                    if (White.add(client, token)) {
+                                                        result = "ADDED " + token + ";PASS\n";
+                                                    } else {
+                                                        result = "ALREADY EXISTS " + token + ";PASS\n";
+                                                    }
                                                 }
-                                                if (White.add(client, token)) {
-                                                    result = "ADDED " + token + ";PASS\n";
-                                                } else {
-                                                    result = "ALREADY EXISTS " + token + ";PASS\n";
-                                                }
+                                            } catch (ProcessException ex) {
+                                                result = ex.getErrorMessage() + "\n";
                                             }
                                         } else {
                                             result = "INVALID COMMAND\n";

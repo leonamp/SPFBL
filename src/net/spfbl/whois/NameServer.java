@@ -143,7 +143,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     public static void store() {
         if (NS_CHANGED) {
             try {
-                Server.logTrace("storing ns.map");
+//                Server.logTrace("storing ns.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,NameServer> map = getMap();
                 File file = new File("./data/ns.map");

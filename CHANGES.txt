@@ -1,3 +1,16 @@
+### v2.7.2 ; release 21/07/2017:
+
+NEW) implementação de estilo HTML para apresentação personalizada das páginas interativas.
+
+NEW) implementação de análise de agrupamento, para pontuar grupos de domínios ou grupos de IPs.
+
+UPDT) aprimoramento da estrutura BLOCK com objetivo de agrupamento automático, para economizar memória.
+
+FIX) correção dos métodos de manipulação da tabela BLOCK.
+
+FIX) correção do script hasblackext, que verifica executáveis dentro de comprimidos.
+
+
 ### v2.7.1 ; release 11/06/2017:
 
 NEW) implementação de verificação de domínios em grace time no registro.br.

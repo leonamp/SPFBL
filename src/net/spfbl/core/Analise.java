@@ -54,6 +54,7 @@ import net.spfbl.data.White;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
+import net.spfbl.whois.Owner;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
@@ -498,7 +499,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             } else if (Subnet.isReservedIP(token)) {
                 dropProcess(token);
                 return false;
-            } else if (Domain.isReserved(token)) {
+            } else if (Domain.isOfficialTLD(token)) {
                 addResult(token, "RESERVED");
                 return false;
             } else if (Generic.containsDynamic(token)) {
@@ -723,7 +724,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 return false;
             } else if (ANALISE_IP && Subnet.isValidIP(token)) {
                 token = Subnet.normalizeIP(token);
-            } else if (Domain.isReserved(token)) {
+            } else if (Domain.isOfficialTLD(token)) {
                 return false;
             } else if (ANALISE_MX && !token.startsWith("@") && Domain.isDomain(token)) {
                 token = "@" + Domain.normalizeHostname(token, false);
@@ -766,8 +767,6 @@ public class Analise implements Serializable, Comparable<Analise> {
     public enum Status {
 
         WHITE,
-        GRAY, // Obsoleto.
-        BLACK, // Obsoleto.
         GREEN,
         YELLOW,
         RED,
@@ -949,8 +948,8 @@ public class Analise implements Serializable, Comparable<Analise> {
         Status statusMX = Status.NONE;
         float probability = 0.0f;
         String frequency = "UNDEFINED";
+        Distribution dist = null;
         try {
-            Distribution dist;
             Object response;
             ArrayList<String> mxSet = Reverse.getMXSet(host);
             for (int index = 0; index < mxSet.size(); index++) {
@@ -1073,7 +1072,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                         Server.logDebug("new BLOCK '" + tokenMX + "' added by 'NXDOMAIN'.");
                         Peer.sendBlockToAll(tokenMX);
                     }
-                } else if (Domain.isReserved(tokenMX)) {
+                } else if (Domain.isOfficialTLD(tokenMX)) {
                     statusAddress = Status.RESERVED;
                 } else {
                     statusAddress = Status.NXDOMAIN;
@@ -1111,11 +1110,8 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenMX));
             } else {
                 builder.append(Domain.revert(tokenMX));
-//                String mask = convertHostToMask(tokenMX);
-//                if (mask != null) {
-//                    builder.append(' ');
-//                    builder.append(mask);
-//                }
+                addCluster(extractTLD(tokenMX), statusMX, dist);
+                addCluster(Domain.getOwnerID(tokenMX), statusMX, dist);
             }
         }
     }
@@ -1139,7 +1135,19 @@ public class Analise implements Serializable, Comparable<Analise> {
             }
         }
     }
-        
+    
+    private static String extractTLD(String host) {
+        if ((host = Domain.normalizeHostname(host, true)) == null) {
+            return null;
+        } else {
+            try {
+                return Domain.extractTLD(host, true);
+            } catch (ProcessException ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
     
     private static boolean addBlock(String token, String by) {
         try {
@@ -1176,6 +1184,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             ip = Subnet.normalizeIP(ip);
             Distribution dist = SPF.getDistribution(ip, false);
             float probability = dist == null ? 0.0f : dist.getSpamProbability(ip);
+            boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
             Object response = null;
             Status statusIP;
             String tokenName;
@@ -1186,6 +1195,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     nameList.add(ptr);
                     if (Generic.containsDynamic(ptr)) {
                         statusName = Status.DYNAMIC;
+                        break;
                     } else if (Block.containsDomain(ptr, false)) {
                         statusName = Status.BLOCK;
                     } else if (Block.containsREGEX(ptr)) {
@@ -1196,21 +1206,29 @@ public class Analise implements Serializable, Comparable<Analise> {
                         statusName = Status.GENERIC;
                     } else {
                         try {
-                            if (White.containsDomain(ptr)) {
-                                if (Reverse.getAddressSet(ptr).contains(ip)) {
+                            if (Reverse.getAddressSet(ptr).contains(ip)) {
+                                Distribution distPTR;
+                                if (White.containsDomain(ptr)) {
                                     statusName = Status.WHITE;
-                                }
-                            } else if (Provider.containsDomain(ptr)) {
-                                if (Reverse.getAddressSet(ptr).contains(ip)) {
+                                    break;
+                                } else if (Provider.containsDomain(ptr)) {
                                     statusName = Status.PROVIDER;
-                                }
-                            } else if (Ignore.contains(ptr)) {
-                                if (Reverse.getAddressSet(ptr).contains(ip)) {
+                                    break;
+                                } else if (Ignore.contains(ptr)) {
                                     statusName = Status.IGNORE;
+                                    break;
+                                } else if ((distPTR = SPF.getDistribution(ptr, false)) == null) {
+                                    statusName = Status.GREEN;
+                                    break;
+                                } else {
+                                    statusName = Status.valueOf(distPTR.getStatus(ptr).name());
+                                    break;
                                 }
+                            } else {
+                                statusName = Status.INVALID;
                             }
                         } catch (NamingException ex) {
-                            // Fazer nada.
+                            statusName = Status.NXDOMAIN;
                         }
                     }
                 }
@@ -1257,26 +1275,26 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusName = Status.INVALID;
             }
             for (String name : nameList) {
-                    if (Generic.containsDynamic(name)) {
-                        tokenName = name;
-                        statusName = Status.DYNAMIC;
-                        break;
-                    } else if (Block.containsDomain(name, false)) {
-                        tokenName = name;
-                        statusName = Status.BLOCK;
-                        break;
-                    } else if (Block.containsREGEX(name)) {
-                        tokenName = name;
-                        statusName = Status.BLOCK;
-                        break;
-                    } else if (Block.containsWHOIS(name)) {
-                        tokenName = name;
-                        statusName = Status.BLOCK;
-                        break;
-                    } else if (Generic.containsGeneric(name)) {
-                        tokenName = name;
-                        statusName = Status.GENERIC;
-                        break;
+                if (Generic.containsDynamic(name)) {
+                    tokenName = name;
+                    statusName = Status.DYNAMIC;
+                    break;
+                } else if (Block.containsDomain(name, false)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else if (Block.containsREGEX(name)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else if (Block.containsWHOIS(name)) {
+                    tokenName = name;
+                    statusName = Status.BLOCK;
+                    break;
+                } else if (Generic.containsGeneric(name)) {
+                    tokenName = name;
+                    statusName = Status.GENERIC;
+                    break;
                 } else {
                     try {
                         if (Reverse.getAddressSet(name).contains(ip)) {
@@ -1299,7 +1317,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                                     statusName = Status.GREEN;
                                 } else {
                                     statusName = Status.valueOf(distribution2.getStatus(name).name());
-                                    statusName = statusName == Status.BLOCK ? Status.RED : statusName;
                                 }
                             }
                         }
@@ -1349,7 +1366,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 Analise.processToday(next);
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && statusName == Status.NONE) {
-                boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
                 String token = ip + (ipv4 ? "/32" : "/64");
                 String cidr = Subnet.normalizeCIDR(token);
                 if (Block.tryOverlap(cidr)) {
@@ -1368,12 +1384,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                     }
                 }
                 statusIP = Status.BLOCK;
-            } else if (statusIP != Status.BLOCK && (statusName == Status.BLOCK || statusName == Status.RESERVED)) {
+            } else if (statusIP != Status.BLOCK && (statusName == Status.BLOCK || statusName == Status.RESERVED || statusName == Status.NXDOMAIN)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
-            } else if (statusIP != Status.BLOCK && statusIP != Status.IGNORE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.GREEN && SubnetIPv6.isSLAAC(ip)) {
+            } else if (statusIP != Status.BLOCK && statusIP != Status.IGNORE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.GREEN  && statusName != Status.WHITE && SubnetIPv6.isSLAAC(ip)) {
                 String token = ip + "/64";
                 String cidr = SubnetIPv6.normalizeCIDRv6(token);
                 if (Block.tryOverlap(cidr)) {
@@ -1382,7 +1398,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + ip + "' added by 'SLAAC'.");
                 }
                 statusIP = Status.BLOCK;
-            } else if (statusIP == Status.DNSBL && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE)) {
+            } else if (statusIP == Status.DNSBL && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
                 }
@@ -1407,7 +1423,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + tokenName + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusName = Status.BLOCK;
-            } else if (statusIP == Status.BLOCK && (statusName == Status.PROVIDER || statusName == Status.IGNORE)) {
+            } else if (statusIP == Status.BLOCK && (statusName == Status.PROVIDER || statusName == Status.IGNORE || statusName == Status.WHITE)) {
                 String cidr;
                 int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
                 if ((cidr = Block.clearCIDR(ip, mask)) != null) {
@@ -1426,7 +1442,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else {
                     statusIP = Status.valueOf(dist.getStatus(ip).name());
                 }
-            } else if (statusIP == Status.DNSBL && (statusName == Status.PROVIDER || statusName == Status.IGNORE)) {
+            } else if (statusIP == Status.DNSBL && (statusName == Status.PROVIDER || statusName == Status.IGNORE || statusName == Status.WHITE)) {
                 if (hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
                     statusIP = (Status) response;
                 } else if (dist == null) {
@@ -1434,26 +1450,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else {
                     statusIP = Status.valueOf(dist.getStatus(ip).name());
                 }
-//            } else if (statusIP == Status.BLOCK && statusName == Status.GREEN && probability == 0.0f) {
-//                String result = Reverse.getResult(ip, "list.dnswl.org");
-//                if (result != null && !result.equals("127.0.0.255")) {
-//                    String cidr;
-//                    int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
-//                    if ((cidr = Block.clearCIDR(ip, mask)) != null) {
-//                        Server.logInfo("false positive BLOCK '" + cidr + "' detected by 'list.dnswl.org;" + result + "'.");
-//                    }
-//                    if (Provider.containsCIDR(ip)) {
-//                        statusIP = Status.PROVIDER;
-//                    } else if (Ignore.containsCIDR(ip)) {
-//                        statusIP = Status.IGNORE;
-//                    } else if (Block.containsDNSBL(ip)) {
-//                        statusIP = Status.DNSBL;
-//                    } else if ((response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
-//                        statusIP = (Status) response;
-//                    } else {
-//                        statusIP = Status.GREEN;
-//                    }
-//                }
             }
             builder.append(statusIP);
             builder.append(' ');
@@ -1469,24 +1465,171 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenName));
             } else {
                 builder.append(Domain.revert(tokenName));
-                if (
-                        statusName != Status.IGNORE &&
-                        statusName != Status.PROVIDER &&
-                        statusName != Status.BLOCK
-                        ) {
-                    String mask = convertHostToMask(tokenName);
-                    if (mask != null) {
-                        builder.append(' ');
-                        builder.append(mask);
-                    }
-                }
+                addCluster(convertHostToMask(tokenName), statusName, dist);
+                addCluster(extractTLD(tokenName), statusName, dist);
+                addCluster(Domain.getOwnerID(tokenName), statusName, dist);
             }
+            addCluster(Subnet.normalizeCIDR(ip + (ipv4 ? "/24" : "/56")), statusIP, dist);
         } catch (Exception ex) {
             builder.append("ERROR");
             Server.logError(ex);
         }
     }
+    
+    private static final TreeMap<String,Short[]> clusterMap = new TreeMap<String,Short[]>(); // Mapa dos agrupamentos.
+    
+    private static synchronized void addCluster(String token, Status status, Distribution dist) {
+        try {
+            if (token != null) {
+                Short[] clusterDist = clusterMap.get(token);
+                if (clusterDist == null) {
+                    clusterDist = new Short[2];
+                    clusterDist[0] = 0;
+                    clusterDist[1] = 0;
+                    clusterMap.put(token, clusterDist);
+                }
+                int ham = clusterDist[0];
+                int spam = clusterDist[1];
+                if (dist != null) {
+                    ham += dist.getHAM();
+                    spam += dist.getSPAM();
+                }
+                switch (status) {
+                    case WHITE: case GREEN: case PROVIDER: case IGNORE:
+                        ham++;
+                        break;
+                    case BLOCK: case RED: case DNSBL: case NXDOMAIN: case DYNAMIC:
+                        spam++;
+                        break;
+                }
+                while (ham + spam > Short.MAX_VALUE) {
+                    ham /= 2;
+                    spam /= 2;
+                }
+                clusterDist[0] = (short) ham;
+                clusterDist[1] = (short) spam;
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        }
+    }
+    
+    protected static synchronized TreeMap<String,Short[]> getClusterCloneMap() {
+        TreeMap<String,Short[]> cloneMap = new TreeMap<String,Short[]>();
+        cloneMap.putAll(clusterMap);
+        return cloneMap;
+    }
 
+    protected static void dumpClusterRED(StringBuilder builder) {
+        TreeMap<String,Short[]> map = getClusterCloneMap();
+        for (String token : map.keySet()) {
+            Short[] dist = map.get(token);
+            int spam = dist[1];
+            if (spam > 512) {
+                int ham = dist[0];
+                float total = ham + spam;
+                float reputation = spam / total;
+                if (reputation > 0.9375f) {
+                    if (!Generic.containsGenericExact(token)) {
+                        if (!Block.contains(token)) {
+                            builder.append(token);
+                            builder.append(' ');
+                            builder.append(ham);
+                            builder.append(' ');
+                            builder.append(spam);
+                            builder.append('\n');
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    protected static void dumpClusterTLD(StringBuilder builder) {
+        TreeMap<String,Short[]> map = getClusterCloneMap();
+        for (String token : map.keySet()) {
+            Short[] dist = map.get(token);
+            int spam = dist[1];
+            if (spam > 128) {
+                int ham = dist[0];
+                float total = ham + spam;
+                float reputation = spam / total;
+                if (reputation > 0.5f) {
+                    if (Domain.isOfficialTLD(token)) {
+                        builder.append(token);
+                        builder.append(' ');
+                        builder.append(ham);
+                        builder.append(' ');
+                        builder.append(spam);
+                        builder.append('\n');
+                    }
+                }
+            }
+        }
+    }
+    
+    protected static void dumpClusterMask(StringBuilder builder) {
+        TreeMap<String,Short[]> map = getClusterCloneMap();
+        for (String token : map.keySet()) {
+            Short[] dist = map.get(token);
+            int spam = dist[1];
+            if (spam > 128) {
+                int ham = dist[0];
+                float total = ham + spam;
+                float reputation = spam / total;
+                if (reputation > 0.5f) {
+                    if (Generic.containsGenericExact(token)) {
+                        builder.append(token);
+                        builder.append(' ');
+                        builder.append(ham);
+                        builder.append(' ');
+                        builder.append(spam);
+                        builder.append('\n');
+                    }
+                }
+            }
+        }
+    }
+    
+    public static synchronized boolean isCusterRED(String token) {
+        if (token == null) {
+            return false;
+        } else {
+            Short[] dist = clusterMap.get(token);
+            if (dist == null) {
+                return false;
+            } else {
+                int spam = dist[1];
+                if (spam > 512) {
+                    int ham = dist[0];
+                    float total = ham + spam;
+                    float reputation = spam / total;
+                    return reputation > 0.9375f;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+    
+    public static boolean isCusterRED(String ip, String sender, String hostname) {
+        if (isCusterRED(extractTLD(hostname))) {
+            return true;
+        } else if (isCusterRED(extractTLD(sender))) {
+            return true;
+        } else if (isCusterRED(convertHostToMask(hostname))) {
+            return true;
+        } else if (isCusterRED(Domain.getOwnerID(hostname))) {
+            return true;
+        } else if (isCusterRED(Domain.getOwnerID(sender))) {
+            return true;
+        } else {
+            boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
+            String cidr = Subnet.normalizeCIDR(ip + (ipv4 ? "/24" : "/56"));
+            return isCusterRED(cidr);
+        }
+    }
+    
     private static final int MAX = 256;
     private static final Semaphore SEMAPHORE = new Semaphore(MAX);
     private static boolean run = true;
@@ -1527,7 +1670,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing analise.set");
+//                Server.logTrace("storing analise.set");
                 long time = System.currentTimeMillis();
                 TreeSet<Analise> set = getAnaliseCloneSet();
                 File file = new File("./data/analise.set");
@@ -1536,6 +1679,21 @@ public class Analise implements Serializable, Comparable<Analise> {
                     SerializationUtils.serialize(set, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
+                } finally {
+                    outputStream.close();
+                }
+                Server.logStore(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+            try {
+//                Server.logTrace("storing cluster.map");
+                long time = System.currentTimeMillis();
+                TreeMap<String,Short[]> map = getClusterCloneMap();
+                File file = new File("./data/cluster.map");
+                FileOutputStream outputStream = new FileOutputStream(file);
+                try {
+                    SerializationUtils.serialize(map, outputStream);
                 } finally {
                     outputStream.close();
                 }
@@ -1568,6 +1726,42 @@ public class Analise implements Serializable, Comparable<Analise> {
                         add(analise);
                     } catch (Exception ex) {
                         Server.logError(ex);
+                    }
+                }
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        time = System.currentTimeMillis();
+        file = new File("./data/cluster.map");
+        if (file.exists()) {
+            try {
+                TreeMap<String,Short[]> map;
+                FileInputStream fileInputStream = new FileInputStream(file);
+                try {
+                    map = SerializationUtils.deserialize(fileInputStream);
+                } finally {
+                    fileInputStream.close();
+                }
+                for (String token : map.keySet()) {
+                    Short[] value = map.get(token);
+                    if (token.contains("#") || token.contains(".H.")) {
+                        String hostname = token.replace("#", "0");
+                        hostname = hostname.replace(".H.", ".0a.");
+                        if (Domain.isHostname(hostname)) {
+                            clusterMap.put(token, value);
+                        }
+                    } else if (Domain.isHostname(token)) {
+                        String hostname = Domain.normalizeHostname(token, true);
+                        if (Domain.isOfficialTLD(hostname)) {
+                            clusterMap.put(hostname, value);
+                        }
+                    } else if (Owner.isOwnerID(token)) {
+                        String ownerID = Owner.normalizeID(token);
+                        clusterMap.put(ownerID, value);
+                    } else if (Subnet.isValidCIDR(token)) {
+                        clusterMap.put(token, value);
                     }
                 }
                 Server.logLoad(time, file);

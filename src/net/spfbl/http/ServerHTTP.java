@@ -35,12 +35,12 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.nio.file.Files;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -56,7 +56,6 @@ import javax.naming.NamingException;
 import net.spfbl.core.Analise;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
-import static net.spfbl.core.Client.Permission.DNSBL;
 import static net.spfbl.core.Client.Permission.NONE;
 import net.spfbl.core.Core;
 import net.spfbl.core.Defer;
@@ -455,6 +454,17 @@ public final class ServerHTTP extends Server {
             return false;
         }
     }
+    
+    private static final File FOLDER = new File("./web/");
+    
+    private static File getWebFile(String name) {
+        File file = new File(FOLDER, name);
+        if (file.exists()) {
+            return file;
+        } else {
+            return null;
+        }
+    } 
 
     private static class AccessHandler implements HttpHandler {
         @Override
@@ -468,6 +478,7 @@ public final class ServerHTTP extends Server {
                 Locale locale = getLocale(exchange);
                 User user = getUser(exchange);
                 Client client = getClient(exchange);
+                File file = null;
                 String clientEmail = client == null ? null : client.getEmail();
                 String remoteAddress = getRemoteAddress(exchange);
                 String origin = getOrigin(remoteAddress, client, user);
@@ -506,11 +517,13 @@ public final class ServerHTTP extends Server {
                     code = 500;
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         result = getMessageHMTL(
+                                locale,
                                 "Página de erro do SPFBL",
                                 "O hostname deste sistema não foi definido no arquivo de configuração."
                         );
                     } else {
                         result = getMessageHMTL(
+                                locale,
                                 "SPFBL error page",
                                 "The hostname of this system has not been defined in the configuration file."
                         );
@@ -525,20 +538,20 @@ public final class ServerHTTP extends Server {
                             String query = (String) parameterMap.get("query");
                             if (Subnet.isValidIP(query) || Domain.isHostname(query)) {
                                 String url = Core.getURL(locale, query);
-                                result = getRedirectHTML(url);
+                                result = getRedirectHTML(locale, url);
                             } else {
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "Consulta inválida.";
+                                    message = "Consulta inválida";
                                 } else {
-                                    message = "Invalid query.";
+                                    message = "Invalid query";
                                 }
                                 result = getMainHTML(locale, message, remoteAddress);
                             }
                         } else {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Este é página principal do serviço SPFBL.";
+                                message = "Este é página principal do serviço SPFBL";
                             } else {
-                                message = "This is SPFBL's main page.";
+                                message = "This is SPFBL's main page";
                             }
                             result = getMainHTML(locale, message, remoteAddress);
                         }
@@ -561,6 +574,7 @@ public final class ServerHTTP extends Server {
                             message = getControlPanel(locale, userLogin, begin, filter);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
+                                    locale,
                                     "Login do SPFBL",
                                     "Usuário inexistente."
                             );
@@ -570,12 +584,13 @@ public final class ServerHTTP extends Server {
                                 Integer otp = (Integer) parameterMap.get("otp");
                                 if (userLogin.isValidOTP(otp)) {
                                     setUser(exchange, userLogin);
-                                    message = getRedirectHTML(command);
+                                    message = getRedirectHTML(locale, command);
                                 } else if (userLogin.tooManyFails()) {
                                     long failTime = userLogin.getFailTime();
                                     int pageTime = (int) (failTime / 1000) + 1;
                                     String tempoPunicao = getTempoPunicao(failTime);
                                     message = getRedirectHMTL(
+                                            locale,
                                             "Login do SPFBL",
                                             "Conta temporariamente bloqueada por excesso de logins fracassados.\n"
                                             + "Aguarde cerca de " + tempoPunicao + " para tentar novamente.",
@@ -659,6 +674,7 @@ public final class ServerHTTP extends Server {
                                     );
                                 } else {
                                     message = getMessageHMTL(
+                                            locale,
                                             "Login do SPFBL",
                                             "Não foi possível enviar o segredo "
                                             + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>."
@@ -758,10 +774,10 @@ public final class ServerHTTP extends Server {
                                 if (valid) {
                                     String message;
                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Chave de desbloqueio não pode ser enviada\n"
+                                        message = "Chave de desbloqueio não pode ser enviada "
                                                 + "devido a um erro interno.";
                                     } else {
-                                        message = "Unblocking key can not be sent\n"
+                                        message = "Unblocking key can not be sent "
                                                 + "due to an internal error.";
                                     }
                                     TreeSet<String> postmaterSet = getPostmaterSet(ip);
@@ -789,15 +805,15 @@ public final class ServerHTTP extends Server {
                                     }
                                     type = "DNSBL";
                                     code = 200;
-                                    result = getMessageHMTL(title, message);
+                                    result = getMessageHMTL(locale, title, message);
                                 } else {
                                     type = "DNSBL";
                                     code = 200;
                                     String message;
                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "O desafio do reCAPTCHA não foi resolvido.";
+                                        message = "O desafio do reCAPTCHA não foi resolvido";
                                     } else {
-                                        message = "The reCAPTCHA challenge has not been resolved.";
+                                        message = "The reCAPTCHA challenge has not been resolved";
                                     }
                                     result = getDNSBLHTML(locale, client, ip, message);
                                 }
@@ -806,9 +822,9 @@ public final class ServerHTTP extends Server {
                                 code = 200;
                                 String message;
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    message = "O e-mail do responsável pelo IP não foi definido.";
+                                    message = "O e-mail do responsável pelo IP não foi definido";
                                 } else {
-                                    message = "The e-mail of responsible IP was not set.";
+                                    message = "The e-mail of responsible IP was not set";
                                 }
                                 result = getDNSBLHTML(locale, client, ip, message);
                             }
@@ -821,7 +837,7 @@ public final class ServerHTTP extends Server {
                             } else {
                                 message = "Informed identifier is not a valid IP domain.";
                             }
-                            result = getMessageHMTL(title, message);
+                            result = getMessageHMTL(locale, title, message);
                         }
                     } else {
                         try {
@@ -858,7 +874,7 @@ public final class ServerHTTP extends Server {
                                     } else {
                                         message = "Expired ticket.";
                                     }
-                                    result = getMessageHMTL(title, message);
+                                    result = getMessageHMTL(locale, title, message);
                                 } else {
                                     String query = Core.HUFFMAN.decode(byteArray, 8);
                                     StringTokenizer tokenizer = new StringTokenizer(query, " ");
@@ -1021,7 +1037,7 @@ public final class ServerHTTP extends Server {
                                                     }
                                                     type = "BLOCK";
                                                     code = 200;
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1069,7 +1085,7 @@ public final class ServerHTTP extends Server {
                                                 }
                                                 type = "BLOCK";
                                                 code = 200;
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else {
                                                 type = "BLOCK";
                                                 code = 200;
@@ -1135,7 +1151,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This release ticket does not exist any more.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isResult("WHITE")) {
                                                     type = "HOLDN";
                                                     code = 200;
@@ -1145,7 +1161,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been delivered.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isWhiteSender()) {
                                                     type = "HOLDN";
                                                     code = 200;
@@ -1155,7 +1171,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been released.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isBlockSender()) {
                                                     type = "HOLDN";
                                                     code = 200;
@@ -1165,7 +1181,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has been permanently blocked.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isRecipientAdvised()) {
                                                     type = "HOLDN";
                                                     code = 200;
@@ -1175,7 +1191,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The recipient has not yet decided to release this message.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.adviseRecipientHOLD(date)) {
                                                     type = "HOLDN";
                                                     code = 200;
@@ -1185,7 +1201,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "Request was sent successfully.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else {
                                                     type = "HOLDN";
                                                     code = 500;
@@ -1195,7 +1211,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The request can not be committed due to system failure.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 }
                                             } else {
                                                 type = "HOLDN";
@@ -1262,7 +1278,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This release ticket does not exist any more.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (!queryLocal.isHolding()) {
                                                     type = "UHOLD";
                                                     code = 200;
@@ -1272,7 +1288,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been delivered.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isWhite()) {
                                                     type = "UHOLD";
                                                     code = 200;
@@ -1282,7 +1298,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been released and will be delivered shortly.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.whiteSender(date)) {
                                                     type = "UHOLD";
                                                     code = 200;
@@ -1292,7 +1308,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The message has been successfully released and will be delivered shortly.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else {
                                                     type = "UHOLD";
                                                     code = 500;
@@ -1302,7 +1318,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The release can not be effected due to system failure.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 }
                                             } else {
                                                 type = "UHOLD";
@@ -1369,7 +1385,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This block ticket does not exist any more.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1379,7 +1395,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This sender has been released by another user.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1389,7 +1405,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been discarded.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isResult("ACCEPT") && queryLocal.blockSender(date)) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1399,7 +1415,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The sender was successfully blocked.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1409,7 +1425,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been discarded.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isWhiteSender()) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1419,7 +1435,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has been released by another user.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1429,7 +1445,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "This message has already been blocked and will be discarded soon.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else if (queryLocal.blockSender(date)) {
                                                     type = "BLOCK";
                                                     code = 200;
@@ -1439,7 +1455,7 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The message has been successfully blocked and will be discarded soon.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 } else {
                                                     type = "BLOCK";
                                                     code = 500;
@@ -1449,21 +1465,21 @@ public final class ServerHTTP extends Server {
                                                     } else {
                                                         message = "The block can not be effected due to system failure.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 }
                                             } else {
                                                 type = "BLOCK";
                                                 code = 200;
-                                                String message1;
-                                                String message2;
+                                                String message;
+                                                String text;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message1 = "A mensagem retida por suspeita de SPAM.";
-                                                    message2 = "O desafio reCAPTCHA não foi resolvido. Tente novamente.";
+                                                    message = "A mensagem retida por suspeita de SPAM";
+                                                    text = "O desafio reCAPTCHA não foi resolvido. Tente novamente.";
                                                 } else {
-                                                    message1 = "The message retained on suspicion of SPAM.";
-                                                    message2 = "The reCAPTCHA challenge was not resolved. Try again.";
+                                                    message = "The message retained on suspicion of SPAM";
+                                                    text = "The reCAPTCHA challenge was not resolved. Try again.";
                                                 }
-                                                result = getBlockHMTL(locale, message1, message2);
+                                                result = getBlockHMTL(locale, message, text);
                                             }
                                         } catch (Exception ex) {
                                             type = "BLOCK";
@@ -1531,7 +1547,7 @@ public final class ServerHTTP extends Server {
                                                 }
                                                 type = "DEFER";
                                                 code = 200;
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else {
                                                 type = "DEFER";
                                                 code = 200;
@@ -1617,7 +1633,7 @@ public final class ServerHTTP extends Server {
                                                 }
                                                 type = "WHITE";
                                                 code = 200;
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else {
                                                 type = "WHITE";
                                                 code = 200;
@@ -1659,9 +1675,9 @@ public final class ServerHTTP extends Server {
                         code = 200;
                         String message;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            message = "Este é página principal do serviço SPFBL.";
+                            message = "Este é página principal do serviço SPFBL";
                         } else {
-                            message = "This is SPFBL's main page.";
+                            message = "This is SPFBL's main page";
                         }
                         result = getMainHTML(locale, message, remoteAddress);
                     } else if (command.startsWith("/favicon.ico")) {
@@ -1683,6 +1699,7 @@ public final class ServerHTTP extends Server {
                             message = getControlPanel(locale, userLogin, begin, filter);
                         } else if ((userLogin = User.get(userEmail)) == null) {
                             message = getMessageHMTL(
+                                    locale,
                                     "Login do SPFBL",
                                     "Usuário inexistente."
                             );
@@ -1691,6 +1708,7 @@ public final class ServerHTTP extends Server {
                             int pageTime = (int) (failTime / 1000) + 1;
                             String tempoPunicao = getTempoPunicao(failTime);
                             message = getRedirectHMTL(
+                                    locale,
                                     "Login do SPFBL",
                                     "Conta temporariamente bloqueada por excesso de logins fracassados.\n"
                                     + "Aguarde cerca de " + tempoPunicao + " para tentar novamente.",
@@ -1762,6 +1780,17 @@ public final class ServerHTTP extends Server {
                                 }
                             }
                         }
+                    } else if ((file = getWebFile(command.substring(1))) != null) {
+                        exchange.sendResponseHeaders(200, file.length());
+                        OutputStream outputStream = exchange.getResponseBody();
+                        try {
+                            Files.copy(file.toPath(), outputStream);
+                        } finally {
+                            outputStream.close();
+                        }
+                        type = "HTTPF";
+                        code = 0;
+                        result = file.getName() + "\n";
                     } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -1782,9 +1811,9 @@ public final class ServerHTTP extends Server {
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resultado da checagem DNSBL do IP " + ip + ".";
+                                message = "Resultado da checagem do IP " + ip;
                             } else {
-                                message = "DNSBL checking the result of IP " + ip + ".";
+                                message = "Check result of IP " + ip;
                             }
                             result = getDNSBLHTML(locale, client, ip, message);
                         } else if (Domain.isHostname(query)) {
@@ -1793,9 +1822,9 @@ public final class ServerHTTP extends Server {
                             code = 200;
                             String message;
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resultado da checagem DNSBL do domínio '" + hostname + "'.";
+                                message = "Resultado da checagem do domínio '" + hostname + "'";
                             } else {
-                                message = "DNSBL checking the result of domain " + hostname + ".";
+                                message = "Ccheck the result of domain " + hostname;
                             }
                             result = getDNSBLHTML(locale, client, hostname, message);
                         } else {
@@ -1807,7 +1836,7 @@ public final class ServerHTTP extends Server {
                             } else {
                                 message = "Informed identifier is not a valid IP or a valid domain.";
                             }
-                            result = getMessageHMTL(title, message);
+                            result = getMessageHMTL(locale, title, message);
                         }
                     } else {
                         try {
@@ -1844,7 +1873,7 @@ public final class ServerHTTP extends Server {
                                     } else {
                                         message = "Expired ticket.";
                                     }
-                                    result = getMessageHMTL(title, message);
+                                    result = getMessageHMTL(locale, title, message);
                                 } else {
                                     String query = Core.HUFFMAN.decode(byteArray, 8);
                                     StringTokenizer tokenizer = new StringTokenizer(query, " ");
@@ -1923,10 +1952,10 @@ public final class ServerHTTP extends Server {
                                                 code = 200;
                                                 String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Para desbloquear o IP '" + ip + "'\n"
+                                                    message = "Para desbloquear o IP '" + ip + "', "
                                                             + "resolva o desafio reCAPTCHA abaixo.";
                                                 } else {
-                                                    message = "To unblock the IP '" + ip + "'\n"
+                                                    message = "To unblock the IP '" + ip + "', "
                                                             + "solve the CAPTCHA below.";
                                                 }
                                                 result = getUnblockDNSBLHMTL(locale, message);
@@ -1950,7 +1979,7 @@ public final class ServerHTTP extends Server {
                                                             message = "This release ticket does not "
                                                                     + "contains the sender and recipient.";
                                                         }
-                                                        result = getMessageHMTL(title, message);
+                                                        result = getMessageHMTL(locale, title, message);
                                                     } else if (White.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
                                                         type = "BLOCK";
                                                         code = 200;
@@ -1964,7 +1993,7 @@ public final class ServerHTTP extends Server {
                                                                     + "already authorized receiving messages "
                                                                     + "from sender '" + sender + "'.";
                                                         }
-                                                        result = getMessageHMTL(title, message);
+                                                        result = getMessageHMTL(locale, title, message);
                                                     } else if (Block.containsExact(clientTicket + origem + ";PASS>" + recipient)) {
                                                         type = "BLOCK";
                                                         code = 200;
@@ -1994,18 +2023,18 @@ public final class ServerHTTP extends Server {
                                                                     + "has a negative point in "
                                                                     + "reputation in this system.";
                                                         }
-                                                        result = getMessageHMTL(title, message);
+                                                        result = getMessageHMTL(locale, title, message);
                                                     } else {
                                                         type = "BLOCK";
                                                         code = 200;
                                                         String message;
                                                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "'\n"
-                                                                    + "diretamente para o destinatário '" + recipient + "',\n"
+                                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "' "
+                                                                    + "diretamente para o destinatário '" + recipient + "', "
                                                                     + "resolva o desafio reCAPTCHA abaixo.";
                                                         } else {
-                                                            message = "To request unblock the sender '" + sender + "'\n"
-                                                                    + "directly to the recipient '" + recipient + "',\n"
+                                                            message = "To request unblock the sender '" + sender + "' "
+                                                                    + "directly to the recipient '" + recipient + "', "
                                                                     + "solve the challenge reCAPTCHA below.";
                                                         }
                                                         result = getUnblockHMTL(locale, message);
@@ -2016,18 +2045,18 @@ public final class ServerHTTP extends Server {
                                                     String message;
                                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                                                         message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
-                                                                + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema,\n"
+                                                                + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema, "
                                                                 + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
-                                                                + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS,\n"
+                                                                + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS, "
                                                                 + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
                                                     } else {
                                                         message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
-                                                                + "To be able to request unblocking to recipient, through this system,\n"
+                                                                + "To be able to request unblocking to recipient, through this system, "
                                                                 + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
-                                                                + "After making this change, wait a few hours for DNS propagation,\n"
+                                                                + "After making this change, wait a few hours for DNS propagation, "
                                                                 + "and re-access the same page to proceed with the unblock process.";
                                                     }
-                                                    result = getMessageHMTL(title, message);
+                                                    result = getMessageHMTL(locale, title, message);
                                                 }
                                             }
                                         } catch (Exception ex) {
@@ -2042,7 +2071,7 @@ public final class ServerHTTP extends Server {
                                                 message = "There was an error processing this request: "
                                                         + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         }
                                     } else if (operator.equals("holding")) {
                                         String title;
@@ -2063,7 +2092,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This release ticket does not exist any more.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isResult("WHITE")) {
                                             type = "HOLDN";
                                             code = 200;
@@ -2073,7 +2102,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been delivered.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isWhiteSender()) {
                                             type = "HOLDN";
                                             code = 200;
@@ -2083,7 +2112,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been released.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isBlockSender()) {
                                             type = "HOLDN";
                                             code = 200;
@@ -2093,7 +2122,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has been permanently blocked.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isRecipientAdvised()) {
                                             type = "HOLDN";
                                             code = 200;
@@ -2103,7 +2132,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "The recipient has not yet decided to release this message.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else {
                                             type = "HOLDN";
                                             code = 200;
@@ -2140,7 +2169,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This release ticket does not exist any more.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (!queryLocal.isHolding()) {
                                             type = "UHOLD";
                                             code = 200;
@@ -2150,7 +2179,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been delivered.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isWhite()) {
                                             type = "UHOLD";
                                             code = 200;
@@ -2160,7 +2189,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been released and will be delivered shortly.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else {
                                             type = "UHOLD";
                                             code = 200;
@@ -2197,7 +2226,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This release ticket does not exist any more.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isResult("ACCEPT") && queryLocal.isWhiteSender()) {
                                             type = "BLOCK";
                                             code = 200;
@@ -2207,7 +2236,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This sender has been released by another user.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isResult("ACCEPT") && queryLocal.isBlockSender()) {
                                             type = "BLOCK";
                                             code = 200;
@@ -2217,20 +2246,20 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been discarded.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isResult("ACCEPT")) {
                                             type = "BLOCK";
                                             code = 200;
-                                            String message1;
-                                            String message2;
+                                            String message;
+                                            String text;
                                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message1 = "Mensagem com forte suspeita de SPAM.";
-                                                message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
+                                                message = "Mensagem com forte suspeita de SPAM";
+                                                text = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
                                             } else {
-                                                message1 = "Message with strong suspicion of SPAM.";
-                                                message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
+                                                message = "Message with strong suspicion of SPAM";
+                                                text = "To confirm the block of this sender, solve the CAPTCHA below.";
                                             }
-                                            result = getBlockHMTL(locale, message1, message2);
+                                            result = getBlockHMTL(locale, message, text);
                                         } else if (queryLocal.isResult("BLOCK") || queryLocal.isResult("REJECT")) {
                                             type = "BLOCK";
                                             code = 200;
@@ -2240,7 +2269,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been discarded.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isWhiteSender()) {
                                             type = "BLOCK";
                                             code = 200;
@@ -2250,7 +2279,7 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has been released by another user.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else if (queryLocal.isBlockSender() || queryLocal.isAnyLinkBLOCK()) {
                                             type = "BLOCK";
                                             code = 200;
@@ -2260,20 +2289,20 @@ public final class ServerHTTP extends Server {
                                             } else {
                                                 message = "This message has already been blocked and will be discarded soon.";
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         } else {
                                             type = "BLOCK";
                                             code = 200;
-                                            String message1;
-                                            String message2;
+                                            String message;
+                                            String text;
                                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                message1 = "A mensagem foi retida por suspeita de SPAM.";
-                                                message2 = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
+                                                message = "A mensagem foi retida por suspeita de SPAM";
+                                                text = "Para confirmar o bloqueio deste remetente, resolva o CAPTCHA abaixo.";
                                             } else {
-                                                message1 = "The message was retained on suspicion of SPAM.";
-                                                message2 = "To confirm the block of this sender, solve the CAPTCHA below.";
+                                                message = "The message was retained on suspicion of SPAM";
+                                                text = "To confirm the block of this sender, solve the CAPTCHA below.";
                                             }
-                                            result = getBlockHMTL(locale, message1, message2);
+                                            result = getBlockHMTL(locale, message, text);
                                         }
                                     } else if (operator.equals("release")) {
                                         String title;
@@ -2294,7 +2323,7 @@ public final class ServerHTTP extends Server {
                                                 } else {
                                                     message = "This release ticket does not exist or has been released before.";
                                                 }
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else if (defer.isReleased()) {
                                                 type = "DEFER";
                                                 code = 200;
@@ -2304,7 +2333,7 @@ public final class ServerHTTP extends Server {
                                                 } else {
                                                     message = "Your message had already been freed.";
                                                 }
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else {
                                                 type = "DEFER";
                                                 code = 200;
@@ -2329,7 +2358,7 @@ public final class ServerHTTP extends Server {
                                                 message = "There was an error processing this request: "
                                                         + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         }
                                     } else if (operator.equals("white")) {
                                         String title;
@@ -2359,16 +2388,16 @@ public final class ServerHTTP extends Server {
                                                             + "" + sender + "' by recipient '"
                                                             + "" + recipient + "'.";
                                                 }
-                                                result = getMessageHMTL(title, message);
+                                                result = getMessageHMTL(locale, title, message);
                                             } else {
                                                 type = "WHITE";
                                                 code = 200;
                                                 String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Para desbloquear este remetente '" + sender + "',\n"
+                                                    message = "Para desbloquear este remetente '" + sender + "', "
                                                             + "resolva o desafio reCAPTCHA abaixo.";
                                                 } else {
-                                                    message = "To unblock this sender '" + sender + "',\n"
+                                                    message = "To unblock this sender '" + sender + "', "
                                                             + "please solve the reCAPTCHA below.";
                                                 }
                                                 result = getWhiteHMTL(locale, message);
@@ -2384,7 +2413,7 @@ public final class ServerHTTP extends Server {
                                                 message = "There was an error processing this request: "
                                                         + ex.getMessage() == null ? "undefined error." : ex.getMessage();
                                             }
-                                            result = getMessageHMTL(title, message);
+                                            result = getMessageHMTL(locale, title, message);
                                         }
                                     } else {
                                         type = "HTTPC";
@@ -2536,12 +2565,14 @@ public final class ServerHTTP extends Server {
                     code = 405;
                     result = "Method not allowed.\n";
                 }
-                try {
-                    response(code, result, exchange);
-                    command = request + " " + command;
-                    result = code + " " + result;
-                } catch (IOException ex) {
-                    result = ex.getMessage();
+                if (code > 0) {
+                    try {
+                        response(code, result, exchange);
+                        command = request + " " + command;
+                        result = code + " " + result;
+                    } catch (IOException ex) {
+                        result = ex.getMessage();
+                    }
                 }
                 Server.logQuery(
                         time, type,
@@ -2598,14 +2629,19 @@ public final class ServerHTTP extends Server {
                 }
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
-                builder.append("<html>\n");
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <title>Chave de desbloqueio SPFBL</title>\n");
+                    builder.append("Chave de desbloqueio SPFBL");
                 } else {
-                    builder.append("    <title>Unblocking key SPFBL</title>\n");
+                    builder.append("Unblocking key SPFBL");
                 }
+                builder.append("</title>\n");
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -2686,30 +2722,35 @@ public final class ServerHTTP extends Server {
                 }
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
-                builder.append("<html>\n");
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <title>Chave TOTP do SPFBL</title>\n");
+                    builder.append("Chave TOTP do SPFBL");
                 } else {
-                    builder.append("    <title>SPFBL TOTP key</title>\n");
+                    builder.append("SPFBL TOTP key");
                 }
+                builder.append("</title>\n");
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("       Sua chave <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> no sistema SPFBL em ");
+                    builder.append("         Sua chave <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> no sistema SPFBL em ");
                     builder.append(Core.getHostname());
                     builder.append(":<br>\n");
-                    builder.append("       <img src=\"cid:qrcode\"><br>\n");
-                    builder.append("       Carregue o QRCode acima em seu Google Authenticator<br>\n");
-                    builder.append("       ou em outro aplicativo <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> de sua peferência.<br>\n");
+                    builder.append("         <img src=\"cid:qrcode\"><br>\n");
+                    builder.append("         Carregue o QRCode acima em seu Google Authenticator<br>\n");
+                    builder.append("         ou em outro aplicativo <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> de sua peferência.<br>\n");
                 } else {
-                    builder.append("       Your <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> key in SPFBL system at ");
+                    builder.append("         Your <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> key in SPFBL system at ");
                     builder.append(Core.getHostname());
                     builder.append(":<br>\n");
-                    builder.append("       <img src=\"cid:qrcode\">\n");
-                    builder.append("       Load QRCode above on your Google Authenticator<br>\n");
-                    builder.append("       or on other application <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> of your choice.<br>\n");
+                    builder.append("         <img src=\"cid:qrcode\">\n");
+                    builder.append("         Load QRCode above on your Google Authenticator<br>\n");
+                    builder.append("         or on other application <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> of your choice.<br>\n");
                 }
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
@@ -2776,38 +2817,43 @@ public final class ServerHTTP extends Server {
                 }
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
-                builder.append("<html>\n");
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <title>Solicitação de envio</title>\n");
+                    builder.append("Solicitação de envio");
                 } else {
-                    builder.append("    <title>Send request</title>\n");
+                    builder.append("Send request");
                 }
+                builder.append("</title>\n");
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("       O remetente '");
+                    builder.append("         O remetente '");
                     builder.append(remetente);
                     builder.append("' deseja lhe enviar mensagens\n");
-                    builder.append("       porém foi bloqueado pelo sistema como fonte de SPAM.<br>\n");
-                    builder.append("       Se você confia neste remetente e quer receber mensagens dele,\n");
-                    builder.append("       acesse esta URL e resolva o reCAPTCHA:<br>\n");
+                    builder.append("         porém foi bloqueado pelo sistema como fonte de SPAM.<br>\n");
+                    builder.append("         Se você confia neste remetente e quer receber mensagens dele,\n");
+                    builder.append("         acesse esta URL e resolva o reCAPTCHA:<br>\n");
                 } else {
-                    builder.append("       The sender '");
+                    builder.append("         The sender '");
                     builder.append(remetente);
                     builder.append("' wants to send you messages\n");
-                    builder.append("       but was blocked by the SPFBL system as being a source of SPAM.<br>\n");
-                    builder.append("       If you trust this sender and want to receive his messages,\n");
-                    builder.append("       please go to this URL and solve the reCAPTCHA:<br>\n");
+                    builder.append("         but was blocked by the SPFBL system as being a source of SPAM.<br>\n");
+                    builder.append("         If you trust this sender and want to receive his messages,\n");
+                    builder.append("         please go to this URL and solve the reCAPTCHA:<br>\n");
                 }
-                builder.append("       <a href=\"");
+                builder.append("         <a href=\"");
                 builder.append(url);
                 builder.append("\">");
                 builder.append(url);
                 builder.append("</a><br>\n");
-                builder.append("    <br>\n");
-                builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+                builder.append("      <br>\n");
+                builder.append("      <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
                 message.setContent(builder.toString(), "text/html;charset=UTF-8");
@@ -2856,29 +2902,34 @@ public final class ServerHTTP extends Server {
                 }
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
-                builder.append("<html>\n");
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <title>Confirmação de desbloqueio</title>\n");
+                    builder.append("Confirmação de desbloqueio");
                 } else {
-                    builder.append("    <title>Unblocking confirmation</title>\n");
+                    builder.append("Unblocking confirmation");
                 }
+                builder.append("</title>\n");
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("       O destinatário '");
+                    builder.append("         O destinatário '");
                     builder.append(destinatario);
                     builder.append("' acabou de liberar o recebimento de suas mensagens.<br>\n");
-                    builder.append("       Por favor, envie novamente a mensagem anterior.<br>\n");
+                    builder.append("         Por favor, envie novamente a mensagem anterior.<br>\n");
                 } else {
-                    builder.append("       The recipient '");
+                    builder.append("         The recipient '");
                     builder.append(destinatario);
                     builder.append("' just released the receipt of your message.<br>\n");
-                    builder.append("       Please send the previous message again.<br>\n");
+                    builder.append("         Please send the previous message again.<br>\n");
                 }
-                builder.append("    <br>\n");
-                builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+                builder.append("      <br>\n");
+                builder.append("      <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
                 message.setContent(builder.toString(), "text/html;charset=UTF-8");
@@ -2896,36 +2947,29 @@ public final class ServerHTTP extends Server {
     
     private static String getUnblockHMTL(
             Locale locale,
-            String message
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de desbloqueio do SPFBL</title>\n");
+            buildHead(builder, "Página de desbloqueio do SPFBL");
         } else {
-            builder.append("    <title>SPFBL unlock page</title>\n");
+            buildHead(builder, "SPFBL unlock page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <p><form method=\"POST\">\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <p>A sua mensagem está sendo rejeitada por bloqueio manual.\n");
+            buildMessage(builder, "A sua mensagem está sendo rejeitada por bloqueio manual");
         } else {
-            builder.append("       <p>Your message is being rejected by manual block.\n");
+            buildMessage(builder, "Your message is being rejected by manual block");
         }
-        builder.append("       <p>");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -2937,24 +2981,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Solicitar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Solicitar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Request\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Request\">\n");
         }
-//        if (Core.hasAdminEmail()) {
-//            builder.append("       Se deseja automatizar este procedimento,<br>\n");
-//            builder.append("       entre em contato com <a href=\"");
-//            builder.append(Core.getAdminEmail());
-//            builder.append("\">");
-//            builder.append(Core.getAdminEmail());
-//            builder.append("</a>.<br>\n");
-//        }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -2962,31 +2996,29 @@ public final class ServerHTTP extends Server {
     
     private static String getUnblockDNSBLHMTL(
             Locale locale,
-            String message
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de desbloqueio DNSBL</title>\n");
+            buildHead(builder, "Página de desbloqueio DNSBL");
         } else {
-            builder.append("    <title>DNSBL unblock page</title>\n");
+            buildHead(builder, "DNSBL unblock page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>\n");
-        builder.append("    <p><form method=\"POST\">\n");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
+        builder.append("    <div id=\"container\">\n");
+        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            buildMessage(builder, "Página de desbloqueio DNSBL");
+        } else {
+            buildMessage(builder, "DNSBL unblock page");
         }
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -2998,16 +3030,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Desbloquear\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Desbloquear\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Unblock\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Unblock\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3015,37 +3045,29 @@ public final class ServerHTTP extends Server {
     
     private static String getWhiteHMTL(
             Locale locale,
-            String message
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de desbloqueio do SPFBL</title>\n");
+            buildHead(builder, "Página de desbloqueio do SPFBL");
         } else {
-            builder.append("    <title>SPFBL unblock page</title>\n");
+            buildHead(builder, "SPFBL unblock page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       Este remetente foi bloqueado no sistema SPFBL.<br>\n");
+            buildMessage(builder, "Este remetente foi bloqueado no sistema SPFBL");
         } else {
-            builder.append("       The sender has been blocked in SPFBL system.<br>\n");
+            buildMessage(builder, "The sender has been blocked in SPFBL system");
         }
-        builder.append("       ");
-//        builder.append("       Para liberar o recebimento da mensagem, resolva o desafio reCAPTCHA abaixo.<br>\n");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -3057,16 +3079,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Liberar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Liberar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Release\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Release\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3077,35 +3097,31 @@ public final class ServerHTTP extends Server {
             String message
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de login do SPFBL</title>\n");
+            buildHead(builder, "Página de login do SPFBL");
         } else {
-            builder.append("    <title>SPFBL login page</title>\n");
+            buildHead(builder, "SPFBL login page");
         }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
-        builder.append("      <input type=\"password\" name=\"otp\" autofocus>\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
+        builder.append("          <input type=\"password\" name=\"otp\" autofocus>\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Entrar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Entrar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Login\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Login\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3116,27 +3132,21 @@ public final class ServerHTTP extends Server {
             String message
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de login do SPFBL</title>\n");
+            buildHead(builder, "Página de login do SPFBL");
         } else {
-            builder.append("    <title>SPFBL login page</title>\n");
+            buildHead(builder, "SPFBL login page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -3148,16 +3158,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Enviar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Enviar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Send\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Send\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3165,36 +3173,29 @@ public final class ServerHTTP extends Server {
 
     private static String getReleaseHMTL(
             Locale locale,
-            String message
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de liberação SPFBL</title>\n");
+            buildHead(builder, "Página de liberação SPFBL");
         } else {
-            builder.append("    <title>SPFBL release page</title>\n");
+            buildHead(builder, "SPFBL release page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       O recebimento da sua mensagem está sendo atrasado por suspeita de SPAM.<br>\n");
+            buildMessage(builder, "O recebimento da sua mensagem está sendo atrasado por suspeita de SPAM");
         } else {
-            builder.append("       The receipt of your message is being delayed by SPAM suspect.<br>\n");
+            buildMessage(builder, "The receipt of your message is being delayed by SPAM suspect");
         }
-        builder.append("       ");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -3206,16 +3207,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Liberar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Liberar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Release\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Release\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3223,36 +3222,29 @@ public final class ServerHTTP extends Server {
     
     private static String getHoldingHMTL(
             Locale locale,
-            String message
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de liberação SPFBL</title>\n");
+            buildHead(builder, "Página de liberação SPFBL");
         } else {
-            builder.append("    <title>SPFBL release page</title>\n");
+            buildHead(builder, "SPFBL release page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       A mensagem retida por suspeita de SPAM.<br>\n");
+            buildMessage(builder, "A mensagem retida por suspeita de SPAM");
         } else {
-            builder.append("       The message retained on suspicion of SPAM.<br>\n");
+            buildMessage(builder, "The message retained on suspicion of SPAM");
         }
-        builder.append("       ");
-        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-        while (tokenizer.hasMoreTokens()) {
-            String line = tokenizer.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -3264,16 +3256,14 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Solicitar\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Solicitar\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Request\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Request\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3281,39 +3271,26 @@ public final class ServerHTTP extends Server {
     
     private static String getBlockHMTL(
             Locale locale,
-            String message1,
-            String message2
+            String message,
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de bloqueio SPFBL</title>\n");
+            buildHead(builder, "Página de bloqueio SPFBL");
         } else {
-            builder.append("    <title>SPFBL block page</title>\n");
+            buildHead(builder, "SPFBL block page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <form method=\"POST\">\n");
-        builder.append("       <p>");
-        StringTokenizer tokenizer1 = new StringTokenizer(message1, "\n");
-        while (tokenizer1.hasMoreTokens()) {
-            String line = tokenizer1.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
-        builder.append("       <p>");
-        StringTokenizer tokenizer2 = new StringTokenizer(message2, "\n");
-        while (tokenizer2.hasMoreTokens()) {
-            String line = tokenizer2.nextToken();
-            builder.append(line);
-            builder.append("<br>\n");
-        }
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
+        buildText(builder, text);
+        builder.append("      <div id=\"divcaptcha\">\n");
+        builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
             String recaptchaKeySite = Core.getRecaptchaKeySite();
             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
@@ -3325,78 +3302,61 @@ public final class ServerHTTP extends Server {
 //            builder.append("\"></div>\n");
         }
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("       <input type=\"submit\" value=\"Bloquear\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Bloquear\">\n");
         } else {
-            builder.append("       <input type=\"submit\" value=\"Block\">\n");
+            builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Block\">\n");
         }
-        builder.append("    </form>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        builder.append("        </form>\n");
+        builder.append("      </div>\n");
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
     }
     
     private static String getRedirectHMTL(
+            Locale locale,
             String title,
             String message,
             String page,
             int time
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"");
-        builder.append(time);
-        builder.append(";url=");
-        builder.append(page);
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
         builder.append("\">\n");
-        builder.append("    <title>");
-        builder.append(title);
-        builder.append("</title>\n");
-        builder.append("  </head>\n");
+        buildHead(builder, title, page, time);
         builder.append("  <body>\n");
-        builder.append("    ");
-        if (message != null) {
-            builder.append(message.replace("\n", "<br>\n"));
-        }
-//        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-//        while (tokenizer.hasMoreTokens()) {
-//            String line = tokenizer.nextToken();
-//            builder.append(line);
-//            builder.append("<br>\n");
-//        }
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
     }
 
     private static String getMessageHMTL(
+            Locale locale,
             String title,
             String message
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
-        builder.append("    <title>");
-        builder.append(title);
-        builder.append("</title>\n");
-        builder.append("  </head>\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
+        buildHead(builder, title);
         builder.append("  <body>\n");
-        builder.append("    ");
-        if (message != null) {
-            builder.append(message.replace("\n", "<br>\n"));
-        }
-//        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
-//        while (tokenizer.hasMoreTokens()) {
-//            String line = tokenizer.nextToken();
-//            builder.append(line);
-//            builder.append("<br>\n");
-//        }
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, title);
+        buildText(builder, message);
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -3477,13 +3437,21 @@ public final class ServerHTTP extends Server {
         StringBuilder builder = new StringBuilder();
         boolean isSLAAC = SubnetIPv6.isSLAAC(query) && !Subnet.isReservedIP(query);
         Boolean isOpenSMTP = openSMTP.get(query);
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
+        String title;
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            title = "Página de checagem DNSBL";
+        } else {
+            title = "DNSBL check page";
+        }
         if (isSLAAC && isOpenSMTP == null) {
             if (openSMTP.containsKey(query)) {
-                builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"3;");
+                buildHead(builder, title, Core.getURL(locale, query), 3);
             } else {
-                builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"10;");
+                buildHead(builder, title, Core.getURL(locale, query), 10);
                 openSMTP.put(query, null);
                 new Thread() {
                     @Override
@@ -3492,79 +3460,64 @@ public final class ServerHTTP extends Server {
                     }
                 }.start();
             }
-            builder.append(Core.getURL(locale, query));
-            builder.append("\">\n");
         } else {
-            builder.append("    <meta charset=\"UTF-8\">\n");
+            buildHead(builder, title);
         }
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de checagem DNSBL</title>\n");
-        } else {
-            builder.append("    <title>DNSBL check page</title>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
-        builder.append("    <p>");
-        builder.append(message);
-        builder.append("\n");
+        builder.append("    <div id=\"container\">\n");
+        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+        buildMessage(builder, message);
         TreeSet<String> emailSet = new TreeSet<String>();
         if (Subnet.isValidIP(query)) {
             String ip = Subnet.normalizeIP(query);
             if (Subnet.isReservedIP(ip)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este é um IP reservado e por este motivo não é abordado nesta lista.\n");
+                    buildText(builder, "Este é um IP reservado e por este motivo não é abordado nesta lista.");
                 } else {
-                    builder.append("    <p>This is a reserved IP and for this reason is not addressed in this list.\n");
+                    buildText(builder, "This is a reserved IP and for this reason is not addressed in this list.");
                 }
             } else if (isSLAAC && isOpenSMTP == null) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC).\n");
-                    builder.append("    <p>Estamos verificando se existe serviço SMTP neste IP. Aguarde...\n");
+                    buildText(builder, "Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC).");
+                    buildText(builder, "Estamos verificando se existe serviço SMTP neste IP. Aguarde...");
                 } else {
-                    builder.append("    <p>This IP contains network address autoconfiguration flag (SLAAC).\n");
-                    builder.append("    <p>We are checking if there is SMTP service on this IP. Wait...\n");
+                    buildText(builder, "This IP contains network address autoconfiguration flag (SLAAC).");
+                    buildText(builder, "We are checking if there is SMTP service on this IP. Wait...");
                 }
             } else if (isSLAAC && !isOpenSMTP) {
                 openSMTP.remove(query);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC)<br>\n");
-                    builder.append("    mas não foi possível verificar se existe um serviço de e-mail válido nele.\n");
-                    builder.append("    <p>Se este IP está sendo usado por um servidor de e-mail legítimo,<br>\n");
-                    builder.append("    abra a porta 25 para que possamos verificar que existe um serviço SMTP nele.\n");
+                    buildText(builder, "Este IP contém sinalização de autoconfiguração de endereço de rede (SLAAC) mas não foi possível verificar se existe um serviço de e-mail válido nele.");
+                    buildText(builder, "Se este IP está sendo usado por um servidor de e-mail legítimo, abra a porta 25 para que possamos verificar que existe um serviço SMTP nele.");
                 } else {
-                    builder.append("    <p>This IP contains network address autoconfiguration flag (SLAAC)<br>\n");
-                    builder.append("    but it was not possible to verify that there is a valid email service on it.\n");
-                    builder.append("    <p>If this IP is being used by genuine email server,<br>\n");
-                    builder.append("    open port 25 so we can check that there is a SMTP service on it.\n");
+                    buildText(builder, "This IP contains network address autoconfiguration flag (SLAAC) but it was not possible to verify that there is a valid email service on it.");
+                    buildText(builder, "If this IP is being used by genuine email server, open port 25 so we can check that there is a SMTP service on it.");
                 }
             } else {
                 openSMTP.remove(query);
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado:");
-                } else {
-                    builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
-                }
                 boolean generic = false;
                 Reverse reverse = Reverse.get(ip, true);
                 TreeSet<String> reverseSet = reverse.getAddressSet();
                 if (reverseSet.isEmpty()) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append(" nenhum<br>\n");
+                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado: nenhum");
                     } else {
-                        builder.append(" none<br>\n");
+                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found: none");
                     }
-                    builder.append("    <br>\n");
                 } else {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado:");
+                    } else {
+                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
+                    }
                     Client abuseClient = Client.getByIP(ip);
                     String abuseEmail = abuseClient == null || abuseClient.hasPermission(NONE) ? null : abuseClient.getEmail();
                     String clientEmail = client == null || client.hasPermission(NONE) ? null : client.getEmail();
-                    builder.append("<br>\n");
-                    builder.append("    <ul>\n");
+                    builder.append("        <ul>\n");
                     String hostname = reverseSet.pollFirst();
                     do {
                         hostname = Domain.normalizeHostname(hostname, false);
-                        builder.append("      <li>&lt;");
+                        builder.append("          <li>&lt;");
                         builder.append(hostname);
                         builder.append("&gt; ");
                         if (Generic.containsDynamic(hostname)) {
@@ -3647,7 +3600,7 @@ public final class ServerHTTP extends Server {
                             }
                         }
                     } while ((hostname = reverseSet.pollFirst()) != null);
-                    builder.append("    </ul>\n");
+                    builder.append("        </ul>\n");
                 }
                 Distribution distribution;
                 if ((distribution = SPF.getDistribution(ip, true)).isNotGreen(ip)) {
@@ -3655,81 +3608,21 @@ public final class ServerHTTP extends Server {
                     boolean blocked = Block.containsCIDR(ip);
                     if (blocked || distribution.isRed(ip)) {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("    <p>Este IP ");
-                            if (blocked) {
-                                builder.append("foi bloqueado");
-                            } else {
-                                builder.append("está listado");
-                            }
-                            builder.append(" por má reputação com ");
-                            builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" de pontos negativos.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Para que este IP possa ser removido desta lista,<br>\n");
-                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para<br>\n");
-                            builder.append("    os destinatários com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a> na camada SMTP.<br>\n");
-//                            builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-//                            builder.append("    cuja rejeição SMTP tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,<br>\n");
-//                            builder.append("    onde este ponto expira em uma semana.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                            buildText(builder, "Este IP " + (blocked ? "foi bloqueado" : "está listado") + " por má reputação com " + Core.PERCENT_FORMAT.format(probability) + " de pontos negativos.");
+                            buildText(builder, "Para que este IP possa ser removido desta lista, é necessário que o MTA de origem reduza o volume de envios para os destinatários com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a> na camada SMTP.");
                         } else {
-                            builder.append("    <p>This IP ");
-                            if (blocked) {
-                                builder.append("was blocked");
-                            } else {
-                                builder.append("is listed");
-                            }
-                            builder.append(" by poor reputation in ");
-                            builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" of negative points.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    In order for this IP to be removed from this list,<br>\n");
-                            builder.append("    it is necessary that the source MTA reduce the sending volume for<br>\n");
-                            builder.append("    the recipients with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a> at SMTP layer.<br>\n");
-//                            builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
-//                            builder.append("    whose SMTP rejection has the prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,<br>\n");
-//                            builder.append("    where this point expires in a week.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                            buildText(builder, "This IP " + (blocked ? "was blocked" : "is listed") + " by poor reputation in " + Core.PERCENT_FORMAT.format(probability) + " of negative points.");
+                            buildText(builder, "In order for this IP to be removed from this list, it is necessary that the source MTA reduce the sending volume for the recipients with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a> at SMTP layer.");
                         }
                     } else {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("    <p>Este IP não está listado neste sistema porém sua reputação está com ");
-                            builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" de pontos negativos.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Se esta reputação tiver aumento significativo na quantidade de pontos negativos,");
-                            builder.append("    este IP será automaticamente listado neste sistema.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    Para evitar que isto ocorra, reduza os envios com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a>.<br>\n");
-//                            builder.append("    Para evitar que isto ocorra, reduza os envios cuja rejeição SMTP");
-//                            builder.append("    tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    Cada rejeição SMTP com este prefixo");
-//                            builder.append("    gera automaticamente um novo ponto negativo neste sistema.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                            buildText(builder, "Este IP não está listado neste sistema porém sua reputação está com " + Core.PERCENT_FORMAT.format(probability) + "de pontos negativos.");
+                            buildText(builder, "Se esta reputação tiver aumento significativo na quantidade de pontos negativos, este IP será automaticamente listado neste sistema.");
+                            buildText(builder, "Para evitar que isto ocorra, reduza os envios com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a>.");
                         } else {
-                            builder.append("    <p>This IP is not listed in this system but its reputation is with ");
-                            builder.append(Core.PERCENT_FORMAT.format(probability));
-                            builder.append(" of negative points.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    If this reputation have significant increase in the number of negative points,");
-                            builder.append("    this IP will automatically be listed in the system.<br>\n");
-                            builder.append("    <br>\n");
-                            builder.append("    To prevent this from occurring, reduce sending with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a>.<br>\n");
-//                            builder.append("    To prevent this from occurring, reduce sending whose SMTP rejection");
-//                            builder.append("    has prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    Each SMTP rejection with this prefix");
-//                            builder.append("    automatically generates a new negative point in this system.<br>\n");
-//                            builder.append("    <br>\n");
-//                            builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                            buildText(builder, "This IP is not listed in this system but its reputation is with " + Core.PERCENT_FORMAT.format(probability) + " of negative points.");
+                            buildText(builder, "If this reputation have significant increase in the number of negative points, this IP will automatically be listed in the system.");
+                            buildText(builder, "To prevent this from occurring, reduce sending with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a>.");
                         }
                     }
                 } else if (emailSet.isEmpty()) {
@@ -3737,54 +3630,52 @@ public final class ServerHTTP extends Server {
                     boolean blocked = Block.containsCIDR(ip);
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         if (blocked) {
-                            builder.append("    Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
+                            buildText(builder, "Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
                         } else if (good) {
-                            builder.append("    Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
+                            buildText(builder, "Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
                         } else {
-                            builder.append("    Este IP não está bloqueado porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
+                            buildText(builder, "Este IP não está bloqueado porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
                         }
                         if (generic) {
-                            builder.append("    <p>Não serão aceitos <a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genéricos</a>.<br>\n");
+                            buildText(builder, "Não serão aceitos <a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genéricos</a>.");
                         }
-                        builder.append("    <p>Cadastre um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido para este IP, que aponte para o mesmo IP.<br>\n");
+                        buildText(builder, "Cadastre um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido para este IP, que aponte para o mesmo IP.");
                         if (blocked) {
-                            builder.append("    O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> deve estar sob seu próprio domínio para que a liberação seja efetivada.<br>\n");
+                            buildText(builder, "O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> deve estar sob seu próprio domínio para que a liberação seja efetivada.");
                         } else {
-                            builder.append("    Qualquer IP com <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> inválido pode ser bloqueado a qualquer momento.<br>\n");
+                            buildText(builder, "Qualquer IP com <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> inválido pode ser bloqueado a qualquer momento.");
                         }
                     } else {
                         if (blocked) {
-                            builder.append("    This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.<br>\n");
+                            buildText(builder, "This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.");
                         } else if (good) {
-                            builder.append("    This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.<br>\n");
+                            buildText(builder, "This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
                         } else {
-                            builder.append("    This IP isn't blocked but have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.<br>\n");
+                            buildText(builder, "This IP isn't blocked but have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.");
                         }
                         if (generic) {
-                            builder.append("    <p><a target=\"_blank\" href=\"http://spfbl.net/en/generic/\"Generic rDNS</a> will not be accepted.<br>\n");
+                            buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/generic/\"Generic rDNS</a> will not be accepted.");
                         }
-                        builder.append("    <p>Register a valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> for this IP, which points to the same IP.<br>\n");
+                        buildText(builder, "Register a valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> for this IP, which points to the same IP.");
                         if (blocked) {
-                            builder.append("    The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain for us to be able to delist your system.<br>\n");
+                            buildText(builder, "The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain for us to be able to delist your system.");
                         } else {
-                            builder.append("    Any IP with invalid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a> can be blocked at any time.<br>\n");
+                            buildText(builder, "Any IP with invalid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a> can be blocked at any time.");
                         }
                     }
                 } else if (Block.containsCIDR(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este IP foi bloqueado, porém a reputação dele não está mais ruim.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    E-mails para envio de chave de desbloqueio:<br>\n");
+                        buildText(builder, "Este IP foi bloqueado, porém a reputação dele não está mais ruim.");
+                        buildText(builder, "E-mails para envio de chave de desbloqueio:");
                     } else {
-                        builder.append("    <p>This IP has been blocked, but it's reputation is not bad anymore.<br>\n");
-                        builder.append("    <br>\n");
-                        builder.append("    E-mails to send unblock key:<br>\n");
+                        buildText(builder, "This IP has been blocked, but it's reputation is not bad anymore.");
+                        buildText(builder, "E-mails to send unblock key:");
                     }
-                    builder.append("    <ul>\n");
+                    builder.append("        <ul>\n");
                     TreeSet<String> sendSet = new TreeSet<String>();
                     String email = emailSet.pollFirst();
                     do  {
-                        builder.append("      <li>&lt;");
+                        builder.append("          <li>&lt;");
                         builder.append(email);
                         builder.append("&gt; ");
                         if (Trap.contaisAnything(email)) {
@@ -3808,50 +3699,42 @@ public final class ServerHTTP extends Server {
                             }
                         }
                     } while ((email = emailSet.pollFirst()) != null);
-                    builder.append("    </ul>\n");
+                    builder.append("        </ul>\n");
                     if (sendSet.isEmpty()) {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("    Nenhum e-mail do responsável pelo IP é permitido neste sistema.<br>\n");
+                            buildText(builder, "Nenhum e-mail do responsável pelo IP é permitido neste sistema.");
                         } else {
-                            builder.append("    None of the responsible for IP has e-mail permitted under this system.<br>\n");
+                            buildText(builder, "None of the responsible for IP has e-mail permitted under this system.");
                         }
                     } else {
-                        builder.append("    <form method=\"POST\">\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("      Para que a chave de desbloqueio seja enviada,<br>\n");
-                            builder.append("      selecione o endereço de e-mail do responsável pelo IP:<br>\n");
+                            buildText(builder, "Para que a chave de desbloqueio seja enviada, selecione o endereço de e-mail do responsável pelo IP:");
                         } else {
-                            builder.append("      For the release key to be sent,<br>\n");
-                            builder.append("      select the e-mail address responsible for this IP:<br>\n");
+                            buildText(builder, "For the release key to be sent, select the e-mail address responsible for this IP:");
                         }
+                        builder.append("      <form method=\"POST\">\n");
                         for (String send : sendSet) {
-                            builder.append("      <input type=\"radio\" name=\"identifier\" value=\"");
+                            builder.append("        <input type=\"radio\" name=\"identifier\" value=\"");
                             builder.append(send);
-                            builder.append("\">");
+                            if (emailSet.size() == 1) {
+                                builder.append("\" checked>");
+                            } else {
+                                builder.append("\">");
+                            }
                             builder.append(send);
                             builder.append("<br>\n");
                         }
-                        builder.append("      <br>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("      O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> do IP deve estar sob seu próprio domínio.<br>\n");
-                            builder.append("      Não aceitamos <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> com domínios de terceiros.<br>\n");
+                            buildText(builder, "O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> do IP deve estar sob seu próprio domínio. Não aceitamos <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> com domínios de terceiros.");
                         } else {
-                            builder.append("      The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain.<br>\n");
-                            builder.append("      We do not accept <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> with third-party domains.<br>\n");
+                            buildText(builder, "The <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> must be registered under your own domain. We do not accept <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> with third-party domains.");
                         }
+                        builder.append("        <div id=\"divcaptcha\">\n");
                         if (Core.hasRecaptchaKeys()) {
-                            builder.append("      <br>\n");
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("      Para que sua solicitação seja aceita,<br>\n");
-                                builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
-                            } else {
-                                builder.append("      For your request to be accepted,<br>\n");
-                                builder.append("      please solve the reCAPTCHA below.<br>\n");
-                            }
                             String recaptchaKeySite = Core.getRecaptchaKeySite();
                             String recaptchaKeySecret = Core.getRecaptchaKeySecret();
                             ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
-                            builder.append("      ");
+                            builder.append("        ");
                             builder.append(captcha.createRecaptchaHtml(null, null).replace("\r", ""));
                             // novo reCAPCHA
                 //            builder.append("      <div class=\"g-recaptcha\" data-sitekey=\"");
@@ -3859,51 +3742,54 @@ public final class ServerHTTP extends Server {
                 //            builder.append("\"></div>\n");
                         }
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("      <input type=\"submit\" value=\"Solicitar\">\n");
+                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Solicitar delist\">\n");
                         } else {
-                            builder.append("      <input type=\"submit\" value=\"Request\">\n");
+                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Request delist\">\n");
                         }
-                        builder.append("    </form>\n");
+                        builder.append("        </div>\n");
+                        builder.append("      </form>\n");
                     }
                 } else if (SPF.isGood(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este IP está com reputação extremamente boa<br>\n");
-                        builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                        buildText(builder, "Este IP está com reputação extremamente boa e por isso foi colocado em lista branca.");
                     } else {
-                        builder.append("    <p>This IP is extremely good reputation<br>\n");
-                        builder.append("    and therefore has been whitelisted.<br>\n");
+                        buildText(builder, "This IP is extremely good reputation and therefore has been whitelisted.");
                     }
                  } else if (Ignore.containsCIDR(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este IP está marcado como serviço essencial<br>\n");
-                        builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                        buildText(builder, "Este IP está marcado como serviço essencial e por isso foi colocado em lista branca.");
                     } else {
-                        builder.append("    <p>This IP is marked as an essential service<br>\n");
-                        builder.append("    and therefore has been whitelisted.<br>\n");
+                        buildText(builder, "This IP is marked as an essential service and therefore has been whitelisted.");
                     }
                 } else if (White.containsIP(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este IP está marcado como serviço de mensagem estritamente<br>\n");
-                        builder.append("    corporativo e por isso foi colocado em lista branca.<br>\n");
-                        builder.append("    <p>Se você tiver recebido alguma mensagem promocional deste IP,<br>\n");
-                        builder.append("    sem prévia autorização, faça uma denuncia para abuse@spfbl.net.<br>\n");
+                        buildText(builder, "Este IP está marcado como serviço de mensagem estritamente corporativo e por isso foi colocado em lista branca.");
+                        if (Core.hasAbuseEmail()) {
+                            buildText(builder, "Se você tiver recebido alguma mensagem promocional deste IP, sem prévia autorização, faça uma denuncia para " + Core.getAbuseEmail() + ".");
+                        }
                     } else {
-                        builder.append("    <p>This IP is marked as strictly corporate message<br>\n");
-                        builder.append("    service and therefore has been whitelisted.<br>\n");
-                        builder.append("    <p>If you received any promotional message from this IP,<br>\n");
-                        builder.append("    without permission, make a complaint to abuse@spfbl.net.<br>\n");
+                        buildText(builder, "This IP is marked as strictly corporate message service and therefore has been whitelisted.");
+                        if (Core.hasAbuseEmail()) {
+                            buildText(builder, "If you received any promotional message from this IP, without permission, make a complaint to " + Core.getAbuseEmail() + ".");
+                        }
+                    }
+                } else if (Block.containsHREF(ip)) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Este IP está bloqueado para uso de URL.");
+                        buildText(builder, "Para que este IP seja removido desta lista, é necessário enviar uma solicitação para " + Core.getAdminEmail() + ".");
+                    } else {
+                        buildText(builder, "This IP is blocked for URL usage.");
+                        buildText(builder, "In order to remove this IP from this list, you must send a request to " + Core.getAdminEmail() + ".");
                     }
                } else {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Nenhum bloqueio foi encontrado para este IP.<br>\n");
-                        builder.append("    Se este IP estiver sendo rejeitado por algum MTA,<br>\n");
-                        builder.append("    aguarde a propagação de DNS deste serviço.<br>\n");
-                        builder.append("    O tempo de propagação pode levar alguns dias.<br>\n");
+                        buildText(builder, "Nenhum bloqueio foi encontrado para este IP.");
+                        buildText(builder, "Se este IP estiver sendo rejeitado por algum MTA, aguarde a propagação de DNS deste serviço.");
+                        buildText(builder, "O tempo de propagação pode levar alguns dias.");
                     } else {
-                        builder.append("    <p>No block was found for this IP.<br>\n");
-                        builder.append("    If this IP is being rejected by some MTA,<br>\n");
-                        builder.append("    wait for the DNS propagation of this service.<br>\n");
-                        builder.append("    The propagation time can take a few days.<br>\n");
+                        buildText(builder, "No block was found for this IP.");
+                        buildText(builder, "If this IP is being rejected by some MTA, wait for the DNS propagation of this service.");
+                        buildText(builder, "The propagation time can take a few days.");
                     }
                 }
             }
@@ -3912,160 +3798,109 @@ public final class ServerHTTP extends Server {
             String domain = Domain.normalizeHostname(query, true);
             if (domain.equals(".test") || domain.equals(".invalid")) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este é um domínio reservado e por este motivo não é abordado nesta lista.\n");
+                    buildText(builder, "Este é um domínio reservado e por este motivo não é abordado nesta lista.");
                 } else {
-                    builder.append("    <p>This is a reserved domain and for this reason is not addressed in this list.\n");
+                    buildText(builder, "This is a reserved domain and for this reason is not addressed in this list.");
                 }
             } else if (Generic.containsDynamic(domain)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este hostname está listado por referência a um padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>.\n");
+                    buildText(builder, "Este hostname está listado por referência a um padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>.");
                     if (Core.hasAdminEmail()) {
-                        builder.append("    <p>Se você discorda que se trata de hostname com padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>,<br>\n");
-                        builder.append("    entre em contato conosco através do e-mail ");
-                        builder.append(Core.getAdminEmail());
-                        builder.append(".\n");
+                        buildText(builder, "Se você discorda que se trata de hostname com padrão de <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">IP dinâmico</a>, entre em contato conosco através do e-mail " + Core.getAdminEmail() + ".");
                     }
                 } else {
-                    builder.append("    <p>This hostname is listed by reference to a <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern.\n");
+                    buildText(builder, "This hostname is listed by reference to a <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern.");
                     if (Core.hasAdminEmail()) {
-                        builder.append("    <p>If you disagree that this is hostname with <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern,<br>\n");
-                        builder.append("    contact us by email ");
-                        builder.append(Core.getAdminEmail());
-                        builder.append(".\n");
+                        buildText(builder, "If you disagree that this is hostname with <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic IP</a> pattern, contact us by email " + Core.getAdminEmail() + ".");
                     }
                 }
             } else if ((distribution = SPF.getDistribution(domain, true)).isNotGreen(domain)) {
                 float probability = distribution.getSpamProbability(domain);
                 boolean blocked = Block.containsDomain(domain, false);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este domínio ");
-                    if (blocked) {
-                        builder.append("foi bloqueado");
-                    } else {
-                        builder.append("está listado");
-                    }
-                    builder.append(" por má reputação com ");
-                    builder.append(Core.PERCENT_FORMAT.format(probability));
-                    builder.append(" de pontos negativos do volume total de envio.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    Para que este domínio possa ser removido desta lista,<br>\n");
-                    builder.append("    é necessário que todos os MTAs de origem reduzam o volume de envios para<br>\n");
-                    builder.append("    os destinatários com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a> na camada SMTP.<br>\n");
-//                    builder.append("    Para que este domínio possa ser removido desta lista,<br>\n");
-//                    builder.append("    é necessário que o MTA de origem reduza o volume de envios para os destinatários<br>\n");
-//                    builder.append("    cuja rejeição SMTP tenha prefixo '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                    builder.append("    <br>\n");
-//                    builder.append("    Cada rejeição SMTP com este prefixo gera automaticamente um novo ponto negativo neste sistema,");
-//                    builder.append("    onde este expira em uma semana.<br>\n");
-//                    builder.append("    <br>\n");
-//                    builder.append("    O motivo da rejeição pode ser compreendida pela mensagem que acompanha o prefixo.<br>\n");
+                    buildText(builder, "Este domínio " + (blocked ? "foi bloqueado" : "está listado") + " por má reputação com " + Core.PERCENT_FORMAT.format(probability) + " de pontos negativos do volume total de envio.");
+                    buildText(builder, "Para que este domínio possa ser removido desta lista, é necessário que todos os MTAs de origem reduzam o volume de envios para os destinatários com <a target=\"_blank\" href=\"http://spfbl.net/feedback/\">prefixo de rejeição SPFBL</a> na camada SMTP.");
                 } else {
-                    builder.append("    This domain is ");
-                    if (blocked) {
-                        builder.append("was blocked");
-                    } else {
-                        builder.append("is listed");
-                    }
-                    builder.append(" by poor reputation in ");
-                    builder.append(Core.PERCENT_FORMAT.format(probability));
-                    builder.append(" of negative points of total sending.<br>\n");
-                    builder.append("    <br>\n");
-                    builder.append("    In order for this domain to be removed from this list,<br>\n");
-                    builder.append("    it is necessary that all source MTA reduce the sending volume for<br>\n");
-                    builder.append("    the recipients with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a> at SMTP layer.<br>\n");
-//                    builder.append("    In order to remove this domain from this list,<br>\n");
-//                    builder.append("    it is necessary that the source MTA reduce the sending volume for the recipients<br>\n");
-//                    builder.append("    whose SMTP rejection has prefix '5.7.1 SPFBL &lt;message&gt;'.<br>\n");
-//                    builder.append("    <br>\n");
-//                    builder.append("    Each SMTP rejection with this prefix automatically generates a new negative point in this system,");
-//                    builder.append("    where this point expires in a week.<br>\n");
-//                    builder.append("    <br>\n");
-//                    builder.append("    The reason for the rejection can be understood by the message that follows the prefix.<br>\n");
+                    buildText(builder, "This domain " + (blocked ? "was blocked" : "is listed") + " by poor reputation in " + Core.PERCENT_FORMAT.format(probability) + " of negative points of total sending the recipients with <a target=\"_blank\" href=\"http://spfbl.net/en/feedback/\">SPFBL rejection prefix</a> at SMTP layer.");
                 }
             } else if (Block.containsDomain(domain, true)) {
                 if (Reverse.isInexistentDomain(domain)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este domínio está listado por não existir oficialmente.<br>\n");
+                        buildText(builder, "Este domínio está listado por não existir oficialmente.");
                     } else {
-                        builder.append("    <p>This domain is listed because it does not exist officially.<br>\n");
+                        buildText(builder, "This domain is listed because it does not exist officially.");
                     }
                 } else {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        builder.append("    <p>Este domínio está listado por bloqueio manual.<br>\n");
+                        buildText(builder, "Este domínio está listado por bloqueio manual.");
                         if (Core.hasAdminEmail()) {
-                            builder.append("    <br>\n");
-                            builder.append("    Para que este domínio seja removido desta lista,<br>\n");
-                            builder.append("    é necessário enviar uma solicitação para ");
-                            builder.append(Core.getAdminEmail());
-                            builder.append(".<br>\n");
+                            buildText(builder, "Para que este domínio seja removido desta lista, é necessário enviar uma solicitação para " + Core.getAdminEmail() + ".");
                         }
                     } else {
-                        builder.append("    <p>This domain is listed by manual block.<br>\n");
+                        buildText(builder, "This domain is listed by manual block.");
                         if (Core.hasAdminEmail()) {
-                            builder.append("    <br>\n");
-                            builder.append("    In order to remove this domain from this list,<br>\n");
-                            builder.append("    you must send a request to ");
-                            builder.append(Core.getAdminEmail());
-                            builder.append(".<br>\n");
+                            buildText(builder, "In order to remove this domain from this list, you must send a request to " + Core.getAdminEmail() + ".");
                         }
                     }
                 }
             } else if (SPF.isGood(domain)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este domínio está com reputação extremamente boa<br>\n");
-                    builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                    buildText(builder, "Este domínio está com reputação extremamente boa e por isso foi colocado em lista branca.");
                 } else {
-                    builder.append("    <p>This domain is extremely good reputation<br>\n");
-                    builder.append("    and therefore has been whitelisted.<br>\n");
+                    buildText(builder, "This domain is extremely good reputation and therefore has been whitelisted.");
                 }
             } else if (Ignore.containsHost(domain)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este domínio está marcado como serviço essencial<br>\n");
-                    builder.append("    e por isso foi colocado em lista branca.<br>\n");
+                    buildText(builder, "Este domínio está marcado como serviço essencial e por isso foi colocado em lista branca.");
                 } else {
-                    builder.append("    <p>This domain is marked as an essential service<br>\n");
-                    builder.append("    and therefore has been whitelisted.<br>\n");
+                    buildText(builder, "This domain is marked as an essential service and therefore has been whitelisted.");
                 }
             } else if (White.containsDomain(domain)) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Este domínio está marcado como serviço de mensagem estritamente<br>\n");
-                    builder.append("    corporativo e por isso foi colocado em lista branca.<br>\n");
-                    builder.append("    <p>Se você tiver recebido alguma mensagem promocional deste domínio,<br>\n");
-                    builder.append("    sem prévia autorização, faça uma denuncia para abuse@spfbl.net.<br>\n");
+                    buildText(builder, "Este domínio está marcado como serviço de mensagem estritamente corporativo e por isso foi colocado em lista branca.");
+                    if (Core.hasAbuseEmail()) {
+                        buildText(builder, "Se você tiver recebido alguma mensagem promocional deste domínio, sem prévia autorização, faça uma denuncia para " + Core.getAbuseEmail() + ".");
+                    }
                 } else {
-                    builder.append("    <p>This domain is marked as strictly corporate message<br>\n");
-                    builder.append("    service and therefore has been whitelisted.<br>\n");
-                    builder.append("    <p>If you received any promotional message from this domain,<br>\n");
-                    builder.append("    without permission, make a complaint to abuse@spfbl.net.<br>\n");
+                    buildText(builder, "This domain is marked as strictly corporate message service and therefore has been whitelisted.");
+                    if (Core.hasAbuseEmail()) {
+                        buildText(builder, "If you received any promotional message from this domain, without permission, make a complaint to " + Core.getAbuseEmail() + ".");
+                    }
+                }
+            } else if (Block.containsHREF(domain)) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Este domínio está bloqueado para uso em URL.");
+                    if (Core.hasAdminEmail()) {
+                        buildText(builder, "Para que este domínio seja removido desta lista, é necessário enviar uma solicitação para " + Core.getAdminEmail() + ".");
+                    }
+                } else {
+                    buildText(builder, "This domain is blocked for URL usage.");
+                    if (Core.hasAdminEmail()) {
+                        buildText(builder, "In order to remove this domain from this list, you must send a request to " + Core.getAdminEmail() + ".");
+                    }
                 }
             } else {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <p>Nenhum bloqueio foi encontrado para este domínio.<br>\n");
+                    buildText(builder, "Nenhum bloqueio foi encontrado para este domínio.");
                 } else {
-                    builder.append("    <p>No block was found for this domain.<br>\n");
+                    buildText(builder, "No block was found for this domain.");
                 }
             }
         }
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <p><small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <p><small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
-        }
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
     }
     
-    private static String getRedirectHTML(String url) {
+    private static String getRedirectHTML(Locale locale, String url) {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta http-equiv=\"refresh\" content=\"0; url=");
-        builder.append(url);
-        builder.append("\" />\n");
-        builder.append("  </head>\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
+        buildHead(builder, null, url, 0);
         builder.append("</html>\n");
         return builder.toString();
     }
@@ -4084,7 +3919,10 @@ public final class ServerHTTP extends Server {
             locale = new Locale("pt", "PT");
         }
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         builder.append("  <head>\n");
         builder.append("    <meta charset=\"UTF-8\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -4395,7 +4233,7 @@ public final class ServerHTTP extends Server {
                     builder.append("reject delivery by inexistent recipient");
                 }
             }
-        } else if (query.hasRed()) {
+        } else if (query.hasTokenRed() || query.hasClusterRed()) {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
                 builder.append("marcar como suspeita e entregar, sem considerar o conteúdo");
             } else {
@@ -4893,7 +4731,10 @@ public final class ServerHTTP extends Server {
             } else if (user.getEmail().endsWith(".pt")) {
                 locale = new Locale("pt", "PT");
             }
-            builder.append("<html>\n");
+            builder.append("<!DOCTYPE html>\n");
+            builder.append("<html lang=\"");
+            builder.append(locale.getLanguage());
+            builder.append("\">\n");
             builder.append("  <head>\n");
             builder.append("    <meta charset=\"UTF-8\">\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -5255,57 +5096,156 @@ public final class ServerHTTP extends Server {
         return builder.toString();
     }
     
+    private static void buildHead(
+            StringBuilder builder,
+            String title
+    ) {
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <link rel=\"shortcut icon\" type=\"image/png\" href=\"favicon.png\">\n");
+        builder.append("    <title>");
+        builder.append(title);
+        builder.append("</title>\n");
+        builder.append("    <link rel=\"stylesheet\" href=\"style.css\">\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+    }
+    
+    private static void buildHead(
+            StringBuilder builder,
+            String title,
+            String page,
+            int time
+    ) {
+        builder.append("  <head>\n");
+        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("    <link rel=\"shortcut icon\" type=\"image/png\" href=\"favicon.png\">\n");
+        builder.append("    <meta charset=\"UTF-8\" http-equiv=\"refresh\" content=\"");
+        builder.append(time);
+        builder.append(";url=");
+        builder.append(page);
+        builder.append("\">\n");
+        if (title != null) {
+            builder.append("    <title>");
+            builder.append(title);
+            builder.append("</title>\n");
+        }
+        builder.append("    <link rel=\"stylesheet\" href=\"style.css\">\n");
+        if (Core.hasRecaptchaKeys()) {
+//             novo reCAPCHA
+//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
+        }
+        builder.append("  </head>\n");
+    }
+    
+    private static void buildLogo(
+            StringBuilder builder
+    ) {
+        builder.append("      <div id=\"divlogo\">\n");
+        builder.append("        <img src=\"logo.png\" alt=\"Logo\">\n");
+        builder.append("      </div>\n");
+    }
+    
+    private static void buildMessage(
+            StringBuilder builder,
+            String message
+    ) {
+        builder.append("      <hr>\n");
+        builder.append("      <div id=\"divmsg\">\n");
+        builder.append("        <p id=\"titulo\">");
+        builder.append(message);
+        builder.append("</p>\n");
+        builder.append("      </div>\n");
+    }
+    
+    private static void buildText(
+            StringBuilder builder,
+            String message
+    ) {
+        builder.append("      <div id=\"divtexto\">\n");
+        StringTokenizer tokenizer = new StringTokenizer(message, "\n");
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken();
+            builder.append("        <p>");
+            builder.append(line);
+            builder.append("</p>\n");
+        }
+        builder.append("      </div>\n");
+    }
+    
+    private static void buildFooter(
+            StringBuilder builder,
+            Locale locale
+    ) {
+        builder.append("      <hr>\n");
+        builder.append("      <div id=\"divfooter\">\n");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            builder.append("        <div id=\"divanuncio\">\n");
+            builder.append("          Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
+            builder.append("        </div>\n");
+            builder.append("        <div id=\"divpowered\">\n");
+            builder.append("          Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a>\n");
+            builder.append("        </div>\n");
+        } else {
+            builder.append("        <div id=\"divanuncio\">\n");
+            builder.append("          Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
+            builder.append("        </div>\n");
+            builder.append("        <div id=\"divpowered\">\n");
+            builder.append("          Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a>\n");
+            builder.append("        </div>\n");
+         }
+        builder.append("      </div>\n");
+    }
+    
     private static String getMainHTML(
             Locale locale,
             String message,
             String value
             ) {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Serviço SPFBL</title>\n");
+            buildHead(builder, "Serviço SPFBL");
         } else {
-            builder.append("    <title>SPFBL service</title>\n");
+            buildHead(builder, "SPFBL Service");
         }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
-        builder.append("    <p>");
-        builder.append(message);
-        builder.append("\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
         if (Core.hasPortDNSBL()) {
-            builder.append("    <p><form method=\"POST\">\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("      Para consultar uma reputação no serviço DNSBL, digite um IP ou um domínio:<br>\n");
+                buildText(builder, "Para consultar uma reputação no serviço DNSBL, digite um IP ou um domínio:");
             } else {
-                builder.append("      To query for reputation in the DNSBL service, type an IP or domain:<br>\n");
+                buildText(builder, "To query for reputation in the DNSBL service, type an IP or domain:");
             }
-            builder.append("      <input type=\"text\" name=\"query\" value=\"");
+            builder.append("      <div id=\"divcaptcha\">\n");
+            builder.append("        <form method=\"POST\">\n");
+            builder.append("          <input type=\"text\" name=\"query\" value=\"");
             builder.append(value);
-            builder.append("\" autofocus>\n");
+            builder.append("\" autofocus><br>\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("      <input type=\"submit\" value=\"Consultar\">\n");
+                builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Consultar\">\n");
             } else {
-                builder.append("      <input type=\"submit\" value=\"Query\">\n");
+                builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Query\">\n");
             }
-            builder.append("    </form>\n");
+            builder.append("        </form>\n");
+            builder.append("      </div>\n");
         } else {
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("      Nenhuma ferramenta está disponível neste momento.<br>\n");
+                buildText(builder, "Nenhuma ferramenta está disponível neste momento.");
             } else {
-                builder.append("      No tool is available at this time.<br>\n");
+                buildText(builder, "No tool is available at this time.");
             }
         }
-        builder.append("    <br>\n");
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Anuncie aqui pelo <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Advertise here by <a href='http://a-ads.com?partner=455818'>Anonymous Ads</a></small><br>\n");
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -5319,32 +5259,24 @@ public final class ServerHTTP extends Server {
             boolean whiteBlockForm
             ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
-        builder.append("<html>\n");
-        builder.append("  <head>\n");
-        builder.append("    <meta charset=\"UTF-8\">\n");
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <title>Página de denuncia SPFBL</title>\n");
+            buildHead(builder, "Página de denuncia SPFBL");
         } else {
-            builder.append("    <title>SPFBL complaint page</title>\n");
+            buildHead(builder, "SPFBL complaint page");
         }
-        if (Core.hasRecaptchaKeys()) {
-//             novo reCAPCHA
-//            builder.append("    <script src=\"https://www.google.com/recaptcha/api.js\" async defer></script>\n");
-        }
-        builder.append("  </head>\n");
         builder.append("  <body>\n");
-        builder.append("    ");
-        builder.append(message);
-        builder.append("<br>\n");
-        builder.append("    <br>\n");
+        builder.append("    <div id=\"container\">\n");
+        buildLogo(builder);
+        buildMessage(builder, message);
         if (whiteBlockForm) {
             writeBlockFormHTML(locale, builder, tokenSet, selectionSet);
         }
-        if (locale.getLanguage().toLowerCase().equals("pt")) {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        } else {
-            builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
-        }
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
         builder.append("  </body>\n");
         builder.append("</html>\n");
         return builder.toString();
@@ -5357,16 +5289,14 @@ public final class ServerHTTP extends Server {
             TreeSet<String> selectionSet
             ) throws ProcessException {
         if (!tokenSet.isEmpty()) {
-            builder.append("    <form method=\"POST\">\n");
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("      Se você deseja não receber mais mensagens desta origem no futuro,<br>\n");
-                builder.append("      selecione os identificadores que devem ser bloqueados definitivamente:<br>\n");
+                buildText(builder, "Se você deseja não receber mais mensagens desta origem no futuro, selecione os identificadores que devem ser bloqueados definitivamente:");
             } else {
-                builder.append("      If you want to stop receiving messages from the source in the future,<br>\n");
-                builder.append("      select identifiers that should definitely be blocked:<br>\n");
+                buildText(builder, "If you want to stop receiving messages from the source in the future, select identifiers that should definitely be blocked:");
             }
+            builder.append("    <form method=\"POST\">\n");
             for (String identifier : tokenSet) {
-                builder.append("      <input type=\"checkbox\" name=\"identifier\" value=\"");
+                builder.append("        <input type=\"checkbox\" name=\"identifier\" value=\"");
                 builder.append(identifier);
                 if (selectionSet.contains(identifier)) {
                     builder.append("\" checked>");
@@ -5378,12 +5308,13 @@ public final class ServerHTTP extends Server {
             }
             if (Core.hasRecaptchaKeys()) {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("      Para que sua solicitação seja aceita,<br>\n");
-                    builder.append("      resolva o desafio reCAPTCHA abaixo.<br>\n");
+                    buildText(builder, "Para que sua solicitação seja aceita, resolva o desafio reCAPTCHA abaixo.");
                 } else {
-                    builder.append("      For your request to be accepted,<br>\n");
-                    builder.append("      please solve the reCAPTCHA below.<br>\n");
+                    buildText(builder, "For your request to be accepted, please solve the reCAPTCHA below.");
                 }
+            }
+            builder.append("      <div id=\"divcaptcha\">\n");
+            if (Core.hasRecaptchaKeys()) {
                 String recaptchaKeySite = Core.getRecaptchaKeySite();
                 String recaptchaKeySecret = Core.getRecaptchaKeySecret();
                 ReCaptcha captcha = ReCaptchaFactory.newReCaptcha(recaptchaKeySite, recaptchaKeySecret, false);
@@ -5395,10 +5326,11 @@ public final class ServerHTTP extends Server {
     //            builder.append("\"></div>\n");
             }
             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                builder.append("      <input type=\"submit\" value=\"Bloquear\">\n");
+                builder.append("        <input id=\"btngo\" type=\"submit\" value=\"Bloquear\">\n");
             } else {
-                builder.append("      <input type=\"submit\" value=\"Block\">\n");
+                builder.append("        <input id=\"btngo\" type=\"submit\" value=\"Block\">\n");
             }
+            builder.append("      </div>\n");
             builder.append("    </form>\n");
         }
     }

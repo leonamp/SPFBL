@@ -414,7 +414,7 @@ public class User implements Serializable, Comparable<User> {
     public synchronized static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing user.map");
+//                Server.logTrace("storing user.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,User> map = getMap();
                 File file = new File("./data/user.map");
@@ -1554,9 +1554,11 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else if (isBlockSender()) {
                 return false;
-            } else if (hasRed()) {
+            } else if (hasTokenRed()) {
                 return true;
             } else if (isAnyLinkRED()) {
+                return true;
+            } else if (hasClusterRed()) {
                 return true;
             } else {
                 return false;
@@ -1806,8 +1808,12 @@ public class User implements Serializable, Comparable<User> {
             return qualifier  == SPF.Qualifier.SOFTFAIL;
         }
         
-        public boolean hasRed() {
+        public boolean hasTokenRed() {
             return SPF.hasRed(tokenSet);
+        }
+        
+        public boolean hasClusterRed() {
+            return Analise.isCusterRED(ip, sender, hostname);
         }
         
         public boolean hasYellow() {

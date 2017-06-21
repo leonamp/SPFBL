@@ -427,7 +427,7 @@ public class Ignore {
     public static void store() {
         if (CHANGED) {
             try {
-                Server.logTrace("storing ignore.set");
+//                Server.logTrace("storing ignore.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/ignore.set");
                 TreeSet<String> set = getAll();
