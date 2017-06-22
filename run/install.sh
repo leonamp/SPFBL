@@ -156,6 +156,7 @@ moveArquivos(){
         mkdir -p /opt/spfbl/doc
         mkdir -p /opt/spfbl/lib
         mkdir -p /opt/spfbl/data
+	mkdir -p /opt/spfbl/web
         mkdir -p /etc/spfbl/
         mv SPFBL/client/spfbl.sh /etc/spfbl/
         ln -sf /etc/spfbl/spfbl.sh /usr/local/bin/spfbl
@@ -167,6 +168,7 @@ moveArquivos(){
         mv SPFBL/data/* /opt/spfbl/data/
         mv SPFBL/doc/* /opt/spfbl/doc/
         mv SPFBL/README.md /opt/spfbl/doc/
+	mv SPFBL/web/* /opt/spfbl/web/
 	if [ ! -d /opt/spfbl ]
 	then
 		echo "/opt/spfbl nao encontrado"
