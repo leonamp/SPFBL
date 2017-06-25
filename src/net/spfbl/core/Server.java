@@ -591,6 +591,22 @@ public abstract class Server extends Thread {
         log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", message, (String) null);
     }
     
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logMySQL(String message) {
+        log(System.currentTimeMillis(), Core.Level.TRACE, "MYSQL", message, (String) null);
+    }
+    
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logMySQL(long time, String message) {
+        log(time, Core.Level.TRACE, "MYSQL", message, (String) null);
+    }
+    
     
     /**
      * Registra as gravações de cache em disco.

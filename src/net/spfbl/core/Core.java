@@ -37,6 +37,10 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
@@ -48,8 +52,10 @@ import java.util.Locale;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
+import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -83,7 +89,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 7;
-    private static final byte RELEASE = 2;
+    private static final byte RELEASE = 3;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -281,7 +287,7 @@ public class Core {
             ) throws ProcessException {
         if (client == null) {
             return null;
-        } else if (!Domain.isEmail(client)) {
+        } else if (!Domain.isValidEmail(client)) {
             return null;
         } else if (ip == null) {
             return null;
@@ -292,11 +298,11 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
+                String ticket = "unblock";
+                ticket += ' ' + client;
+                ticket += ' ' + ip;
                 try {
-                    long time = System.currentTimeMillis();
-                    String ticket = "unblock";
-                    ticket += ' ' + client;
-                    ticket += ' ' + ip;
                     byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
                     byteArray[0] = (byte) (time & 0xFF);
                     byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
@@ -308,6 +314,7 @@ public class Core {
                     byteArray[7] = (byte) ((time >>> 8) & 0xFF);
                     return url + Server.encryptURLSafe(byteArray);
                 } catch (Exception ex) {
+                    Server.logError("compress fail: " + ticket);
                     throw new ProcessException("FATAL", ex);
                 }
             }
@@ -567,6 +574,12 @@ public class Core {
                     Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
                     Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
                     Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
+                    Core.setHostnameMySQL(properties.getProperty("mysql_hostname"));
+                    Core.setPortMySQL(properties.getProperty("mysql_port"));
+                    Core.setSchemaMySQL(properties.getProperty("mysql_schema"));
+                    Core.setUserMySQL(properties.getProperty("mysql_user"));
+                    Core.setPasswordMySQL(properties.getProperty("mysql_password"));
+                    Core.setSSLMySQL(properties.getProperty("mysql_ssl"));
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNS.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
@@ -586,6 +599,119 @@ public class Core {
         }
     }
     
+    private static String MYSQL_HOSTNAME = null;
+    private static short MYSQL_PORT = 3306;
+    private static String MYSQL_SCHEMA = "spfbl";
+    private static String MYSQL_USER = null;
+    private static String MYSQL_PASSWORD = null;
+    private static boolean MYSQL_SSL = false;
+    
+    public static synchronized void setHostnameMySQL(String hostame) {
+        if (hostame != null && hostame.length() > 0) {
+            if (Domain.isHostname(hostame)) {
+                Core.MYSQL_HOSTNAME = Domain.extractHost(hostame, false);
+            } else if (Subnet.isValidIP(hostame)) {
+                Core.MYSQL_HOSTNAME = Subnet.normalizeIP(hostame);
+            } else {
+                Server.logError("invalid MySQL address '" + hostame + "'.");
+            }
+        }
+    }
+    
+    public static void setPortMySQL(String port) {
+        if (port != null && port.length() > 0) {
+            try {
+                setPortMySQL(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid MySQL port '" + port + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPortMySQL(int port) {
+        if (port < 1 || port > Short.MAX_VALUE) {
+            Server.logError("invalid MySQL port '" + port + "'.");
+        } else {
+            Core.MYSQL_PORT = (short) port;
+        }
+    }
+    
+    public static synchronized void setSchemaMySQL(String schema) {
+        if (schema != null && schema.trim().length() > 0) {
+            Core.MYSQL_SCHEMA = schema.trim();
+        }
+    }
+    
+    public static synchronized void setUserMySQL(String user) {
+        if (user != null && user.trim().length() > 0) {
+            Core.MYSQL_USER = user.trim();
+        }
+    }
+    
+    public static synchronized void setPasswordMySQL(String password) {
+        if (password != null && password.trim().length() > 0) {
+            Core.MYSQL_PASSWORD = password.trim();
+        }
+    }
+    
+    public static void setSSLMySQL(String ssl) {
+        if (ssl != null && ssl.length() > 0) {
+            try {
+                setSSLMySQL(Boolean.parseBoolean(ssl));
+            } catch (Exception ex) {
+                Server.logError("invalid MySQL SSL '" + ssl + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setSSLMySQL(boolean ssl) {
+        Core.MYSQL_SSL = ssl;
+    }
+    
+    public static Connection getConnectionMySQL() {
+        if (MYSQL_HOSTNAME == null) {
+            return null;
+        } else if (MYSQL_USER == null) {
+            return null;
+        } else if (MYSQL_PASSWORD == null) {
+            return null;
+        } else {
+            try {
+                Class.forName("com.mysql.jdbc.Driver");
+                String url = "jdbc:mysql://" + MYSQL_HOSTNAME + ":"
+                        + "" + MYSQL_PORT + "/" + MYSQL_SCHEMA + ""
+                        + "?autoReconnect=true"
+                        + "&useUnicode=true&characterEncoding=UTF-8"
+                        + (MYSQL_SSL ? "&verifyServerCertificate=false"
+                        + "&useSSL=true&requireSSL=true" : "");
+                Connection connection = DriverManager.getConnection(
+                        url, MYSQL_USER, MYSQL_PASSWORD
+                );
+                Statement statement = connection.createStatement();
+                try {
+                    statement.executeUpdate("SET NAMES 'utf8mb4'");
+                } finally {
+                    statement.close();
+                }
+                return connection;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
+    private static String HOSTNAME = null;
+    private static String INTERFACE = null;
+    private static String ADMIN_EMAIL = null;
+    private static String ABUSE_EMAIL = null;
+    private static short PORT_ADMIN = 9875;
+    private static short PORT_WHOIS = 0;
+    private static short PORT_SPFBL = 9877;
+    private static short PORT_DNSBL = 0;
+    private static short PORT_HTTP = 0;
+    private static short UDP_MAX = 512; // UDP max size packet.
+        
     public static boolean hasAdminEmail() {
         return ADMIN_EMAIL != null;
     }
@@ -670,17 +796,6 @@ public class Core {
     public static boolean hasHostname() {
         return HOSTNAME != null;
     }
-    
-    private static String HOSTNAME = null;
-    private static String INTERFACE = null;
-    private static String ADMIN_EMAIL = null;
-    private static String ABUSE_EMAIL = null;
-    private static short PORT_ADMIN = 9875;
-    private static short PORT_WHOIS = 0;
-    private static short PORT_SPFBL = 9877;
-    private static short PORT_DNSBL = 0;
-    private static short PORT_HTTP = 0;
-    private static short UDP_MAX = 512; // UDP max size packet.
     
     private static boolean isRouteable(String hostame) {
         try {
@@ -1406,7 +1521,7 @@ public class Core {
                 return false;
             } catch (MessagingException ex) {
                 Server.logSendMTP("messaging failed.");
-                throw ex;
+                return false;
             } finally {
                 if (transport.isConnected()) {
                     transport.close();
@@ -1535,9 +1650,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro SPF mais consultado.
-//                Server.logTrace("BEGIN TimerRefreshSPF");
                 SPF.refreshSPF();
-//                Server.logTrace("END TimerRefreshSPF");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1550,9 +1663,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro HELO mais consultado.
-//                Server.logTrace("BEGIN TimerRefreshHELO");
                 SPF.refreshHELO();
-//                Server.logTrace("END TimerRefreshHELO");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1565,9 +1676,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registro de IP reverso mais consultado.
-//                Server.logTrace("BEGIN TimerRefreshReverse");
                 Reverse.refreshLast();
-//                Server.logTrace("END TimerRefreshReverse");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1580,9 +1689,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registros WHOIS expirando.
-//                Server.logTrace("BEGIN TimerRefreshWHOIS");
                 Server.tryRefreshWHOIS();
-//                Server.logTrace("END TimerRefreshWHOIS");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1595,9 +1702,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros SPF expirados. 
-//                Server.logTrace("BEGIN TimerDropExpiredSPF");
                 SPF.dropExpiredSPF();
-//                Server.logTrace("END TimerDropExpiredSPF");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1621,9 +1726,7 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-//                Server.logTrace("BEGIN TimerSendHoldingWarningMessages");
                 User.sendHoldingWarning();
-//                Server.logTrace("END TimerSendHoldingWarningMessages");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1635,9 +1738,7 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-//                Server.logTrace("BEGIN TimerSendSuspectWarningMessages");
                 User.sendSuspectWarning();
-//                Server.logTrace("END TimerSendSuspectWarningMessages");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1649,9 +1750,7 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-//                Server.logTrace("BEGIN TimerSendBlockedWarningMessages");
                 User.sendBlockedWarning();
-//                Server.logTrace("END TimerSendBlockedWarningMessages");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1664,10 +1763,8 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros de reputação expirados. 
-//                Server.logTrace("BEGIN TimerDropExpiredPeer");
                 Peer.sendHeloToAll();
                 Peer.dropExpired();
-//                Server.logTrace("END TimerDropExpiredPeer");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1680,9 +1777,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de DNS de HELO vencidos.
-//                Server.logTrace("BEGIN TimerDropExpiredHELO");
                 SPF.dropExpiredHELO();
-//                Server.logTrace("END TimerDropExpiredHELO");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1695,9 +1790,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de IP reverso vencidos.
-//                Server.logTrace("BEGIN TimerDropExpiredReverse");
                 Reverse.dropExpired();
-//                Server.logTrace("END TimerDropExpiredReverse");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1710,11 +1803,9 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas as distribuições e consultas vencidas.
-//                Server.logTrace("BEGIN TimerDropExpiredDistribution");
                 User.dropAllExpiredQuery();
                 SPF.dropExpiredDistribution();
                 Block.dropExpired();
-//                Server.logTrace("END TimerDropExpiredDistribution");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1727,9 +1818,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de atrazo programado vencidos.
-//                Server.logTrace("BEGIN TimerDropExpiredDefer");
                 Defer.dropExpired();
-//                Server.logTrace("END TimerDropExpiredDefer");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1742,9 +1831,7 @@ public class Core {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Armazena todos os registros atualizados durante a consulta.
-//                Server.logTrace("BEGIN TimerStoreCache");
                 Server.tryStoreCache();
-//                Server.logTrace("END TimerStoreCache");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1756,12 +1843,10 @@ public class Core {
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-//                Server.logTrace("BEGIN TimerStoreCache");
                 // Apaga todos os arquivos de LOG vencidos.
                 Server.deleteLogExpired();
                 // Apaga todos as listas de analise vencidas.
                 Analise.dropExpired();
-//                Server.logTrace("END TimerStoreCache");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -1983,6 +2068,125 @@ public class Core {
             Long.parseLong(text);
             return true;
         } catch (Exception ex) {
+            return false;
+        }
+    }
+    
+    public static TreeSet<String> getTreeSet(String text, String demiliter) {
+        if (text == null) {
+            return null;
+        } else if (demiliter == null) {
+            return null;
+        } else {
+            TreeSet<String> resultSet = new TreeSet<String>();
+            StringTokenizer tokenizer = new StringTokenizer(
+                    text, demiliter
+            );
+            while (tokenizer.hasMoreTokens()) {
+                String token = tokenizer.nextToken();
+                resultSet.add(token);
+            }
+            return resultSet;
+        }
+    }
+    
+    public static TreeMap<String,Boolean> getTreeMapBoolean(
+            String text, String demiliter
+    ) {
+        if (text == null) {
+            return null;
+        } else if (demiliter == null) {
+            return null;
+        } else {
+            TreeMap<String,Boolean> resultMap = new TreeMap<String,Boolean>();
+            StringTokenizer tokenizer = new StringTokenizer(
+                    text, demiliter
+            );
+            while (tokenizer.hasMoreTokens()) {
+                String token = tokenizer.nextToken();
+                int index = token.indexOf('=');
+                boolean value = Boolean.parseBoolean(token.substring(index + 1));
+                String key = token.substring(0, index);
+                resultMap.put(key, value);
+            }
+            return resultMap;
+        }
+    }
+    
+    public static String getSequence(TreeSet<String> set, String demiliter) {
+        if (set == null) {
+            return null;
+        } else if (demiliter == null) {
+            return null;
+        } else if (set.isEmpty()) {
+            return null;
+        } else {
+            StringBuilder builder = new StringBuilder();
+            for (String token : set) {
+                if (builder.length() > 0) {
+                    builder.append(demiliter);
+                }
+                builder.append(token);
+            }
+            return builder.toString();
+        }
+    }
+    
+    public static String getSequence(TreeMap<String,Boolean> map, String demiliter) {
+        if (map == null) {
+            return null;
+        } else if (demiliter == null) {
+            return null;
+        } else if (map.isEmpty()) {
+            return null;
+        } else {
+            StringBuilder builder = new StringBuilder();
+            for (String key : map.keySet()) {
+                boolean value = map.get(key);
+                if (builder.length() > 0) {
+                    builder.append(demiliter);
+                }
+                builder.append(key);
+                builder.append('=');
+                builder.append(value);
+            }
+            return builder.toString();
+        }
+    }
+    
+    public static boolean hasUnicodeBlock(String text, Character.UnicodeBlock block) {
+        if (text == null) {
+            return false;
+        } else {
+            for (char character : text.toCharArray()) {
+                if (Character.UnicodeBlock.of(character) == block) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    public static boolean hasMiscellaneousSymbols(String text) {
+        if (text == null) {
+            return false;
+        } else {
+            for (char character : text.toCharArray()) {
+                Character.UnicodeBlock block = Character.UnicodeBlock.of(character);
+                if (block == Character.UnicodeBlock.MISCELLANEOUS_MATHEMATICAL_SYMBOLS_A) {
+                    return true;
+                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_MATHEMATICAL_SYMBOLS_B) {
+                    return true;
+                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS) {
+                    return true;
+                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS_AND_ARROWS) {
+                    return true;
+                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS) {
+                    return true;
+                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_TECHNICAL) {
+                    return true;
+                }
+            }
             return false;
         }
     }

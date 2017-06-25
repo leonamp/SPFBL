@@ -234,15 +234,7 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (token.equals("CLUSTER") && tokenizer.countTokens() == 1) {
                         token = tokenizer.nextToken();
-                        if (token.equals("RED")) {
-                            StringBuilder builder = new StringBuilder();
-                            Analise.dumpClusterRED(builder);
-                            if (builder.length() == 0) {
-                                result = "EMPTY\n";
-                            } else {
-                                result = builder.toString();
-                            }
-                        } else if (token.equals("TLD")) {
+                        if (token.equals("TLD")) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterTLD(builder);
                             if (builder.length() == 0) {
@@ -253,6 +245,30 @@ public final class AdministrationTCP extends Server {
                         } else if (token.equals("MASK")) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterMask(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else if (token.equals("CIDR")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterCIDR(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else if (token.equals("CPF")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterCPF(builder);
+                            if (builder.length() == 0) {
+                                result = "EMPTY\n";
+                            } else {
+                                result = builder.toString();
+                            }
+                        } else if (token.equals("CNPJ")) {
+                            StringBuilder builder = new StringBuilder();
+                            Analise.dumpClusterCNPJ(builder);
                             if (builder.length() == 0) {
                                 result = "EMPTY\n";
                             } else {

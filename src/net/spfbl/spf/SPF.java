@@ -40,6 +40,7 @@ import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Properties;
@@ -51,7 +52,9 @@ import java.util.regex.Pattern;
 import javax.mail.Message;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
 import javax.naming.NameNotFoundException;
@@ -75,6 +78,7 @@ import net.spfbl.core.User;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
+import net.spfbl.http.ServerHTTP;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -980,6 +984,22 @@ public final class SPF implements Serializable {
 
         private Qualifier(String description) {
             this.description = description;
+        }
+        
+        public static Qualifier get(String name) {
+            try {
+                return valueOf(name);
+            } catch (Exception ex) {
+                return null;
+            }
+        }
+        
+        public static String name(Qualifier qualifier) {
+            if (qualifier == null) {
+                return null;
+            } else {
+                return qualifier.name();
+            }
         }
 
         @Override
@@ -5498,6 +5518,12 @@ public final class SPF implements Serializable {
                 ) {
             try {
                 Server.logDebug("sending liberation by e-mail.");
+                Locale locale = Locale.UK;
+                if (remetente.endsWith(".br")) {
+                    locale = new Locale("pt", "BR");
+                } else if (remetente.endsWith(".pt")) {
+                    locale = new Locale("pt", "PT");
+                }
                 InternetAddress[] recipients = InternetAddress.parse(remetente);
                 Properties props = System.getProperties();
                 Session session = Session.getDefaultInstance(props);
@@ -5505,28 +5531,59 @@ public final class SPF implements Serializable {
                 message.setHeader("Date", Core.getEmailDate());
                 message.setFrom(Core.getAdminEmail());
                 message.addRecipients(Message.RecipientType.TO, recipients);
-                message.setSubject("Liberação de recebimento");
+                String subject;
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                   subject = "Liberação de recebimento";
+                } else {
+                    subject = "Receiving release";
+                }
+                message.setSubject(subject);
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
-                builder.append("<html>\n");
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
-                builder.append("    <title>Liberação de recebimento</title>\n");
+                builder.append("    <title>");
+                builder.append(subject);
+                builder.append("</title>\n");
+                ServerHTTP.loadStyleCSS(builder);
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
-                builder.append("       O recebimento da sua mensagem para ");
-                builder.append(destinatario);
-                builder.append(" está sendo atrasado por suspeita de SPAM.<br>\n");
-                builder.append("       Para que sua mensagem seja liberada, ");
-                builder.append("acesse este link e resolva o desafio reCAPTCHA:<br>\n");
-                builder.append("       <a href=\"");
-                builder.append(url);
-                builder.append("\">");
-                builder.append(url);
-                builder.append("</a><br>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
+                ServerHTTP.buildMessage(builder, subject);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    ServerHTTP.buildText(builder, "O recebimento da sua mensagem para " + destinatario + " está sendo atrasado por suspeita de SPAM.");
+                    ServerHTTP.buildText(builder, "Para que sua mensagem seja liberada, acesse este link e resolva o desafio reCAPTCHA:");
+                } else {
+                    ServerHTTP.buildText(builder, "Receiving your message to " + destinatario + " is being delayed due to suspected SPAM.");
+                    ServerHTTP.buildText(builder, "In order for your message to be released, access this link and resolve the reCAPTCHA:");
+                }
+                ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
+                ServerHTTP.buildFooter(builder, locale);
+                builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
-                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making HTML part.
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making QRcode part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = ServerHTTP.getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Join both parts.
+                MimeMultipart content = new MimeMultipart();
+                content.addBodyPart(htmlPart);
+                content.addBodyPart(logoPart);
+                // Set multiplart content.
+                message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
                 return Core.sendMessage(message);

@@ -1,3 +1,16 @@
+### v2.7.3 ; release 25/07/2017:
+
+NEW) implementação da gravação das consultas no MySQL, em carater experimental.
+
+NEW) nova biblioteca do MySQL connector adicionada para conexão do banco de dados.
+
+NEW) implementação de estilo HTML para apresentação personalizada dos e-mails interativos.
+
+FIX) correção na consulta do owner-id do WHOIS do registro.br.
+
+UPDT) aprimoramento da usabilidade páginas de interação por HTTP.
+
+
 ### v2.7.2 ; release 21/07/2017:
 
 NEW) implementação de estilo HTML para apresentação personalizada das páginas interativas.

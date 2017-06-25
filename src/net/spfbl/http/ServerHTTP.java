@@ -24,6 +24,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import net.spfbl.core.Server;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -457,7 +458,7 @@ public final class ServerHTTP extends Server {
     
     private static final File FOLDER = new File("./web/");
     
-    private static File getWebFile(String name) {
+    public static File getWebFile(String name) {
         File file = new File(FOLDER, name);
         if (file.exists()) {
             return file;
@@ -496,6 +497,10 @@ public final class ServerHTTP extends Server {
                         locale = Locale.US;
                     }
                     command = command.substring(langIndex);
+                } else if (user != null && user.getEmail().endsWith(".br")) {
+                    locale = new Locale("pt", "BR");
+                } else if (user != null && user.getEmail().endsWith(".pt")) {
+                    locale = new Locale("pt", "PT");
                 } else if (clientEmail != null && clientEmail.endsWith(".br")) {
                     locale = new Locale("pt", "BR");
                 } else if (clientEmail != null && clientEmail.endsWith(".pt")) {
@@ -549,7 +554,7 @@ public final class ServerHTTP extends Server {
                             }
                         } else {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Este é página principal do serviço SPFBL";
+                                message = "Página principal do serviço SPFBL";
                             } else {
                                 message = "This is SPFBL's main page";
                             }
@@ -601,35 +606,35 @@ public final class ServerHTTP extends Server {
                                     if (userLogin.hasSecretOTP()) {
                                         message = getLoginOTPHMTL(
                                                 locale,
+                                                "Página de login do SPFBL",
                                                 "Para confirmar a mudança de senha "
-                                                + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>,\n"
+                                                + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>, "
                                                 + "digite o valor da nova chave enviada por e-mail:"
                                         );
                                     } else {
                                         message = getLoginOTPHMTL(
                                                 locale,
+                                                "Página de login do SPFBL",
                                                 "Para ativar a senha "
                                                 + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                                + "da sua conta,\n"
-                                                + "digite o valor da chave enviada por e-mail:"
+                                                + "da sua conta, digite o valor da chave enviada por e-mail:"
                                         );
                                     }
                                 } else {
                                     message = getLoginOTPHMTL(
                                             locale,
                                             "A senha <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                            + "inserida é inválida para esta conta.\n"
-                                            + "Para ativar a autenticação "
+                                            + "inserida é inválida para esta conta",
+                                            "Para ativar a autenticação "
                                             + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                            + "da sua conta,\n"
-                                            + "digite o valor da chave enviada por e-mail:"
+                                            + "da sua conta, digite o valor da chave enviada por e-mail:"
                                     );
                                 }
                             } else {
                                 message = getLoginOTPHMTL(
                                         locale,
-                                        "Para entrar no painel de controle,\n"
-                                        + "digite o valor da chave "
+                                        "Página de login do SPFBL",
+                                        "Para entrar no painel de controle, digite o valor da chave "
                                         + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
                                         + "de sua conta:"
                                 );
@@ -667,9 +672,9 @@ public final class ServerHTTP extends Server {
                                             locale,
                                             "Segredo "
                                             + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                            + "enviado com sucesso.\n"
-                                            + "Para confirmar a mudança de senha "
-                                            + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>,\n"
+                                            + "enviado com sucesso",
+                                            "Para confirmar a mudança de senha "
+                                            + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>, "
                                             + "digite o valor do segredo enviado por e-mail:"
                                     );
                                 } else {
@@ -683,10 +688,12 @@ public final class ServerHTTP extends Server {
                             } else {
                                 message = getSendOTPHMTL(
                                         locale,
+                                        "Seu e-mail ainda não possui senha "
+                                        + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
+                                        + "neste sistema",
                                         "Para receber o segredo "
                                         + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                        + "em seu e-mail,\n"
-                                        + "resolva o reCAPTCHA abaixo."
+                                        + "em seu e-mail, resolva o reCAPTCHA abaixo."
                                 );
                             }
                         }
@@ -1675,7 +1682,7 @@ public final class ServerHTTP extends Server {
                         code = 200;
                         String message;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            message = "Este é página principal do serviço SPFBL";
+                            message = "Página principal do serviço SPFBL";
                         } else {
                             message = "This is SPFBL's main page";
                         }
@@ -1719,6 +1726,7 @@ public final class ServerHTTP extends Server {
                             if (userLogin.hasSecretOTP()) {
                                 message = getLoginOTPHMTL(
                                         locale,
+                                        "Página de login do SPFBL",
                                         "Para confirmar a mudança de segredo "
                                         + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a>,\n"
                                         + "digite o valor da nova chave enviada por e-mail:"
@@ -1726,17 +1734,17 @@ public final class ServerHTTP extends Server {
                             } else {
                                 message = getLoginOTPHMTL(
                                         locale,
+                                        "Página de login do SPFBL",
                                         "Para ativar a senha "
                                         + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                        + "da sua conta,\n"
-                                        + "digite o valor da chave enviada por e-mail:"
+                                        + "da sua conta, digite o valor da chave enviada por e-mail:"
                                 );
                             }
                         } else if (userLogin.hasSecretOTP()) {
                             message = getLoginOTPHMTL(
                                     locale,
-                                    "Para entrar no painel de controle,\n"
-                                    + "digite o valor da chave "
+                                    "Página de login do SPFBL",
+                                    "Para entrar no painel de controle, digite o valor da chave "
                                     + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
                                     + "de sua conta:"
                             );
@@ -1745,11 +1753,10 @@ public final class ServerHTTP extends Server {
                                     locale,
                                     "Seu e-mail ainda não possui senha "
                                     + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                    + "neste sistema.\n"
-                                    + "Para receber a chave "
+                                    + "neste sistema",
+                                    "Para receber a chave "
                                     + "<a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> "
-                                    + "em seu e-mail,\n"
-                                    + "resolva o reCAPTCHA abaixo."
+                                    + "em seu e-mail, resolva o reCAPTCHA abaixo."
                             );
                         }
                         type = "PANEL";
@@ -2044,13 +2051,13 @@ public final class ServerHTTP extends Server {
                                                     code = 500;
                                                     String message;
                                                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "O IP " + ip + " não foi definido no registro SPF do domínio '" + mx + "'.\n"
+                                                        message = "O IP " + ip + " não está autorizada no registro SPF do domínio " + mx + ".\n"
                                                                 + "Para que seja possível solicitar o desbloqueio ao destinário, por meio deste sistema, "
                                                                 + "configure o SPF deste domínio de modo que o envio por meio do mesmo IP resulte em PASS.\n"
                                                                 + "Após fazer esta modificação, aguarde algumas horas pela propagação DNS, "
                                                                 + "e volte a acessar esta mesma página para prosseguir com o processo de desbloqueio.";
                                                     } else {
-                                                        message = "The IP " + ip + " was not defined in the domain '" + mx + "' SPF record.\n"
+                                                        message = "The IP " + ip + " is not authorized in the SPF record of domain " + mx + ".\n"
                                                                 + "To be able to request unblocking to recipient, through this system, "
                                                                 + "set the SPF record of this domain so that sending through the same IP results in PASS.\n"
                                                                 + "After making this change, wait a few hours for DNS propagation, "
@@ -2603,11 +2610,6 @@ public final class ServerHTTP extends Server {
                 ) {
             try {
                 Server.logDebug("sending unblock by e-mail.");
-                if (email.endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (email.endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                }
                 User user = User.get(email);
                 InternetAddress[] recipients;
                 if (user == null) {
@@ -2622,11 +2624,13 @@ public final class ServerHTTP extends Server {
                 message.setHeader("Date", Core.getEmailDate());
                 message.setFrom(Core.getAdminInternetAddress());
                 message.addRecipients(Message.RecipientType.TO, recipients);
+                String subject;
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    message.setSubject("Chave de desbloqueio SPFBL");
+                    subject = "Chave de desbloqueio SPFBL";
                 } else {
-                    message.setSubject("Unblocking key SPFBL");
+                    subject = "Unblocking key SPFBL";
                 }
+                message.setSubject(subject);
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
                 builder.append("<!DOCTYPE html>\n");
@@ -2636,41 +2640,60 @@ public final class ServerHTTP extends Server {
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
                 builder.append("    <title>");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Chave de desbloqueio SPFBL");
-                } else {
-                    builder.append("Unblocking key SPFBL");
-                }
+                builder.append(subject);
                 builder.append("</title>\n");
+                loadStyleCSS(builder);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildConfirmAction(
+                            builder,
+                            "Desbloquear IP",
+                            url,
+                            "Confirme o desbloqueio para o IP " + ip + " na DNSBL",
+                            "SPFBL.net", "http://spfbl.net/"
+                    );
+                } else {
+                    buildConfirmAction(
+                            builder,
+                            "Delist IP",
+                            url,
+                            "Confirm the delist of IP " + ip + " at DNSBL",
+                            "SPFBL.net",
+                            "http://spfbl.net/en/"
+                    );
+                }
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("       Foi solicitado o desbloqueio do IP ");
-                    builder.append(ip);
-                    builder.append(" da listagem DNSBL do nosso sistema.<br>\n");
-                    builder.append("       Se você é o administrador deste IP e fez esta solicitação,<br>\n");
-                    builder.append("       acesse esta URL e resolva o reCAPTCHA para finalizar o procedimento:<br>\n");
+                    buildMessage(builder, "Desbloqueio do IP " + ip + " na DNSBL");
+                    buildText(builder, "Se você é o administrador deste IP, e fez esta solicitação, acesse esta URL e resolva o reCAPTCHA para finalizar o procedimento:");
                 } else {
-                    builder.append("       You asked to unblock the IP ");
-                    builder.append(ip);
-                    builder.append(" from our DNSBL.<br>\n");
-                    builder.append("       If you are the administrator of this IP and made this request,<br>\n");
-                    builder.append("       go to this URL and solve the reCAPTCHA to finish the procedure:<br>\n");
+                    buildMessage(builder, "Unblock of IP " + ip + " at DNSBL");
+                    buildText(builder, "If you are the administrator of this IP and made this request, go to this URL and solve the reCAPTCHA to finish the procedure:");
                 }
-                builder.append("       <a href=\"");
-                builder.append(url);
-                builder.append("\">");
-                builder.append(url);
-                builder.append("</a><br>\n");
-                builder.append("    <br>\n");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/dnsbl/\">SPFBL.net</a></small><br>\n");
-                } else {
-                    builder.append("    <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/en/dnsbl/\">SPFBL.net</a></small><br>\n");
-                }
+                buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
+                buildFooter(builder, locale);
+                builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
-                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making HTML part.
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making QRcode part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Join both parts.
+                MimeMultipart content = new MimeMultipart();
+                content.addBodyPart(htmlPart);
+                content.addBodyPart(logoPart);
+                // Set multiplart content.
+                message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
                 return Core.sendMessage(message);
@@ -2683,7 +2706,7 @@ public final class ServerHTTP extends Server {
         }
     }
     
-    private static boolean enviarOTP(
+    public static boolean enviarOTP(
             Locale locale,
             User user
             ) {
@@ -2702,11 +2725,7 @@ public final class ServerHTTP extends Server {
         } else {
             try {
                 Server.logDebug("sending TOTP by e-mail.");
-                if (user.getEmail().endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (user.getEmail().endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                }
+                String secret = user.newSecretOTP();
                 InternetAddress[] recipients = new InternetAddress[1];
                 recipients[0] = user.getInternetAddress();
                 Properties props = System.getProperties();
@@ -2715,11 +2734,13 @@ public final class ServerHTTP extends Server {
                 message.setHeader("Date", Core.getEmailDate());
                 message.setFrom(Core.getAdminInternetAddress());
                 message.addRecipients(Message.RecipientType.TO, recipients);
+                String subject;
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    message.setSubject("Chave TOTP do SPFBL");
+                    subject = "Chave TOTP do SPFBL";
                 } else {
-                    message.setSubject("SPFBL TOTP key");
+                    subject = "SPFBL TOTP key";
                 }
+                message.setSubject(subject);
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
                 builder.append("<!DOCTYPE html>\n");
@@ -2729,52 +2750,68 @@ public final class ServerHTTP extends Server {
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
                 builder.append("    <title>");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Chave TOTP do SPFBL");
-                } else {
-                    builder.append("SPFBL TOTP key");
-                }
+                builder.append(subject);
                 builder.append("</title>\n");
+                loadStyleCSS(builder);
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("         Sua chave <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> no sistema SPFBL em ");
-                    builder.append(Core.getHostname());
-                    builder.append(":<br>\n");
-                    builder.append("         <img src=\"cid:qrcode\"><br>\n");
-                    builder.append("         Carregue o QRCode acima em seu Google Authenticator<br>\n");
-                    builder.append("         ou em outro aplicativo <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> de sua peferência.<br>\n");
+                    buildMessage(builder, "Sua chave <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> no sistema SPFBL em " + Core.getHostname());
+                    buildText(builder, "Carregue o QRCode abaixo em seu Google Authenticator ou em outro aplicativo <a target=\"_blank\" href=\"http://spfbl.net/totp/\">TOTP</a> de sua preferência.");
+                    builder.append("      <div id=\"divcaptcha\">\n");
+                    builder.append("        <img src=\"cid:qrcode\"><br>\n");
+                    builder.append("        ");
+                    builder.append(secret);
+                    builder.append("\n");
+                    builder.append("      </div>\n");
                 } else {
-                    builder.append("         Your <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> key in SPFBL system at ");
-                    builder.append(Core.getHostname());
-                    builder.append(":<br>\n");
-                    builder.append("         <img src=\"cid:qrcode\">\n");
-                    builder.append("         Load QRCode above on your Google Authenticator<br>\n");
-                    builder.append("         or on other application <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> of your choice.<br>\n");
+                    buildMessage(builder, "Your <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> key in SPFBL system at " + Core.getHostname());
+                    buildText(builder, "Load QRCode below on your Google Authenticator or on other application <a target=\"_blank\" href=\"http://spfbl.net/en/totp/\">TOTP</a> of your choice.");
+                    builder.append("      <div id=\"divcaptcha\">\n");
+                    builder.append("        <img src=\"cid:qrcode\"><br>\n");
+                    builder.append("        ");
+                    builder.append(secret);
+                    builder.append("\n");
+                    builder.append("      </div>\n");
                 }
+                buildFooter(builder, locale);
+                builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making image part.
-                MimeBodyPart imagePart = new MimeBodyPart();
+                // Making QRcode part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Making QRcode part.
+                MimeBodyPart qrcodePart = new MimeBodyPart();
                 String code = "otpauth://totp/" + Core.getHostname() + ":" + user.getEmail() + "?"
-                        + "secret=" + user.newSecretOTP() + "&"
+                        + "secret=" + secret + "&"
                         + "issuer=" + Core.getHostname();
                 File qrcodeFile = Core.getQRCodeTempFile(code);
-                imagePart.attachFile(qrcodeFile);
-                imagePart.setContentID("<qrcode>");
-                imagePart.setDisposition(MimeBodyPart.INLINE);
+                qrcodePart.attachFile(qrcodeFile);
+                qrcodePart.setContentID("<qrcode>");
+                qrcodePart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
                 MimeMultipart content = new MimeMultipart();
                 content.addBodyPart(htmlPart);
-                content.addBodyPart(imagePart);
+                content.addBodyPart(logoPart);
+                content.addBodyPart(qrcodePart);
                 // Set multiplart content.
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message);
+                boolean sent = Core.sendMessage(message);
+                qrcodeFile.delete();
+                return sent;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
@@ -2797,11 +2834,6 @@ public final class ServerHTTP extends Server {
                 ) {
             try {
                 Server.logDebug("sending unblock by e-mail.");
-                if (destinatario.endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (destinatario.endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                }
                 InternetAddress[] recipients = InternetAddress.parse(destinatario);
                 Properties props = System.getProperties();
                 Session session = Session.getDefaultInstance(props);
@@ -2810,11 +2842,13 @@ public final class ServerHTTP extends Server {
                 message.setFrom(Core.getAdminEmail());
                 message.setReplyTo(InternetAddress.parse(remetente));
                 message.addRecipients(Message.RecipientType.TO, recipients);
+                String subject;
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    message.setSubject("Solicitação de envio SPFBL");
+                    subject = "Solicitação de envio SPFBL";
                 } else {
-                    message.setSubject("SPFBL send request");
+                    subject = "SPFBL send request";
                 }
+                message.setSubject(subject);
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
                 builder.append("<!DOCTYPE html>\n");
@@ -2824,39 +2858,43 @@ public final class ServerHTTP extends Server {
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
                 builder.append("    <title>");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Solicitação de envio");
-                } else {
-                    builder.append("Send request");
-                }
+                builder.append(subject);
                 builder.append("</title>\n");
+                loadStyleCSS(builder);
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
+                buildMessage(builder, subject);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("         O remetente '");
-                    builder.append(remetente);
-                    builder.append("' deseja lhe enviar mensagens\n");
-                    builder.append("         porém foi bloqueado pelo sistema como fonte de SPAM.<br>\n");
-                    builder.append("         Se você confia neste remetente e quer receber mensagens dele,\n");
-                    builder.append("         acesse esta URL e resolva o reCAPTCHA:<br>\n");
+                    buildText(builder, "Este e-mail foi gerado pois nosso servidor recusou uma ou mais mensagens do remetente " + remetente + " e o mesmo requisitou que seja feita a liberação para que novos e-mails possam ser entregues a você.");
+                    buildText(builder, "Se você deseja receber e-mails de " + remetente + ", acesse o endereço abaixo e para iniciar o processo de liberação:");
                 } else {
-                    builder.append("         The sender '");
-                    builder.append(remetente);
-                    builder.append("' wants to send you messages\n");
-                    builder.append("         but was blocked by the SPFBL system as being a source of SPAM.<br>\n");
-                    builder.append("         If you trust this sender and want to receive his messages,\n");
-                    builder.append("         please go to this URL and solve the reCAPTCHA:<br>\n");
+                    buildText(builder, "This email was generated because our server has refused one or more messages from the sender " + remetente + " and the same sender has requested that the release be made for new emails can be delivered to you.");
+                    buildText(builder, "If you wish to receive emails from " + remetente + ", access the address below and to start the release process:");
                 }
-                builder.append("         <a href=\"");
-                builder.append(url);
-                builder.append("\">");
-                builder.append(url);
-                builder.append("</a><br>\n");
-                builder.append("      <br>\n");
-                builder.append("      <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+                buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
+                buildFooter(builder, locale);
+                builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
-                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making HTML part.
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making QRcode part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Join both parts.
+                MimeMultipart content = new MimeMultipart();
+                content.addBodyPart(htmlPart);
+                content.addBodyPart(logoPart);
+                // Set multiplart content.
+                message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
                 return Core.sendMessage(message);
@@ -2882,11 +2920,6 @@ public final class ServerHTTP extends Server {
                 ) {
             try {
                 Server.logDebug("sending unblock confirmation by e-mail.");
-                if (remetente.endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (remetente.endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                }
                 InternetAddress[] recipients = InternetAddress.parse(remetente);
                 Properties props = System.getProperties();
                 Session session = Session.getDefaultInstance(props);
@@ -2895,11 +2928,13 @@ public final class ServerHTTP extends Server {
                 message.setFrom(Core.getAdminEmail());
                 message.setReplyTo(InternetAddress.parse(destinatario));
                 message.addRecipients(Message.RecipientType.TO, recipients);
+                String subject;
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    message.setSubject("Confirmação de desbloqueio SPFBL");
+                    subject = "Confirmação de desbloqueio SPFBL";
                 } else {
-                    message.setSubject("SPFBL unblocking confirmation");
+                    subject = "SPFBL unblocking confirmation";
                 }
+                message.setSubject(subject);
                 // Corpo da mensagem.
                 StringBuilder builder = new StringBuilder();
                 builder.append("<!DOCTYPE html>\n");
@@ -2909,30 +2944,42 @@ public final class ServerHTTP extends Server {
                 builder.append("  <head>\n");
                 builder.append("    <meta charset=\"UTF-8\">\n");
                 builder.append("    <title>");
-                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("Confirmação de desbloqueio");
-                } else {
-                    builder.append("Unblocking confirmation");
-                }
+                builder.append(subject);
                 builder.append("</title>\n");
+                loadStyleCSS(builder);
                 builder.append("  </head>\n");
                 builder.append("  <body>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
+                buildMessage(builder, subject);
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    builder.append("         O destinatário '");
-                    builder.append(destinatario);
-                    builder.append("' acabou de liberar o recebimento de suas mensagens.<br>\n");
-                    builder.append("         Por favor, envie novamente a mensagem anterior.<br>\n");
+                    buildText(builder, "O destinatário '" + destinatario + "' acabou de liberar o recebimento de suas mensagens.");
+                    buildText(builder, "Por favor, envie novamente a mensagem anterior.");
                 } else {
-                    builder.append("         The recipient '");
-                    builder.append(destinatario);
-                    builder.append("' just released the receipt of your message.<br>\n");
-                    builder.append("         Please send the previous message again.<br>\n");
+                    buildText(builder, "The recipient '" + destinatario + "' just released the receipt of your message.");
+                    buildText(builder, "Please send the previous message again.");
                 }
-                builder.append("      <br>\n");
-                builder.append("      <small>Powered by <a target=\"_blank\" href=\"http://spfbl.net/\">SPFBL.net</a></small><br>\n");
+                buildFooter(builder, locale);
+                builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
-                message.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making HTML part.
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making QRcode part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Join both parts.
+                MimeMultipart content = new MimeMultipart();
+                content.addBodyPart(htmlPart);
+                content.addBodyPart(logoPart);
+                // Set multiplart content.
+                message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
                 return Core.sendMessage(message);
@@ -3094,7 +3141,8 @@ public final class ServerHTTP extends Server {
     
     private static String getLoginOTPHMTL(
             Locale locale,
-            String message
+            String message,
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
         builder.append("<!DOCTYPE html>\n");
@@ -3110,9 +3158,10 @@ public final class ServerHTTP extends Server {
         builder.append("    <div id=\"container\">\n");
         buildLogo(builder);
         buildMessage(builder, message);
+        buildText(builder, text);
         builder.append("      <div id=\"divcaptcha\">\n");
         builder.append("        <form method=\"POST\">\n");
-        builder.append("          <input type=\"password\" name=\"otp\" autofocus>\n");
+        builder.append("          <input type=\"password\" name=\"otp\" autofocus><br>\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
             builder.append("           <input id=\"btngo\" type=\"submit\" value=\"Entrar\">\n");
         } else {
@@ -3129,7 +3178,8 @@ public final class ServerHTTP extends Server {
     
     private static String getSendOTPHMTL(
             Locale locale,
-            String message
+            String message,
+            String text
     ) throws ProcessException {
         StringBuilder builder = new StringBuilder();
         builder.append("<!DOCTYPE html>\n");
@@ -3145,6 +3195,7 @@ public final class ServerHTTP extends Server {
         builder.append("    <div id=\"container\">\n");
         buildLogo(builder);
         buildMessage(builder, message);
+        buildText(builder, text);
         builder.append("      <div id=\"divcaptcha\">\n");
         builder.append("        <form method=\"POST\">\n");
         if (Core.hasRecaptchaKeys()) {
@@ -3500,15 +3551,23 @@ public final class ServerHTTP extends Server {
                 TreeSet<String> reverseSet = reverse.getAddressSet();
                 if (reverseSet.isEmpty()) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado: nenhum");
+                        buildText(builder, "Estes são os <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrados: nenhum");
                     } else {
-                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found: none");
+                        buildText(builder, "These is the <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found: none");
                     }
                 } else {
-                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado:");
+                    if (reverseSet.size() == 1) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            buildText(builder, "Este é o <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrado:");
+                        } else {
+                            buildText(builder, "This is the <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
+                        }
                     } else {
-                        buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            buildText(builder, "Estes são os <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrados:");
+                        } else {
+                            buildText(builder, "These are the <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found:");
+                        }
                     }
                     Client abuseClient = Client.getByIP(ip);
                     String abuseEmail = abuseClient == null || abuseClient.hasPermission(NONE) ? null : abuseClient.getEmail();
@@ -3666,64 +3725,96 @@ public final class ServerHTTP extends Server {
                 } else if (Block.containsCIDR(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         buildText(builder, "Este IP foi bloqueado, porém a reputação dele não está mais ruim.");
-                        buildText(builder, "E-mails para envio de chave de desbloqueio:");
                     } else {
                         buildText(builder, "This IP has been blocked, but it's reputation is not bad anymore.");
-                        buildText(builder, "E-mails to send unblock key:");
                     }
+                    builder.append("      <hr>\n");
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Para que a chave de desbloqueio possa ser enviada, selecione o endereço de e-mail do responsável pelo IP:");
+                    } else {
+                        buildText(builder, "For the delist key can be sent, select the e-mail address responsible for this IP:");
+                    }
+                    builder.append("      <form method=\"POST\">\n");
                     builder.append("        <ul>\n");
-                    TreeSet<String> sendSet = new TreeSet<String>();
+                    int permittedCount = 0;
+                    for (String email : emailSet) {
+                        if (Domain.isValidEmail(email)) {
+                            if (!Trap.contaisAnything(email)) {
+                                if (!NoReply.contains(email, false)) {
+                                    permittedCount++;
+                                }
+                            }
+                        }
+                    }
+                    boolean permittedChecked = false;
                     String email = emailSet.pollFirst();
                     do  {
-                        builder.append("          <li>&lt;");
-                        builder.append(email);
-                        builder.append("&gt; ");
-                        if (Trap.contaisAnything(email)) {
+                        if (!Domain.isValidEmail(email)) {
+                            builder.append("          <input type=\"radio\" name=\"identifier\" value=\"");
+                            builder.append(email);
+                            builder.append("\" disabled>");
+                            builder.append("&lt;");
+                            builder.append(email);
+                            builder.append("&gt; ");
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("inexistente.</li>\n");
+                                builder.append("inválido.<br>\n");
                             } else {
-                                builder.append("non-existent.</li>\n");
+                                builder.append("invalid.<br>\n");
+                            }
+                        } else if (Trap.contaisAnything(email)) {
+                            builder.append("          <input type=\"radio\" name=\"identifier\" value=\"");
+                            builder.append(email);
+                            builder.append("\" disabled>");
+                            builder.append("&lt;");
+                            builder.append(email);
+                            builder.append("&gt; ");
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("inexistente.</li><br>\n");
+                            } else {
+                                builder.append("non-existent.</li><br>\n");
                             }
                         } else if (NoReply.contains(email, false)) {
+                            builder.append("          <input type=\"radio\" name=\"identifier\" value=\"");
+                            builder.append(email);
+                            builder.append("\" disabled>");
+                            builder.append("&lt;");
+                            builder.append(email);
+                            builder.append("&gt; ");
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("não permitido.</li>\n");
+                                builder.append("não permitido.<br>\n");
                             } else {
-                                builder.append("not permitted.</li>\n");
+                                builder.append("not permitted.<br>\n");
                             }
                         } else {
-                            sendSet.add(email);
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                builder.append("permitido.</li>\n");
+                            builder.append("          <input type=\"radio\" name=\"identifier\" ");
+                            builder.append("onclick=\"document.getElementById('btngo').disabled = false;\" value=\"");
+                            builder.append(email);
+                            if (permittedChecked) {
+                                builder.append("\">");
+                            } else if (permittedCount == 1) {
+                                builder.append("\" checked>");
+                                permittedChecked = true;
                             } else {
-                                builder.append("permitted.</li>\n");
+                                builder.append("\">");
+                            }
+                            builder.append("&lt;");
+                            builder.append(email);
+                            builder.append("&gt; ");
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                builder.append("permitido.<br>\n");
+                            } else {
+                                builder.append("permitted.<br>\n");
                             }
                         }
                     } while ((email = emailSet.pollFirst()) != null);
                     builder.append("        </ul>\n");
-                    if (sendSet.isEmpty()) {
+                    if (permittedCount == 0) {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             buildText(builder, "Nenhum e-mail do responsável pelo IP é permitido neste sistema.");
                         } else {
                             buildText(builder, "None of the responsible for IP has e-mail permitted under this system.");
                         }
                     } else {
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            buildText(builder, "Para que a chave de desbloqueio seja enviada, selecione o endereço de e-mail do responsável pelo IP:");
-                        } else {
-                            buildText(builder, "For the release key to be sent, select the e-mail address responsible for this IP:");
-                        }
-                        builder.append("      <form method=\"POST\">\n");
-                        for (String send : sendSet) {
-                            builder.append("        <input type=\"radio\" name=\"identifier\" value=\"");
-                            builder.append(send);
-                            if (emailSet.size() == 1) {
-                                builder.append("\" checked>");
-                            } else {
-                                builder.append("\">");
-                            }
-                            builder.append(send);
-                            builder.append("<br>\n");
-                        }
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             buildText(builder, "O <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> do IP deve estar sob seu próprio domínio. Não aceitamos <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> com domínios de terceiros.");
                         } else {
@@ -3742,9 +3833,14 @@ public final class ServerHTTP extends Server {
                 //            builder.append("\"></div>\n");
                         }
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Solicitar delist\">\n");
+                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Solicitar chave de delist\"");
                         } else {
-                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Request delist\">\n");
+                            builder.append("          <input id=\"btngo\" type=\"submit\" value=\"Request delist key\"");
+                        }
+                        if (permittedCount == 1) {
+                            builder.append(">\n");
+                        } else {
+                            builder.append(" disabled>\n");
                         }
                         builder.append("        </div>\n");
                         builder.append("      </form>\n");
@@ -3913,13 +4009,8 @@ public final class ServerHTTP extends Server {
         DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
         GregorianCalendar calendar = new GregorianCalendar();
         calendar.setTimeInMillis(time);
-        if (query.getUserEmail().endsWith(".br")) {
-            locale = new Locale("pt", "BR");
-        } else if (query.getUserEmail().endsWith(".pt")) {
-            locale = new Locale("pt", "PT");
-        }
         StringBuilder builder = new StringBuilder();
-        builder.append("<!DOCTYPE html>\n");
+//        builder.append("<!DOCTYPE html>\n");
         builder.append("<html lang=\"");
         builder.append(locale.getLanguage());
         builder.append("\">\n");
@@ -4400,11 +4491,6 @@ public final class ServerHTTP extends Server {
             String malware = query.getMalware();
             String recipient = query.getRecipient();
             String result = query.getResult();
-            if (query.getUserEmail().endsWith(".br")) {
-                locale = new Locale("pt", "BR");
-            } else if (query.getUserEmail().endsWith(".pt")) {
-                locale = new Locale("pt", "PT");
-            }
             builder.append("        <tr id=\"");
             builder.append(time);
             builder.append("\"");
@@ -4726,12 +4812,7 @@ public final class ServerHTTP extends Server {
             ) {
         StringBuilder builder = new StringBuilder();
         if (begin == null && filter == null) {
-            if (user.getEmail().endsWith(".br")) {
-                locale = new Locale("pt", "BR");
-            } else if (user.getEmail().endsWith(".pt")) {
-                locale = new Locale("pt", "PT");
-            }
-            builder.append("<!DOCTYPE html>\n");
+//            builder.append("<!DOCTYPE html>\n");
             builder.append("<html lang=\"");
             builder.append(locale.getLanguage());
             builder.append("\">\n");
@@ -5096,6 +5177,34 @@ public final class ServerHTTP extends Server {
         return builder.toString();
     }
     
+    public static boolean loadStyleCSS(
+            StringBuilder builder
+    ) {
+        File styleFile = getWebFile("style.css");
+        if (styleFile == null) {
+            return false;
+        } else {
+            try {
+                BufferedReader reader = new BufferedReader(new FileReader(styleFile));
+                try {
+                    builder.append("    <style>\n");
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        builder.append("      ");
+                        builder.append(line);
+                        builder.append('\n');
+                    }
+                    builder.append("    </style>\n");
+                } finally {
+                    reader.close();
+                }
+                return true;
+            } catch (Exception ex) {
+                return false;
+            }
+        }
+    }
+    
     private static void buildHead(
             StringBuilder builder,
             String title
@@ -5149,7 +5258,7 @@ public final class ServerHTTP extends Server {
         builder.append("      </div>\n");
     }
     
-    private static void buildMessage(
+    public static void buildMessage(
             StringBuilder builder,
             String message
     ) {
@@ -5161,7 +5270,7 @@ public final class ServerHTTP extends Server {
         builder.append("      </div>\n");
     }
     
-    private static void buildText(
+    public static void buildText(
             StringBuilder builder,
             String message
     ) {
@@ -5176,7 +5285,35 @@ public final class ServerHTTP extends Server {
         builder.append("      </div>\n");
     }
     
-    private static void buildFooter(
+    public static void buildConfirmAction(
+            StringBuilder builder,
+            String name,
+            String url,
+            String description,
+            String publisher,
+            String website
+    ) {
+        builder.append("    <script type=\"application/ld+json\">\n");
+        builder.append("    {\n");
+        builder.append("      \"@context\": \"http://schema.org\",\n");
+        builder.append("      \"@type\": \"EmailMessage\",\n");
+        builder.append("      \"potentialAction\": {\n");
+        builder.append("        \"@type\": \"ViewAction\",\n");
+        builder.append("        \"target\": \"" + url + "\",\n");
+        builder.append("        \"url\": \"" + url + "\",\n");
+        builder.append("        \"name\": \"" + name + "\"\n");
+        builder.append("      },\n");
+        builder.append("      \"description\": \"" + description + "\",\n");
+        builder.append("      \"publisher\": {\n");
+        builder.append("        \"@type\": \"Organization\",\n");
+        builder.append("        \"name\": \"" + publisher + "\",\n");
+        builder.append("        \"url\": \"" + website + "\"\n");
+        builder.append("      }\n");
+        builder.append("    }\n");
+        builder.append("    </script>\n");
+    }
+    
+    public static void buildFooter(
             StringBuilder builder,
             Locale locale
     ) {

@@ -100,6 +100,28 @@ public class Owner implements Serializable, Comparable<Owner> {
     }
     
     /**
+     * Verifica se a expressão é um CPNJ.
+     * @param id a identificação a ser verificada.
+     * @return verdadeiro se a expressão é um CPNJ.
+     */
+    public static boolean isOwnerCNPJ(String id) {
+        return Pattern.matches(
+                "^([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
+                );
+    }
+    
+    /**
+     * Verifica se a expressão é um CPF.
+     * @param id a identificação a ser verificada.
+     * @return verdadeiro se a expressão é um CPF.
+     */
+    public static boolean isOwnerCPF(String id) {
+        return Pattern.matches(
+                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})$", id
+                );
+    }
+    
+    /**
      * Intancia um novo registro de domínio.
      * @param result o resultado do WHOIS.
      * @throws QueryException se houver alguma falha da atualização do registro.
@@ -110,7 +132,9 @@ public class Owner implements Serializable, Comparable<Owner> {
     }
     
     public static String normalizeID(String id) throws ProcessException {
-        if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
+        if (id == null) {
+            return null;
+        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
             return id;
         } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
             return id;

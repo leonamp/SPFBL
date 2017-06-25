@@ -1,30 +1,41 @@
-/* http://meyerweb.com/eric/tools/css/reset/ 
-   v2.0 | 20110126
-   License: none (public domain)
-*/
-
-html, body, div, span, applet, object, iframe,h1, h2, h3, h4, h5, h6, p, blockquote, pre,a, abbr, acronym, address, big, cite, code,del, dfn, em, img, ins, kbd, q, s, samp,small, strike, strong, sub, sup, tt, var,b, u, i, center,dl, dt, dd, ol, ul, li,fieldset, form, label, legend,table, caption, tbody, tfoot, thead, tr, th, td,article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,time, mark, audio, video { margin: 0;	padding: 0;	border: 0;	font-size: 100%;	font: inherit;	vertical-align: baseline;}
-article, aside, details, figcaption, figure,footer, header, hgroup, menu, nav, section {display: block;}
-body {line-height: 1;}
-blockquote, q {quotes: none;}
-blockquote:before, blockquote:after,q:before, q:after {content: '';content: none;}
-table {border-collapse: collapse;border-spacing: 0;}
-
-/*custom css*/
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code,del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var,b, u, i, center,dl, dt, dd, ol, ul, li,fieldset, form, label, legend,table, caption, tbody, tfoot, thead, tr, th, td,article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary, time, mark, audio, video {
+	margin: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+}
+article, aside, details, figcaption, figure,footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+body {
+	line-height: 1;
+}
+blockquote, q {
+	quotes: none;
+}
+blockquote:before, blockquote:after,q:before, q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
 body {
 	font-family:  "Helvetica Neue",Helvetica,Arial,sans-serif
 }
 a:link {
-	text-decoration: none;
-	color: black;
+	text-decoration: underline;
+	color: darkblue;
 }
 a:visited {
-	text-decoration: none;
-	color: black;
+	text-decoration: underline;
+	color: darkblue;
 }
 a:hover {
 	text-decoration: underline;
-	color: black;
+	color: darkblue;
 }
 a:active {
     text-decoration: underline;
@@ -83,6 +94,9 @@ a:active {
 	font-size: 15px;
 	border-radius: 5px;
 }
+#btngo:disabled{
+	background-color: grey;
+}
 #divfooter {
 	background-color: #dbdbdb;
 	font-size: 11px;
@@ -103,12 +117,16 @@ a:active {
 	padding: 5px 5px 0 0;
 }
 li {
-    margin-left: 10%;
-    list-style-type: disc;
+	margin-left: 10%;
+	list-style-type: disc;
 }
 input {
-    margin-left: 5%;
+	margin-left: 5%;
 }
-p {
-    padding: 5px 0;
+ul {
+	margin-left: 5%;
+	margin-right: 5%;
+	padding: 5px 0;
+	font-size: 12px;
+	background-color: #dbdbdb;
 }

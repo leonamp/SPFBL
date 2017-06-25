@@ -650,8 +650,6 @@ public class Generic {
                         return null;
                     } else if (mask.startsWith(".pop#")) {
                         return null;
-                    } else if (mask.startsWith(".ns#")) {
-                        return null;
                     } else if (mask.startsWith(".dns#")) {
                         return null;
                     } else if (mask.startsWith(".out#")) {
