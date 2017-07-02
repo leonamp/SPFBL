@@ -17,7 +17,7 @@ CREATE TABLE `user_query` (
   `messageID` varchar(256) DEFAULT NULL,
   `unsubscribe` varchar(128) DEFAULT NULL,
   `linkMap` text,
-  `malware` varchar(64) DEFAULT NULL,
+  `malware` varchar(128) CHARACTER SET utf8mb4 DEFAULT NULL,
   `adminAdvised` tinyint(1) unsigned NOT NULL DEFAULT '0',
   `senderAdvised` tinyint(1) unsigned NOT NULL DEFAULT '0',
   `recipientAdvised` tinyint(1) unsigned NOT NULL DEFAULT '0',

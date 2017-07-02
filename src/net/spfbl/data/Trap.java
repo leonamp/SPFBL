@@ -244,6 +244,17 @@ public class Trap {
         }
     }
     
+    public static boolean addInexistentSafe(User user, String recipient) {
+        if (user == null) {
+            return false;
+        } else if (!isValid(recipient)) {
+            return false;
+        } else {
+            long time = System.currentTimeMillis() + 31536000000L;
+            return putExact(user.getEmail() + ':' + recipient.toLowerCase(), time);
+        }
+    }
+    
     public static boolean addInexistent(User user, String recipient) throws ProcessException {
         if (user == null) {
             throw new ProcessException("USER INVALID");

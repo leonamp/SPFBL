@@ -1,4 +1,19 @@
-### v2.7.3 ; release 25/07/2017:
+### v2.7.4 ; release 02/07/2017:
+
+NEW) implementação da configuração de idioma por usuário.
+
+UPDT) aprimoramento da gravação de registros de consulta no MySQL.
+
+UPDT) aprimoramento das mensagens de alerta e das páginas HTML.
+
+UPDT) aprimoramento do estilo padrão das páginas HTML.
+
+FIX) descondiderar bloqueio manual para a conta abuse e admin.
+
+FIX) correção da interpretação de identificadores nas consultas SPFBL para remetentes freemail.
+
+
+### v2.7.3 ; release 25/06/2017:
 
 NEW) implementação da gravação das consultas no MySQL, em carater experimental.
 
@@ -11,7 +26,7 @@ FIX) correção na consulta do owner-id do WHOIS do registro.br.
 UPDT) aprimoramento da usabilidade páginas de interação por HTTP.
 
 
-### v2.7.2 ; release 21/07/2017:
+### v2.7.2 ; release 21/06/2017:
 
 NEW) implementação de estilo HTML para apresentação personalizada das páginas interativas.
 

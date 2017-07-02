@@ -427,189 +427,7 @@ public class White {
         }
     }
     
-//    /**
-//     * Representa o conjunto de blocos IP liberados.
-//     */
-//    private static class CIDR {
-//        
-//        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
-//        
-//        public static synchronized boolean isEmpty() {
-//            return MAP.isEmpty();
-//        }
-//        
-//        public static synchronized TreeSet<String> clear() {
-//            TreeSet<String> set = getAll();
-//            MAP.clear();
-//            return set;
-//        }
-//        
-//        public static synchronized TreeSet<String> getAll() {
-//            TreeSet<String> set = new TreeSet<String>();
-//            for (String client : MAP.keySet()) {
-//                for (String cidr : MAP.get(client)) {
-//                    if (cidr.contains(":")) {
-//                        cidr = SubnetIPv6.normalizeCIDRv6(cidr);
-//                    } else {
-//                        cidr = SubnetIPv4.normalizeCIDRv4(cidr);
-//                    }
-//                    if (client == null) {
-//                        set.add("CIDR=" + cidr);
-//                    } else {
-//                        set.add(client + ":CIDR=" + cidr);
-//                    }
-//                }
-//            }
-//            return set;
-//        }
-//        
-//        private static synchronized boolean dropExact(String token) {
-//            int index = token.indexOf('=');
-//            String cidr = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            TreeSet<String> set = MAP.get(client);
-//            if (set == null) {
-//                return false;
-//            } else {
-//                String key = Subnet.expandCIDR(cidr);
-//                boolean removed = set.remove(key);
-//                if (set.isEmpty()) {
-//                    MAP.remove(client);
-//                }
-//                return removed;
-//            }
-//        }
-//        
-//        private static synchronized boolean addExact(String token) throws ProcessException {
-//            int index = token.indexOf('=');
-//            String cidr = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            TreeSet<String> set = MAP.get(client);
-//            if (set == null) {
-//                set = new TreeSet<String>();
-//                MAP.put(client, set);
-//            }
-//            String key = Subnet.expandCIDR(cidr);
-//            String first = Subnet.getFirstIP(cidr);
-//            String last = Subnet.getLastIP(cidr);
-//            String floorLower = set.lower(key);
-//            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
-//            if (floorLower == null) {
-//                floorLower = null;
-//            } else if (floorLower.contains(".")) {
-//                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
-//            } else if (floorLower.contains(":")) {
-//                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
-//            } else {
-//                floorLower = null;
-//            }
-//            if (floorLast == null) {
-//                floorLast = null;
-//            } else if (floorLast.contains(".")) {
-//                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
-//            } else if (floorLast.contains(":")) {
-//                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
-//            } else {
-//                floorLast = null;
-//            }
-//            if (cidr.equals(floorLast)) {
-//                return false;
-//            } else if (Subnet.containsIP(floorLast, first)) {
-//                throw new ProcessException("INTERSECTS " + floorLast);
-//            } else if (Subnet.containsIP(floorLast, last)) {
-//                throw new ProcessException("INTERSECTS " + floorLast);
-//            } else if (Subnet.containsIP(floorLower, first)) {
-//                throw new ProcessException("INTERSECTS " + floorLower);
-//            } else if (Subnet.containsIP(floorLower, last)) {
-//                throw new ProcessException("INTERSECTS " + floorLower);
-//            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
-//                throw new ProcessException("INTERSECTS " + floorLast);
-//            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
-//                throw new ProcessException("INTERSECTS " + floorLast);
-//            } else {
-//                return set.add(key);
-//            }
-//        }
-//        
-//        private static synchronized TreeSet<String> getClientSet(String client) {
-//            return MAP.get(client);
-//        }
-//        
-//        public static boolean contains(String client, String cidr) {
-//            if (cidr == null) {
-//                return false;
-//            } else {
-//                String key = Subnet.expandCIDR(cidr);
-//                TreeSet<String> cidrSet = getClientSet(client);
-//                if (cidrSet == null) {
-//                    return false;
-//                } else {
-//                    return cidrSet.contains(key);
-//                }
-//            }
-//        }
-//        
-//        private static String getFloor(String client, String ip) {
-//            TreeSet<String> cidrSet = getClientSet(client);
-//            if (cidrSet == null || cidrSet.isEmpty()) {
-//                return null;
-//            } else if (SubnetIPv4.isValidIPv4(ip)) {
-//                String key = SubnetIPv4.expandIPv4(ip);
-//                String cidr = cidrSet.floor(key + "/9");
-//                if (cidr == null) {
-//                    return null;
-//                } else if (cidr.contains(".")) {
-//                    return SubnetIPv4.normalizeCIDRv4(cidr);
-//                } else {
-//                    return null;
-//                }
-//            } else if (SubnetIPv6.isValidIPv6(ip)) {
-//                String key = SubnetIPv6.expandIPv6(ip);
-//                String cidr = cidrSet.floor(key + "/9");
-//                if (cidr == null) {
-//                    return null;
-//                } else if (cidr.contains(":")) {
-//                    return SubnetIPv6.normalizeCIDRv6(cidr);
-//                } else {
-//                    return null;
-//                }
-//            } else {
-//                return null;
-//            }
-//        }
-//
-//        public static String get(String client, String ip) {
-//            String result;
-//            String cidr = getFloor(null, ip);
-//            if (Subnet.containsIP(cidr, ip)) {
-//                result = "CIDR=" + cidr;
-//            } else if (client == null) {
-//                result = null;
-//            } else if ((cidr = getFloor(client, ip)) == null) {
-//                result = null;
-//            } else if (Subnet.containsIP(cidr, ip)) {
-//                result = client + ":CIDR=" + cidr;
-//            } else {
-//                result = null;
-//            }
-//            return result;
-//        }
-//    }
-
-    
-/**
+    /**
      * Representa o conjunto de blocos IP liberados.
      */
     private static class CIDR {
@@ -1364,11 +1182,11 @@ public class White {
             return token;
         } else if (token.startsWith("@>")) {
             return token;
+        } else if (token.contains(";")) {
+            return token;
         } else if (token.contains(">")) {
             int index = token.indexOf('>');
             return token.substring(0, index) + ";PASS" + token.substring(index);
-        } else if (token.contains(";")) {
-            return token;
         } else {
             return token + ";PASS";
         }
@@ -1377,7 +1195,7 @@ public class White {
     public static boolean add(
             String sender) throws ProcessException {
         if ((sender = normalizeTokenWhite(sender)) == null) {
-            throw new ProcessException("ERROR: SENDER INVALID");
+            throw new ProcessException("SENDER INVALID");
         } else if (addExact(sender)) {
             return true;
         } else {

@@ -16,6 +16,7 @@
  */
 package net.spfbl.spf;
 
+import com.sun.mail.util.MailConnectException;
 import net.spfbl.core.Core;
 import net.spfbl.core.NormalDistribution;
 import net.spfbl.whois.Domain;
@@ -50,6 +51,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.mail.Message;
+import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
@@ -2004,6 +2006,91 @@ public final class SPF implements Serializable {
     
     private static String getHoldStatus(
             Client client,
+            long time,
+            User.Query query
+    ) {
+        if (query.isWhiteSender()) {
+            SPF.setHam(time, query.getTokenSet());
+            query.setResult("WHITE");
+            return "WHITE";
+        } else if (query.isBlockSender()) {
+            SPF.setSpam(time, query.getTokenSet());
+            return "REMOVE";
+        } else if (query.isInexistent(client)) {
+            query.setResult("INEXISTENT");
+            return "REMOVE";
+        } else if (User.isExpiredHOLD(time)) {
+            Server.logTrace("query expired.");
+            if (query.isRecipientAdvised()) {
+                query.blockSender(time);
+                query.setResult("BLOCK");
+            } else if (query.isSenderAdvised() && query.isSenderRed()) {
+                query.blockSender(time);
+                query.setResult("BLOCK");
+            } else {
+                query.setResult("REJECT");
+            }
+            return "REMOVE";
+        } else if (query.isAnyLinkBLOCK()) {
+            Action action = client == null ? Action.REJECT : client.getActionBLOCK();
+            if (action == Action.FLAG) {
+                query.setResult("FLAG");
+                return "FLAG";
+            } else if (action == Action.HOLD) {
+                query.setResult("HOLD");
+                return "HOLD";
+            } else {
+                SPF.setSpam(time, query.getTokenSet());
+                query.blockSender(time);
+                query.setResult("REJECT");
+                return "REMOVE";
+            }
+        } else if (query.isAnyLinkRED()) {
+            Action action = client == null ? Action.FLAG : client.getActionRED();
+            if (action == Action.FLAG) {
+                query.setResult("FLAG");
+                return "FLAG";
+            } else if (action == Action.HOLD) {
+                query.setResult("HOLD");
+                return "HOLD";
+            } else {
+                SPF.setSpam(time, query.getTokenSet());
+                query.setResult("REJECT");
+                return "REMOVE";
+            }
+        } else if (query.hasTokenRed() || query.hasClusterRed()) {
+            return "HOLD";
+        } else if (query.hasYellow()) {
+            long lifeTimeMin = (System.currentTimeMillis() - time) / 1000 / 60;
+            if (lifeTimeMin < Core.getDeferTimeYELLOW()) {
+                return "HOLD";
+            } else {
+                SPF.setHam(time, query.getTokenSet());
+                query.setResult("ACCEPT");
+                return "ACCEPT";
+            }
+        } else if (query.isSoftfail()) {
+            long lifeTimeMin = (System.currentTimeMillis() - time) / 1000 / 60;
+            if (lifeTimeMin < Core.getDeferTimeSOFTFAIL()) {
+                return "HOLD";
+            } else {
+                SPF.setHam(time, query.getTokenSet());
+                query.setResult("ACCEPT");
+                return "ACCEPT";
+            }
+        } else if (query.isGreen()) {
+            SPF.setHam(time, query.getTokenSet());
+            query.setResult("ACCEPT");
+            return "ACCEPT";
+        } else if (query.isResult("HOLD")) {
+            return "HOLD";
+        } else {
+            return "REMOVE";
+        }
+    }
+    
+    private static String getHoldStatus(
+            Client client,
             String ticket,
             LinkedList<User> userList
     ) {
@@ -2046,83 +2133,10 @@ public final class SPF implements Serializable {
                             User.Query userQuery = user.getQuery(date);
                             if (userQuery == null) {
                                 return "REMOVE";
-                            } else if (userQuery.isWhiteSender()) {
-                                SPF.setHam(date, userQuery.getTokenSet());
-                                userQuery.setResult("WHITE");
-                                return "WHITE";
-                            } else if (userQuery.isBlockSender()) {
-                                SPF.setSpam(date, userQuery.getTokenSet());
-                                return "REMOVE";
-                            } else if (userQuery.isInexistent(client)) {
-                                userQuery.setResult("INEXISTENT");
-                                return "REMOVE";
-                            } else if (User.isExpiredHOLD(date)) {
-                                Server.logTrace("query expired.");
-                                if (userQuery.isRecipientAdvised()) {
-                                    userQuery.blockSender(date);
-                                    userQuery.setResult("BLOCK");
-                                } else if (userQuery.isSenderAdvised() && userQuery.isSenderRed()) {
-                                    userQuery.blockSender(date);
-                                    userQuery.setResult("BLOCK");
-                                } else {
-                                    userQuery.setResult("REJECT");
-                                }
-                                return "REMOVE";
-                            } else if (userQuery.isAnyLinkBLOCK()) {
-                                Action action = client == null ? Action.REJECT : client.getActionBLOCK();
-                                if (action == Action.FLAG) {
-                                    userQuery.setResult("FLAG");
-                                    return "FLAG";
-                                } else if (action == Action.HOLD) {
-                                    userQuery.setResult("HOLD");
-                                    return "HOLD";
-                                } else {
-                                    SPF.setSpam(date, userQuery.getTokenSet());
-                                    userQuery.blockSender(date);
-                                    userQuery.setResult("REJECT");
-                                    return "REMOVE";
-                                }
-                            } else if (userQuery.isAnyLinkRED()) {
-                                Action action = client == null ? Action.FLAG : client.getActionRED();
-                                if (action == Action.FLAG) {
-                                    userQuery.setResult("FLAG");
-                                    return "FLAG";
-                                } else if (action == Action.HOLD) {
-                                    userQuery.setResult("HOLD");
-                                    return "HOLD";
-                                } else {
-                                    SPF.setSpam(date, userQuery.getTokenSet());
-                                    userQuery.setResult("REJECT");
-                                    return "REMOVE";
-                                }
-                            } else if (userQuery.hasTokenRed() || userQuery.hasClusterRed()) {
-                                return "HOLD";
-                            } else if (userQuery.hasYellow()) {
-                                long lifeTimeMin = (System.currentTimeMillis() - date) / 1000 / 60;
-                                if (lifeTimeMin < Core.getDeferTimeYELLOW()) {
-                                    return "HOLD";
-                                } else {
-                                    SPF.setHam(date, userQuery.getTokenSet());
-                                    userQuery.setResult("ACCEPT");
-                                    return "ACCEPT";
-                                }
-                            } else if (userQuery.isSoftfail()) {
-                                long lifeTimeMin = (System.currentTimeMillis() - date) / 1000 / 60;
-                                if (lifeTimeMin < Core.getDeferTimeSOFTFAIL()) {
-                                    return "HOLD";
-                                } else {
-                                    SPF.setHam(date, userQuery.getTokenSet());
-                                    userQuery.setResult("ACCEPT");
-                                    return "ACCEPT";
-                                }
-                            } else if (userQuery.isGreen()) {
-                                SPF.setHam(date, userQuery.getTokenSet());
-                                userQuery.setResult("ACCEPT");
-                                return "ACCEPT";
-                            } else if (userQuery.isResult("HOLD")) {
-                                return "HOLD";
                             } else {
-                                return "REMOVE";
+                                String result = getHoldStatus(client, date, userQuery);
+                                User.storeDB(date, userQuery);
+                                return result;
                             }
                         }
                     } else {
@@ -3678,8 +3692,23 @@ public final class SPF implements Serializable {
                     } else if (Domain.isValidEmail(sender)) {
                         // Listar apenas o remetente se o
                         // hostname for um provedor de e-mail.
+                        String userEmail = null;
+                        String recipientEmail = null;
+                        for (String token : tokenSet) {
+                            if (token.endsWith(":")) {
+                                userEmail = token;
+                            } else if (token.startsWith(">")) {
+                                recipientEmail = token;
+                            }
+                        }
                         tokenSet.clear();
                         tokenSet.add(sender);
+                        if (userEmail != null) {
+                            tokenSet.add(userEmail);
+                        }
+                        if (recipientEmail != null) {
+                            tokenSet.add(recipientEmail);
+                        }
                         origem = sender;
                     } else {
                         origem = sender;
@@ -4523,6 +4552,7 @@ public final class SPF implements Serializable {
                                 } else if (action == Action.REJECT) {
                                     queryTicket.setResult("REJECT");
                                 }
+                                User.storeDB(dateTicket, queryTicket);
                             }
                         }
                     }
@@ -4568,8 +4598,8 @@ public final class SPF implements Serializable {
                                 userList.add(user);
                                 long dateTicket = getDateTicket(ticket);
                                 User.Query userQuery = user.getQuery(dateTicket);
-                                if (userQuery != null) {
-                                    userQuery.setMalware(nameBuilder.toString());
+                                if (userQuery != null && userQuery.setMalware(nameBuilder.toString())) {
+                                    User.storeDB(dateTicket, userQuery);
                                 }
                             }
                             String recipient;
@@ -4690,6 +4720,7 @@ public final class SPF implements Serializable {
                                             unblockURLSet.add(url);
                                         }
                                     }
+                                    User.storeDB(dateTicket, queryTicket);
                                 }
                             }
                         }
@@ -4970,8 +5001,23 @@ public final class SPF implements Serializable {
                                 } else if (Domain.isValidEmail(sender)) {
                                     // Listar apenas o remetente se o
                                     // hostname for um provedor de e-mail.
+                                    String userEmail = null;
+                                    String recipientEmail = null;
+                                    for (String token : tokenSet) {
+                                        if (token.endsWith(":")) {
+                                            userEmail = token;
+                                        } else if (token.startsWith(">")) {
+                                            recipientEmail = token;
+                                        }
+                                    }
                                     tokenSet.clear();
                                     tokenSet.add(sender);
+                                    if (userEmail != null) {
+                                        tokenSet.add(userEmail);
+                                    }
+                                    if (recipientEmail != null) {
+                                        tokenSet.add(recipientEmail);
+                                    }
                                     origem = sender;
                                 } else {
                                     origem = sender;
@@ -5509,7 +5555,7 @@ public final class SPF implements Serializable {
             String destinatario
             ) {
         if (
-                Core.hasSMTP()
+                Core.hasOutputSMTP()
                 && Core.hasAdminEmail()
                 && Domain.isValidEmail(remetente)
                 && Domain.isValidEmail(destinatario)
@@ -5518,12 +5564,7 @@ public final class SPF implements Serializable {
                 ) {
             try {
                 Server.logDebug("sending liberation by e-mail.");
-                Locale locale = Locale.UK;
-                if (remetente.endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (remetente.endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                }
+                Locale locale = Core.getDefaultLocale(remetente);
                 InternetAddress[] recipients = InternetAddress.parse(remetente);
                 Properties props = System.getProperties();
                 Session session = Session.getDefaultInstance(props);
@@ -5572,21 +5613,26 @@ public final class SPF implements Serializable {
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making QRcode part.
+                // Making logo part.
                 MimeBodyPart logoPart = new MimeBodyPart();
                 File logoFile = ServerHTTP.getWebFile("logo.png");
                 logoPart.attachFile(logoFile);
                 logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
                 logoPart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
-                MimeMultipart content = new MimeMultipart();
+                MimeMultipart content = new MimeMultipart("related");
                 content.addBodyPart(htmlPart);
                 content.addBodyPart(logoPart);
                 // Set multiplart content.
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message);
+                return Core.sendMessage(message, 5000);
+            } catch (MailConnectException ex) {
+                return false;
+            } catch (SendFailedException ex) {
+                return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;

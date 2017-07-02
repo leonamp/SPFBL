@@ -36,6 +36,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.spfbl.core.Client;
+import net.spfbl.core.Core;
 import net.spfbl.core.Peer;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
@@ -2233,9 +2234,6 @@ public class Block {
                 String hostname = token.replace("#", "0");
                 hostname = hostname.replace(".H.", ".0a.");
                 return Block.containsDomain(hostname, false);
-            } else if (Domain.isHostname(token)) {
-                String hostname = Domain.normalizeHostname(token, true);
-                return Block.containsDomain(hostname, false);
             } else if (Subnet.isValidCIDR(token)) {
                 String cidr = Subnet.normalizeCIDR(token);
                 String firstIP = Subnet.getFirstIP(cidr);
@@ -2250,6 +2248,9 @@ public class Block {
             } else if (Owner.isOwnerID(token)) {
                 String ownerID = Owner.normalizeID(token);
                 return Block.containsExact("WHOIS/ownerid=" + ownerID);
+            } else if (Domain.isHostname(token)) {
+                String hostname = Domain.normalizeHostname(token, true);
+                return Block.containsDomain(hostname, false);
             } else {
                 return false;
             }
@@ -2328,9 +2329,10 @@ public class Block {
         if (recipient != null && recipient.contains("@")) {
             int index = recipient.indexOf('@');
             recipient = recipient.toLowerCase();
-            if (recipient.startsWith("postmaster@") && !recipient.equals(userEmail)) {
-                // Não pode haver bloqueio para o postmaster,
-                // exceto se o bloqueio for especifico do postmaster.
+            if (Core.isAdminEmail(recipient) || Core.isAbuseEmail(recipient) ||
+                    (recipient.startsWith("postmaster@") && !recipient.equals(userEmail))) {
+                // Não pode haver bloqueio para o postmaster, admin e abuse,
+                // exceto se o bloqueio for especifico destes.
                 String mx = Domain.extractHost(sender, true);
                 String token = (Provider.containsExact(mx) ? sender : mx) + ">" + recipient;
                 if (Block.containsExact(userEmail, token)) {

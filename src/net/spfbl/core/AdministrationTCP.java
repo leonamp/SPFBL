@@ -322,26 +322,56 @@ public final class AdministrationTCP extends Server {
                             builder.append('\n');
                             result = builder.toString();
                         }
-                    } else if (Subnet.isValidCIDR(token)) {
-                        String cidr = Subnet.normalizeCIDR(token);
-                        String name;
-                        if (tokenizer.hasMoreTokens()) {
-                            name = tokenizer.nextToken();
+                    } else if (SubnetIPv4.isValidCIDRv4(token)) {
+                        String cidr = SubnetIPv4.normalizeCIDRv4(token);
+                        short mask = SubnetIPv4.getMask(cidr);
+                        if (mask < 18) {
+                            result = "TOO BIG\n";
                         } else {
-                            name = cidr.replace(':', '.');
-                            name = name.replace('/', '-');
-                        }
-                        String last = Subnet.getLastIP(cidr);
-                        String ip = Subnet.getFirstIP(cidr);
-                        Analise analise = Analise.get(name, true);
-                        analise.add(ip);
-                        if (!ip.equals(last)) {
-                            while (!last.equals(ip = Subnet.getNextIP(ip))) {
-                                analise.add(ip);
+                            String name;
+                            if (tokenizer.hasMoreTokens()) {
+                                name = tokenizer.nextToken();
+                            } else {
+                                name = cidr.replace(':', '.');
+                                name = name.replace('/', '-');
                             }
-                            analise.add(last);
+                            String last = SubnetIPv4.getLastIPv4(cidr);
+                            String ip = SubnetIPv4.getFirstIPv4(cidr);
+                            Analise analise = Analise.get(name, true);
+                            analise.add(ip);
+                            if (!ip.equals(last)) {
+                                while (!last.equals(ip = SubnetIPv4.getNextIPv4(ip))) {
+                                    analise.add(ip);
+                                }
+                                analise.add(last);
+                            }
+                            result = "QUEUED\n";
                         }
-                        result = "QUEUED\n";
+                    } else if (SubnetIPv6.isValidCIDRv6(token)) {
+                        String cidr = SubnetIPv6.normalizeCIDRv6(token);
+                        short mask = SubnetIPv4.getMask(cidr);
+                        if (mask < 114) {
+                            result = "TOO BIG\n";
+                        } else {
+                            String name;
+                            if (tokenizer.hasMoreTokens()) {
+                                name = tokenizer.nextToken();
+                            } else {
+                                name = cidr.replace(':', '.');
+                                name = name.replace('/', '-');
+                            }
+                            String last = SubnetIPv6.getLastIPv6(cidr);
+                            String ip = SubnetIPv6.getFirstIPv6(cidr);
+                            Analise analise = Analise.get(name, true);
+                            analise.add(ip);
+                            if (!ip.equals(last)) {
+                                while (!last.equals(ip = SubnetIPv6.getNextIPv6(ip))) {
+                                    analise.add(ip);
+                                }
+                                analise.add(last);
+                            }
+                            result = "QUEUED\n";
+                        }
                     } else if (Domain.isHostname(token)) {
                         String hostname =  Domain.normalizeHostname(token, false);
                         if (tokenizer.hasMoreTokens()) {
@@ -2035,6 +2065,13 @@ public final class AdministrationTCP extends Server {
                                     } else {
                                         result = "INVALID COMMAND\n";
                                     }
+                                } else if (token.equals("LOCALE") && tokenizer.hasMoreElements()) {
+                                    token = tokenizer.nextToken();
+                                    if (user.setLocale(token)) {
+                                        result = "CHANGED TO " + user.getLocale() + "\n";
+                                    } else {
+                                        result = "NOT CHANGED\n";
+                                    }
                                 } else if (token.equals("LOCAL") && tokenizer.hasMoreElements()) {
                                     token = tokenizer.nextToken();
                                     if (token.equals("TRUE")) {
@@ -2055,7 +2092,7 @@ public final class AdministrationTCP extends Server {
                         } else {
                             result = "INVALID USER\n";
                         }
-                    } else if (token.equals("TOTP") && tokenizer.hasMoreElements()) {
+                    } else if (token.equals("SEND") && tokenizer.hasMoreElements()) {
                         token = tokenizer.nextToken();
                         if (Domain.isValidEmail(token)) {
                             User user = User.get(token);
@@ -2063,7 +2100,7 @@ public final class AdministrationTCP extends Server {
                                 result = "NOT FOUND\n";
                             } else if (tokenizer.hasMoreElements()) {
                                 token = tokenizer.nextToken();
-                                if (token.equals("SEND") && !tokenizer.hasMoreElements()) {
+                                if (token.equals("TOTP") && !tokenizer.hasMoreElements()) {
                                     if (user.sendTOTP()) {
                                         result = "TOTP SENT\n";
                                     } else {
@@ -2423,22 +2460,22 @@ public final class AdministrationTCP extends Server {
         }
     }
     
-    private boolean isTimeout() {
-        if (time == 0) {
-            return false;
-        } else if (continueListenning()) {
-            int interval = (int) (System.currentTimeMillis() - time) / 1000;
-            return interval > 600;
-        } else {
-            return false;
-        }
-    }
+//    private boolean isTimeout() {
+//        if (time == 0) {
+//            return false;
+//        } else if (continueListenning()) {
+//            int interval = (int) (System.currentTimeMillis() - time) / 1000;
+//            return interval > 600;
+//        } else {
+//            return false;
+//        }
+//    }
     
-    public void interruptTimeout() {
-        if (isTimeout()) {
-            interrupt();
-        }
-    }
+//    public void interruptTimeout() {
+//        if (isTimeout()) {
+//            interrupt();
+//        }
+//    }
     
     @Override
     protected void close() throws Exception {

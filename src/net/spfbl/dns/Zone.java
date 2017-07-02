@@ -20,7 +20,6 @@ package net.spfbl.dns;
 import java.io.Serializable;
 import java.util.Locale;
 import net.spfbl.core.Core;
-import net.spfbl.core.ProcessException;
 import net.spfbl.dnsbl.ServerDNSBL;
 import net.spfbl.whois.Domain;
 

@@ -732,18 +732,40 @@ public class Analise implements Serializable, Comparable<Analise> {
                 token = Domain.normalizeHostname(token, true);
             } else if (ANALISE_MX && token.startsWith("@") && Domain.isHostname(token.substring(1))) {
                 token = "@" + Domain.isHostname(token.substring(1));
-            } else if (ANALISE_IP && Subnet.isValidCIDR(token)) {
-                String cidr = Subnet.normalizeCIDR(token);
-                String last = Subnet.getLastIP(cidr);
-                String ip = Subnet.getFirstIP(cidr);
-                processToday(ip);
-                if (!ip.equals(last)) {
-                    while (!last.equals(ip = Subnet.getNextIP(ip))) {
-                        processToday(ip);
+            } else if (ANALISE_IP && SubnetIPv4.isValidCIDRv4(token)) {
+                String cidr = SubnetIPv4.normalizeCIDRv4(token);
+                short mask = SubnetIPv4.getMask(cidr);
+                if (mask < 18) {
+                    return false;
+                } else {
+                    String last = SubnetIPv4.getLastIPv4(cidr);
+                    String ip = SubnetIPv4.getFirstIPv4(cidr);
+                    processToday(ip);
+                    if (!ip.equals(last)) {
+                        while (!last.equals(ip = SubnetIPv4.getNextIPv4(ip))) {
+                            processToday(ip);
+                        }
+                        processToday(last);
                     }
-                    processToday(last);
+                    return false;
                 }
-                return false;
+            } else if (ANALISE_IP && SubnetIPv6.isValidCIDRv6(token)) {
+                String cidr = SubnetIPv6.normalizeCIDRv6(token);
+                short mask = SubnetIPv6.getMask(cidr);
+                if (mask < 114) {
+                    return false;
+                } else {
+                    String last = SubnetIPv6.getLastIPv6(cidr);
+                    String ip = SubnetIPv6.getFirstIPv6(cidr);
+                    processToday(ip);
+                    if (!ip.equals(last)) {
+                        while (!last.equals(ip = SubnetIPv6.getNextIPv6(ip))) {
+                            processToday(ip);
+                        }
+                        processToday(last);
+                    }
+                    return false;
+                }
             } else {
                 return false;
             }
@@ -880,6 +902,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             props.put("mail.smtp.starttls.enable", "false");
             props.put("mail.smtp.auth", "false");
             props.put("mail.smtp.timeout", Integer.toString(timeout));
+            props.put("mail.smtp.connectiontimeout", "3000");
             Session session = Session.getInstance(props, null);
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {

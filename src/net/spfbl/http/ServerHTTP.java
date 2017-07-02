@@ -16,6 +16,8 @@
  */
 package net.spfbl.http;
 
+import com.sun.mail.smtp.SMTPAddressFailedException;
+import com.sun.mail.util.MailConnectException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -33,6 +35,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -47,6 +50,8 @@ import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
 import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
@@ -479,7 +484,7 @@ public final class ServerHTTP extends Server {
                 Locale locale = getLocale(exchange);
                 User user = getUser(exchange);
                 Client client = getClient(exchange);
-                File file = null;
+                File file;
                 String clientEmail = client == null ? null : client.getEmail();
                 String remoteAddress = getRemoteAddress(exchange);
                 String origin = getOrigin(remoteAddress, client, user);
@@ -497,14 +502,10 @@ public final class ServerHTTP extends Server {
                         locale = Locale.US;
                     }
                     command = command.substring(langIndex);
-                } else if (user != null && user.getEmail().endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (user != null && user.getEmail().endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
-                } else if (clientEmail != null && clientEmail.endsWith(".br")) {
-                    locale = new Locale("pt", "BR");
-                } else if (clientEmail != null && clientEmail.endsWith(".pt")) {
-                    locale = new Locale("pt", "PT");
+                } else if (user != null) {
+                    locale = user.getLocale();
+                } else if (clientEmail != null) {
+                    locale = Core.getDefaultLocale(clientEmail);
                 }
                 int code;
                 String result;
@@ -779,14 +780,6 @@ public final class ServerHTTP extends Server {
                                     }
                                 }
                                 if (valid) {
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                + "devido a um erro interno.";
-                                    } else {
-                                        message = "Unblocking key can not be sent "
-                                                + "due to an internal error.";
-                                    }
                                     TreeSet<String> postmaterSet = getPostmaterSet(ip);
                                     clientEmail = client == null || client.hasPermission(NONE) ? null : client.getEmail();
                                     if (clientEmail != null) {
@@ -797,15 +790,87 @@ public final class ServerHTTP extends Server {
                                     if (abuseEmail != null) {
                                         postmaterSet.add(abuseEmail);
                                     }
+                                    String message;
+                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                        message = "Chave de desbloqueio não pode ser enviada "
+                                                + "devido a um erro interno.";
+                                    } else {
+                                        message = "Unblocking key can not be sent "
+                                                + "due to an internal error.";
+                                    }
                                     TreeSet<String> emailSet = (TreeSet<String>) parameterMap.get("identifier");
                                     for (String email : emailSet) {
                                         if (postmaterSet.contains(email)) {
                                             String url = Core.getUnblockURL(email, ip);
-                                            if (enviarDesbloqueioDNSBL(locale, url, ip, email)) {
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Chave de desbloqueio enviada com sucesso.";
+                                            try {
+                                                if (enviarDesbloqueioDNSBL(locale, url, ip, email)) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio enviada com sucesso.";
+                                                    } else {
+                                                        message = "Unblocking key successfully sent.";
+                                                    }
+                                                }
+                                            } catch (SendFailedException ex) {
+                                                if (ex.getCause() instanceof SMTPAddressFailedException) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio não pode ser enviada "
+                                                                + "porque o endereço " + email + " não existe.";
+                                                    } else {
+                                                        message = "Unlock key can not be sent because the "
+                                                                + "" + email + " address does not exist.";
+                                                    }
+                                                } else if (ex.getCause() == null) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio não pode ser enviada "
+                                                                + "devido a recusa do servidor de destino.";
+                                                    } else {
+                                                        message = "Unlock key can not be sent due to "
+                                                                + "denial of destination server.";
+                                                    }
                                                 } else {
-                                                    message = "Unblocking key successfully sent.";
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio não pode ser enviada "
+                                                                + "devido a recusa do servidor de destino:\n"
+                                                                + ex.getCause().getMessage();
+                                                    } else {
+                                                        message = "Unlock key can not be sent due to "
+                                                                + "denial of destination server:\n"
+                                                                + ex.getCause().getMessage();
+                                                    }
+                                                }
+                                            } catch (MailConnectException ex) {
+                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                    message = "Chave de desbloqueio não pode ser enviada "
+                                                            + "pois o MX de destino se encontra indisponível.";
+                                                } else {
+                                                    message = "Unlock key can not be sent because "
+                                                            + "the destination MX is unavailable.";
+                                                }
+                                            } catch (MessagingException ex) {
+                                                if (ex.getCause() instanceof SocketTimeoutException) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio não pode ser enviada "
+                                                                + "pois o MX de destino demorou demais para "
+                                                                + "iniciar a transação SMTP.\n"
+                                                                + "Para que o envio da chave seja possível, "
+                                                                + "o inicio da transação SMTP não "
+                                                                + "pode levar mais que 20 segundos.";
+                                                    } else {
+                                                        message = "Unlock key can not be sent because the "
+                                                                + "destination MX has taken too long to "
+                                                                + "initiate the SMTP transaction.\n"
+                                                                + "For the key delivery is possible, "
+                                                                + "the beginning of the SMTP transaction "
+                                                                + "can not take more than 20 seconds.";
+                                                    }
+                                                } else {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "Chave de desbloqueio não pode ser enviada pois "
+                                                                + "o MX de destino está recusando nossa mensagem.";
+                                                    } else {
+                                                        message = "Unlock key can not be sent because "
+                                                                + "the destination MX is declining our message.";
+                                                    }
                                                 }
                                             }
                                         }
@@ -1068,26 +1133,75 @@ public final class ServerHTTP extends Server {
                                                 String white = origem + ">" + recipient;
                                                 String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
                                                 String message;
-                                                if (enviarDesbloqueio(url, sender, recipient, locale)) {
-                                                    white = White.normalizeTokenWhite(white);
-                                                    Block.addExact(clientTicket + white);
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "A solicitação de desbloqueio foi enviada para o destinatário '" + recipient + "'.\n"
-                                                                + "A fim de não prejudicar sua reputação, aguarde pelo desbloqueio sem enviar novas mensagens."
-                                                                + (NoReply.contains(sender, true) ? "" : "\nVocê receberá uma mensagem deste sistema assim que o destinatário autorizar o recebimento.");
+                                                try {
+                                                    if (enviarDesbloqueio(url, sender, recipient, locale)) {
+                                                        white = White.normalizeTokenWhite(white);
+                                                        Block.addExact(clientTicket + white);
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "A solicitação de desbloqueio foi enviada "
+                                                                    + "para o destinatário " + recipient + ".\n"
+                                                                    + "A fim de não prejudicar sua reputação, "
+                                                                    + "aguarde pelo desbloqueio sem enviar novas mensagens."
+                                                                    + (NoReply.contains(sender, true) ? "" : "\n"
+                                                                    + "Você receberá uma mensagem deste sistema assim "
+                                                                    + "que o destinatário autorizar o recebimento.");
+                                                        } else {
+                                                            message = "The release request was sent to the "
+                                                                    + "recipient " + recipient + ".\n"
+                                                                    + "In order not to damage your reputation, "
+                                                                    + "wait for the release without sending new messages."
+                                                                    + (NoReply.contains(sender, true) ? "" : "\n"
+                                                                    + "You will receive a message from this system "
+                                                                    + "when the recipient authorize receipt.");
+                                                        }
                                                     } else {
-                                                        message = "The release request was sent to the recipient '" + recipient + "'.\n"
-                                                                + "In order not to damage your reputation, wait for the release without sending new messages."
-                                                                + (NoReply.contains(sender, true) ? "" : "\nYou will receive a message from this system when the recipient authorize receipt.");
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "Não foi possível enviar a solicitação de "
+                                                                    + "desbloqueio para o destinatário "
+                                                                    + "" + recipient + " devido a problemas técnicos.";
+                                                        } else {
+                                                            message = "Could not send the request release to the recipient "
+                                                                    + "" + recipient + " due to technical problems.";
+                                                        }
                                                     }
-                                                } else {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Não foi possível enviar a solicitação de "
-                                                                + "desbloqueio para o destinatário "
-                                                                + "'" + recipient + "' devido a problemas técnicos.";
+                                                } catch (SendFailedException ex) {
+                                                    if (ex.getCause() instanceof SMTPAddressFailedException) {
+                                                        if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
+                                                            Trap.addInexistentSafe(user, recipient);
+                                                        }
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "Chave de desbloqueio não pode ser enviada "
+                                                                    + "porque o endereço " + recipient + " não existe.";
+                                                        } else {
+                                                            message = "Unlock key can not be sent because the "
+                                                                    + "" + recipient + " address does not exist.";
+                                                        }
                                                     } else {
-                                                        message = "Could not send the request release to the recipient "
-                                                                + "'" + recipient + "' due to technical problems.";
+                                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                            message = "A solicitação de desbloqueio não pode ser enviada "
+                                                                    + "devido a recusa do servidor de destino:\n"
+                                                                    + ex.getCause().getMessage();
+                                                        } else {
+                                                            message = "The release request can not be sent due to "
+                                                                    + "denial of destination server:\n"
+                                                                    + ex.getCause().getMessage();
+                                                        }
+                                                    }
+                                                } catch (MailConnectException ex) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A solicitação de desbloqueio não pode ser enviada "
+                                                                + "pois o MX de destino se encontra indisponível.";
+                                                    } else {
+                                                        message = "The release request can not be sent because "
+                                                                + "the destination MX is unavailable.";
+                                                    }
+                                                } catch (MessagingException ex) {
+                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                                        message = "A solicitação de desbloqueio não pode ser enviada pois "
+                                                                + "o MX de destino está recusando nossa mensagem.";
+                                                    } else {
+                                                        message = "The release request can not be sent because "
+                                                                + "the destination MX is declining our message.";
                                                     }
                                                 }
                                                 type = "BLOCK";
@@ -1789,15 +1903,19 @@ public final class ServerHTTP extends Server {
                         }
                     } else if ((file = getWebFile(command.substring(1))) != null) {
                         exchange.sendResponseHeaders(200, file.length());
+//                        exchange.sendResponseHeaders(200, 0);
                         OutputStream outputStream = exchange.getResponseBody();
                         try {
                             Files.copy(file.toPath(), outputStream);
+                            result = file.getName() + "\n";
+                        } catch (Exception ex) {
+                            Server.logError(ex);
+                            result = "FILE READ ERROR\n";
                         } finally {
                             outputStream.close();
+                            type = "HTTPF";
+                            code = 0;
                         }
-                        type = "HTTPF";
-                        code = 0;
-                        result = file.getName() + "\n";
                     } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -1831,7 +1949,7 @@ public final class ServerHTTP extends Server {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
                                 message = "Resultado da checagem do domínio '" + hostname + "'";
                             } else {
-                                message = "Ccheck the result of domain " + hostname;
+                                message = "Check the result of domain " + hostname;
                             }
                             result = getDNSBLHTML(locale, client, hostname, message);
                         } else {
@@ -2036,12 +2154,12 @@ public final class ServerHTTP extends Server {
                                                         code = 200;
                                                         String message;
                                                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                            message = "Para solicitar o desbloqueio do remetente '" + sender + "' "
-                                                                    + "diretamente para o destinatário '" + recipient + "', "
-                                                                    + "resolva o desafio reCAPTCHA abaixo.";
+                                                            message = "Para solicitar desbloqueio do envio feito do remetente " + sender + " "
+                                                                    + "para o destinatário " + recipient + ", "
+                                                                    + "favor preencher o captcha abaixo.";
                                                         } else {
-                                                            message = "To request unblock the sender '" + sender + "' "
-                                                                    + "directly to the recipient '" + recipient + "', "
+                                                            message = "To request unblocking from the sender " + sender + " "
+                                                                    + "to the recipient " + recipient + ", "
                                                                     + "solve the challenge reCAPTCHA below.";
                                                         }
                                                         result = getUnblockHMTL(locale, message);
@@ -2387,13 +2505,13 @@ public final class ServerHTTP extends Server {
                                                 code = 200;
                                                 String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Já houve liberação deste remetente '"
-                                                            + "" + sender + "' pelo destinatário '"
-                                                            + "" + recipient + "'.";
+                                                    message = "Já houve liberação deste remetente "
+                                                            + "" + sender + " pelo destinatário "
+                                                            + "" + recipient + ".";
                                                 } else {
-                                                    message = "There have been release from this sender '"
-                                                            + "" + sender + "' by recipient '"
-                                                            + "" + recipient + "'.";
+                                                    message = "There have been release from this sender "
+                                                            + "" + sender + " by recipient "
+                                                            + "" + recipient + ".";
                                                 }
                                                 result = getMessageHMTL(locale, title, message);
                                             } else {
@@ -2401,10 +2519,10 @@ public final class ServerHTTP extends Server {
                                                 code = 200;
                                                 String message;
                                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Para desbloquear este remetente '" + sender + "', "
+                                                    message = "Para desbloquear este remetente " + sender + ", "
                                                             + "resolva o desafio reCAPTCHA abaixo.";
                                                 } else {
-                                                    message = "To unblock this sender '" + sender + "', "
+                                                    message = "To unblock this sender " + sender + ", "
                                                             + "please solve the reCAPTCHA below.";
                                                 }
                                                 result = getWhiteHMTL(locale, message);
@@ -2595,14 +2713,86 @@ public final class ServerHTTP extends Server {
         }
     }
     
+//    private static final HashMap<String,Boolean> sentSMTP = new HashMap<String,Boolean>();
+//    
+//    private static String getDesbloqueioHTML(
+//            final Locale locale,
+//            final String url,
+//            final String ip,
+//            final String email
+//            ) {
+//        StringBuilder builder = new StringBuilder();
+//        Boolean isSentSMTP = sentSMTP.get(ip);
+//        builder.append("<!DOCTYPE html>\n");
+//        builder.append("<html lang=\"");
+//        builder.append(locale.getLanguage());
+//        builder.append("\">\n");
+//        String title;
+//        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//            title = "Página de checagem DNSBL";
+//        } else {
+//            title = "DNSBL check page";
+//        }
+//        if (isSentSMTP == null) {
+//            if (sentSMTP.containsKey(ip)) {
+//                buildHead(builder, title, Core.getURL(locale, ip), 3);
+//            } else {
+//                buildHead(builder, title, Core.getURL(locale, ip), 10);
+//                sentSMTP.put(ip, null);
+//                new Thread() {
+//                    @Override
+//                    public void run() {
+//                        sentSMTP.put(ip, enviarDesbloqueioDNSBL(locale, url, ip, email));
+//                    }
+//                }.start();
+//            }
+//        } else {
+//            buildHead(builder, title);
+//        }
+//        builder.append("  <body>\n");
+//        builder.append("    <div id=\"container\">\n");
+//        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+//        if (locale.getLanguage().toLowerCase().equals("pt")) {
+//            buildMessage(builder, "Envio da chave de desbloqueio");
+//        } else {
+//            buildMessage(builder, "Unlocking key delivery");
+//        }
+//        if (isSentSMTP == null) {
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                buildText(builder, "Estamos enviando a chave de desbloqueio por SMTP. Aguarde...");
+//            } else {
+//                 buildText(builder, "We are sending the unlock key by SMTP. Wait...");
+//            }
+//        } else if (!isSentSMTP) {
+//            sentSMTP.remove(ip);
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                buildText(builder, "Não foi possível enviar a chave de desbloqueio devido por SMTP devido a recusa ou indisponibilidade do MX.");
+//            } else {
+//                buildText(builder, "Unable to send unlock key due to SMTP due to MX refusal or unavailability.");
+//            }
+//        } else {
+//            sentSMTP.remove(ip);
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                buildText(builder, "Chave de desbloqueio enviada com sucesso para " + email + ".");
+//            } else {
+//                buildText(builder, "Unlock key sent successfully to " + email + ".");
+//            }
+//        }
+//        buildFooter(builder, locale);
+//        builder.append("    </div>\n");
+//        builder.append("  </body>\n");
+//        builder.append("</html>\n");
+//        return builder.toString();
+//    }
+    
     private static boolean enviarDesbloqueioDNSBL(
             Locale locale,
             String url,
             String ip,
             String email
-            ) {
+            ) throws SendFailedException, MessagingException {
         if (
-                Core.hasSMTP()
+                Core.hasOutputSMTP()
                 && Core.hasAdminEmail()
                 && Domain.isEmail(email)
                 && url != null
@@ -2682,21 +2872,28 @@ public final class ServerHTTP extends Server {
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making QRcode part.
+                // Making logo part.
                 MimeBodyPart logoPart = new MimeBodyPart();
                 File logoFile = getWebFile("logo.png");
                 logoPart.attachFile(logoFile);
                 logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
                 logoPart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
-                MimeMultipart content = new MimeMultipart();
+                MimeMultipart content = new MimeMultipart("related");
                 content.addBodyPart(htmlPart);
                 content.addBodyPart(logoPart);
                 // Set multiplart content.
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message);
+                return Core.sendMessage(message, 20000);
+            } catch (MailConnectException ex) {
+                throw ex;
+            } catch (SendFailedException ex) {
+                throw ex;
+            } catch (MessagingException ex) {
+                throw ex;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
@@ -2710,7 +2907,10 @@ public final class ServerHTTP extends Server {
             Locale locale,
             User user
             ) {
-        if (!Core.hasSMTP()) {
+        if (locale == null) {
+            Server.logError("no locale defined.");
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
             Server.logError("no SMTP account to send TOTP.");
             return false;
         } else if (!Core.hasAdminEmail()) {
@@ -2785,11 +2985,12 @@ public final class ServerHTTP extends Server {
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making QRcode part.
+                // Making logo part.
                 MimeBodyPart logoPart = new MimeBodyPart();
                 File logoFile = getWebFile("logo.png");
                 logoPart.attachFile(logoFile);
                 logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
                 logoPart.setDisposition(MimeBodyPart.INLINE);
                 // Making QRcode part.
                 MimeBodyPart qrcodePart = new MimeBodyPart();
@@ -2799,9 +3000,10 @@ public final class ServerHTTP extends Server {
                 File qrcodeFile = Core.getQRCodeTempFile(code);
                 qrcodePart.attachFile(qrcodeFile);
                 qrcodePart.setContentID("<qrcode>");
+                qrcodePart.addHeader("Content-Type", "image/png");
                 qrcodePart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
-                MimeMultipart content = new MimeMultipart();
+                MimeMultipart content = new MimeMultipart("related");
                 content.addBodyPart(htmlPart);
                 content.addBodyPart(logoPart);
                 content.addBodyPart(qrcodePart);
@@ -2809,7 +3011,7 @@ public final class ServerHTTP extends Server {
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                boolean sent = Core.sendMessage(message);
+                boolean sent = Core.sendMessage(message, 5000);
                 qrcodeFile.delete();
                 return sent;
             } catch (Exception ex) {
@@ -2824,9 +3026,9 @@ public final class ServerHTTP extends Server {
             String remetente,
             String destinatario,
             Locale locale
-            ) {
+            ) throws SendFailedException, MessagingException {
         if (
-                Core.hasSMTP()
+                Core.hasOutputSMTP()
                 && Core.hasAdminEmail()
                 && Domain.isEmail(destinatario)
                 && url != null
@@ -2883,21 +3085,28 @@ public final class ServerHTTP extends Server {
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making QRcode part.
+                // Making logo part.
                 MimeBodyPart logoPart = new MimeBodyPart();
                 File logoFile = getWebFile("logo.png");
                 logoPart.attachFile(logoFile);
                 logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
                 logoPart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
-                MimeMultipart content = new MimeMultipart();
+                MimeMultipart content = new MimeMultipart("related");
                 content.addBodyPart(htmlPart);
                 content.addBodyPart(logoPart);
                 // Set multiplart content.
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message);
+                return Core.sendMessage(message, 5000);
+            } catch (MailConnectException ex) {
+                throw ex;
+            } catch (SendFailedException ex) {
+                throw ex;
+            } catch (MessagingException ex) {
+                throw ex;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
@@ -2913,7 +3122,7 @@ public final class ServerHTTP extends Server {
             Locale locale
             ) {
         if (
-                Core.hasSMTP()
+                Core.hasOutputSMTP()
                 && Core.hasAdminEmail()
                 && Domain.isEmail(remetente)
                 && !NoReply.contains(remetente, true)
@@ -2968,21 +3177,24 @@ public final class ServerHTTP extends Server {
                 // Making HTML part.
                 MimeBodyPart htmlPart = new MimeBodyPart();
                 htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                // Making QRcode part.
+                // Making logo part.
                 MimeBodyPart logoPart = new MimeBodyPart();
                 File logoFile = getWebFile("logo.png");
                 logoPart.attachFile(logoFile);
                 logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
                 logoPart.setDisposition(MimeBodyPart.INLINE);
                 // Join both parts.
-                MimeMultipart content = new MimeMultipart();
+                MimeMultipart content = new MimeMultipart("related");
                 content.addBodyPart(htmlPart);
                 content.addBodyPart(logoPart);
                 // Set multiplart content.
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message);
+                return Core.sendMessage(message, 5000);
+            } catch (MessagingException ex) {
+                return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
@@ -3473,10 +3685,6 @@ public final class ServerHTTP extends Server {
         return emailSet;
     }
     
-    public static void main(String[] args) {
-        System.out.println(Subnet.isReservedIP("2605:9880:0:7b9:20c:29ff:fe3a:a3dd"));
-    }
-    
     private static final HashMap<String,Boolean> openSMTP = new HashMap<String,Boolean>();
     
     private static String getDNSBLHTML(
@@ -3507,7 +3715,7 @@ public final class ServerHTTP extends Server {
                 new Thread() {
                     @Override
                     public void run() {
-                        openSMTP.put(query, Analise.isOpenSMTP(query, 3000));
+                        openSMTP.put(query, Analise.isOpenSMTP(query, 10000));
                     }
                 }.start();
             }
@@ -3551,9 +3759,9 @@ public final class ServerHTTP extends Server {
                 TreeSet<String> reverseSet = reverse.getAddressSet();
                 if (reverseSet.isEmpty()) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        buildText(builder, "Estes são os <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> encontrados: nenhum");
+                        buildText(builder, "Nenhum <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> foi encontrado.");
                     } else {
-                        buildText(builder, "These is the <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> found: none");
+                        buildText(builder, "No <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> was found.");
                     }
                 } else {
                     if (reverseSet.size() == 1) {
@@ -3689,11 +3897,11 @@ public final class ServerHTTP extends Server {
                     boolean blocked = Block.containsCIDR(ip);
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         if (blocked) {
-                            buildText(builder, "Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
+                            buildText(builder, "Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else if (good) {
-                            buildText(builder, "Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
+                            buildText(builder, "Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else {
-                            buildText(builder, "Este IP não está bloqueado porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
+                            buildText(builder, "Este IP não está bloqueado porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         }
                         if (generic) {
                             buildText(builder, "Não serão aceitos <a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genéricos</a>.");
@@ -3706,11 +3914,11 @@ public final class ServerHTTP extends Server {
                         }
                     } else {
                         if (blocked) {
-                            buildText(builder, "This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.");
+                            buildText(builder, "This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.");
                         } else if (good) {
-                            buildText(builder, "This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> válido.");
+                            buildText(builder, "This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else {
-                            buildText(builder, "This IP isn't blocked but have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.");
+                            buildText(builder, "This IP isn't blocked but have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.");
                         }
                         if (generic) {
                             buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/generic/\"Generic rDNS</a> will not be accepted.");
@@ -5254,7 +5462,7 @@ public final class ServerHTTP extends Server {
             StringBuilder builder
     ) {
         builder.append("      <div id=\"divlogo\">\n");
-        builder.append("        <img src=\"logo.png\" alt=\"Logo\">\n");
+        builder.append("        <img src=\"logo.png\" alt=\"Logo\" style=\"max-width:468px;max-height:60px;\">\n");
         builder.append("      </div>\n");
     }
     

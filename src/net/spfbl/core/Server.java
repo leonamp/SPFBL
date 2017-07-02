@@ -901,6 +901,8 @@ public abstract class Server extends Thread {
         // Inicia finalização dos servidores.
         Server.logInfo("interrupting analises...");
         Analise.interrupt();
+        Server.logInfo("interrupting user theads...");
+        User.interrupt();
         Server.logInfo("shutting down server...");
         for (Server server : SERVER_LIST) {
             server.run = false;

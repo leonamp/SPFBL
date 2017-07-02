@@ -18,7 +18,7 @@ package net.spfbl.core;
 
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.sun.mail.smtp.SMTPSendFailedException;
+import com.sun.mail.smtp.SMTPAddressFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
@@ -39,7 +39,6 @@ import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
@@ -64,6 +63,7 @@ import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
+import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.naming.NamingException;
@@ -89,7 +89,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 7;
-    private static final byte RELEASE = 3;
+    private static final byte RELEASE = 4;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -522,9 +522,9 @@ public class Core {
     private static PeerUDP peerUDP = null;
     
     public static void interruptTimeout() {
-        if (administrationTCP != null) {
-            administrationTCP.interruptTimeout();
-        }
+//        if (administrationTCP != null) {
+//            administrationTCP.interruptTimeout();
+//        }
         if (querySPF != null) {
             querySPF.interruptTimeout();
         }
@@ -668,6 +668,18 @@ public class Core {
         Core.MYSQL_SSL = ssl;
     }
     
+    public static boolean hasMySQL() {
+        if (MYSQL_HOSTNAME == null) {
+            return false;
+        } else if (MYSQL_USER == null) {
+            return false;
+        } else if (MYSQL_PASSWORD == null) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    
     public static Connection getConnectionMySQL() {
         if (MYSQL_HOSTNAME == null) {
             return null;
@@ -711,9 +723,25 @@ public class Core {
     private static short PORT_DNSBL = 0;
     private static short PORT_HTTP = 0;
     private static short UDP_MAX = 512; // UDP max size packet.
-        
+    
+    public static boolean isAdminEmail(String email) {
+        if (email == null) {
+            return false;
+        } else {
+            return email.equals(ADMIN_EMAIL);
+        }
+    }
+    
     public static boolean hasAdminEmail() {
         return ADMIN_EMAIL != null;
+    }
+    
+    public static boolean isAbuseEmail(String email) {
+        if (email == null) {
+            return false;
+        } else {
+            return email.equals(ABUSE_EMAIL);
+        }
     }
     
     public static boolean hasAbuseEmail() {
@@ -1106,7 +1134,7 @@ public class Core {
         }
     }
     
-    private static byte FLOOD_MAX_RETRY = 16;
+    private static byte FLOOD_MAX_RETRY = 32;
     
     public static float getFloodMaxRetry() {
         return FLOOD_MAX_RETRY;
@@ -1415,7 +1443,25 @@ public class Core {
         return DATE_EMAIL_FORMAT.format(new Date());
     }
     
-    public static boolean hasSMTP() {
+    public static boolean hasOutputSMTP() {
+        if (isDirectSMTP()) {
+            return true;
+        } else if (hasRelaySMTP()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean isDirectSMTP() {
+        if (SMTP_HOST == null) {
+            return false;
+        } else {
+            return SMTP_HOST.equals(HOSTNAME);
+        }
+    }
+    
+    public static boolean hasRelaySMTP() {
         if (SMTP_HOST == null) {
             return false;
         } else if (SMTP_IS_AUTH && SMTP_USER == null) {
@@ -1427,65 +1473,93 @@ public class Core {
         }
     }
     
-//    private static final LinkedList<Message> MESSAGE_QUEUE = new LinkedList<Message>();
-    
-//    public static void sendAllMessages() {
-//        int count = MESSAGE_QUEUE.size();
-//        while (count-- > 0) {
-//            sendNextMessage();
-//        }
-//    }
-    
-//    public static void sendNextMessage() {
-//        Message message = MESSAGE_QUEUE.poll();
-//        if (message != null) {
-//            try {
-//                sendMessage(message);
-//            } catch (ProcessException ex) {
-//                Throwable cause = ex.getCause(SMTPAddressFailedException.class);
-//                if (cause == null) {
-//                    MESSAGE_QUEUE.offer(message);
-//                    Server.logError(ex);
-//                } else {
-//                    SMTPAddressFailedException afEx = (SMTPAddressFailedException) cause;
-//                    Server.logDebug("SMTP " + afEx.getMessage());
-//                    try {
-//                        InternetAddress address = afEx.getAddress();
-//                        NoReply.add(address.getAddress());
-//                    } catch (ProcessException ex2) {
-//                        Server.logError(ex2);
-//                    }
-//                }
-//            } catch (Exception ex) {
-//                if (ex instanceof SMTPSendFailedException) {
-//                    SMTPSendFailedException smtpEx = (SMTPSendFailedException) ex;
-//                    if (smtpEx.getReturnCode() / 100 == 5) {
-//                        Server.logError("SMTP " + smtpEx.getMessage());
-//                    } else if (smtpEx.getReturnCode() / 100 == 4) {
-//                        MESSAGE_QUEUE.offer(message);
-//                        Server.logDebug("SMTP " + smtpEx.getMessage());
-//                    } else {
-//                        MESSAGE_QUEUE.offer(message);
-//                        Server.logError(ex);
-//                    }
-//                } else {
-//                    MESSAGE_QUEUE.offer(message);
-//                    Server.logError(ex);
-//                }
-//            }
-//        }
-//    }
-    
-//    public static boolean offerMessage(Message message) {
-//        return MESSAGE_QUEUE.offer(message);
-//    }
-    
-    public static synchronized boolean sendMessage(Message message) throws Exception {
+    public static synchronized boolean sendMessage(
+            Message message, int timeout
+    ) throws Exception {
         if (message == null) {
             return false;
-        } else if (!hasSMTP()) {
-            return false;
-        } else {
+        } else if (isDirectSMTP()) {
+            Server.logInfo("sending e-mail message.");
+            Server.logSendMTP("authenticate: false.");
+            Server.logSendMTP("start TLS: true.");
+            Properties props = System.getProperties();
+            props.put("mail.smtp.auth", "false");
+            props.put("mail.smtp.port", "25");
+            props.put("mail.smtp.timeout", Integer.toString(timeout));   
+            props.put("mail.smtp.connectiontimeout", "3000");
+            InternetAddress[] recipients = (InternetAddress[]) message.getAllRecipients();
+            Exception lastException = null;
+            for (InternetAddress recipient : recipients) {
+                String domain = Domain.normalizeHostname(recipient.getAddress(), false);
+                for (String mx : Reverse.getMXSet(domain)) {
+                    mx = mx.substring(1);
+                    props.put("mail.smtp.starttls.enable", "true");
+                    props.put("mail.smtp.host", mx);
+                    props.put("mail.smtp.ssl.trust", mx);
+                    InternetAddress[] recipientAlone = new InternetAddress[1];
+                    recipientAlone[0] = (InternetAddress) recipient;
+                    Session session = Session.getDefaultInstance(props);
+                    SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
+                    try {
+                        transport.setLocalHost(HOSTNAME);
+                        Server.logSendMTP("connecting to " + mx + ":25.");
+                        transport.connect(mx, 25, null, null);
+                        Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
+                        transport.sendMessage(message, recipientAlone);
+                        Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
+                        Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                        lastException = null;
+                        break;
+                    } catch (MailConnectException ex) {
+                        lastException = ex;
+                    } catch (SendFailedException ex) {
+                        throw ex;
+                    } catch (MessagingException ex) {
+                        if (ex.getMessage().contains(" TLS ")) {
+                            Server.logSendMTP("cannot establish TLS connection.");
+                            if (transport.isConnected()) {
+                                transport.close();
+                                Server.logSendMTP("connection closed.");
+                            }
+                            Server.logInfo("sending e-mail message without TLS.");
+                            props.put("mail.smtp.starttls.enable", "false");
+                            session = Session.getDefaultInstance(props);
+                            transport = (SMTPTransport) session.getTransport("smtp");
+                            try {
+                                transport.setLocalHost(HOSTNAME);
+                                Server.logSendMTP("connecting to " + mx + ":25.");
+                                transport.connect(mx, 25, null, null);
+                                Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
+                                transport.sendMessage(message, recipientAlone);
+                                Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
+                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                lastException = null;
+                                break;
+                            } catch (SendFailedException ex2) {
+                                throw ex2;
+                            } catch (Exception ex2) {
+                                lastException = ex2;
+                            }
+                        } else {
+                            lastException = ex;
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                        lastException = ex;
+                    } finally {
+                        if (transport.isConnected()) {
+                            transport.close();
+                            Server.logSendMTP("connection closed.");
+                        }
+                    }
+                }
+            }
+            if (lastException == null) {
+                return true;
+            } else {
+                throw lastException;
+            }
+        } else if (hasRelaySMTP()) {
             Server.logInfo("sending e-mail message.");
             Server.logSendMTP("authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
             Server.logSendMTP("start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
@@ -1494,6 +1568,8 @@ public class Core {
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
             props.put("mail.smtp.host", SMTP_HOST);
             props.put("mail.smtp.port", Short.toString(SMTP_PORT));
+            props.put("mail.smtp.timeout", Integer.toString(timeout));   
+            props.put("mail.smtp.connectiontimeout", "3000");
             props.put("mail.smtp.ssl.trust", SMTP_HOST);
             Address[] recipients = message.getAllRecipients();
             TreeSet<String> recipientSet = new TreeSet<String>();
@@ -1503,24 +1579,28 @@ public class Core {
             Session session = Session.getDefaultInstance(props);
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
-                transport.setLocalHost(HOSTNAME);
+                if (HOSTNAME != null) {
+                    transport.setLocalHost(HOSTNAME);
+                }
                 Server.logSendMTP("connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
                 Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipientSet + ".");
                 transport.sendMessage(message, recipients);
                 Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipientSet + ".");
                 return true;
+            } catch (SendFailedException ex) {
+                throw ex;
             } catch (AuthenticationFailedException ex) {
                 Server.logSendMTP("authentication failed.");
                 return false;
             } catch (MailConnectException ex) {
                 Server.logSendMTP("connection failed.");
                 return false;
-            } catch (SMTPSendFailedException ex) {
-                Server.logSendMTP("messaging failed.");
-                return false;
             } catch (MessagingException ex) {
                 Server.logSendMTP("messaging failed.");
+                return false;
+            } catch (Exception ex) {
+                Server.logError(ex);
                 return false;
             } finally {
                 if (transport.isConnected()) {
@@ -1528,6 +1608,8 @@ public class Core {
                     Server.logSendMTP("connection closed.");
                 }
             }
+        } else {
+            return false;
         }
     }
     
@@ -2188,6 +2270,29 @@ public class Core {
                 }
             }
             return false;
+        }
+    }
+    
+    private static final Locale LOCALE_BRAZIL = new Locale("pt", "BR");
+    private static final Locale LOCALE_PORTUGAL = new Locale("pt", "PT");
+    
+    public static Locale getDefaultLocale(String address) {
+        if (address == null) {
+            return null;
+        } else if (address.endsWith(".br")) {
+            return LOCALE_BRAZIL;
+        } else if (address.endsWith(".pt")) {
+            return LOCALE_PORTUGAL;
+        } else if (address.endsWith(".net")) {
+            return Locale.US;
+        } else if (address.endsWith(".com")) {
+            return Locale.US;
+        } else if (address.endsWith(".org")) {
+            return Locale.US;
+        } else if (address.endsWith(".uk")) {
+            return Locale.US;
+        } else {
+            return Locale.getDefault();
         }
     }
 }
