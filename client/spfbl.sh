@@ -4492,6 +4492,7 @@ case $1 in
 		printf "    $0 shutdown\n"
 		printf "    $0 store\n"
 		printf "    $0 stats\n"
+		printf "    $0 stats AAAA-MM-DD\n"
 		printf "    $0 clear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
 		printf "    $0 peer { add host [email] | drop { host | all } | show [host] | set host send receive | ping host | send host }\n"
