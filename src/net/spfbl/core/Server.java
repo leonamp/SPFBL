@@ -44,6 +44,9 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -596,7 +599,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logMySQL(String message) {
-        log(System.currentTimeMillis(), Core.Level.TRACE, "MYSQL", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "MYSQL", message, (String) null);
     }
     
     /**
@@ -604,9 +607,50 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logMySQL(long time, String message) {
-        log(time, Core.Level.TRACE, "MYSQL", message, (String) null);
+        log(time, Core.Level.DEBUG, "MYSQL", message, null);
     }
     
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logMySQL(long time, String message, String result) {
+        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+    }
+    
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logMySQL(long time, String message, SQLException ex) {
+        String result = "ERROR " + ex.getErrorCode() + " " + ex.getMessage();
+        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+    }
+    
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param statement the statement executed.
+     */
+    public static void logMySQL(long time, PreparedStatement statement, String result) {
+        String message = statement.toString();
+        int beginIndex = message.indexOf(' ') + 1;
+        int endIndex = message.length();
+        message = message.substring(beginIndex, endIndex);
+        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+    }
+    
+    /**
+     * Registra as mensagens de manipulação do banco de dados.
+     * @param statement the statement executed.
+     */
+    public static void logMySQL(long time, PreparedStatement statement, SQLException ex) {
+        String message = statement.toString();
+        int beginIndex = message.indexOf(' ') + 1;
+        int endIndex = message.length();
+        message = message.substring(beginIndex, endIndex);
+        String result = "ERROR " + ex.getErrorCode() + " " + ex.getMessage();
+        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+    }
     
     /**
      * Registra as gravações de cache em disco.
@@ -922,6 +966,8 @@ public abstract class Server extends Thread {
         Core.cancelTimer();
         // Armazena os registros em disco.
         storeCache();
+        // Fecha pooler de conexão MySQL.
+        Core.closeConnectionPooler();
         return closed;
     }
     

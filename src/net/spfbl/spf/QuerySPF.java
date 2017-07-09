@@ -166,7 +166,7 @@ public final class QuerySPF extends Server {
                         Client client = null;
                         User user = null;
                         try {
-                            client = Client.get(ipAddress);
+                            client = Client.get(ipAddress, "SPFBL");
                             user = client == null ? null : client.getUser();
                             InputStream inputStream = socket.getInputStream();
                             InputStreamReader inputStreamReader = new InputStreamReader(inputStream, "UTF-8");
@@ -216,9 +216,9 @@ public final class QuerySPF extends Server {
                                         line = line.substring(index).trim();
                                         token = tokenizer.nextToken();
                                         if (user == null) {
-                                            result = "ERROR: TOTP UNDEFINED USER\n";
+                                            result = "TOTP UNDEFINED USER\n";
                                         } else if (!user.isValidOTP(otpCode)) {
-                                            result = "ERROR: TOTP INVALID CODE\n";
+                                            result = "TOTP INVALID CODE\n";
                                         }
                                     }
                                     if (result != null) {
@@ -569,7 +569,7 @@ public final class QuerySPF extends Server {
                                             int index = query.indexOf(':') + 1;
                                             String messageID = query.substring(index);
                                             if (user == null) {
-                                                result = "ERROR: UNDEFINED USER\n";
+                                                result = "UNDEFINED USER\n";
                                             } else {
                                                 result = "INVALID ID\n";
                                                 index = messageID.indexOf('<');

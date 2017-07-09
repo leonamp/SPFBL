@@ -48,6 +48,7 @@ public class Client implements Serializable, Comparable<Client> {
     private String email;
     private Permission permission = Permission.NONE;
     private Personality personality = Personality.RATIONAL;
+    private boolean administrator = false;
     private int limit = 100;
     private NormalDistribution frequency = null;
     private long last = 0;
@@ -61,13 +62,29 @@ public class Client implements Serializable, Comparable<Client> {
         NONE,
         DNSBL,
         SPFBL,
-        ALL
+        ALL // Obsoleto
     }
     
     public enum Personality {
         PASSIVE,
         RATIONAL,
         AGRESSIVE
+    }
+    
+    private Client(Client other) {
+        this.cidr = other.cidr;
+        this.domain = other.domain;
+        this.email = other.email;
+        this.permission = other.permission;
+        this.personality = other.personality;
+        this.administrator = other.administrator;
+        this.limit = other.limit;
+        this.frequency = other.frequency == null ? null : other.frequency.replicate();
+        this.last = other.last;
+        this.actionBLOCK = other.actionBLOCK;
+        this.actionRED = other.actionRED;
+        this.actionYELLOW = other.actionYELLOW;
+        this.actionGRACE = other.actionGRACE;
     }
     
     private Client(String cidr, String domain, String email) throws ProcessException {
@@ -112,8 +129,7 @@ public class Client implements Serializable, Comparable<Client> {
     
     public boolean tryPermission(String permission) {
          try {
-             setPermission(permission);
-             return true;
+             return setPermission(permission);
          } catch (ProcessException ex) {
              return false;
          }
@@ -127,20 +143,45 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public void setPermission(String permission) throws ProcessException {
+    public boolean setPermission(String permission) throws ProcessException {
         try {
-            setPermission(Permission.valueOf(permission));
+            if (permission == null) {
+                return false;
+            } else if (permission.equals("ADMIN")) {
+                if (this.administrator) {
+                    return false;
+                } else {
+                    this.permission = Permission.SPFBL;
+                    this.administrator = true;
+                    return CHANGED = true;
+                }
+            } else if (setPermission(Permission.valueOf(permission))) {
+                this.administrator = false;
+                return true;
+            } else {
+                return false;
+            }
         } catch (Exception ex) {
             throw new ProcessException("INVALID PERMISSION");
         }
     }
     
-    public void setPermission(Permission permission) throws ProcessException {
+    public boolean setPermission(Permission permission) throws ProcessException {
         if (permission == null) {
             throw new ProcessException("INVALID PERMISSION");
-        } else if (this.permission != permission) {
+        } else if (permission == Permission.ALL) {
+            if (this.administrator) {
+                return false;
+            } else {
+                this.permission = Permission.SPFBL;
+                this.administrator = true;
+                return CHANGED = true;
+            }
+        } else if (this.permission == permission) {
+            return false;
+        } else {
             this.permission = permission;
-            CHANGED = true;
+            return CHANGED = true;
         }
     }
     
@@ -366,6 +407,10 @@ public class Client implements Serializable, Comparable<Client> {
     
     public Permission getPermission() {
         return permission;
+    }
+    
+    public boolean isAdministrator() {
+        return administrator;
     }
     
     public boolean hasPermission(Permission permission) {
@@ -653,6 +698,23 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public static HashMap<Object,TreeSet<Client>> getAdministratorMap() {
+        HashMap<Object,TreeSet<Client>> clientMap = new HashMap<Object,TreeSet<Client>>();
+        for (Client client : getSet()) {
+            if (client.isAdministrator()) {
+                User user = client.getUser();
+                Object key = user == null ? client.getDomain() : user;
+                TreeSet<Client> clientSet = clientMap.get(key);
+                if (clientSet == null) {
+                    clientSet = new TreeSet<Client>();
+                    clientMap.put(key, clientSet);
+                }
+                clientSet.add(client);
+            }
+        }
+        return clientMap;
+    }
+    
     public static TreeSet<Client> getSet(Permission permission) {
         if (permission == null) {
             return null;
@@ -665,6 +727,16 @@ public class Client implements Serializable, Comparable<Client> {
             }
             return clientSet;
         }
+    }
+    
+    public static TreeSet<Client> getAdministratorSet() {
+        TreeSet<Client> clientSet = new TreeSet<Client>();
+        for (Client client : getSet()) {
+            if (client.isAdministrator()) {
+                clientSet.add(client);
+            }
+        }
+        return clientSet;
     }
     
     public synchronized static Client getByIP(String ip) {
@@ -764,12 +836,28 @@ public class Client implements Serializable, Comparable<Client> {
         return map;
     }
     
+    public static synchronized HashMap<String,Client> getCloneMap() {
+        HashMap<String,Client> map = new HashMap<String,Client>();
+        for (String key : MAP.keySet()) {
+            Client value = MAP.get(key);
+            map.put(key, new Client(value));
+        }
+        return map;
+    }
+    
     public static void store() {
         if (CHANGED) {
             try {
 //                Server.logTrace("storing client.map");
                 long time = System.currentTimeMillis();
-                HashMap<String,Client> map = getMap();
+                HashMap<String,Client> map = getCloneMap();
+                for (String key : map.keySet()) {
+                    Client value = map.get(key);
+                    if (value.administrator) {
+                        // Compatibilidade com versões anteriores.
+                        value.permission = Permission.ALL;
+                    }
+                }
                 File file = new File("./data/client.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
@@ -802,6 +890,13 @@ public class Client implements Serializable, Comparable<Client> {
                     Object value = map.get(key);
                     if (value instanceof Client) {
                         Client client = (Client) value;
+                        if (client.permission == null) {
+                            client.permission = Permission.NONE;
+                            client.administrator = false;
+                        } else if (client.permission == Permission.ALL) {
+                            client.permission = Permission.SPFBL;
+                            client.administrator = true;
+                        }
                         if (client.limit == 0) {
                             client.limit = 100;
                         }
@@ -941,12 +1036,12 @@ public class Client implements Serializable, Comparable<Client> {
         User user = getUser();
         if (user == null) {
             return getDomain() + ":" + cidr
-                    + (permission == null ? " NONE" : " " + permission.name())
+                    + (administrator ? " ADMIN" : " " + permission.name())
                     + " " + getFrequencyLiteral()
                     + (email == null ? "" : " <" + email + ">");
         } else {
             return getDomain() + ":" + cidr
-                    + (permission == null ? " NONE" : " " + permission.name())
+                    + (administrator ? " ADMIN" : " " + permission.name())
                     + " " + getFrequencyLiteral()
                     + " " + user.getContact();
         }

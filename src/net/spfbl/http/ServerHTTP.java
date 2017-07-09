@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -714,7 +715,7 @@ public final class ServerHTTP extends Server {
                                 code = 200;
                                 result = "";
                             } else {
-                                User.Query query = userLogin.getQuery(queryTime);
+                                User.Query query = userLogin.getQuerySafe(queryTime);
                                 if (query == null) {
                                     type = "QUERY";
                                     code = 403;
@@ -737,20 +738,14 @@ public final class ServerHTTP extends Server {
                                 }
                             }
                         }
-                    } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
+                    } else if (isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             title = "Página de checagem DNSBL";
                         } else {
                             title = "DNSBL check page";
                         }
-                        String ip;
-                        if (command.startsWith("/dnsbl/")) {
-                            int index = command.indexOf('/', 1) + 1;
-                            ip = command.substring(index);
-                        } else {
-                            ip = command.substring(1);
-                        }
+                        String ip = command.substring(1);
                         if (Subnet.isValidIP(ip)) {
                             HashMap<String,Object> parameterMap = getParameterMap(exchange);
                             if (parameterMap.containsKey("identifier")) {
@@ -790,94 +785,122 @@ public final class ServerHTTP extends Server {
                                     if (abuseEmail != null) {
                                         postmaterSet.add(abuseEmail);
                                     }
-                                    String message;
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                + "devido a um erro interno.";
-                                    } else {
-                                        message = "Unblocking key can not be sent "
-                                                + "due to an internal error.";
-                                    }
+//                                    String message;
+//                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                        message = "Chave de desbloqueio não pode ser enviada "
+//                                                + "devido a um erro interno.";
+//                                    } else {
+//                                        message = "Unblocking key can not be sent "
+//                                                + "due to an internal error.";
+//                                    }
+//                                    TreeSet<String> emailSet = (TreeSet<String>) parameterMap.get("identifier");
+//                                    for (String email : emailSet) {
+//                                        if (postmaterSet.contains(email)) {
+//                                            String url = Core.getUnblockURL(email, ip);
+//                                            try {
+//                                                if (enviarDesbloqueioDNSBL(locale, url, ip, email)) {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio enviada com sucesso.";
+//                                                    } else {
+//                                                        message = "Unblocking key successfully sent.";
+//                                                    }
+//                                                }
+//                                            } catch (SendFailedException ex) {
+//                                                if (ex.getCause() instanceof SMTPAddressFailedException) {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio não pode ser enviada "
+//                                                                + "porque o endereço " + email + " não existe.";
+//                                                    } else {
+//                                                        message = "Unlock key can not be sent because the "
+//                                                                + "" + email + " address does not exist.";
+//                                                    }
+//                                                } else if (ex.getCause() == null) {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio não pode ser enviada "
+//                                                                + "devido a recusa do servidor de destino.";
+//                                                    } else {
+//                                                        message = "Unlock key can not be sent due to "
+//                                                                + "denial of destination server.";
+//                                                    }
+//                                                } else {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio não pode ser enviada "
+//                                                                + "devido a recusa do servidor de destino:\n"
+//                                                                + ex.getCause().getMessage();
+//                                                    } else {
+//                                                        message = "Unlock key can not be sent due to "
+//                                                                + "denial of destination server:\n"
+//                                                                + ex.getCause().getMessage();
+//                                                    }
+//                                                }
+//                                            } catch (MailConnectException ex) {
+//                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                    message = "Chave de desbloqueio não pode ser enviada "
+//                                                            + "pois o MX de destino se encontra indisponível.";
+//                                                } else {
+//                                                    message = "Unlock key can not be sent because "
+//                                                            + "the destination MX is unavailable.";
+//                                                }
+//                                            } catch (MessagingException ex) {
+//                                                if (ex.getCause() instanceof SocketTimeoutException) {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio não pode ser enviada "
+//                                                                + "pois o MX de destino demorou demais para "
+//                                                                + "iniciar a transação SMTP.\n"
+//                                                                + "Para que o envio da chave seja possível, "
+//                                                                + "o inicio da transação SMTP não "
+//                                                                + "pode levar mais que 30 segundos.";
+//                                                    } else {
+//                                                        message = "Unlock key can not be sent because the "
+//                                                                + "destination MX has taken too long to "
+//                                                                + "initiate the SMTP transaction.\n"
+//                                                                + "For the key delivery is possible, "
+//                                                                + "the beginning of the SMTP transaction "
+//                                                                + "can not take more than 30 seconds.";
+//                                                    }
+//                                                } else {
+//                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                                                        message = "Chave de desbloqueio não pode ser enviada pois "
+//                                                                + "o MX de destino está recusando nossa mensagem.";
+//                                                    } else {
+//                                                        message = "Unlock key can not be sent because "
+//                                                                + "the destination MX is declining our message.";
+//                                                    }
+//                                                }
+//                                            }
+//                                        }
+//                                    }
+//                                    type = "DNSBL";
+//                                    code = 200;
+//                                    result = getMessageHMTL(locale, title, message);
+                                    
+                                    
+                                    
+                                    type = "DNSBL";
+                                    code = 200;
+                                    result = null;
                                     TreeSet<String> emailSet = (TreeSet<String>) parameterMap.get("identifier");
                                     for (String email : emailSet) {
                                         if (postmaterSet.contains(email)) {
                                             String url = Core.getUnblockURL(email, ip);
-                                            try {
-                                                if (enviarDesbloqueioDNSBL(locale, url, ip, email)) {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio enviada com sucesso.";
-                                                    } else {
-                                                        message = "Unblocking key successfully sent.";
-                                                    }
-                                                }
-                                            } catch (SendFailedException ex) {
-                                                if (ex.getCause() instanceof SMTPAddressFailedException) {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                                + "porque o endereço " + email + " não existe.";
-                                                    } else {
-                                                        message = "Unlock key can not be sent because the "
-                                                                + "" + email + " address does not exist.";
-                                                    }
-                                                } else if (ex.getCause() == null) {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                                + "devido a recusa do servidor de destino.";
-                                                    } else {
-                                                        message = "Unlock key can not be sent due to "
-                                                                + "denial of destination server.";
-                                                    }
-                                                } else {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                                + "devido a recusa do servidor de destino:\n"
-                                                                + ex.getCause().getMessage();
-                                                    } else {
-                                                        message = "Unlock key can not be sent due to "
-                                                                + "denial of destination server:\n"
-                                                                + ex.getCause().getMessage();
-                                                    }
-                                                }
-                                            } catch (MailConnectException ex) {
-                                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                    message = "Chave de desbloqueio não pode ser enviada "
-                                                            + "pois o MX de destino se encontra indisponível.";
-                                                } else {
-                                                    message = "Unlock key can not be sent because "
-                                                            + "the destination MX is unavailable.";
-                                                }
-                                            } catch (MessagingException ex) {
-                                                if (ex.getCause() instanceof SocketTimeoutException) {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio não pode ser enviada "
-                                                                + "pois o MX de destino demorou demais para "
-                                                                + "iniciar a transação SMTP.\n"
-                                                                + "Para que o envio da chave seja possível, "
-                                                                + "o inicio da transação SMTP não "
-                                                                + "pode levar mais que 20 segundos.";
-                                                    } else {
-                                                        message = "Unlock key can not be sent because the "
-                                                                + "destination MX has taken too long to "
-                                                                + "initiate the SMTP transaction.\n"
-                                                                + "For the key delivery is possible, "
-                                                                + "the beginning of the SMTP transaction "
-                                                                + "can not take more than 20 seconds.";
-                                                    }
-                                                } else {
-                                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                                        message = "Chave de desbloqueio não pode ser enviada pois "
-                                                                + "o MX de destino está recusando nossa mensagem.";
-                                                    } else {
-                                                        message = "Unlock key can not be sent because "
-                                                                + "the destination MX is declining our message.";
-                                                    }
-                                                }
-                                            }
+                                            result = getDesbloqueioHTML(locale, url, ip, email);
                                         }
                                     }
-                                    type = "DNSBL";
-                                    code = 200;
-                                    result = getMessageHMTL(locale, title, message);
+                                    if (result == null) {
+                                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                            result = getMessageHMTL(
+                                                    locale, title,
+                                                    "Chave de desbloqueio não pode ser enviada "
+                                                            + "devido a um erro interno."
+                                            );
+                                        } else {
+                                            result = getMessageHMTL(
+                                                    locale, title,
+                                                    "Unblocking key can not be sent due "
+                                                            + "to an internal error."
+                                            );
+                                        }
+                                    }
                                 } else {
                                     type = "DNSBL";
                                     code = 200;
@@ -1134,7 +1157,7 @@ public final class ServerHTTP extends Server {
                                                 String url = Core.getWhiteURL(white, clientTicket, ip, sender, hostname, recipient);
                                                 String message;
                                                 try {
-                                                    if (enviarDesbloqueio(url, sender, recipient, locale)) {
+                                                    if (enviarDesbloqueio(url, sender, recipient)) {
                                                         white = White.normalizeTokenWhite(white);
                                                         Block.addExact(clientTicket + white);
                                                         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -1262,7 +1285,7 @@ public final class ServerHTTP extends Server {
                                             if (valid) {
                                                 String email = tokenizer.nextToken();
                                                 User userLocal = User.get(email);
-                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                                 if (queryLocal == null) {
                                                     type = "HOLDN";
                                                     code = 500;
@@ -1389,7 +1412,7 @@ public final class ServerHTTP extends Server {
                                             if (valid) {
                                                 String email = tokenizer.nextToken();
                                                 User userLocal = User.get(email);
-                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                                 if (queryLocal == null) {
                                                     type = "UHOLD";
                                                     code = 500;
@@ -1496,7 +1519,7 @@ public final class ServerHTTP extends Server {
                                             if (valid) {
                                                 String email = tokenizer.nextToken();
                                                 User userLocal = User.get(email);
-                                                Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                                Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                                 if (queryLocal == null) {
                                                     type = "BLOCK";
                                                     code = 500;
@@ -1889,7 +1912,7 @@ public final class ServerHTTP extends Server {
                                 code = 200;
                                 result = "";
                             } else {
-                                User.Query query = userLogin.getQuery(queryTime);
+                                User.Query query = userLogin.getQuerySafe(queryTime);
                                 if (query == null) {
                                     type = "QUERY";
                                     code = 403;
@@ -1916,31 +1939,39 @@ public final class ServerHTTP extends Server {
                             type = "HTTPF";
                             code = 0;
                         }
-                    } else if (command.startsWith("/dnsbl/") || isValidDomainOrIP(command.substring(1))) {
+                    } else if (command.startsWith("/dnsbl/")) {
+                        type = "DNSBL";
+                        code = 200;
+                        String query = command.substring(7);
+                        String url = Core.getURL(locale, query);
+                        result = getRedirectHTML(locale, url);
+                    } else if (isValidDomainOrIP(command.substring(1))) {
                         String title;
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             title = "Página de checagem DNSBL";
                         } else {
                             title = "DNSBL check page";
                         }
-                        String query;
-                        if (command.startsWith("/dnsbl/")) {
-                            int index = command.indexOf('/', 1) + 1;
-                            query = command.substring(index).trim();
-                        } else {
-                            query = command.substring(1);
-                        }
+                        String query = command.substring(1);
                         if (Subnet.isValidIP(query)) {
                             String ip = Subnet.normalizeIP(query);
-                            type = "DNSBL";
-                            code = 200;
-                            String message;
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                message = "Resultado da checagem do IP " + ip;
+                            if (sentSMTP.containsKey(ip)) {
+                                type = "DNSBL";
+                                code = 200;
+                                String email = null;
+                                String url = null;
+                                result = getDesbloqueioHTML(locale, url, ip, email);
                             } else {
-                                message = "Check result of IP " + ip;
+                                type = "DNSBL";
+                                code = 200;
+                                String message;
+                                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                    message = "Resultado da checagem do IP " + ip;
+                                } else {
+                                    message = "Check result of IP " + ip;
+                                }
+                                result = getDNSBLHTML(locale, client, ip, message);
                             }
-                            result = getDNSBLHTML(locale, client, ip, message);
                         } else if (Domain.isHostname(query)) {
                             String hostname = Domain.normalizeHostname(query, false);
                             type = "DNSBL";
@@ -2207,7 +2238,7 @@ public final class ServerHTTP extends Server {
                                         }
                                         String email = tokenizer.nextToken();
                                         User userLocal = User.get(email);
-                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                         if (queryLocal == null) {
                                             type = "HOLDN";
                                             code = 500;
@@ -2284,7 +2315,7 @@ public final class ServerHTTP extends Server {
                                         GregorianCalendar calendar = new GregorianCalendar();
                                         calendar.setTimeInMillis(date);
                                         Server.logTrace(dateFormat.format(calendar.getTime()));
-                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                         if (queryLocal == null) {
                                             type = "UHOLD";
                                             code = 500;
@@ -2341,7 +2372,7 @@ public final class ServerHTTP extends Server {
                                         GregorianCalendar calendar = new GregorianCalendar();
                                         calendar.setTimeInMillis(date);
                                         Server.logTrace(dateFormat.format(calendar.getTime()));
-                                        Query queryLocal = userLocal == null ? null : userLocal.getQuery(date);
+                                        Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
                                         if (queryLocal == null) {
                                             type = "BLOCK";
                                             code = 500;
@@ -2713,91 +2744,174 @@ public final class ServerHTTP extends Server {
         }
     }
     
-//    private static final HashMap<String,Boolean> sentSMTP = new HashMap<String,Boolean>();
-//    
-//    private static String getDesbloqueioHTML(
-//            final Locale locale,
-//            final String url,
-//            final String ip,
-//            final String email
-//            ) {
-//        StringBuilder builder = new StringBuilder();
-//        Boolean isSentSMTP = sentSMTP.get(ip);
-//        builder.append("<!DOCTYPE html>\n");
-//        builder.append("<html lang=\"");
-//        builder.append(locale.getLanguage());
-//        builder.append("\">\n");
-//        String title;
-//        if (locale.getLanguage().toLowerCase().equals("pt")) {
-//            title = "Página de checagem DNSBL";
-//        } else {
-//            title = "DNSBL check page";
-//        }
-//        if (isSentSMTP == null) {
-//            if (sentSMTP.containsKey(ip)) {
-//                buildHead(builder, title, Core.getURL(locale, ip), 3);
-//            } else {
-//                buildHead(builder, title, Core.getURL(locale, ip), 10);
-//                sentSMTP.put(ip, null);
-//                new Thread() {
-//                    @Override
-//                    public void run() {
-//                        sentSMTP.put(ip, enviarDesbloqueioDNSBL(locale, url, ip, email));
-//                    }
-//                }.start();
-//            }
-//        } else {
-//            buildHead(builder, title);
-//        }
-//        builder.append("  <body>\n");
-//        builder.append("    <div id=\"container\">\n");
-//        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
-//        if (locale.getLanguage().toLowerCase().equals("pt")) {
-//            buildMessage(builder, "Envio da chave de desbloqueio");
-//        } else {
-//            buildMessage(builder, "Unlocking key delivery");
-//        }
-//        if (isSentSMTP == null) {
-//            if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                buildText(builder, "Estamos enviando a chave de desbloqueio por SMTP. Aguarde...");
-//            } else {
-//                 buildText(builder, "We are sending the unlock key by SMTP. Wait...");
-//            }
-//        } else if (!isSentSMTP) {
-//            sentSMTP.remove(ip);
-//            if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                buildText(builder, "Não foi possível enviar a chave de desbloqueio devido por SMTP devido a recusa ou indisponibilidade do MX.");
-//            } else {
-//                buildText(builder, "Unable to send unlock key due to SMTP due to MX refusal or unavailability.");
-//            }
-//        } else {
-//            sentSMTP.remove(ip);
-//            if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                buildText(builder, "Chave de desbloqueio enviada com sucesso para " + email + ".");
-//            } else {
-//                buildText(builder, "Unlock key sent successfully to " + email + ".");
-//            }
-//        }
-//        buildFooter(builder, locale);
-//        builder.append("    </div>\n");
-//        builder.append("  </body>\n");
-//        builder.append("</html>\n");
-//        return builder.toString();
-//    }
+    private static final HashMap<String,Object> sentSMTP = new HashMap<String,Object>();
+    
+    private static String getDesbloqueioHTML(
+            final Locale locale,
+            final String url,
+            final String ip,
+            final String email
+            ) throws MessagingException {
+        StringBuilder builder = new StringBuilder();
+        Object resultSentSMTP = sentSMTP.get(ip);
+        builder.append("<!DOCTYPE html>\n");
+        builder.append("<html lang=\"");
+        builder.append(locale.getLanguage());
+        builder.append("\">\n");
+        String title;
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            title = "Página de checagem DNSBL";
+        } else {
+            title = "DNSBL check page";
+        }
+        if (resultSentSMTP == null) {
+            if (sentSMTP.containsKey(ip)) {
+                buildHead(builder, title, Core.getURL(locale, ip), 5);
+            } else {
+                sentSMTP.put(ip, null);
+                buildHead(builder, title, Core.getURL(locale, ip), 10);
+                new Thread() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.currentThread().setName("BCKGROUND");
+                            sentSMTP.put(ip, enviarDesbloqueioDNSBL(locale, url, ip, email));
+                        } catch (Exception ex) {
+                            sentSMTP.put(ip, ex);
+                        }
+                    }
+                }.start();
+            }
+        } else {
+            buildHead(builder, title);
+        }
+        builder.append("  <body>\n");
+        builder.append("    <div id=\"container\">\n");
+        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+        if (locale.getLanguage().toLowerCase().equals("pt")) {
+            buildMessage(builder, "Envio da chave de desbloqueio");
+        } else {
+            buildMessage(builder, "Unlocking key delivery");
+        }
+        if (resultSentSMTP == null) {
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                buildText(builder, "Estamos enviando a chave de desbloqueio por SMTP. Aguarde...");
+            } else {
+                 buildText(builder, "We are sending the unlock key by SMTP. Wait...");
+            }
+        } else if (resultSentSMTP instanceof Boolean) {
+            sentSMTP.remove(ip);
+            boolean isSentSMTP = (Boolean) resultSentSMTP;
+            if (isSentSMTP) {
+                if (email == null) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Chave de desbloqueio enviada com sucesso.");
+                    } else {
+                        buildText(builder, "Unlock key sent successfully.");
+                    }
+                } else {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Chave de desbloqueio enviada com sucesso para " + email + ".");
+                    } else {
+                        buildText(builder, "Unlock key sent successfully to " + email + ".");
+                    }
+                }
+            } else {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Não foi possível enviar a chave de desbloqueio devido a uma falha de sistema.");
+                } else {
+                    buildText(builder, "The unlock key could not be sent due to a system failure.");
+                }
+            }
+        } else if (resultSentSMTP instanceof SendFailedException) {
+            sentSMTP.remove(ip);
+            SendFailedException ex = (SendFailedException) resultSentSMTP;
+            if (ex.getCause() instanceof SMTPAddressFailedException) {
+                if (email == null) {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Chave de desbloqueio não pode ser enviada porque o endereço de destino não existe.");
+                    } else {
+                        buildText(builder, "Unlock key can not be sent because the destiny address does not exist.");
+                    }
+                } else {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        buildText(builder, "Chave de desbloqueio não pode ser enviada porque o endereço " + email + " não existe.");
+                    } else {
+                        buildText(builder, "Unlock key can not be sent because the " + email + " address does not exist.");
+                    }
+                }
+            } else if (ex.getCause() == null) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Chave de desbloqueio não pode ser enviada devido a recusa do servidor de destino.");
+                } else {
+                    buildText(builder, "Unlock key can not be sent due to denial of destination server.");
+                }
+            } else {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Chave de desbloqueio não pode ser enviada devido a recusa do servidor de destino:\n");
+                    buildText(builder, ex.getCause().getMessage());
+                } else {
+                    buildText(builder, "Unlock key can not be sent due to denial of destination server:\n");
+                    buildText(builder, ex.getCause().getMessage());
+                }
+            }
+        } else if (resultSentSMTP instanceof MailConnectException) {
+            sentSMTP.remove(ip);
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                buildText(builder, "Chave de desbloqueio não pode ser enviada pois o MX de destino se encontra indisponível.");
+            } else {
+                buildText(builder, "Unlock key can not be sent because the destination MX is unavailable.");
+            }
+        } else if (resultSentSMTP instanceof MessagingException) {
+            sentSMTP.remove(ip);
+            MessagingException ex = (MessagingException) resultSentSMTP;
+            if (ex.getCause() instanceof SocketTimeoutException) {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Chave de desbloqueio não pode ser enviada pois o MX de destino demorou demais para iniciar a transação SMTP.");
+                    buildText(builder, "Para que o envio da chave seja possível, o inicio da transação SMTP não pode levar mais que 30 segundos.");
+                } else {
+                    buildText(builder, "Unlock key can not be sent because the destination MX has taken too long to initiate the SMTP transaction.");
+                    buildText(builder, "For the key delivery is possible, the beginning of the SMTP transaction can not take more than 30 seconds.");
+                }
+            } else {
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "Chave de desbloqueio não pode ser enviada pois o MX de destino está recusando nossa mensagem.");
+                } else {
+                    buildText(builder, "Unlock key can not be sent because the destination MX is declining our message.");
+                }
+            }
+        } else {
+            sentSMTP.remove(ip);
+            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                buildText(builder, "Não foi possível enviar a chave de desbloqueio devido a uma falha de sistema.");
+            } else {
+                buildText(builder, "The unlock key could not be sent due to a system failure.");
+            }
+        }
+        buildFooter(builder, locale);
+        builder.append("    </div>\n");
+        builder.append("  </body>\n");
+        builder.append("</html>\n");
+        return builder.toString();
+    }
     
     private static boolean enviarDesbloqueioDNSBL(
             Locale locale,
             String url,
             String ip,
             String email
-            ) throws SendFailedException, MessagingException {
-        if (
-                Core.hasOutputSMTP()
-                && Core.hasAdminEmail()
-                && Domain.isEmail(email)
-                && url != null
-                && !NoReply.contains(email, true)
-                ) {
+            ) throws MessagingException {
+        if (url == null) {
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
+            return false;
+        } else if (!Core.hasAdminEmail()) {
+            return false;
+        } else if (!Domain.isEmail(email)) {
+            return false;
+        } else if (NoReply.contains(email, true)) {
+            return false;
+        } else {
             try {
                 Server.logDebug("sending unblock by e-mail.");
                 User user = User.get(email);
@@ -2887,7 +3001,7 @@ public final class ServerHTTP extends Server {
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message, 20000);
+                return Core.sendMessage(message, 30000);
             } catch (MailConnectException ex) {
                 throw ex;
             } catch (SendFailedException ex) {
@@ -2898,8 +3012,6 @@ public final class ServerHTTP extends Server {
                 Server.logError(ex);
                 return false;
             }
-        } else {
-            return false;
         }
     }
     
@@ -3024,18 +3136,20 @@ public final class ServerHTTP extends Server {
     private static boolean enviarDesbloqueio(
             String url,
             String remetente,
-            String destinatario,
-            Locale locale
+            String destinatario
             ) throws SendFailedException, MessagingException {
-        if (
-                Core.hasOutputSMTP()
-                && Core.hasAdminEmail()
-                && Domain.isEmail(destinatario)
-                && url != null
-                && !NoReply.contains(destinatario, true)
-                ) {
+        if (url == null) {
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
+            return false;
+        } else if (!Domain.isEmail(destinatario)) {
+            return false;
+        } else if (NoReply.contains(destinatario, true)) {
+            return false;
+        } else {
             try {
                 Server.logDebug("sending unblock by e-mail.");
+                Locale locale = User.getLocale(destinatario);
                 InternetAddress[] recipients = InternetAddress.parse(destinatario);
                 Properties props = System.getProperties();
                 Session session = Session.getDefaultInstance(props);
@@ -3111,8 +3225,6 @@ public final class ServerHTTP extends Server {
                 Server.logError(ex);
                 return false;
             }
-        } else {
-            return false;
         }
     }
     
@@ -3708,14 +3820,15 @@ public final class ServerHTTP extends Server {
         }
         if (isSLAAC && isOpenSMTP == null) {
             if (openSMTP.containsKey(query)) {
-                buildHead(builder, title, Core.getURL(locale, query), 3);
+                buildHead(builder, title, Core.getURL(locale, query), 5);
             } else {
                 buildHead(builder, title, Core.getURL(locale, query), 10);
                 openSMTP.put(query, null);
                 new Thread() {
                     @Override
                     public void run() {
-                        openSMTP.put(query, Analise.isOpenSMTP(query, 10000));
+                        Thread.currentThread().setName("BCKGROUND");
+                        openSMTP.put(query, Analise.isOpenSMTP(query, 30000));
                     }
                 }.start();
             }
@@ -5012,6 +5125,379 @@ public final class ServerHTTP extends Server {
         }
     }
     
+//    private static String getControlPanel(
+//            Locale locale,
+//            User user,
+//            Long begin,
+//            String filter
+//            ) {
+//        StringBuilder builder = new StringBuilder();
+//        if (begin == null && filter == null) {
+////            builder.append("<!DOCTYPE html>\n");
+//            builder.append("<html lang=\"");
+//            builder.append(locale.getLanguage());
+//            builder.append("\">\n");
+//            builder.append("  <head>\n");
+//            builder.append("    <meta charset=\"UTF-8\">\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("    <title>Painel de controle do SPFBL</title>\n");
+//            } else {
+//                builder.append("    <title>SPFBL control panel</title>\n");
+//            }
+//            // Styled page.
+//            builder.append("    <style type=\"text/css\">\n");
+//            builder.append("      body {\n");
+//            builder.append("        margin:180px 0px 30px 0px;\n");
+//            builder.append("        background:lightgray;\n");
+//            builder.append("      }\n");
+//            builder.append("      iframe {\n");
+//            builder.append("        border-width: 0px 0px 0px 0px;\n");
+//            builder.append("        width:100%;\n");
+//            builder.append("        height:150px;\n");
+//            builder.append("      }\n");
+//            builder.append("      .header {\n");
+//            builder.append("        background-color:lightgray;\n");
+//            builder.append("        border-width: 0px 0px 0px 0px;\n");
+//            builder.append("        position:fixed;\n");
+//            builder.append("        top:0px;\n");
+//            builder.append("        margin:auto;\n");
+//            builder.append("        z-index:1;\n");
+//            builder.append("        width:100%;\n");
+//            builder.append("        height:180px;\n");
+//            builder.append("      }\n");
+//            builder.append("      .bottom {\n");
+//            builder.append("        background-color:lightgray;\n");
+//            builder.append("        border-width: 0px 0px 0px 0px;\n");
+//            builder.append("        position:fixed;\n");
+//            builder.append("        bottom:0px;\n");
+//            builder.append("        margin:auto;\n");
+//            builder.append("        z-index:1;\n");
+//            builder.append("        width:100%;\n");
+//            builder.append("        height:30px;\n");
+//            builder.append("      }\n");
+//            builder.append("      .button {\n");
+//            builder.append("          background-color: #4CAF50;\n");
+//            builder.append("          border: none;\n");
+//            builder.append("          color: white;\n");
+//            builder.append("          padding: 16px 32px;\n");
+//            builder.append("          text-align: center;\n");
+//            builder.append("          text-decoration: none;\n");
+//            builder.append("          display: inline-block;\n");
+//            builder.append("          font-size: 16px;\n");
+//            builder.append("          margin: 4px 2px;\n");
+//            builder.append("          -webkit-transition-duration: 0.4s;\n");
+//            builder.append("          transition-duration: 0.4s;\n");
+//            builder.append("          cursor: pointer;\n");
+//            builder.append("      }\n");
+//            builder.append("      .sender {\n");
+//            builder.append("          background-color: white; \n");
+//            builder.append("          color: black; \n");
+//            builder.append("          border: 2px solid #008CBA;\n");
+//            builder.append("          width: 100%;\n");
+//            builder.append("          word-wrap: break-word;\n");
+//            builder.append("      }\n");
+//            builder.append("      .sender:hover {\n");
+//            builder.append("          background-color: #008CBA;\n");
+//            builder.append("          color: white;\n");
+//            builder.append("      }\n");
+//            builder.append("      .highlight {\n");
+//            builder.append("        background: #b4b9d2;\n");
+//            builder.append("        color:black;\n");
+//            builder.append("        border-top: 1px solid #22262e;\n");
+//            builder.append("        border-bottom: 1px solid #22262e;\n");
+//            builder.append("      }\n");
+//            builder.append("      .highlight:nth-child(odd) td {\n");
+//            builder.append("        background: #b4b9d2;\n");
+//            builder.append("      }\n");
+//            builder.append("      .click {\n");
+//            builder.append("        cursor:pointer;\n");
+//            builder.append("        cursor:hand;\n");
+//            builder.append("      }\n");
+//            builder.append("      table {\n");
+//            builder.append("        background: white;\n");
+//            builder.append("        table-layout:fixed;\n");
+//            builder.append("        border-collapse: collapse;\n");
+//            builder.append("        word-wrap:break-word;\n");
+//            builder.append("        border-radius:3px;\n");
+//            builder.append("        border-collapse: collapse;\n");
+//            builder.append("        margin: auto;\n");
+//            builder.append("        padding:2px;\n");
+//            builder.append("        width: 100%;\n");
+//            builder.append("        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);\n");
+//            builder.append("        animation: float 5s infinite;\n");
+//            builder.append("      }\n");
+//            builder.append("      th {\n");
+//            builder.append("        color:#FFFFFF;;\n");
+//            builder.append("        background:#1b1e24;\n");
+//            builder.append("        border-bottom:4px solid #9ea7af;\n");
+//            builder.append("        border-right: 0px;\n");
+//            builder.append("        font-size:16px;\n");
+//            builder.append("        font-weight: bold;\n");
+//            builder.append("        padding:4px;\n");
+//            builder.append("        text-align:left;\n");
+//            builder.append("        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);\n");
+//            builder.append("        vertical-align:middle;\n");
+//            builder.append("        height:30px;\n");
+//            builder.append("      }\n");
+//            builder.append("      tr {\n");
+//            builder.append("        border-top: 1px solid #C1C3D1;\n");
+//            builder.append("        border-bottom-: 1px solid #C1C3D1;\n");
+//            builder.append("        font-size:16px;\n");
+//            builder.append("        font-weight:normal;\n");
+//            builder.append("        text-shadow: 0 1px 1px rgba(256, 256, 256, 0.1);\n");
+//            builder.append("      }\n");
+//            builder.append("      tr:nth-child(odd) td {\n");
+//            builder.append("        background:#EBEBEB;\n");
+//            builder.append("      }\n");
+//            builder.append("      td {\n");
+//            builder.append("        padding:2px;\n");
+//            builder.append("        vertical-align:middle;\n");
+//            builder.append("        font-size:16px;\n");
+//            builder.append("        text-shadow: -1px -1px 1px rgba(0, 0, 0, 0.1);\n");
+//            builder.append("        border-right: 1px solid #C1C3D1;\n");
+//            builder.append("      }\n");
+//            builder.append("      input[type=text], select {\n");
+//            builder.append("        width: 400px;\n");
+//            builder.append("        padding: 0px 4px;\n");
+//            builder.append("        margin: 1px 0;\n");
+//            builder.append("        display: inline-block;\n");
+//            builder.append("        background: #b4b9d2;\n");
+//            builder.append("        border: 1px solid #ccc;\n");
+//            builder.append("        border-radius: 4px;\n");
+//            builder.append("        box-sizing: border-box;\n");
+//            builder.append("      }\n");
+//            builder.append("    </style>\n");
+//            // JavaScript functions.
+//            TreeSet<Long> queryKeySet = user.getQueryKeySet(null, null);
+//            builder.append("    <script type=\"text/javascript\" src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js\"></script>\n");
+//            builder.append("    <script type=\"text/javascript\">\n");
+//            builder.append("      window.onbeforeunload = function () {\n");
+//            builder.append("        document.getElementById('filterField').value = '';\n");
+//            builder.append("        window.scrollTo(0, 0);\n");
+//            builder.append("      }\n");
+//            builder.append("      var last = ");
+//            if (queryKeySet.isEmpty()) {
+//                builder.append(0);
+//            } else {
+//                builder.append(queryKeySet.last());
+//            }
+//            builder.append(";\n");
+//            builder.append("      var filterText = '';\n");
+//            builder.append("      function view(query) {\n");
+//            builder.append("        if (query == undefined || query == 0) {\n");
+//            builder.append("          var viewer = document.getElementById('viewer');\n");
+//            builder.append("          viewer.src = 'about:blank';\n");
+//            builder.append("          last = 0;\n");
+//            builder.append("        } else if (last != query) {\n");
+//            builder.append("          var viewer = document.getElementById('viewer');\n");
+//            builder.append("          viewer.addEventListener('load', function() {\n");
+//            builder.append("            if (document.getElementById(last)) {\n");
+//            builder.append("              document.getElementById(last).className = 'tr';\n");
+//            builder.append("              document.getElementById(last).className = 'click';\n");
+//            builder.append("            }\n");
+//            builder.append("            document.getElementById(query).className = 'highlight';\n");
+//            builder.append("            last = query;\n");
+//            builder.append("          });\n");
+//            builder.append("          viewer.src = '");
+//            builder.append(Core.getURL());
+//            builder.append("' + query;\n");
+//            builder.append("        }\n");
+//            builder.append("      }\n");
+//            builder.append("      function more(query) {\n");
+//            builder.append("        var rowMore = document.getElementById('rowMore');\n");
+//            builder.append("        rowMore.onclick = '';\n");
+//            builder.append("        rowMore.className = 'tr';\n");
+//            builder.append("        var columnMore = document.getElementById('columnMore');\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("        columnMore.innerHTML = 'carregando mais registros';\n");
+//            } else {
+//                builder.append("        columnMore.innerHTML = 'loading more records';\n");
+//            }
+//            builder.append("        $.post(\n");
+//            builder.append("          '");
+//            builder.append(Core.getURL());
+//            builder.append(user.getEmail());
+//            builder.append("',\n");
+//            builder.append("          {filter:filterText,begin:query},\n");
+//            builder.append("          function(data, status) {\n");
+//            builder.append("            if (status == 'success') {\n");
+//            builder.append("              rowMore.parentNode.removeChild(rowMore);\n");
+//            builder.append("              $('#tableBody').append(data);\n");
+//            builder.append("            } else {\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("              alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
+//            } else {
+//                builder.append("              alert('There was a system crash while trying to perform this operation.');\n");
+//            }
+//            builder.append("            }\n");
+//            builder.append("          }\n");
+//            builder.append("        );\n");
+//            builder.append("      }\n");
+//            builder.append("      function refresh() {\n");
+//            builder.append("        filterText = document.getElementById('filterField').value;\n");
+//            builder.append("        $.post(\n");
+//            builder.append("          '");
+//            builder.append(Core.getURL());
+//            builder.append(user.getEmail());
+//            builder.append("',\n");
+//            builder.append("          {filter:filterText},\n");
+//            builder.append("          function(data, status) {\n");
+//            builder.append("            if (status == 'success') {\n");
+//            builder.append("              $('#tableBody').html(data);\n");
+//            builder.append("              view($('#tableBody tr').attr('id'));\n");
+//            builder.append("            } else {\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("              alert('Houve uma falha de sistema ao tentar realizar esta operação.');\n");
+//            } else {
+//                builder.append("              alert('There was a system crash while trying to perform this operation.');\n");
+//            }
+//            builder.append("            }\n");
+//            builder.append("          }\n");
+//            builder.append("        );\n");
+//            builder.append("      }\n");
+//            builder.append("    </script>\n");
+//            builder.append("  </head>\n");
+//            // Body.
+//            builder.append("  <body>\n");
+//            builder.append("    <div class=\"header\">\n");
+//            if (queryKeySet.isEmpty()) {
+//                builder.append("      <iframe id=\"viewer\" src=\"about:blank\"></iframe>\n");
+//            } else {
+//                builder.append("      <iframe id=\"viewer\" src=\"");
+//                builder.append(Core.getURL());
+//                builder.append(queryKeySet.last());
+//                builder.append("\"></iframe>\n");
+//            }
+//            // Construção da tabela de consultas.
+//            builder.append("      <table>\n");
+//            builder.append("        <thead>\n");
+//            builder.append("          <tr>\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("            <th style=\"width:120px;\">Recepção</th>\n");
+//                builder.append("            <th>Origem</th>\n");
+//                builder.append("            <th>Remetente</th>\n");
+//                builder.append("            <th>Conteúdo</th>\n");
+//                builder.append("            <th>Entrega</th>\n");
+//            } else {
+//                builder.append("            <th style=\"width:160px;\">Reception</th>\n");
+//                builder.append("            <th style=\"width:auto;\">Source</th>\n");
+//                builder.append("            <th style=\"width:auto;\">Sender</th>\n");
+//                builder.append("            <th style=\"width:auto;\">Content</th>\n");
+//                builder.append("            <th style=\"width:auto;\">Delivery</th>\n");
+//            }
+//            builder.append("          </tr>\n");
+//            builder.append("        </thead>\n");
+//            builder.append("      </table>\n");
+//            builder.append("    </div>\n");
+//            if (queryKeySet.isEmpty()) {
+//                builder.append("    <table>\n");
+//                builder.append("      <tbody>\n");
+//                builder.append("        <tr>\n");
+//                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                    builder.append("          <td colspan=\"5\" align=\"center\">nenhum registro encontrado</td>\n");
+//                } else {
+//                    builder.append("          <td colspan=\"5\" align=\"center\">no records found</td>\n");
+//                }
+//                builder.append("        </tr>\n");
+//                builder.append("      </tbody>\n");
+//                builder.append("    </table>\n");
+//            } else {
+//                DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+//                GregorianCalendar calendar = new GregorianCalendar();
+//                Long nextQuery = null;
+//                while (queryKeySet.size() > User.QUERY_MAX_ROWS) {
+//                    nextQuery = queryKeySet.pollFirst();
+//                }
+//                builder.append("    <table>\n");
+//                builder.append("      <tbody id=\"tableBody\">\n");
+//                for (Long time : queryKeySet.descendingSet()) {
+//                    User.Query query = user.getQuery(time);
+//                    boolean highlight = time.equals(queryKeySet.last());
+//                    buildQueryRow(locale, builder, dateFormat, calendar, time, query, highlight);
+//                }
+//                if (nextQuery == null) {
+//                    builder.append("      <tr>\n");
+//                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                        builder.append("        <td colspan=\"5\" align=\"center\">não foram encontrados outros registros</td>\n");
+//                    } else {
+//                        builder.append("        <td colspan=\"5\" align=\"center\">no more records found</td>\n");
+//                    }
+//                    builder.append("      </tr>\n");
+//                } else {
+//                    builder.append("        <tr id=\"rowMore\" class=\"click\" onclick=\"more('");
+//                    builder.append(nextQuery);
+//                    builder.append("')\">\n");
+//                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">clique para ver mais registros</td>\n");
+//                    } else {
+//                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">click to see more records</td>\n");
+//                    }
+//                    builder.append("        </tr>\n");
+//                }
+//                builder.append("      </tbody>\n");
+//                builder.append("    </table>\n");
+//            }
+//            builder.append("    <div class=\"bottom\">\n");
+//            builder.append("      <table>\n");
+//            builder.append("        <tr>\n");
+//            if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                builder.append("          <th>Pesquisar <input type=\"text\" id=\"filterField\" name=\"filterField\" onkeydown=\"if (event.keyCode == 13) refresh();\" autofocus></th>\n");
+//            } else {
+//                builder.append("          <th>Search <input type=\"text\" id=\"filterField\" name=\"filterField\" onkeydown=\"if (event.keyCode == 13) refresh();\" autofocus></th>\n");
+//            }
+//            builder.append("          <th style=\"text-align:right;\"><small>");
+//            builder.append("Powered by <a target=\"_blank\" href=\"http://spfbl.net/\" style=\"color: #b4b9d2;\">SPFBL.net</a></small>");
+//            builder.append("</th>\n");
+//            builder.append("        </tr>\n");
+//            builder.append("      <table>\n");
+//            builder.append("    </div>\n");
+//            builder.append("  </body>\n");
+//            builder.append("</html>\n");
+//        } else {
+//            TreeSet<Long> queryKeySet = user.getQueryKeySet(begin, filter);
+//            if (queryKeySet.isEmpty()) {
+//                builder.append("        <tr>\n");
+//                if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                    builder.append("          <td colspan=\"5\" align=\"center\">nenhum registro encontrado</td>\n");
+//                } else {
+//                    builder.append("          <td colspan=\"5\" align=\"center\">no records found</td>\n");
+//                }
+//                builder.append("        </tr>\n");
+//            } else {
+//                DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
+//                GregorianCalendar calendar = new GregorianCalendar();
+//                Long nextQuery = null;
+//                while (queryKeySet.size() > User.QUERY_MAX_ROWS) {
+//                    nextQuery = queryKeySet.pollFirst();
+//                }
+//                for (Long time : queryKeySet.descendingSet()) {
+//                    User.Query query = user.getQuery(time);
+//                    buildQueryRow(locale, builder, dateFormat, calendar, time, query, false);
+//                }
+//                if (nextQuery == null) {
+//                    builder.append("        <tr>\n");
+//                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                        builder.append("          <td colspan=\"5\" align=\"center\">não foram encontrados outros registros</td>\n");
+//                    } else {
+//                        builder.append("          <td colspan=\"5\" align=\"center\">no more records found</td>\n");
+//                    }
+//                    builder.append("        </tr>\n");
+//                } else {
+//                    builder.append("        <tr id=\"rowMore\" class=\"click\" onclick=\"more('");
+//                    builder.append(nextQuery);
+//                    builder.append("')\">\n");
+//                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+//                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">clique para ver mais registros</td>\n");
+//                    } else {
+//                        builder.append("          <td id=\"columnMore\" colspan=\"5\" align=\"center\">click to see more records</td>\n");
+//                    }
+//                    builder.append("        </tr>\n");
+//                }
+//            }
+//        }
+//        return builder.toString();
+//    }
+    
     private static String getControlPanel(
             Locale locale,
             User user,
@@ -5155,7 +5641,7 @@ public final class ServerHTTP extends Server {
             builder.append("      }\n");
             builder.append("    </style>\n");
             // JavaScript functions.
-            TreeSet<Long> queryKeySet = user.getQueryKeySet(null, null);
+            TreeMap<Long,Query> queryMap = user.getQueryMap(null, null);
             builder.append("    <script type=\"text/javascript\" src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js\"></script>\n");
             builder.append("    <script type=\"text/javascript\">\n");
             builder.append("      window.onbeforeunload = function () {\n");
@@ -5163,10 +5649,10 @@ public final class ServerHTTP extends Server {
             builder.append("        window.scrollTo(0, 0);\n");
             builder.append("      }\n");
             builder.append("      var last = ");
-            if (queryKeySet.isEmpty()) {
+            if (queryMap.isEmpty()) {
                 builder.append(0);
             } else {
-                builder.append(queryKeySet.last());
+                builder.append(queryMap.lastKey());
             }
             builder.append(";\n");
             builder.append("      var filterText = '';\n");
@@ -5247,12 +5733,12 @@ public final class ServerHTTP extends Server {
             // Body.
             builder.append("  <body>\n");
             builder.append("    <div class=\"header\">\n");
-            if (queryKeySet.isEmpty()) {
+            if (queryMap.isEmpty()) {
                 builder.append("      <iframe id=\"viewer\" src=\"about:blank\"></iframe>\n");
             } else {
                 builder.append("      <iframe id=\"viewer\" src=\"");
                 builder.append(Core.getURL());
-                builder.append(queryKeySet.last());
+                builder.append(queryMap.lastKey());
                 builder.append("\"></iframe>\n");
             }
             // Construção da tabela de consultas.
@@ -5276,7 +5762,7 @@ public final class ServerHTTP extends Server {
             builder.append("        </thead>\n");
             builder.append("      </table>\n");
             builder.append("    </div>\n");
-            if (queryKeySet.isEmpty()) {
+            if (queryMap.isEmpty()) {
                 builder.append("    <table>\n");
                 builder.append("      <tbody>\n");
                 builder.append("        <tr>\n");
@@ -5292,14 +5778,14 @@ public final class ServerHTTP extends Server {
                 DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
                 GregorianCalendar calendar = new GregorianCalendar();
                 Long nextQuery = null;
-                while (queryKeySet.size() > 512) {
-                    nextQuery = queryKeySet.pollFirst();
+                while (queryMap.size() > User.QUERY_MAX_ROWS) {
+                    nextQuery = queryMap.pollFirstEntry().getKey();
                 }
                 builder.append("    <table>\n");
                 builder.append("      <tbody id=\"tableBody\">\n");
-                for (Long time : queryKeySet.descendingSet()) {
-                    User.Query query = user.getQuery(time);
-                    boolean highlight = time.equals(queryKeySet.last());
+                for (Long time : queryMap.descendingKeySet()) {
+                    User.Query query = queryMap.get(time);
+                    boolean highlight = time.equals(queryMap.lastKey());
                     buildQueryRow(locale, builder, dateFormat, calendar, time, query, highlight);
                 }
                 if (nextQuery == null) {
@@ -5341,8 +5827,8 @@ public final class ServerHTTP extends Server {
             builder.append("  </body>\n");
             builder.append("</html>\n");
         } else {
-            TreeSet<Long> queryKeySet = user.getQueryKeySet(begin, filter);
-            if (queryKeySet.isEmpty()) {
+            TreeMap<Long,Query> queryMap = user.getQueryMap(begin, filter);
+            if (queryMap.isEmpty()) {
                 builder.append("        <tr>\n");
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
                     builder.append("          <td colspan=\"5\" align=\"center\">nenhum registro encontrado</td>\n");
@@ -5354,11 +5840,11 @@ public final class ServerHTTP extends Server {
                 DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, locale);
                 GregorianCalendar calendar = new GregorianCalendar();
                 Long nextQuery = null;
-                while (queryKeySet.size() > 512) {
-                    nextQuery = queryKeySet.pollFirst();
+                while (queryMap.size() > User.QUERY_MAX_ROWS) {
+                    nextQuery = queryMap.pollFirstEntry().getKey();
                 }
-                for (Long time : queryKeySet.descendingSet()) {
-                    User.Query query = user.getQuery(time);
+                for (Long time : queryMap.descendingKeySet()) {
+                    User.Query query = queryMap.get(time);
                     buildQueryRow(locale, builder, dateFormat, calendar, time, query, false);
                 }
                 if (nextQuery == null) {

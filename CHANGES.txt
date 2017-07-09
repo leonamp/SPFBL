@@ -1,3 +1,20 @@
+### v2.7.5 ; release 09/07/2017:
+
+FIX) correção do modelo de tabela das consultas no MySQL.
+
+FIX) correção referente a permissões de acesso na estrututa de dados de clientes.
+
+UPDT) criação de um pooler de conexões MySQL para reciclagem de conexões.
+
+UPDT) remoção de registros de consulta com resultado BLOCK na memória se gravada em banco de dados.
+
+UPDT) busca de registros de consulta em banco de dados quando estiverem fora da memória.
+
+UPDT) implementação da resposta REJECT para o comando HEADER, quando houver rejeição pelo conteúdo.
+
+UPDT) envio da chave de desbloqueio DNSBL em segundo plano, para não congestinoar o serviço HTTP.
+
+
 ### v2.7.4 ; release 02/07/2017:
 
 NEW) implementação da configuração de idioma por usuário.

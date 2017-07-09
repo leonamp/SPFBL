@@ -443,7 +443,7 @@ public final class QueryDNS extends Server {
             return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
         }
         
-        private boolean isAbusing() {
+        private boolean isCongested() {
             if (frequency == null) {
                 return false;
             } else if (isDead()) {
@@ -521,7 +521,7 @@ public final class QueryDNS extends Server {
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
-                                    } else if (this.isAbusing() && client.isAbusing()) {
+                                    } else if (isCongested() && client.isAbusing()) {
                                         this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
@@ -958,7 +958,7 @@ public final class QueryDNS extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+            if (CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS)) {
                 Connection connection = poll();
                 if (connection == null) {
                     CONNECION_SEMAPHORE.release();
@@ -967,7 +967,7 @@ public final class QueryDNS extends Server {
                 }
                 return connection;
             } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
-            // Cria uma nova conexão se não houver conecxões ociosas.
+                // Cria uma nova conexão se não houver conecões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
                 Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
                 Connection connection = new Connection();

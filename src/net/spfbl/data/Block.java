@@ -33,6 +33,8 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.spfbl.core.Client;
@@ -1483,6 +1485,20 @@ public class Block {
             return false;
         }
     }
+    
+    public static String addSafe(String token) {
+        try {
+            if ((token = normalizeTokenBlock(token)) == null) {
+                return null;
+            } else if (addExact(token)) {
+                return token;
+            } else {
+                return null;
+            }
+        } catch (ProcessException ex) {
+            return null;
+        }
+    }
 
     public static String add(String token) throws ProcessException {
         if ((token = normalizeTokenBlock(token)) == null) {
@@ -1519,6 +1535,14 @@ public class Block {
             throw new ProcessException("TOKEN INVALID");
         } else {
             return addExact(client + ':' + token);
+        }
+    }
+    
+    public static boolean addSafe(User user, String token) {
+        try {
+            return add(user, token);
+        } catch (ProcessException ex) {
+            return false;
         }
     }
     
@@ -2329,8 +2353,7 @@ public class Block {
         if (recipient != null && recipient.contains("@")) {
             int index = recipient.indexOf('@');
             recipient = recipient.toLowerCase();
-            if (Core.isAdminEmail(recipient) || Core.isAbuseEmail(recipient) ||
-                    (recipient.startsWith("postmaster@") && !recipient.equals(userEmail))) {
+            if (Core.isAbuseEmail(recipient) || (recipient.startsWith("postmaster@") && !recipient.equals(userEmail))) {
                 // Não pode haver bloqueio para o postmaster, admin e abuse,
                 // exceto se o bloqueio for especifico destes.
                 String mx = Domain.extractHost(sender, true);

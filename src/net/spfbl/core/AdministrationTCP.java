@@ -129,9 +129,9 @@ public final class AdministrationTCP extends Server {
                                 int index = command.indexOf(token) + token.length() + 1;
                                 command = command.substring(index).trim();
                                 if (user == null) {
-                                    result = "ERROR: TOTP UNDEFINED USER\n";
+                                    result = "TOTP UNDEFINED USER\n";
                                 } else if (!user.isValidOTP(otpCode)) {
-                                    result = "ERROR: TOTP INVALID CODE\n";
+                                    result = "TOTP INVALID CODE\n";
                                 }
                             }
                             if (result == null) {
@@ -549,7 +549,7 @@ public final class AdministrationTCP extends Server {
                         builder.append("iptables -F\n");
                         builder.append("ip6tables -F\n\n");
                         builder.append("### SPFBL ADMIN\n\n");
-                        clientMap = Client.getMap(Permission.ALL);
+                        clientMap = Client.getAdministratorMap();
                         for (Object key : clientMap.keySet()) {
                             if (key instanceof User) {
                                 User user = (User) key;
@@ -1470,7 +1470,7 @@ public final class AdministrationTCP extends Server {
                             String mx = Domain.extractHost(sender, true);
                             String domain = "." + Domain.extractDomain(sender, false);
                             if (userEmail == null) {
-                                result = "ERROR: UNDEFINED USER\n";
+                                result = "UNDEFINED USER\n";
                             } else if (Block.containsExact(userEmail + ":" + sender)) {
                                 result = "BLOCKED AS " + sender + "\n";
                             } else if (Block.containsExact(userEmail + ":" + mx)) {
@@ -1895,8 +1895,8 @@ public final class AdministrationTCP extends Server {
                                 if (result.length() == 0) {
                                     result = "EMPTY\n";
                                 }
-                            } else if (token.equals("ALL")) {
-                                for (Client clientLocal : Client.getSet(Client.Permission.ALL)) {
+                            } else if (token.equals("ADMIN")) {
+                                for (Client clientLocal : Client.getAdministratorSet()) {
                                     result += clientLocal + "\n";
                                 }
                                 if (result.length() == 0) {

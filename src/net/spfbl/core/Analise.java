@@ -1558,14 +1558,14 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
-    protected static synchronized TreeMap<String,Short[]> getClusterCloneMap() {
+    protected static synchronized TreeMap<String,Short[]> getClusterMap() {
         TreeMap<String,Short[]> cloneMap = new TreeMap<String,Short[]>();
         cloneMap.putAll(clusterMap);
         return cloneMap;
     }
     
     protected static void dumpClusterTLD(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterCloneMap();
+        TreeMap<String,Short[]> map = getClusterMap();
         for (String token : map.keySet()) {
             Short[] dist = map.get(token);
             int spam = dist[1];
@@ -1590,7 +1590,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     protected static void dumpClusterCPF(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterCloneMap();
+        TreeMap<String,Short[]> map = getClusterMap();
         for (String token : map.keySet()) {
             Short[] dist = map.get(token);
             int spam = dist[1];
@@ -1615,7 +1615,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     protected static void dumpClusterCNPJ(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterCloneMap();
+        TreeMap<String,Short[]> map = getClusterMap();
         for (String token : map.keySet()) {
             Short[] dist = map.get(token);
             int spam = dist[1];
@@ -1640,7 +1640,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     protected static void dumpClusterCIDR(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterCloneMap();
+        TreeMap<String,Short[]> map = getClusterMap();
         for (String token : map.keySet()) {
             Short[] dist = map.get(token);
             int spam = dist[1];
@@ -1665,7 +1665,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     protected static void dumpClusterMask(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterCloneMap();
+        TreeMap<String,Short[]> map = getClusterMap();
         for (String token : map.keySet()) {
             if (token.contains("#") || token.contains(".H.")) {
                 Short[] dist = map.get(token);
@@ -1791,7 +1791,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             try {
 //                Server.logTrace("storing cluster.map");
                 long time = System.currentTimeMillis();
-                TreeMap<String,Short[]> map = getClusterCloneMap();
+                TreeMap<String,Short[]> map = getClusterMap();
                 File file = new File("./data/cluster.map");
                 FileOutputStream outputStream = new FileOutputStream(file);
                 try {
@@ -1854,16 +1854,19 @@ public class Analise implements Serializable, Comparable<Analise> {
                         if (Domain.isHostname(hostname)) {
                             clusterMap.put(token, value);
                         }
-                    } else if (Domain.isHostname(token)) {
-                        String hostname = Domain.normalizeHostname(token, true);
-                        if (Domain.isOfficialTLD(hostname) && !hostname.endsWith(".br")) {
-                            clusterMap.put(hostname, value);
-                        }
+                    } else if (Owner.isOwnerCPF(token.substring(1))) {
+                        String ownerID = Owner.normalizeID(token.substring(1));
+                        clusterMap.put(ownerID, value);
                     } else if (Owner.isOwnerID(token)) {
                         String ownerID = Owner.normalizeID(token);
                         clusterMap.put(ownerID, value);
                     } else if (Subnet.isValidCIDR(token)) {
                         clusterMap.put(token, value);
+                    } else if (Domain.isHostname(token)) {
+                        String hostname = Domain.normalizeHostname(token, true);
+                        if (Domain.isOfficialTLD(hostname) && !hostname.endsWith(".br")) {
+                            clusterMap.put(hostname, value);
+                        }
                     }
                 }
                 Server.logLoad(time, file);

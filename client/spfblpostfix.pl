@@ -94,7 +94,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^LISTED/ ) {
         STDOUT->print(
-            "action=451 4.7.2 SPFBL you are temporarily blocked on this server.\n\n"
+            "action=451 4.7.2 SPFBL you are temporarily blocked on this server. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^FLAG/ ) {
@@ -109,7 +109,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL sender has non-existent internet domain.\n\n"
+            "action=554 5.7.1 SPFBL sender has non-existent internet domain. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^BLOCKED / ) {
@@ -119,12 +119,12 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^BLOCKED/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL you are permanently blocked in this server.\n\n"
+            "action=554 5.7.1 SPFBL you are permanently blocked in this server. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL hostname and sender are both invalids.\n\n"
+            "action=554 5.7.1 SPFBL hostname and sender are both invalids. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^INVALID / ) {
@@ -139,7 +139,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^GREYLIST/ ) {
         STDOUT->print(
-            "action=451 4.7.1 SPFBL you are greylisted on this server.\n\n"
+            "action=451 4.7.1 SPFBL you are greylisted on this server. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^SPAMTRAP/ ) {
@@ -149,7 +149,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
         STDOUT->print(
-            "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address.\n\n"
+            "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^TIMEOUT/ ) {
@@ -190,7 +190,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-             "action=554 5.7.1 SPFBL Message rejected due to receiver policy for SPF fail. Please see http://www.openspf.net/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address} \n\n"
+             "action=554 5.7.1 SPFBL message rejected due to receiver policy for SPF fail. Please see http://www.openspf.net/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address}\n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {
@@ -205,12 +205,12 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^INEXISTENT/ ) {
         STDOUT->print(
-             "action=550 5.1.1 SPFBL Unknown user in virtual mailbox table.\n\n"
+             "action=550 5.1.1 SPFBL unknown user in virtual mailbox table. See http://spfbl.net/en/feedback\n\n"
         );
     }
     elsif ( $result =~ /^INEXISTENT / ) {
         STDOUT->print(
-             "action=550 5.1.1 SPFBL Unknown user in virtual mailbox table.\n\n"
+             "action=550 5.1.1 SPFBL unknown user in virtual mailbox table. See http://spfbl.net/en/feedback\n\n"
         );
     }
     else {

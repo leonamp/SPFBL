@@ -18,7 +18,6 @@ package net.spfbl.core;
 
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.sun.mail.smtp.SMTPAddressFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import it.sauronsoftware.junique.AlreadyLockedException;
@@ -32,8 +31,10 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.BindException;
 import java.net.InetAddress;
+import java.net.MalformedURLException;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
@@ -89,7 +90,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 7;
-    private static final byte RELEASE = 4;
+    private static final byte RELEASE = 5;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -680,6 +681,75 @@ public class Core {
         }
     }
     
+    private static ConnectionPooler CONNECTION_POOLER = null;
+    
+    private static synchronized ConnectionPooler getConnectionPooler() {
+        if (MYSQL_HOSTNAME == null) {
+            return null;
+        } else if (MYSQL_USER == null) {
+            return null;
+        } else if (MYSQL_PASSWORD == null) {
+            return null;
+        } else if (CONNECTION_POOLER == null) {
+            return CONNECTION_POOLER = new ConnectionPooler(
+                    MYSQL_HOSTNAME,
+                    MYSQL_PORT,
+                    MYSQL_USER,
+                    MYSQL_PASSWORD,
+                    MYSQL_SCHEMA,
+                    MYSQL_SSL
+            );
+        } else {
+            return CONNECTION_POOLER;
+        }
+    }
+    
+    public static synchronized boolean closeConnectionPooler() {
+        if (CONNECTION_POOLER == null) {
+            return false;
+        } else {
+            try {
+                CONNECTION_POOLER.close();
+                return true;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+    
+    public static Connection poolConnectionMySQL() {
+        ConnectionPooler pooler = getConnectionPooler();
+        if (pooler == null) {
+            return null;
+        } else {
+            try {
+                return pooler.pollConnection();
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
+    public static boolean offerConnectionMySQL(Connection connection) {
+        if (connection == null) {
+            return false;
+        } else {
+            ConnectionPooler pooler = getConnectionPooler();
+            if (pooler == null) {
+                return false;
+            } else {
+                try {
+                    return pooler.offerConnection(connection);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return false;
+                }
+            }
+        }
+    }
+    
     public static Connection getConnectionMySQL() {
         if (MYSQL_HOSTNAME == null) {
             return null;
@@ -696,6 +766,7 @@ public class Core {
                         + "&useUnicode=true&characterEncoding=UTF-8"
                         + (MYSQL_SSL ? "&verifyServerCertificate=false"
                         + "&useSSL=true&requireSSL=true" : "");
+                DriverManager.setLoginTimeout(3);
                 Connection connection = DriverManager.getConnection(
                         url, MYSQL_USER, MYSQL_PASSWORD
                 );
@@ -705,6 +776,7 @@ public class Core {
                 } finally {
                     statement.close();
                 }
+                Server.logMySQL("connection created.");
                 return connection;
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -1511,8 +1583,10 @@ public class Core {
                         lastException = null;
                         break;
                     } catch (MailConnectException ex) {
+                        Server.logSendMTP("connection failed.");
                         lastException = ex;
                     } catch (SendFailedException ex) {
+                        Server.logSendMTP("send failed.");
                         throw ex;
                     } catch (MessagingException ex) {
                         if (ex.getMessage().contains(" TLS ")) {
@@ -1536,6 +1610,7 @@ public class Core {
                                 lastException = null;
                                 break;
                             } catch (SendFailedException ex2) {
+                                Server.logSendMTP("send failed.");
                                 throw ex2;
                             } catch (Exception ex2) {
                                 lastException = ex2;
@@ -1589,6 +1664,7 @@ public class Core {
                 Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipientSet + ".");
                 return true;
             } catch (SendFailedException ex) {
+                Server.logSendMTP("send failed.");
                 throw ex;
             } catch (AuthenticationFailedException ex) {
                 Server.logSendMTP("authentication failed.");
@@ -2293,6 +2369,19 @@ public class Core {
             return Locale.US;
         } else {
             return Locale.getDefault();
+        }
+    }
+    
+    public static URL getURL(String url) {
+        if (url == null) {
+            return null;
+        } else {
+            try {
+                return new URL(url);
+            } catch (MalformedURLException ex) {
+                Server.logError(ex);
+                return null;
+            }
         }
     }
 }

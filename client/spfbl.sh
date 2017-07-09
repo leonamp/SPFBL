@@ -3220,6 +3220,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#    5: mensagem rejeitada pelo conteudo.
 		#   17: remetente colocado em lista branca.
 
 		if [ $# -lt "3" ]; then
@@ -3255,6 +3256,8 @@ case $1 in
 				exit 0
 			elif [[ $response == "WHITE" ]]; then
 				exit 17
+			elif [[ $response == "REJECT" ]]; then
+				exit 5
 			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
 			else

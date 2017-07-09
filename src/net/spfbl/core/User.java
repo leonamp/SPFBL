@@ -30,16 +30,18 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.Properties;
-import java.util.SortedMap;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.mail.Message;
+import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
@@ -47,6 +49,7 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 import javax.mail.internet.MimeUtility;
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
 import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
@@ -270,6 +273,25 @@ public class User implements Serializable, Comparable<User> {
         return name + " <" + email + ">";
     }
     
+    public static Locale getLocale(String address) {
+        if (address == null) {
+            return null;
+        } else {
+            address = address.toLowerCase();
+            User user = User.get(address);
+            if (user == null) {
+                int index = address.indexOf('@');
+                String postmaster = "postmaster" + address.substring(index);
+                user = User.get(postmaster);
+            }
+            if (user == null) {
+                return Core.getDefaultLocale(address);
+            } else {
+                return user.getLocale();
+            }
+        }
+    }
+
     public Locale getLocale() {
         return locale;
     }
@@ -321,19 +343,32 @@ public class User implements Serializable, Comparable<User> {
     }
     
     public synchronized boolean dropQuery(long time) {
-        return queryMap.remove(time) != null;
+        if (queryMap == null) {
+            return false;
+        } else {
+            return queryMap.remove(time) != null;
+        }
     }
     
-    private synchronized void dropExpiredQuery() {
-        if (queryMap != null) {
-            long threshold = System.currentTimeMillis() - 604800000;
-            TreeSet<Long> timeSet = new TreeSet<Long>();
-            SortedMap<Long,Query> headMap = queryMap.headMap(threshold);
-            timeSet.addAll(headMap.keySet());
-            for (long time : timeSet) {
-                if (queryMap.remove(time) != null) {
-                    CHANGED = true;
-                }
+    public synchronized Set<Long> headSet(long threshold) {
+        if (queryMap == null) {
+            return new TreeSet<Long>();
+        } else {
+            TreeSet<Long> set = new TreeSet<Long>();
+            set.addAll(queryMap.headMap(threshold).keySet());
+            return set;
+        }
+    }
+    
+    private void dropExpiredQuery() {
+        long threshold = System.currentTimeMillis() - 604800000;
+        for (long time : headSet(threshold)) {
+            Query query = getQuery(time);
+            if (query != null) {
+                query.storeDB(time);
+            }
+            if (dropQuery(time)) {
+                CHANGED = true;
             }
         }
     }
@@ -605,45 +640,138 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public synchronized TreeSet<Long> getQueryKeySet(
+    public static final int QUERY_MAX_ROWS = 512;
+    
+//    public TreeSet<Long> getQueryKeySet(
+//            Long begin, String filter
+//    ) {
+//        // Busca convencional.
+//        TreeSet<Long> keySet = new TreeSet<Long>();
+//        if (filter == null || filter.length() == 0) {
+//            keySet.addAll(getTimeSet());
+//        } else {
+//            for (Long time : getTimeSet()) {
+//                Query query = getQuery(time);
+//                if (query != null && query.match(filter)) {
+//                    keySet.add(time);
+//                }
+//            }
+//        }
+//        if (begin != null) {
+//            TreeSet<Long> tailSet = new TreeSet<Long>();
+//            tailSet.addAll(keySet.tailSet(begin));
+//            keySet.removeAll(tailSet);
+//        }
+//        return keySet;
+//    }
+    
+    public TreeMap<Long,Query> getQueryMap(
             Long begin, String filter
     ) {
-        TreeSet<Long> keySet = new TreeSet<Long>();
-        if (queryMap != null) {
-            if (filter == null || filter.length() == 0) {
-                keySet.addAll(queryMap.keySet());
-            } else {
-                for (Long time : queryMap.keySet()) {
-                    Query query = queryMap.get(time);
-                    if (query.match(filter)) {
-                        keySet.add(time);
+        TreeMap<Long,Query> queryLocalMap = getQueryHeadMap(begin);
+        Connection connection = Core.poolConnectionMySQL();
+        try {
+            if (connection != null) {
+                try {
+                    String ipParam = Subnet.isValidIP(filter) ? Subnet.normalizeIP(filter) : null;
+                    String emailParam = Domain.isValidEmail(filter) ? filter.toLowerCase() : null;
+                    String command = "SELECT * FROM spfbl.user_query\n"
+                            + "WHERE user = '" + getEmail() + "'\n"
+                            + (begin == null ? "" : "AND time <= " + begin + "\n")
+                            + ("rejeitada".equals(filter) ? "AND result "
+                            + "IN('BLOCK','REJECT')\n" : "")
+                            + (ipParam == null ? "" : "AND ip = '" + ipParam + "'\n")
+                            + (emailParam == null ? "" : "AND '" + emailParam + "' "
+                            + "IN(sender, mailFrom, replyto, recipient)\n")
+                            + "ORDER BY time DESC\n"
+                            + "LIMIT " + (QUERY_MAX_ROWS + 1);
+                    Statement statement = connection.createStatement();
+                    try {
+                        ResultSet rs = statement.executeQuery(command);
+                        while (rs.next()) {
+                            try {
+                                long time = rs.getLong("time");
+                                Query query = queryLocalMap.get(time);
+                                if (query == null) {
+                                    query = new Query(rs);
+                                    queryLocalMap.put(time, query);
+                                }
+                            } catch (Exception ex) {
+                                Server.logError(ex);
+                            }
+                        }
+                    } finally {
+                        statement.close();
                     }
+                } catch (SQLException ex) {
+                    Server.logError(ex);
+                }
+            }
+        } finally {
+            Core.offerConnectionMySQL(connection);
+        }
+        TreeMap<Long,Query> resultMap = new TreeMap<Long,Query>();
+        while (resultMap.size() < (QUERY_MAX_ROWS + 1)) {
+            Entry<Long,Query> entry = queryLocalMap.pollLastEntry();
+            if (entry == null) {
+                break;
+            } else {
+                long time = entry.getKey();
+                Query query = entry.getValue();
+                if (filter == null) {
+                    resultMap.put(time, query);
+                } else if (filter.length() == 0) {
+                    resultMap.put(time, query);
+                } else if (query.match(filter)) {
+                    resultMap.put(time, query);
                 }
             }
         }
-        if (begin != null) {
-            TreeSet<Long> tailSet = new TreeSet<Long>();
-            tailSet.addAll(keySet.tailSet(begin));
-            keySet.removeAll(tailSet);
-        }
-        return keySet;
+        return resultMap;
     }
     
     public void setResult(long time, String result) {
         if (result != null) {
-            Query query = getQuery(time);
+            Query query = getQuerySafe(time);
             if (query != null && query.setResult(result)) {
                 storeDB(time, query);
             }
         }
     }
     
-    public Query getQuery(String time) {
-        try {
-            return getQuery(Long.parseLong(time));
-        } catch (NumberFormatException ex) {
-            return null;
+    public Query getQuerySafe(long time) {
+        Query query = getQuery(time);
+        if (query == null && Core.hasMySQL()) {
+            long time2 = System.currentTimeMillis();
+            String command = "SELECT * FROM spfbl.user_query "
+                    + "WHERE time = " + time;
+            Connection connection = Core.poolConnectionMySQL();
+            try {
+                if (connection != null) {
+                    Statement statement = connection.createStatement();
+                    try {
+                        try {
+                            ResultSet rs = statement.executeQuery(command);
+                            if (rs.next()) {
+                                query = new Query(rs);
+                                Server.logMySQL(time2, command, "FOUND");
+                            } else {
+                                Server.logMySQL(time2, command, "NOT FOUND");
+                            }
+                        } finally {
+                            statement.close();
+                        }
+                    } catch (SQLException ex) {
+                        Server.logMySQL(time2, command, ex);
+                    }
+                }
+            } catch (SQLException ex) {
+                Server.logError(ex);
+            } finally {
+                Core.offerConnectionMySQL(connection);
+            }
         }
+        return query;
     }
     
     public synchronized Query getQuery(long time) {
@@ -664,6 +792,30 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public synchronized TreeSet<Long> getTimeSet(long begin, long end) {
+        if (queryMap == null) {
+            return new TreeSet<Long>();
+        } else {
+            TreeSet<Long> timeSet = new TreeSet<Long>();
+            timeSet.addAll(queryMap.subMap(begin, end).keySet());
+            return timeSet;
+        }
+    }
+    
+    public synchronized TreeMap<Long,Query> getQueryHeadMap(Long begin) {
+        if (queryMap == null) {
+            return new TreeMap<Long,Query>();
+        } else if (begin == null) {
+            TreeMap<Long,Query> resultMap = new TreeMap<Long,Query>();
+            resultMap.putAll(queryMap);
+            return resultMap;
+        } else {
+            TreeMap<Long,Query> resultMap = new TreeMap<Long,Query>();
+            resultMap.putAll(queryMap.headMap(begin));
+            return resultMap;
+        }
+    }
+    
     private synchronized void putQuery(long time, Query query) {
         if (queryMap == null) {
             queryMap = new TreeMap<Long,Query>();
@@ -677,7 +829,7 @@ public class User implements Serializable, Comparable<User> {
             return "INVALID MESSAGE";
         } else {
             for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuery(time);
+                Query query = getQuerySafe(time);
                 if (query != null && query.isMessage(messageID)) {
                     if (query.isWhiteSender() && query.isGreen()) {
                         if (query.complain(time)) {
@@ -701,7 +853,7 @@ public class User implements Serializable, Comparable<User> {
             return "INVALID MESSAGE";
         } else {
             for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuery(time);
+                Query query = getQuerySafe(time);
                 if (query != null && query.isMessage(messageID)) {
                     String block = query.getBlock();
                     if (block == null) {
@@ -835,30 +987,52 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+//    public static void sendBlockedWarning() {
+//        for (User user : getSet()) {
+//            if (user.isUsingHeader()) {
+//                HashSet<String> keySet = new HashSet<String>();
+//                TreeSet<Long> timeSet = user.getTimeSet();
+//                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
+//                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
+//                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
+//                long timeBegin = System.currentTimeMillis() - deferTimeRED;
+//                int count = 0;
+//                for (long time : timeSet.subSet(timeBegin, timeEnd)) {
+//                    Query query = user.getQuery(time);
+//                    if (query != null &&
+//                            query.isNotAdvised() &&
+//                            query.isResult("BLOCK") &&
+//                            keySet.add(query.getComplainKey())
+//                            ) {
+//                        if (query.adviseSenderBLOCK(time)) {
+//                            CHANGED = true;
+//                            Server.logDebug("reject warning sent by e-mail.");
+//                            if (++count > 32) {
+//                                break;
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+    
     public static void sendBlockedWarning() {
         for (User user : getSet()) {
-            if (user.isUsingHeader()) {
-                HashSet<String> keySet = new HashSet<String>();
-                TreeSet<Long> timeSet = user.getTimeSet();
-                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-                long timeBegin = System.currentTimeMillis() - deferTimeRED;
-                int count = 0;
-                for (long time : timeSet.subSet(timeBegin, timeEnd)) {
-                    Query query = user.getQuery(time);
-                    if (query != null &&
-                            query.isNotAdvised() &&
-                            query.isResult("BLOCK") &&
-                            keySet.add(query.getComplainKey())
-                            ) {
-                        if (query.adviseSenderBLOCK(time)) {
-                            CHANGED = true;
-                            Server.logDebug("reject warning sent by e-mail.");
-                            if (++count > 32) {
-                                break;
-                            }
-                        }
+            long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
+            long deferTimeRED = Core.getDeferTimeRED() * 60000L;
+            long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
+            long timeBegin = System.currentTimeMillis() - deferTimeRED;
+            for (long time : user.getTimeSet(timeBegin, timeEnd)) {
+                Query query = user.getQuery(time);
+                if (query != null && query.isResult("BLOCK")) {
+                    if (query.adviseSenderBLOCK(time)) {
+                        Server.logDebug("reject warning sent by e-mail.");
+                    }
+                    if (query.storeDB(time)) {
+                        // Drop from memory because 
+                        // it was stored in MySQL.
+                        user.dropQuery(time);
                     }
                 }
             }
@@ -898,14 +1072,15 @@ public class User implements Serializable, Comparable<User> {
     private static void storeDB() {
         try {
             long time2 = System.currentTimeMillis();
-            Connection connection = Core.getConnectionMySQL();
-            if (connection != null) {
-                try {
+            Connection connection = Core.poolConnectionMySQL();
+            try {
+                if (connection != null) {
                     PreparedStatement statement =
                             connection.prepareStatement(
                                     MYSQL_STORE_COMMAND
                             );
                     try {
+                        connection.setAutoCommit(true);
                         for (User user : getSet()) {
                             for (long time : user.getTimeSet()) {
                                 Query query = user.getQuery(time);
@@ -916,11 +1091,12 @@ public class User implements Serializable, Comparable<User> {
                         }
                         Server.logMySQL(time2, "user_query stored");
                     } finally {
+                        connection.setAutoCommit(false);
                         statement.close();
                     }
-                } finally {
-                    connection.close();
                 }
+            } finally {
+                Core.offerConnectionMySQL(connection);
             }
         } catch (SQLException ex) {
             Server.logError(ex);
@@ -955,6 +1131,7 @@ public class User implements Serializable, Comparable<User> {
                 try {
                     CONNECTION.close();
                     CONNECTION = null;
+                    Server.logMySQL("connection closed.");
                 } catch (SQLException ex) {
                     Server.logError(ex);
                 }
@@ -1078,7 +1255,7 @@ public class User implements Serializable, Comparable<User> {
         private BinarySemaphore CHANGED; // Mudar para final depois da transição.
 //        private BinarySemaphore HEADER; // Sinaliza se já processou o cabeçalho.
         
-        private Query(ResultSet rs) throws SQLException, MalformedURLException {
+        private Query(ResultSet rs) throws SQLException {
             this.client = rs.getString("client");
             this.ip = rs.getString("ip");
             this.helo = rs.getString("helo");
@@ -1086,14 +1263,14 @@ public class User implements Serializable, Comparable<User> {
             this.sender = rs.getString("sender");
             this.qualifier = SPF.Qualifier.get(rs.getString("qualifier"));
             this.recipient = rs.getString("recipient");
-            this.tokenSet.addAll(Core.getTreeSet(rs.getString("tokenSet"), ";"));
+            this.loadTokenSet(rs.getString("tokenSet"));
             this.result = rs.getString("result");
-            this.from = rs.getString("from");
+            this.from = rs.getString("mailFrom");
             this.replyto = rs.getString("replyto");
             this.subject = rs.getString("subject");
             this.messageID = rs.getString("messageID");
-            this.unsubscribe = new URL(rs.getString("unsubscribe"));
-            this.linkMap.putAll(Core.getTreeMapBoolean(rs.getString("linkMap"), ";"));
+            this.unsubscribe = Core.getURL(rs.getString("unsubscribe"));
+            this.loadLinkMap(rs.getString("linkMap"));
             this.malware = rs.getString("malware");
             this.adminAdvised = rs.getBoolean("adminAdvised");
             this.senderAdvised = rs.getBoolean("senderAdvised");
@@ -1102,7 +1279,58 @@ public class User implements Serializable, Comparable<User> {
             this.CHANGED = new BinarySemaphore(false);
         }
         
-        private void storeDB(PreparedStatement statement, long time) {
+        private boolean loadTokenSet(String text) {
+            TreeSet<String> set = Core.getTreeSet(text, ";");
+            if (set == null) {
+                return false;
+            } else {
+                tokenSet.addAll(set);
+                return true;
+            }
+        }
+        
+        private boolean loadLinkMap(String text) {
+            TreeMap<String,Boolean> map = Core.getTreeMapBoolean(text, ";");
+            if (map == null) {
+                return false;
+            } else if(linkMap == null) {
+                linkMap = map;
+                return true;
+            } else {
+                linkMap.putAll(map);
+                return true;
+            }
+        }
+        
+        private boolean storeDB(long time) {
+            try {
+                Connection connection = Core.poolConnectionMySQL();
+                try {
+                    if (connection == null) {
+                        return false;
+                    } else {
+                        PreparedStatement statement
+                                = connection.prepareStatement(
+                                        MYSQL_STORE_COMMAND
+                                );
+                        try {
+                            connection.setAutoCommit(true);
+                            return storeDB(statement, time);
+                        } finally {
+                            connection.setAutoCommit(false);
+                            statement.close();
+                        }
+                    }
+                } finally {
+                    Core.offerConnectionMySQL(connection);
+                }
+            } catch (SQLException ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+        
+        private boolean storeDB(PreparedStatement statement, long time) {
             if (this.CHANGED.acquireIf(true)) {
                 try {
                     statement.setLong(1, time);
@@ -1138,16 +1366,24 @@ public class User implements Serializable, Comparable<User> {
                     statement.setBoolean(31, adminAdvised);
                     statement.setBoolean(32, senderAdvised);
                     statement.setBoolean(33, recipientAdvised);
-                    statement.executeUpdate();
+                    int update = statement.executeUpdate();
                     this.STORED = true;
                     this.CHANGED.release(false);
                     User.CHANGED = true;
-                    Server.logMySQL(time, statement.toString());
+                    if (update == 0) {
+                        Server.logMySQL(time, statement, "NOT UPDATED");
+                    } else {
+                        Server.logMySQL(time, statement, "UPDATED");
+                    }
+                    return true;
                 } catch (SQLException ex) {
                     this.STORED = false;
                     this.CHANGED.release(true);
-                    Server.logError(ex);
+                    Server.logMySQL(time, statement, ex);
+                    return false;
                 }
+            } else {
+                return true;
             }
         }
         
@@ -1476,7 +1712,7 @@ public class User implements Serializable, Comparable<User> {
         public void processComplainForWhite() {
             String complainKey = getComplainKey();
             for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuery(time);
+                Query query = getQuerySafe(time);
                 if (query != null && complainKey.equals(query.getComplainKey())) {
                     if (query.isWhite()) {
                         query.clearBlock();
@@ -1491,7 +1727,7 @@ public class User implements Serializable, Comparable<User> {
         public void processComplainForBlock() {
             String complainKey = getComplainKey();
             for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuery(time);
+                Query query = getQuerySafe(time);
                 if (query != null && complainKey.equals(query.getComplainKey())) {
                     if (query.isBlock()) {
                         query.clearWhite();
@@ -1577,16 +1813,23 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean blockSender(long time) {
-            Situation situation;
-            String senderLocal = getSender();
-            if (senderLocal == null) {
-                return false;
-            } else if (senderLocal.equals(sender)) {
-                situation = getSituation(true);
+            if (Core.isAbuseEmail(recipient)) {
+                return Block.addSafe(
+                        User.this,
+                        getSenderSimplified(true, true) + ">" + recipient
+                );
             } else {
-                situation = Situation.NONE;
+                Situation situation;
+                String senderLocal = getSender();
+                if (senderLocal == null) {
+                    return false;
+                } else if (senderLocal.equals(sender)) {
+                    situation = getSituation(true);
+                } else {
+                    situation = Situation.NONE;
+                }
+                return block(time, situation);
             }
-            return block(time, situation);
         }
         
         public boolean block(long time, String situationName) {
@@ -1847,7 +2090,14 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isBlockSender() {
-            return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, false, false, false, false) != null;
+            if (Core.isAbuseEmail(recipient)) {
+                return Block.containsExact(
+                        User.this,
+                        getSenderSimplified(true, true) + ">" + recipient
+                );
+            } else {
+                return Block.find(null, User.this, ip, getSender(), getValidHostname(), getQualifierName(), recipient, false, false, false, false) != null;
+            }
         }
         
         public boolean isAnyLinkBLOCK() {
@@ -2129,43 +2379,43 @@ public class User implements Serializable, Comparable<User> {
                 } else {
                     return false;
                 }
-            } else if (Domain.isHostname(filter)) {
-                String hostname = getValidHostname();
-                String mailForm = "." + Domain.extractHost(getMailFrom(), false);
-                String from = "." + Domain.extractHost(getFrom(), false);
-                String replyto = "." + Domain.extractHost(getReplyTo(), false);
-                String recipient = "." + Domain.extractHost(getRecipient(), false);
-                filter = Domain.normalizeHostname(filter, true);
-                if (hostname != null && hostname.endsWith(filter)) {
-                    return true;
-                } else if (mailForm != null && mailForm.endsWith(filter)) {
-                    return true;
-                } else if (from != null && from.endsWith(filter)) {
-                    return true;
-                } else if (replyto != null && replyto.endsWith(filter)) {
-                    return true;
-                } else if (recipient != null && recipient.endsWith(filter)) {
-                    return true;
-                } else {
-                    return false;
-                }
-            } else if (filter.startsWith("@") && Domain.isHostname(filter.substring(1))) {
-                String mailForm = Domain.extractHost(getMailFrom(), true);
-                String from = Domain.extractHost(getFrom(), true);
-                String replyto = Domain.extractHost(getReplyTo(), true);
-                String recipient = Domain.extractHost(getRecipient(), true);
-                filter = Domain.normalizeHostname(filter, true);
-                if (mailForm != null && mailForm.endsWith(filter)) {
-                    return true;
-                } else if (from != null && from.endsWith(filter)) {
-                    return true;
-                } else if (replyto != null && replyto.endsWith(filter)) {
-                    return true;
-                } else if (recipient != null && recipient.endsWith(filter)) {
-                    return true;
-                } else {
-                    return false;
-                }
+//            } else if (Domain.isHostname(filter)) {
+//                String hostname = getValidHostname();
+//                String mailForm = "." + Domain.extractHost(getMailFrom(), false);
+//                String from = "." + Domain.extractHost(getFrom(), false);
+//                String replyto = "." + Domain.extractHost(getReplyTo(), false);
+//                String recipient = "." + Domain.extractHost(getRecipient(), false);
+//                filter = Domain.normalizeHostname(filter, true);
+//                if (hostname != null && hostname.endsWith(filter)) {
+//                    return true;
+//                } else if (mailForm != null && mailForm.endsWith(filter)) {
+//                    return true;
+//                } else if (from != null && from.endsWith(filter)) {
+//                    return true;
+//                } else if (replyto != null && replyto.endsWith(filter)) {
+//                    return true;
+//                } else if (recipient != null && recipient.endsWith(filter)) {
+//                    return true;
+//                } else {
+//                    return false;
+//                }
+//            } else if (filter.startsWith("@") && Domain.isHostname(filter.substring(1))) {
+//                String mailForm = Domain.extractHost(getMailFrom(), true);
+//                String from = Domain.extractHost(getFrom(), true);
+//                String replyto = Domain.extractHost(getReplyTo(), true);
+//                String recipient = Domain.extractHost(getRecipient(), true);
+//                filter = Domain.normalizeHostname(filter, true);
+//                if (mailForm != null && mailForm.endsWith(filter)) {
+//                    return true;
+//                } else if (from != null && from.endsWith(filter)) {
+//                    return true;
+//                } else if (replyto != null && replyto.endsWith(filter)) {
+//                    return true;
+//                } else if (recipient != null && recipient.endsWith(filter)) {
+//                    return true;
+//                } else {
+//                    return false;
+//                }
             } else {
                 return false;
             }
@@ -2366,6 +2616,7 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public synchronized String setHeader(
+                long time,
                 String from,
                 String replyto,
                 String subject,
@@ -2460,20 +2711,25 @@ public class User implements Serializable, Comparable<User> {
             }
             String resultReturn;
             if (isWhite()) {
-                clearBlock();
+                this.whiteSender(time);
                 this.result = "WHITE";
                 resultReturn = "WHITE";
             } else if (isToPostmaster()) {
                 resultReturn = null;
-            } else if (isToAdmin()) {
-                resultReturn = null;
             } else if (isToAbuse()) {
                 resultReturn = null;
             } else if (isBlock()) {
-                clearWhite();
+                this.complain(time);
                 this.result = "BLOCK";
                 resultReturn = "BLOCK";
+            } else if (isToAdmin()) {
+                resultReturn = null;
             } else if (reject) {
+                this.complain(time);
+                this.result = "REJECT";
+                resultReturn = "REJECT";
+            } else if (hasMiscellaneousSymbols()) {
+                this.complain(time);
                 this.result = "REJECT";
                 resultReturn = "REJECT";
             } else {
@@ -2575,253 +2831,261 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public synchronized boolean adviseRecipientHOLD(long time) {
+            String mailFrom = getMailFrom();
+            String recipientLocal = getRecipient();
             if (recipientAdvised) {
+                return false;
+            } else if (mailFrom == null) {
+                return false;
+            } else if (recipientLocal == null) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
+            } else if (!Domain.isValidEmail(mailFrom)) {
+                return false;
+            } else if (!Domain.isValidEmail(recipientLocal)) {
+                return false;
+            } else if (NoReply.contains(recipientLocal, true)) {
+                return false;
             } else {
-                String mailFrom = getMailFrom();
-                String recipientLocal = getRecipient();
-                if (mailFrom != null &&
-                        Domain.isValidEmail(mailFrom) &&
-                        Domain.isValidEmail(recipientLocal) &&
-                        !NoReply.contains(recipientLocal, true)
-                        ) {
-                    try {
-                        String url = Core.getUnholdURL(User.this, time);
-                        if (url == null) {
-                            return false;
-                        } else {
-                            Server.logDebug("sending retention release by e-mail.");
-                            String subjectLocal = getSubject();
-                            if (subjectLocal == null) {
-                                if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {
-                                    subjectLocal = "Aviso de retenção de mensagem";
-                                } else {
-                                    subjectLocal = "Message retention warning";
-                                }
-                            }
-                            String qualifierLocal = getQualifierName();
-                            InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-                            Properties props = System.getProperties();
-                            Session session = Session.getDefaultInstance(props);
-                            MimeMessage message = new MimeMessage(session);
-                            message.setHeader("Date", Core.getEmailDate());
-                            message.setFrom(Core.getAdminInternetAddress());
-                            message.addRecipients(Message.RecipientType.TO, recipients);
-                            message.setReplyTo(User.this.getInternetAddresses());
-                            message.setSubject(subjectLocal);
-                            Locale locale = User.this.getLocale();
-                            // Corpo da mensagem.
-                            StringBuilder builder = new StringBuilder();
-                            builder.append("<!DOCTYPE html>\n");
-                            builder.append("<html lang=\"");
-                            builder.append(locale.getLanguage());
-                            builder.append("\">\n");
-                            builder.append("  <head>\n");
-                            builder.append("    <meta charset=\"UTF-8\">\n");
-                            builder.append("    <title>");
-                            builder.append(subject);
-                            builder.append("</title>\n");
-                            ServerHTTP.loadStyleCSS(builder);
-                            builder.append("  </head>\n");
-                            builder.append("  <body>\n");
-                            builder.append("    <div id=\"container\">\n");
-                            builder.append("      <div id=\"divlogo\">\n");
-                            builder.append("        <img src=\"cid:logo\">\n");
-                            builder.append("      </div>\n");
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-                                ServerHTTP.buildText(builder, "Uma mensagem enviada por " + mailFrom + " foi retida por suspeita de SPAM.");
-                                if (!qualifierLocal.equals("PASS")) {
-                                    ServerHTTP.buildText(builder, "<b>Atenção! Este remetente não pôde ser autenticado. Isso significa que não há garantia desta mensagem ser genuína!</b>");
-                                    String hostDomain = getValidHostDomain();
-                                    if (hostDomain == null) {
-                                        ServerHTTP.buildText(builder, "<b>Não é possível determinar com segurança qual servidor disparou esta mensagem.</b>");
-                                    } else {
-                                        ServerHTTP.buildText(builder, "A mensagem foi disparada por um servidor no domínio " + hostDomain + ".");
-                                    }
-                                }
-                                ServerHTTP.buildText(builder, "Se você considera esta mensagem legítima, acesse esta URL para efetivar a sua liberação:");
+                try {
+                    String url = Core.getUnholdURL(User.this, time);
+                    if (url == null) {
+                        return false;
+                    } else {
+                        Server.logDebug("sending retention release by e-mail.");
+                        String subjectLocal = getSubject();
+                        if (subjectLocal == null) {
+                            if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {
+                                subjectLocal = "Aviso de retenção de mensagem";
                             } else {
-                                ServerHTTP.buildMessage(builder, "Message retention warning");
-                                ServerHTTP.buildText(builder, "A message sent from " + mailFrom + " was retained under suspicion of SPAM.");
-                                if (!qualifierLocal.equals("PASS")) {
-                                    ServerHTTP.buildText(builder, "<b>Attention! This sender could not be authenticated. This means that there is no guarantee that this message will be genuine!");
-                                    String hostDomain = getValidHostDomain();
-                                    if (hostDomain == null) {
-                                        ServerHTTP.buildText(builder, "<b>It is not possible to determine with certainty which server fired this message.</b>");
-                                    } else {
-                                        ServerHTTP.buildText(builder, "The message was fired by a server in domain " + hostDomain + ".");
-                                    }
-                                }
-                                ServerHTTP.buildText(builder, "If you consider this message legitimate, access this URL to complete its release:");
+                                subjectLocal = "Message retention warning";
                             }
-                            ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                            if (!User.this.isEmail(recipientLocal)) {
-                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
+                        }
+                        String qualifierLocal = getQualifierName();
+                        InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
+                        Properties props = System.getProperties();
+                        Session session = Session.getDefaultInstance(props);
+                        MimeMessage message = new MimeMessage(session);
+                        message.setHeader("Date", Core.getEmailDate());
+                        message.setFrom(Core.getAdminInternetAddress());
+                        message.addRecipients(Message.RecipientType.TO, recipients);
+                        message.setReplyTo(User.this.getInternetAddresses());
+                        message.setSubject(subjectLocal);
+                        Locale locale = User.this.getLocale();
+                        // Corpo da mensagem.
+                        StringBuilder builder = new StringBuilder();
+                        builder.append("<!DOCTYPE html>\n");
+                        builder.append("<html lang=\"");
+                        builder.append(locale.getLanguage());
+                        builder.append("\">\n");
+                        builder.append("  <head>\n");
+                        builder.append("    <meta charset=\"UTF-8\">\n");
+                        builder.append("    <title>");
+                        builder.append(subject);
+                        builder.append("</title>\n");
+                        ServerHTTP.loadStyleCSS(builder);
+                        builder.append("  </head>\n");
+                        builder.append("  <body>\n");
+                        builder.append("    <div id=\"container\">\n");
+                        builder.append("      <div id=\"divlogo\">\n");
+                        builder.append("        <img src=\"cid:logo\">\n");
+                        builder.append("      </div>\n");
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
+                            ServerHTTP.buildText(builder, "Uma mensagem enviada por " + mailFrom + " foi retida por suspeita de SPAM.");
+                            if (!qualifierLocal.equals("PASS")) {
+                                ServerHTTP.buildText(builder, "<b>Atenção! Este remetente não pôde ser autenticado. Isso significa que não há garantia desta mensagem ser genuína!</b>");
+                                String hostDomain = getValidHostDomain();
+                                if (hostDomain == null) {
+                                    ServerHTTP.buildText(builder, "<b>Não é possível determinar com segurança qual servidor disparou esta mensagem.</b>");
                                 } else {
-                                    ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
+                                    ServerHTTP.buildText(builder, "A mensagem foi disparada por um servidor no domínio " + hostDomain + ".");
                                 }
                             }
-                            ServerHTTP.buildFooter(builder, locale);
-                            builder.append("    </div>\n");
-                            builder.append("  </body>\n");
-                            builder.append("</html>\n");
-                            // Making HTML part.
-                            MimeBodyPart htmlPart = new MimeBodyPart();
-                            htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                            // Making logo part.
-                            MimeBodyPart logoPart = new MimeBodyPart();
-                            File logoFile = ServerHTTP.getWebFile("logo.png");
-                            logoPart.attachFile(logoFile);
-                            logoPart.setContentID("<logo>");
-                            logoPart.addHeader("Content-Type", "image/png");
-                            logoPart.setDisposition(MimeBodyPart.INLINE);
-                            // Join both parts.
-                            MimeMultipart content = new MimeMultipart("related");
-                            content.addBodyPart(htmlPart);
-                            content.addBodyPart(logoPart);
-                            // Set multiplart content.
-                            message.setContent(content);
-                            message.saveChanges();
-                            // Enviar mensagem.
-                            return recipientAdvised = Core.sendMessage(message, 30000);
+                            ServerHTTP.buildText(builder, "Se você considera esta mensagem legítima, acesse esta URL para efetivar a sua liberação:");
+                        } else {
+                            ServerHTTP.buildMessage(builder, "Message retention warning");
+                            ServerHTTP.buildText(builder, "A message sent from " + mailFrom + " was retained under suspicion of SPAM.");
+                            if (!qualifierLocal.equals("PASS")) {
+                                ServerHTTP.buildText(builder, "<b>Attention! This sender could not be authenticated. This means that there is no guarantee that this message will be genuine!");
+                                String hostDomain = getValidHostDomain();
+                                if (hostDomain == null) {
+                                    ServerHTTP.buildText(builder, "<b>It is not possible to determine with certainty which server fired this message.</b>");
+                                } else {
+                                    ServerHTTP.buildText(builder, "The message was fired by a server in domain " + hostDomain + ".");
+                                }
+                            }
+                            ServerHTTP.buildText(builder, "If you consider this message legitimate, access this URL to complete its release:");
                         }
-                    } catch (MailConnectException ex) {
-                        return false;
-                    } catch (SendFailedException ex) {
-                        if (ex.getCause() instanceof SMTPAddressFailedException) {
-                            if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
-                                Trap.addInexistentSafe(User.this, recipientLocal);
+                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
+                        if (!User.this.isEmail(recipientLocal)) {
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
+                            } else {
+                                ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
                             }
                         }
-                        return false;
-                    } catch (Exception ex) {
-                        Server.logError(ex);
-                        return false;
+                        ServerHTTP.buildFooter(builder, locale);
+                        builder.append("    </div>\n");
+                        builder.append("  </body>\n");
+                        builder.append("</html>\n");
+                        // Making HTML part.
+                        MimeBodyPart htmlPart = new MimeBodyPart();
+                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                        // Making logo part.
+                        MimeBodyPart logoPart = new MimeBodyPart();
+                        File logoFile = ServerHTTP.getWebFile("logo.png");
+                        logoPart.attachFile(logoFile);
+                        logoPart.setContentID("<logo>");
+                        logoPart.addHeader("Content-Type", "image/png");
+                        logoPart.setDisposition(MimeBodyPart.INLINE);
+                        // Join both parts.
+                        MimeMultipart content = new MimeMultipart("related");
+                        content.addBodyPart(htmlPart);
+                        content.addBodyPart(logoPart);
+                        // Set multiplart content.
+                        message.setContent(content);
+                        message.saveChanges();
+                        // Enviar mensagem.
+                        return recipientAdvised = Core.sendMessage(message, 30000);
                     }
-                } else {
+                } catch (MailConnectException ex) {
+                    return false;
+                } catch (SendFailedException ex) {
+                    if (ex.getCause() instanceof SMTPAddressFailedException) {
+                        if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
+                            Trap.addInexistentSafe(User.this, recipientLocal);
+                        }
+                    }
+                    return false;
+                } catch (Exception ex) {
+                    Server.logError(ex);
                     return false;
                 }
             }
         }
         
         public synchronized boolean adviseRecipientSPAM(long time) {
-            if (recipientAdvised || !Core.hasOutputSMTP()) {
+            String mailFrom = getMailFrom();
+            String recipientLocal = getRecipient();
+            String subjectLocal = getSubject();
+            if (recipientAdvised) {
+                return false;
+            } else if (mailFrom == null) {
+                return false;
+            } else if (subjectLocal == null) {
+                return false;
+            } else if (!Domain.isValidEmail(recipientLocal)) {
+                return false;
+            } else if (NoReply.contains(recipientLocal, true)) {
+                return false;
+            } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else {
-                String mailFrom = getMailFrom();
-                String recipientLocal = getRecipient();
-                String subjectLocal = getSubject();
-                if (mailFrom != null && subjectLocal != null && Domain.isValidEmail(recipientLocal) && !NoReply.contains(recipientLocal, true)) {
-                    try {
-                        String url = Core.getBlockURL(User.this, time);
-                        if (url == null) {
-                            return false;
+                try {
+                    String url = Core.getBlockURL(User.this, time);
+                    if (url == null) {
+                        return false;
+                    } else {
+                        Server.logDebug("sending suspect alert by e-mail.");
+                        String messageidLocal = getMessageID();
+                        InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
+                        Properties props = System.getProperties();
+                        Session session = Session.getDefaultInstance(props);
+                        MimeMessage message = new MimeMessage(session);
+                        message.setHeader("Date", Core.getEmailDate());
+                        message.setFrom(Core.getAdminInternetAddress());
+                        message.addRecipients(Message.RecipientType.TO, recipients);
+                        message.setReplyTo(User.this.getInternetAddresses());
+                        message.setSubject(subjectLocal);
+                        if (messageidLocal != null) {
+                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
+                        }
+                        Locale locale = User.this.getLocale();
+                        // Corpo da mensagem.
+                        StringBuilder builder = new StringBuilder();
+                        builder.append("<!DOCTYPE html>\n");
+                        builder.append("<html lang=\"");
+                        builder.append(locale.getLanguage());
+                        builder.append("\">\n");
+                        builder.append("  <head>\n");
+                        builder.append("    <meta charset=\"UTF-8\">\n");
+                        builder.append("    <title>");
+                        builder.append(subject);
+                        builder.append("</title>\n");
+                        ServerHTTP.loadStyleCSS(builder);
+                        builder.append("  </head>\n");
+                        builder.append("  <body>\n");
+                        builder.append("  <body>\n");
+                        builder.append("    <div id=\"container\">\n");
+                        builder.append("      <div id=\"divlogo\">\n");
+                        builder.append("        <img src=\"cid:logo\">\n");
+                        builder.append("      </div>\n");
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildMessage(builder, "Alerta de suspeita de SPAM");
+                            ServerHTTP.buildText(builder, "Esta mensagem, cujo assunto foi preservado e havia sido enviada por " + mailFrom + ", foi entregue em sua caixa postal por haver nenhuma suspeita sobre ela.");
+                            ServerHTTP.buildText(builder, "Informações mais recentes levantam forte suspeita de que esta mensagem seria SPAM.");
+                            ServerHTTP.buildText(builder, "Se você concorda com esta nova interpretação, acesse esta URL para bloquear o remetente e para contribuir para o combate de SPAM na Internet:");
                         } else {
-                            Server.logDebug("sending suspect alert by e-mail.");
-                            String messageidLocal = getMessageID();
-                            InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-                            Properties props = System.getProperties();
-                            Session session = Session.getDefaultInstance(props);
-                            MimeMessage message = new MimeMessage(session);
-                            message.setHeader("Date", Core.getEmailDate());
-                            message.setFrom(Core.getAdminInternetAddress());
-                            message.addRecipients(Message.RecipientType.TO, recipients);
-                            message.setReplyTo(User.this.getInternetAddresses());
-                            message.setSubject(subjectLocal);
-                            if (messageidLocal != null) {
-                                message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-                            }
-                            Locale locale = User.this.getLocale();
-                            // Corpo da mensagem.
-                            StringBuilder builder = new StringBuilder();
-                            builder.append("<!DOCTYPE html>\n");
-                            builder.append("<html lang=\"");
-                            builder.append(locale.getLanguage());
-                            builder.append("\">\n");
-                            builder.append("  <head>\n");
-                            builder.append("    <meta charset=\"UTF-8\">\n");
-                            builder.append("    <title>");
-                            builder.append(subject);
-                            builder.append("</title>\n");
-                            ServerHTTP.loadStyleCSS(builder);
-                            builder.append("  </head>\n");
-                            builder.append("  <body>\n");
-                            builder.append("  <body>\n");
-                            builder.append("    <div id=\"container\">\n");
-                            builder.append("      <div id=\"divlogo\">\n");
-                            builder.append("        <img src=\"cid:logo\">\n");
-                            builder.append("      </div>\n");
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                ServerHTTP.buildMessage(builder, "Alerta de suspeita de SPAM");
-                                ServerHTTP.buildText(builder, "Esta mensagem, cujo assunto foi preservado e havia sido enviada por " + mailFrom + ", foi entregue em sua caixa postal por haver nenhuma suspeita sobre ela.");
-                                ServerHTTP.buildText(builder, "Informações mais recentes levantam forte suspeita de que esta mensagem seria SPAM.");
-                                ServerHTTP.buildText(builder, "Se você concorda com esta nova interpretação, acesse esta URL para bloquear o remetente e para contribuir para o combate de SPAM na Internet:");
-                            } else {
-                                ServerHTTP.buildMessage(builder, "SPAM suspected alert");
-                                ServerHTTP.buildText(builder, "This message, whose subject was preserved and sent by " + mailFrom + ", was delivered to your mailbox because there was no suspicion about it.");
-                                ServerHTTP.buildText(builder, "More recent information raises strong suspicion that this message would be SPAM.");
-                                ServerHTTP.buildText(builder, "If you agree with this new interpretation, access this URL to block the sender and contribute to the fight against spam on the Internet:");
-                            }
-                            ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                            if (!User.this.isEmail(recipientLocal)) {
-                                String abuseEmail = Core.getAbuseEmail();
-                                if (abuseEmail != null) {
-                                    if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                        ServerHTTP.buildText(builder, "Se você receber qualquer mensagem de SPAM, poderá encaminhar a mensagem de SPAM para " + abuseEmail + ".");
-                                        ServerHTTP.buildText(builder, "Este remetente poderá ser bloqueado automaticamente no caso de recebermos muitas denuncias contra ele.");
-                                    } else {
-                                        ServerHTTP.buildText(builder, "If you receive any SPAM message, you can forward the SPAM message to " + abuseEmail + ".");
-                                        ServerHTTP.buildText(builder, "This sender may be automatically blocked if we receive too many complaints against him.");
-                                    }
-                                }
+                            ServerHTTP.buildMessage(builder, "SPAM suspected alert");
+                            ServerHTTP.buildText(builder, "This message, whose subject was preserved and sent by " + mailFrom + ", was delivered to your mailbox because there was no suspicion about it.");
+                            ServerHTTP.buildText(builder, "More recent information raises strong suspicion that this message would be SPAM.");
+                            ServerHTTP.buildText(builder, "If you agree with this new interpretation, access this URL to block the sender and contribute to the fight against spam on the Internet:");
+                        }
+                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
+                        if (!User.this.isEmail(recipientLocal)) {
+                            String abuseEmail = Core.getAbuseEmail();
+                            if (abuseEmail != null) {
                                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                    ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
+                                    ServerHTTP.buildText(builder, "Se você receber qualquer mensagem de SPAM, poderá encaminhar a mensagem de SPAM para " + abuseEmail + ".");
+                                    ServerHTTP.buildText(builder, "Este remetente poderá ser bloqueado automaticamente no caso de recebermos muitas denuncias contra ele.");
                                 } else {
-                                    ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
+                                    ServerHTTP.buildText(builder, "If you receive any SPAM message, you can forward the SPAM message to " + abuseEmail + ".");
+                                    ServerHTTP.buildText(builder, "This sender may be automatically blocked if we receive too many complaints against him.");
                                 }
                             }
-                            ServerHTTP.buildFooter(builder, locale);
-                            builder.append("    </div>\n");
-                            builder.append("  </body>\n");
-                            builder.append("</html>\n");
-                            // Making HTML part.
-                            MimeBodyPart htmlPart = new MimeBodyPart();
-                            htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                            // Making logo part.
-                            MimeBodyPart logoPart = new MimeBodyPart();
-                            File logoFile = ServerHTTP.getWebFile("logo.png");
-                            logoPart.attachFile(logoFile);
-                            logoPart.setContentID("<logo>");
-                            logoPart.addHeader("Content-Type", "image/png");
-                            logoPart.setDisposition(MimeBodyPart.INLINE);
-                            // Join both parts.
-                            MimeMultipart content = new MimeMultipart("related");
-                            content.addBodyPart(htmlPart);
-                            content.addBodyPart(logoPart);
-                            // Set multiplart content.
-                            message.setContent(content);
-                            message.saveChanges();
-                            // Enviar mensagem.
-                            return recipientAdvised = Core.sendMessage(message, 30000);
-                        }
-                    } catch (MailConnectException ex) {
-                        return false;
-                    } catch (SendFailedException ex) {
-                        if (ex.getCause() instanceof SMTPAddressFailedException) {
-                            if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
-                                Trap.addInexistentSafe(User.this, recipientLocal);
+                            if (locale.getLanguage().toLowerCase().equals("pt")) {
+                                ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
+                            } else {
+                                ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
                             }
                         }
-                        return false;
-                    } catch (Exception ex) {
-                        Server.logError(ex);
-                        return false;
+                        ServerHTTP.buildFooter(builder, locale);
+                        builder.append("    </div>\n");
+                        builder.append("  </body>\n");
+                        builder.append("</html>\n");
+                        // Making HTML part.
+                        MimeBodyPart htmlPart = new MimeBodyPart();
+                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                        // Making logo part.
+                        MimeBodyPart logoPart = new MimeBodyPart();
+                        File logoFile = ServerHTTP.getWebFile("logo.png");
+                        logoPart.attachFile(logoFile);
+                        logoPart.setContentID("<logo>");
+                        logoPart.addHeader("Content-Type", "image/png");
+                        logoPart.setDisposition(MimeBodyPart.INLINE);
+                        // Join both parts.
+                        MimeMultipart content = new MimeMultipart("related");
+                        content.addBodyPart(htmlPart);
+                        content.addBodyPart(logoPart);
+                        // Set multiplart content.
+                        message.setContent(content);
+                        message.saveChanges();
+                        // Enviar mensagem.
+                        return recipientAdvised = Core.sendMessage(message, 30000);
                     }
-                } else {
+                } catch (MailConnectException ex) {
+                    return false;
+                } catch (SendFailedException ex) {
+                    if (ex.getCause() instanceof SMTPAddressFailedException) {
+                        if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
+                            Trap.addInexistentSafe(User.this, recipientLocal);
+                        }
+                    }
+                    return false;
+                } catch (Exception ex) {
+                    Server.logError(ex);
                     return false;
                 }
             }
@@ -2832,15 +3096,17 @@ public class User implements Serializable, Comparable<User> {
             String recipientLocal = getRecipient();
             if (senderAdvised) {
                 return false;
+            } else if (mailFrom == null) {
+                return false;
+            } else if (recipientLocal == null) {
+                return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else if (!isPass()) {
                 return false;
-            } else if (recipientLocal == null) {
-                return false;
             } else if (!Domain.isValidEmail(mailFrom)) {
                 return false;
-            } else if (!NoReply.contains(mailFrom, true)) {
+            } else if (NoReply.contains(mailFrom, true)) {
                 return false;
             } else if (Generic.containsGeneric(mailFrom)) {
                 return false;
@@ -2925,10 +3191,16 @@ public class User implements Serializable, Comparable<User> {
                         // Enviar mensagem.
                         return senderAdvised = Core.sendMessage(message, 30000);
                     }
+                } catch (NameNotFoundException ex) {
+                    blockSender(time);
+                    return false;
                 } catch (MailConnectException ex) {
                     blockSender(time);
                     return false;
                 } catch (SendFailedException ex) {
+                    blockSender(time);
+                    return false;
+                } catch (MessagingException ex) {
                     blockSender(time);
                     return false;
                 } catch (Exception ex) {
@@ -2943,11 +3215,13 @@ public class User implements Serializable, Comparable<User> {
             String recipientLocal = getRecipient();
             if (senderAdvised) {
                 return false;
+            } else if (mailFrom == null) {
+                return false;
             } else if (recipientLocal == null) {
                 return false;
-            } else if (!Core.hasOutputSMTP()) {
+            } else if (!isPass()) {
                 return false;
-            } else if (!isSenderGreen()) {
+            } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else if (!Domain.isValidEmail(mailFrom)) {
                 return false;
@@ -2958,7 +3232,6 @@ public class User implements Serializable, Comparable<User> {
             } else if (isSenderWhite()) {
                 return false;
             } else if (isSenderBlock(false)) {
-                senderAdvised = true;
                 return false;
             } else {
                 try {
@@ -2999,7 +3272,7 @@ public class User implements Serializable, Comparable<User> {
                         builder.append("  <head>\n");
                         builder.append("    <meta charset=\"UTF-8\">\n");
                         builder.append("    <title>");
-                        builder.append(subject);
+                        builder.append(subjectLocal);
                         builder.append("</title>\n");
                         ServerHTTP.loadStyleCSS(builder);
                         builder.append("  </head>\n");
@@ -3040,15 +3313,27 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (senderAdvised = Core.sendMessage(message, 30000)) {
+                        if (Core.sendMessage(message, 30000)) {
+                            this.CHANGED.acquire();
+                            this.senderAdvised = true;
+                            User.CHANGED = true;
+                            this.CHANGED.release(true);
                             blockSender(time);
+                            return true;
+                        } else {
+                            return false;
                         }
-                        return senderAdvised;
                     }
+                } catch (NameNotFoundException ex) {
+                    blockSender(time);
+                    return false;
                 } catch (MailConnectException ex) {
                     blockSender(time);
                     return false;
                 } catch (SendFailedException ex) {
+                    blockSender(time);
+                    return false;
+                } catch (MessagingException ex) {
                     blockSender(time);
                     return false;
                 } catch (Exception ex) {
@@ -3059,25 +3344,27 @@ public class User implements Serializable, Comparable<User> {
         }
 
         private synchronized boolean adviseAdminHOLD(long time) {
+            String senderLocal = getSender();
+            String userEmail = getEmail();
             if (adminAdvised) {
+                return false;
+            } else if (senderLocal == null) {
+                return false;
+            } else if (userEmail == null) {
+                return false;
+            } else if (!Domain.isValidEmail(senderLocal)) {
+                return false;
+            } else if (NoReply.contains(userEmail, true)) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else {
                 try {
-                    String senderLocal = getSender();
-                    String userEmail = getEmail();
                     String unholdURL = Core.getUnholdURL(User.this, time);
                     String blockURL = Core.getBlockURL(User.this, time);
-                    if (senderLocal == null) {
-                        return false;
-                    } else if (unholdURL == null) {
+                    if (unholdURL == null) {
                         return false;
                     } else if (blockURL == null) {
-                        return false;
-                    } else if (!Domain.isValidEmail(senderLocal)) {
-                        return false;
-                    } else if (NoReply.contains(userEmail, true)) {
                         return false;
                     } else {
                         Server.logDebug("sending retention warning by e-mail.");
@@ -3126,7 +3413,7 @@ public class User implements Serializable, Comparable<User> {
                         builder.append("      </div>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-                            ServerHTTP.buildText(builder, "Uma mensagem enviada de " + senderLocal + " para "  + recipientLocal + "foi retida por suspeita de SPAM.");
+                            ServerHTTP.buildText(builder, "Uma mensagem enviada de " + senderLocal + " para "  + recipientLocal + " foi retida por suspeita de SPAM.");
                             if (recipientAdvised) {
                                 ServerHTTP.buildText(builder, "O destinatário já foi avisado sobre a retenção, porém ele não liberou a mensagem ainda.");
                             } else if (senderAdvised) {

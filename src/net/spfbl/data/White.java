@@ -982,7 +982,7 @@ public class White {
                             return "QUERY NOT FOUND\n";
                         } else {
                             userResult.add(user);
-                            User.Query userQuery = user.getQuery(date);
+                            User.Query userQuery = user.getQuerySafe(date);
                             if (userQuery == null) {
                                 return "QUERY NOT FOUND\n";
                             } else if (userQuery.whiteSender(date)) {
