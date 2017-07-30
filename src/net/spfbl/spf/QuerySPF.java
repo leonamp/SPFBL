@@ -225,7 +225,11 @@ public final class QuerySPF extends Server {
                                         // Houve erro de OTP.
                                     } else if (token.equals("VERSION")) {
                                         query = token;
-                                        result = Core.getAplication() + "\n";
+                                        if (client == null) {
+                                            result = Core.getAplication() + "\nClient: " + ipAddress.getHostAddress() + "\n";
+                                        } else {
+                                            result = Core.getAplication() + "\n" + client + "\n";
+                                        }
                                     } else if (line.startsWith("BLOCK ADD ")) {
                                         query = line.substring(6).trim();
                                         type = "BLOCK";
@@ -247,16 +251,6 @@ public final class QuerySPF extends Server {
                                                 } else {
                                                     result += ex.getMessage() + "\n";
                                                 }
-                                            }
-                                            try {
-                                                if (user != null && user.isTrusted()) {
-                                                    String block;
-                                                    if ((block = Block.add(sender)) != null) {
-                                                        Server.logDebug("new BLOCK '" + block + "' added by '" + user.getEmail() + "'.");
-                                                    }
-                                                }
-                                            } catch (Exception ex) {
-                                                // Do nothing.
                                             }
                                         }
                                         if (result == null) {

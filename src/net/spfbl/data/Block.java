@@ -33,8 +33,6 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.spfbl.core.Client;
@@ -1249,7 +1247,7 @@ public class Block {
     }
 
     public static void dropExpired() {
-        long max = System.currentTimeMillis() - Server.DAY_TIME * 40L;
+        long max = System.currentTimeMillis() - Server.DAY_TIME * 90L;
         TreeMap<String,Long> map = SET.getMap();
         for (String token : map.keySet()) {
             Long time = map.get(token);
@@ -2343,7 +2341,12 @@ public class Block {
             boolean autoblock
             ) {
         if (sender == null && hostname != null) {
-            sender = "mailer-daemon@" + hostname;
+            try {
+                String domain = Domain.extractDomain(hostname, false);
+                sender = "mailer-daemon@" + domain;
+            } catch (Exception ex) {
+                sender = null;
+            }
         }
         TreeSet<String> whoisSet = new TreeSet<String>();
         TreeSet<String> regexSet = new TreeSet<String>();
@@ -2410,6 +2413,10 @@ public class Block {
                 return ip + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(ip + ';' + qualifier + '>' + recipientDomain)) {
                 return ip + ';' + qualifier + '>' + recipientDomain;
+            } else if (userEmail == null && sender == null & SET.contains("mailer-daemon@;" + ip)) {
+                return "mailer-daemon@;" + ip;
+            } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
+                return userEmail + ":mailer-daemon@;" + ip;
             } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
                 return userEmail + ":@;" + ip;
             } else if (userEmail != null && SET.contains(userEmail + ':' + ip)) {

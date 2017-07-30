@@ -136,7 +136,7 @@ public final class AdministrationTCP extends Server {
                             }
                             if (result == null) {
                                 OutputStream outputStream = socket.getOutputStream();
-                                result = processCommand(command, outputStream);
+                                result = processCommand(ipAddress, client, command, outputStream);
                                 if (result == null) {
                                     result = "SENT\n";
                                 } else {
@@ -188,6 +188,8 @@ public final class AdministrationTCP extends Server {
      * @return o resultado do processamento.
      */
     protected static String processCommand(
+            InetAddress ipAddress,
+            Client client,
             String command,
             OutputStream outputStream
     ) {
@@ -199,7 +201,11 @@ public final class AdministrationTCP extends Server {
                 StringTokenizer tokenizer = new StringTokenizer(command, " ");
                 String token = tokenizer.nextToken();
                 if (token.equals("VERSION") && !tokenizer.hasMoreTokens()) {
-                    return Core.getAplication() + "\n";
+                    if (client == null) {
+                        return Core.getAplication() + "\nClient: " + ipAddress.getHostAddress();
+                    } else {
+                        return Core.getAplication() + "\n" + client;
+                    }
                 } else if (token.equals("ANALISE") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("SHOW")) {
@@ -234,7 +240,7 @@ public final class AdministrationTCP extends Server {
                         }
                     } else if (token.equals("CLUSTER") && tokenizer.countTokens() == 1) {
                         token = tokenizer.nextToken();
-                        if (token.equals("TLD")) {
+                        if (token.equals("TLD") && tokenizer.countTokens() == 0) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterTLD(builder);
                             if (builder.length() == 0) {
@@ -242,7 +248,7 @@ public final class AdministrationTCP extends Server {
                             } else {
                                 result = builder.toString();
                             }
-                        } else if (token.equals("MASK")) {
+                        } else if (token.equals("MASK") && tokenizer.countTokens() == 0) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterMask(builder);
                             if (builder.length() == 0) {
@@ -250,7 +256,7 @@ public final class AdministrationTCP extends Server {
                             } else {
                                 result = builder.toString();
                             }
-                        } else if (token.equals("CIDR")) {
+                        } else if (token.equals("CIDR") && tokenizer.countTokens() == 0) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterCIDR(builder);
                             if (builder.length() == 0) {
@@ -258,7 +264,7 @@ public final class AdministrationTCP extends Server {
                             } else {
                                 result = builder.toString();
                             }
-                        } else if (token.equals("CPF")) {
+                        } else if (token.equals("CPF") && tokenizer.countTokens() == 0) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterCPF(builder);
                             if (builder.length() == 0) {
@@ -266,13 +272,20 @@ public final class AdministrationTCP extends Server {
                             } else {
                                 result = builder.toString();
                             }
-                        } else if (token.equals("CNPJ")) {
+                        } else if (token.equals("CNPJ") && tokenizer.countTokens() == 0) {
                             StringBuilder builder = new StringBuilder();
                             Analise.dumpClusterCNPJ(builder);
                             if (builder.length() == 0) {
                                 result = "EMPTY\n";
                             } else {
                                 result = builder.toString();
+                            }
+                        } else if (token.equals("DROP") && tokenizer.countTokens() == 1) {
+                            token = tokenizer.nextToken();
+                            if (Analise.dropCluster(token)) {
+                                result = "DROPPED\n";
+                            } else {
+                                result = "NOT FOUND\n";
                             }
                         } else {
                             result = "INVALID COMMAND\n";
@@ -396,12 +409,12 @@ public final class AdministrationTCP extends Server {
                             StringBuilder builder = new StringBuilder();
                             TreeSet<String> ipSet = Analise.getIPSet(hostname);
                             if (ipSet == null) {
-                                if (Block.tryAdd(hostname)) {
+                                if (Analise.isRunning() && Block.tryAdd(hostname)) {
                                     Server.logDebug("new BLOCK '" + hostname + "' added by 'NXDOMAIN'.");
                                 }
                                 result = "NXDOMAIN\n";
                             } else if (ipSet.isEmpty()) {
-                                if (Block.tryAdd(hostname)) {
+                                if (Analise.isRunning() && Block.tryAdd(hostname)) {
                                     Server.logDebug("new BLOCK '" + hostname + "' added by 'NONE'.");
                                 }
                                 result = "NO ADDRESS\n";
@@ -2054,18 +2067,7 @@ public final class AdministrationTCP extends Server {
                                 result = "NOT FOUND\n";
                             } else if (tokenizer.hasMoreElements()) {
                                 token = tokenizer.nextToken();
-                                if (token.equals("TRUSTED") && tokenizer.hasMoreElements()) {
-                                    token = tokenizer.nextToken();
-                                    if (token.equals("TRUE")) {
-                                        user.setTrusted(true);
-                                        result = "OK\n";
-                                    } else if (token.equals("FALSE")) {
-                                        user.setTrusted(false);
-                                        result = "OK\n";
-                                    } else {
-                                        result = "INVALID COMMAND\n";
-                                    }
-                                } else if (token.equals("LOCALE") && tokenizer.hasMoreElements()) {
+                                if (token.equals("LOCALE") && tokenizer.hasMoreElements()) {
                                     token = tokenizer.nextToken();
                                     if (user.setLocale(token)) {
                                         result = "CHANGED TO " + user.getLocale() + "\n";

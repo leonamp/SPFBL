@@ -45,7 +45,7 @@ MAX_TIMEOUT="100"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.11"
+version="2.12"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -2592,7 +2592,7 @@ case $1 in
 		#    3: timeout de conexão.
 		#    4: out of service.
 
-		if [ $# -lt "3" ]; then
+		if [ $# -lt "2" ]; then
 			head
 			printf "Invalid Parameters. Syntax: $0 abuse In-Reply-To:<messageID> From:<from>\n"
 		else
@@ -2873,8 +2873,9 @@ case $1 in
 			ip=$2
 			email=$3
 			helo=$4
+			recipient=$5
 
-			qualifier=$(echo $OTP_CODE"CHECK '$ip' '$email' '$helo'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo $OTP_CODE"CHECK '$ip' '$email' '$helo' '$recipient'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
@@ -3221,6 +3222,8 @@ case $1 in
 		#    3: consulta inválida.
 		#    4: out of service.
 		#    5: mensagem rejeitada pelo conteudo.
+		#    6: marcar como SPAM.
+		#    7: congelar a entrega da mensagem.
 		#   17: remetente colocado em lista branca.
 
 		if [ $# -lt "3" ]; then
@@ -3258,6 +3261,10 @@ case $1 in
 				exit 17
 			elif [[ $response == "REJECT" ]]; then
 				exit 5
+			elif [[ $response == "FLAG" ]]; then
+				exit 6
+			elif [[ $response == "HOLD" ]]; then
+				exit 7
 			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
 			else

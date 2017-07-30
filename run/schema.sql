@@ -9,8 +9,10 @@ CREATE TABLE `user_query` (
   `qualifier` enum('PASS','FAIL','SOFTFAIL','NEUTRAL') DEFAULT NULL,
   `recipient` varchar(128) CHARACTER SET utf8 NOT NULL,
   `tokenSet` text NOT NULL,
-  `complainKey` varchar(64) NOT NULL,
-  `result` enum('WHITE','ACCEPT','GREYLIST','LISTED','FLAG','HOLD','INEXISTENT','FAIL','REJECT','BLOCK','INVALID','NXDOMAIN') NOT NULL,
+  `complainKey` varchar(128) NOT NULL,
+  `whiteKey` varchar(128) DEFAULT NULL,
+  `blockKey` varchar(128) DEFAULT NULL,
+  `result` enum('WHITE','ACCEPT','GREYLIST','LISTED','HOLD','INEXISTENT','FLAG','TRAP','REJECT','FAIL','NXDOMAIN','INVALID','BLOCK') NOT NULL,
   `mailFrom` varchar(128) DEFAULT NULL,
   `replyto` varchar(128) DEFAULT NULL,
   `subject` text CHARACTER SET utf8mb4,
@@ -28,10 +30,12 @@ CREATE TABLE `user_query` (
   KEY `id_user_query_adminAdvised` (`adminAdvised`),
   KEY `id_user_query_senderAdvised` (`senderAdvised`),
   KEY `id_user_query_recipientAdvised` (`recipientAdvised`),
-  KEY `id_user_query_complainKey` (`complainKey`) USING BTREE,
   KEY `id_user_query_ip` (`ip`),
   KEY `id_user_query_sender` (`sender`) USING BTREE,
   KEY `id_user_query_mailFrom` (`mailFrom`),
   KEY `id_user_query_replyto` (`replyto`),
-  KEY `id_user_query_recipient` (`recipient`) USING BTREE
+  KEY `id_user_query_recipient` (`recipient`) USING BTREE,
+  KEY `id_user_query_complainKey` (`complainKey`),
+  KEY `id_user_query_whiteKey` (`whiteKey`),
+  KEY `id_user_query_blockKey` (`blockKey`) USING BTREE
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii;

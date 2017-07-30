@@ -337,6 +337,20 @@ public class Provider {
         }
     }
     
+    public static boolean contains(String token) {
+        if (token == null) {
+            return false;
+        } else if (Subnet.isValidIP(token)) {
+            String ip = Subnet.normalizeIP(token);
+            return containsCIDR(ip);
+        } else if (Domain.isHostname(token)) {
+            String host = Domain.normalizeHostname(token, true);
+            return containsDomain(host);
+        } else {
+            return false;
+        }
+    }
+    
     public static boolean containsCIDR(String ip) {
         return CIDR.get(null, ip) != null;
     }

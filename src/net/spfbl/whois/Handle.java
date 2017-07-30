@@ -111,6 +111,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                 }
             } catch (ParseException ex) {
                 this.created = null;
+                Server.logTrace(created);
                 Server.logError(ex);
             }
         }
@@ -139,8 +140,8 @@ public class Handle implements Serializable, Comparable<Handle> {
                     CHANGED = true;
                 }
             } catch (ParseException ex) {
+                Server.logTrace(changed);
                 Server.logError(ex);
-                throw new ProcessException("ERROR: PARSING CHANGED " + changed);
             }
         }
     }

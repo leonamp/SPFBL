@@ -44,7 +44,6 @@ import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -52,7 +51,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.mail.Message;
 import javax.mail.SendFailedException;
-import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
@@ -1922,6 +1920,24 @@ public final class SPF implements Serializable {
         CacheHELO.refresh();
     }
     
+    public static boolean addComplain(String ip) throws ProcessException {
+        if (ip == null) {
+            return false;
+        } else if (Subnet.isValidIP(ip)) {
+            ip = Subnet.normalizeIP(ip);
+            Distribution distribution = CacheDistribution.get(ip, true);
+            if (Ignore.contains(ip)) {
+                return false;
+            } else {
+                distribution.addSpam(Server.getNewUniqueTime());
+                Peer.sendToAll(ip, distribution);
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+    
     /**
      * Adiciona uma nova reclamação de SPAM.
      *
@@ -2009,12 +2025,15 @@ public final class SPF implements Serializable {
             long time,
             User.Query query
     ) {
-        if (query.isWhiteSender()) {
+        if (query == null) {
+            return "REMOVE";
+        } else if (query.isWhiteSender()) {
             SPF.setHam(time, query.getTokenSet());
             query.setResult("WHITE");
             return "WHITE";
         } else if (query.isBlockSender()) {
             SPF.setSpam(time, query.getTokenSet());
+            query.setResult("BLOCK");
             return "REMOVE";
         } else if (query.isInexistent(client)) {
             query.setResult("INEXISTENT");
@@ -2045,7 +2064,7 @@ public final class SPF implements Serializable {
                 query.setResult("REJECT");
                 return "REMOVE";
             }
-        } else if (query.isAnyLinkRED()) {
+        } else if (!query.hasMessageID() || query.hasMiscellaneousSymbols() || query.hasTokenRed() || query.isAnyLinkRED()) {
             Action action = client == null ? Action.FLAG : client.getActionRED();
             if (action == Action.FLAG) {
                 query.setResult("FLAG");
@@ -2058,9 +2077,7 @@ public final class SPF implements Serializable {
                 query.setResult("REJECT");
                 return "REMOVE";
             }
-        } else if (query.hasTokenRed() || query.hasClusterRed()) {
-            return "HOLD";
-        } else if (query.hasYellow()) {
+        } else if (query.hasYellow() || query.hasClusterYellow()) {
             long lifeTimeMin = (System.currentTimeMillis() - time) / 1000 / 60;
             if (lifeTimeMin < Core.getDeferTimeYELLOW()) {
                 return "HOLD";
@@ -2131,13 +2148,9 @@ public final class SPF implements Serializable {
                         } else {
                             userList.add(user);
                             User.Query userQuery = user.getQuery(date);
-                            if (userQuery == null) {
-                                return "REMOVE";
-                            } else {
-                                String result = getHoldStatus(client, date, userQuery);
-                                User.storeDB(date, userQuery);
-                                return result;
-                            }
+                            String result = getHoldStatus(client, date, userQuery);
+                            User.storeDB(date, userQuery);
+                            return result;
                         }
                     } else {
                         return "INVALID";
@@ -3185,6 +3198,18 @@ public final class SPF implements Serializable {
         CacheHELO.load();
     }
     
+    public static String getUniqueIP(String helo) {
+        String IPv4 = CacheHELO.getUniqueIPv4(helo);
+        String IPv6 = CacheHELO.getUniqueIPv6(helo);
+        if (IPv4 == null) {
+            return IPv6;
+        } else if (IPv6 == null) {
+            return IPv4;
+        } else {
+            return null;
+        }
+    }
+    
     public static String getUniqueIPv4(String helo) {
         return CacheHELO.getUniqueIPv4(helo);
     }
@@ -3551,7 +3576,8 @@ public final class SPF implements Serializable {
             sender = sender.toLowerCase();
         } else {
             return "action=554 5.7.1 SPFBL " + sender + " "
-                    + "is not a valid e-mail address.\n\n";
+                    + "is not a valid e-mail address. "
+                    + "See http://spfbl.net/en/feedback\n\n";
         }
         if (recipient == null) {
             recipient = null;
@@ -3561,14 +3587,16 @@ public final class SPF implements Serializable {
             recipient = recipient.toLowerCase();
         } else {
             return "action=554 5.7.1 SPFBL " + recipient + " "
-                    + "is not a valid e-mail address.\n\n";
+                    + "is not a valid e-mail address. "
+                    + "See http://spfbl.net/en/feedback\n\n";
         }
         if (!Domain.isHostname(helo)) {
             helo = null;
         }
         if (!Subnet.isValidIP(ip)) {
             return "action=554 5.7.1 SPFBL "
-                    + ip + " is not a valid public IP.\n\n";
+                    + ip + " is not a valid public IP. "
+                    + "See http://spfbl.net/en/feedback\n\n";
         } else if (Subnet.isReservedIP(ip)) {
             // Message from LAN.
             return "action=DUNNO\n\n";
@@ -3620,7 +3648,8 @@ public final class SPF implements Serializable {
                     Server.logDebug("no rDNS for " + ip + ".");
                 } else if (Domain.isOfficialTLD(hostname)) {
                     return "action=554 5.7.1 SPFBL "
-                            + hostname + " is a reserved domain.\n\n";
+                            + hostname + " is a reserved domain. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else {
                     // Verificação de pilha dupla,
                     // para pontuação em ambas pilhas.
@@ -3729,7 +3758,7 @@ public final class SPF implements Serializable {
                         Block.clear(client, user, ip, sender, hostname, result, null);
                     }
                     // Calcula frequencia de consultas.
-                    String url = Core.getURL();
+                    String url = Core.getURL(user);
                     String ticket = SPF.addQueryHam(
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "WHITE"
@@ -3741,10 +3770,11 @@ public final class SPF implements Serializable {
                     Action action = client == null ? Action.REJECT : client.getActionBLOCK();
                     if (action == Action.REJECT) {
                         // Calcula frequencia de consultas.
-                        User.Query queryLocal = SPF.addQuerySpam(
+                        Object[] resultSet = SPF.addQuerySpam(
                                 client, user, ip, helo, hostname, sender,
                                 result, recipient, tokenSet, "BLOCK"
                         );
+                        User.Query queryLocal = (User.Query) (resultSet == null ? null : resultSet[1]);
                         action = client == null ? Action.FLAG : client.getActionRED();
                         if (action != Action.REJECT && queryLocal != null && queryLocal.needHeader()) {
                             if (action == Action.FLAG) {
@@ -3763,7 +3793,8 @@ public final class SPF implements Serializable {
                             );
                             if (url == null) {
                                 return "action=554 5.7.1 SPFBL "
-                                    + "you are permanently blocked in this server.\n\n";
+                                    + "you are permanently blocked. "
+                                        + "See http://spfbl.net/en/feedback\n\n";
                             } else {
                                 return "action=554 5.7.1 SPFBL "
                                     + "BLOCKED " + url + "\n\n";
@@ -3785,21 +3816,24 @@ public final class SPF implements Serializable {
                         return "action=WARN undefined action.\n\n";
                     }
                 } else if (Generic.containsDynamicDomain(hostname)) {
-                    // Bloquear automaticamente range de IP dinâmico.
-                    String cidr = Subnet.normalizeCIDR(SubnetIPv4.isValidIPv4(ip) ? ip + "/24" : ip + "/48");
-                    if (Block.tryOverlap(cidr)) {
-                        Server.logDebug("new BLOCK '" + cidr + "' added by '" + hostname + ";DYNAMIC'.");
-                    } else if (Block.tryAdd(ip)) {
-                        Server.logDebug("new BLOCK '" + ip + "' added by '" + hostname + ";DYNAMIC'.");
+                    if (Analise.isRunning()) {
+                        // Bloquear automaticamente range de IP dinâmico.
+                        String cidr = Subnet.normalizeCIDR(SubnetIPv4.isValidIPv4(ip) ? ip + "/24" : ip + "/48");
+                        if (Block.tryOverlap(cidr)) {
+                            Server.logDebug("new BLOCK '" + cidr + "' added by '" + hostname + ";DYNAMIC'.");
+                        } else if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + hostname + ";DYNAMIC'.");
+                        }
                     }
                     SPF.addQuerySpam(
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "INVALID"
                     );
-                    return "action=554 5.7.1 SPFBL dynamic IP.\n\n";
+                    return "action=554 5.7.1 SPFBL dynamic IP. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (spf != null && spf.isDefinitelyInexistent()) {
                     // Bloquear automaticamente IP com reputação vermelha.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + mx + ";NXDOMAIN'.");
                         }
@@ -3812,18 +3846,19 @@ public final class SPF implements Serializable {
                             result, recipient, tokenSet, "NXDOMAIN"
                     );
                     return "action=554 5.7.1 SPFBL "
-                            + "sender has non-existent internet domain.\n\n";
+                            + "sender has non-existent internet domain. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (spf != null && spf.isInexistent()) {
                     Analise.processToday(ip);
                     SPF.addQuery(
                             client, user, ip, helo, hostname, sender,
-                            result, recipient, tokenSet, "NXDOMAIN"
+                            result, recipient, tokenSet, "GREYLIST"
                     );
-                    return "action=554 5.7.1 SPFBL "
-                            + "sender has non-existent internet domain.\n\n";
+                    return "action=451 4.7.1 SPFBL you are greylisted. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (result.equals("FAIL")) {
                     // Bloquear automaticamente IP com reputação vermelha.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";FAIL'.");
                         }
@@ -3837,10 +3872,11 @@ public final class SPF implements Serializable {
                     // liberação literal do remetente com FAIL.
                     return "action=554 5.7.1 SPFBL "
                             + sender + " is not allowed to "
-                            + "send mail from " + ip + ".\n\n";
+                            + "send mail from " + ip + ". "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (sender != null && !Domain.isEmail(sender)) {
                     // Bloquear automaticamente IP com reputação vermelha.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";INVALID'.");
                         }
@@ -3851,10 +3887,11 @@ public final class SPF implements Serializable {
                             result, recipient, tokenSet, "INVALID"
                     );
                     return "action=554 5.7.1 SPFBL "
-                            + sender + " is not a valid e-mail address.\n\n";
+                            + sender + " is not a valid e-mail address. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (sender != null && Domain.isOfficialTLD(sender)) {
                     // Bloquear automaticamente IP com reputação vermelha.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";RESERVED'.");
                         }
@@ -3865,10 +3902,11 @@ public final class SPF implements Serializable {
                             result, recipient, tokenSet, "RESERVED"
                     );
                     return "action=554 5.7.1 SPFBL "
-                            + sender + " has a reserved domain.\n\n";
+                            + sender + " has a reserved domain. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
                     // Bloquear automaticamente IP com reputação ruim.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + hostname + ";INVALID'.");
                         }
@@ -3878,9 +3916,10 @@ public final class SPF implements Serializable {
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "INVALID"
                     );
-                    return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
+                    return "action=554 5.7.1 SPFBL invalid hostname. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (hostname == null && Core.isReverseRequired()) {
-                    if (Block.tryAdd(ip)) {
+                    if (Analise.isRunning() && Block.tryAdd(ip)) {
                         Server.logDebug("new BLOCK '" + ip + "' added by 'NONE'.");
                     }
                     Analise.processToday(ip);
@@ -3888,7 +3927,8 @@ public final class SPF implements Serializable {
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "INVALID"
                     );
-                    return "action=554 5.7.1 SPFBL " + ip + " has no rDNS.\n\n";
+                    return "action=554 5.7.1 SPFBL " + ip + " has no rDNS. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (recipient != null && !Domain.isValidEmail(recipient)) {
                     Analise.processToday(ip);
                     Analise.processToday(mx);
@@ -3896,14 +3936,16 @@ public final class SPF implements Serializable {
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "INEXISTENT"
                     );
-                    return "action=550 5.1.1 SPFBL the email account that you tried to reach does not exist.\n\n";
+                    return "action=550 5.1.1 SPFBL the account "
+                            + "that you tried to reach does not exist. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (recipientTrapTime != null) {
                     if (System.currentTimeMillis() > recipientTrapTime) {
                         // Spamtrap.
                         for (String token : tokenSet) {
                             String block;
                             Status status = SPF.getStatus(token);
-                            if (status == Status.RED && (block = Block.add(token)) != null) {
+                            if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                                 Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";SPAMTRAP'.");
                                 Peer.sendBlockToAll(block);
                             }
@@ -3924,7 +3966,7 @@ public final class SPF implements Serializable {
                         for (String token : tokenSet) {
                             String block;
                             Status status = SPF.getStatus(token);
-                            if (status == Status.RED && (block = Block.add(token)) != null) {
+                            if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                                 Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";INEXISTENT'.");
                                 Peer.sendBlockToAll(block);
                             }
@@ -3938,7 +3980,9 @@ public final class SPF implements Serializable {
                                 client, user, ip, helo, hostname, sender,
                                 result, recipient, tokenSet, "INEXISTENT"
                         );
-                        return "action=550 5.1.1 SPFBL the email account that you tried to reach does not exist.\n\n";
+                        return "action=550 5.1.1 SPFBL the account "
+                                + "that you tried to reach does not exist. "
+                                + "See http://spfbl.net/en/feedback\n\n";
                     }
                 } else if (Defer.count(fluxo) > Core.getFloodMaxRetry()) {
                     Analise.processToday(ip);
@@ -3950,12 +3994,13 @@ public final class SPF implements Serializable {
                     Server.logDefer(time, fluxo, "DEFER FLOOD");
                     SPF.addQuerySpam(
                             client, user, ip, helo, hostname, sender,
-                            result, recipient, tokenSet, "FLOOD"
+                            result, recipient, tokenSet, "REJECT"
                     );
-                    return "action=554 5.7.1 SPFBL too many retries.\n\n";
+                    return "action=554 5.7.1 SPFBL too many retries. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                     // Bloquear automaticamente IP com reputação amarela.
-                    if (SPF.isRed(ip)) {
+                    if (Analise.isRunning() && SPF.isRed(ip)) {
                         if (Block.tryAdd(ip)) {
                             Server.logDebug("new BLOCK '" + ip + "' added by '" + recipient + ";INVALID'.");
                         }
@@ -3965,9 +4010,10 @@ public final class SPF implements Serializable {
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "INVALID"
                     );
-                    return "action=554 5.7.1 SPFBL invalid hostname.\n\n";
+                    return "action=554 5.7.1 SPFBL invalid hostname. "
+                            + "See http://spfbl.net/en/feedback\n\n";
                 } else if (recipient != null && recipient.startsWith("postmaster@")) {
-                    String url = Core.getURL();
+                    String url = Core.getURL(user);
                     String ticket = SPF.getTicket(
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "ACCEPT"
@@ -3978,7 +4024,7 @@ public final class SPF implements Serializable {
                 } else if (result.equals("PASS") && SPF.isGood(Provider.containsExact(mx) ? sender : mx)) {
                     // O remetente é válido e tem excelente reputação,
                     // ainda que o provedor dele esteja com reputação ruim.
-                    String url = Core.getURL();
+                    String url = Core.getURL(user);
                     String ticket = SPF.addQueryHam(
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "ACCEPT"
@@ -3986,10 +4032,10 @@ public final class SPF implements Serializable {
                     return "action=PREPEND "
                             + "Received-SPFBL: PASS "
                             + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n\n";
-                } else if (SPF.hasRed(tokenSet) || Analise.isCusterRED(ip, sender, hostname)) {
+                } else if (SPF.hasRed(tokenSet)) {
                     Analise.processToday(ip);
                     Analise.processToday(mx);
-                    Action action = client == null ? Action.REJECT : client.getActionRED();
+                    Action action = client == null ? Action.FLAG : client.getActionRED();
                     if (action == Action.REJECT) {
                         // Calcula frequencia de consultas.
                         SPF.addQuerySpam(
@@ -3997,7 +4043,8 @@ public final class SPF implements Serializable {
                                 result, recipient, tokenSet, "REJECT"
                         );
                         return "action=554 5.7.1 SPFBL "
-                                + "you are temporarily listed.\n\n";
+                                + "you are temporarily listed. "
+                                + "See http://spfbl.net/en/feedback\n\n";
                     } else if (action == Action.DEFER) {
                         if (Defer.defer(fluxo, Core.getDeferTimeRED())) {
                             // Pelo menos um identificador está listado e com atrazo programado de um dia.
@@ -4008,12 +4055,14 @@ public final class SPF implements Serializable {
                             );
                             if (url == null || Defer.count(fluxo) > 1) {
                                 return "action=451 4.7.2 SPFBL "
-                                        + "you are temporarily listed.\n\n";
+                                        + "you are temporarily listed. "
+                                        + "See http://spfbl.net/en/feedback\n\n";
                             } else if (result.equals("PASS") && enviarLiberacao(url, sender, recipient)) {
                                 // Envio da liberação por e-mail se 
                                 // houver validação do remetente por PASS.
                                 return "action=451 4.7.2 SPFBL "
-                                        + "you are temporarily listed.\n\n";
+                                        + "you are temporarily listed. "
+                                        + "See http://spfbl.net/en/feedback\n\n";
                             } else {
                                 return "action=451 4.7.2 SPFBL LISTED " + url + "\n\n";
                             }
@@ -4023,7 +4072,8 @@ public final class SPF implements Serializable {
                                     client, user, ip, helo, hostname, sender,
                                     result, recipient, tokenSet, "REJECT"
                             );
-                            return "action=554 5.7.1 SPFBL too many retries.\n\n";
+                            return "action=554 5.7.1 SPFBL too many retries. "
+                                    + "See http://spfbl.net/en/feedback\n\n";
                         }
                     } else if (action == Action.FLAG) {
                         SPF.addQuery(
@@ -4040,7 +4090,7 @@ public final class SPF implements Serializable {
                     } else {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
-                                result, recipient, tokenSet, "UNDEFINED"
+                                result, recipient, tokenSet, "FLAG"
                         );
                         return "action=WARN undefined action.\n\n";
                     }
@@ -4049,7 +4099,7 @@ public final class SPF implements Serializable {
                     for (String token : tokenSet) {
                         String block;
                         Status status = SPF.getStatus(token);
-                        if (status == Status.RED && (block = Block.add(token)) != null) {
+                        if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                             Server.logDebug("new BLOCK '" + block + "' added by '" + status + "'.");
                             Peer.sendBlockToAll(block);
                         }
@@ -4067,7 +4117,8 @@ public final class SPF implements Serializable {
                                 result, recipient, tokenSet, "REJECT"
                         );
                         return "action=554 5.7.1 SPFBL "
-                                + "your domain is in grace time.\n\n";
+                                + "your domain is in grace time. "
+                                + "See http://spfbl.net/en/feedback\n\n";
                     } else if (action == Action.DEFER) {
                         if (Defer.defer(fluxo, Core.getDeferTimeRED())) {
                             // Pelo menos um identificador está listado e com atrazo programado de um dia.
@@ -4078,12 +4129,14 @@ public final class SPF implements Serializable {
                             );
                             if (url == null || Defer.count(fluxo) > 1) {
                                 return "action=451 4.7.2 SPFBL "
-                                        + "you are temporarily listed.\n\n";
+                                        + "you are temporarily listed. "
+                                        + "See http://spfbl.net/en/feedback\n\n";
                             } else if (result.equals("PASS") && enviarLiberacao(url, sender, recipient)) {
                                 // Envio da liberação por e-mail se 
                                 // houver validação do remetente por PASS.
                                 return "action=451 4.7.2 SPFBL "
-                                        + "you are temporarily listed.\n\n";
+                                        + "you are temporarily listed. "
+                                        + "See http://spfbl.net/en/feedback\n\n";
                             } else {
                                 return "action=451 4.7.2 SPFBL LISTED " + url + "\n\n";
                             }
@@ -4093,7 +4146,8 @@ public final class SPF implements Serializable {
                                     client, user, ip, helo, hostname, sender,
                                     result, recipient, tokenSet, "REJECT"
                             );
-                            return "action=554 5.7.1 SPFBL too many retries.\n\n";
+                            return "action=554 5.7.1 SPFBL too many retries. "
+                                    + "See http://spfbl.net/en/feedback\n\n";
                         }
                     } else if (action == Action.FLAG) {
                         SPF.addQuery(
@@ -4110,11 +4164,11 @@ public final class SPF implements Serializable {
                     } else {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
-                                result, recipient, tokenSet, "UNDEFINED"
+                                result, recipient, tokenSet, "FLAG"
                         );
                         return "action=WARN undefined action.\n\n";
                     }
-                } else if (SPF.hasYellow(tokenSet)
+                } else if ((SPF.hasYellow(tokenSet) || Analise.isCusterYELLOW(ip, sender, hostname))
                         && Defer.defer(fluxo, Core.getDeferTimeYELLOW())
                         ) {
                     Analise.processToday(ip);
@@ -4124,9 +4178,10 @@ public final class SPF implements Serializable {
                         // Pelo menos um identificador está em greylisting com atrazo programado de 10min.
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
-                                result, recipient, tokenSet, "GREYLISTED"
+                                result, recipient, tokenSet, "GREYLIST"
                         );
-                        return "action=451 4.7.1 SPFBL you are greylisted.\n\n";
+                        return "action=451 4.7.1 SPFBL you are greylisted. "
+                                + "See http://spfbl.net/en/feedback\n\n";
                     } else if (action == Action.HOLD) {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
@@ -4136,7 +4191,7 @@ public final class SPF implements Serializable {
                     } else {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
-                                result, recipient, tokenSet, "UNDEFINED"
+                                result, recipient, tokenSet, "ACCEPT"
                         );
                         return "action=WARN undefined action.\n\n";
                     }
@@ -4150,9 +4205,9 @@ public final class SPF implements Serializable {
                     Server.logDebug("FLOOD " + tokenSet);
                     SPF.addQuery(
                             client, user, ip, helo, hostname, sender,
-                            result, recipient, tokenSet, "GREYLISTED"
+                            result, recipient, tokenSet, "GREYLIST"
                     );
-                    return "action=451 4.7.1 SPFBL you are greylisted.\n\n";
+                    return "action=451 4.7.1 SPFBL you are greylisted. See http://spfbl.net/en/feedback\n\n";
                 } else if (result.equals("SOFTFAIL")
                         && !Provider.containsHELO(ip, hostname)
                         && Defer.defer(fluxo, Core.getDeferTimeSOFTFAIL())
@@ -4162,14 +4217,14 @@ public final class SPF implements Serializable {
                     // SOFTFAIL com atrazo programado de 1min.
                     SPF.addQuery(
                             client, user, ip, helo, hostname, sender,
-                            result, recipient, tokenSet, "GREYLISTED"
+                            result, recipient, tokenSet, "GREYLIST"
                     );
-                    return "action=451 4.7.1 SPFBL you are greylisted.\n\n";
+                    return "action=451 4.7.1 SPFBL you are greylisted. See http://spfbl.net/en/feedback\n\n";
                 } else {
                     Analise.processToday(ip);
                     Analise.processToday(mx);
                     // Calcula frequencia de consultas.
-                    String url = Core.getURL();
+                    String url = Core.getURL(user);
                     String ticket = SPF.addQueryHam(
                             client, user, ip, helo, hostname, sender,
                             result, recipient, tokenSet, "ACCEPT"
@@ -4505,6 +4560,13 @@ public final class SPF implements Serializable {
                         } else {
                             result = "INVALID FROM\n";
                         }
+                    } else if (Subnet.isValidIP(token) && tokenizer.countTokens() == 0) {
+                        if (SPF.addComplain(token)) {
+                            Analise.processToday(token);
+                            result = "COMPLAINED " + Subnet.normalizeIP(token) + "\n";
+                        } else {
+                            result = "NOT COMPLAINED\n";
+                        }
                     } else {
                         result = "INVALID COMMAND\n";
                     }
@@ -4614,7 +4676,7 @@ public final class SPF implements Serializable {
                             for (String token : tokenSet) {
                                 String block;
                                 Status status = SPF.getStatus(token);
-                                if (status == Status.RED && (block = Block.add(token)) != null) {
+                                if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                                     Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";MALWARE'.");
                                     Peer.sendBlockToAll(block);
                                 }
@@ -4688,6 +4750,9 @@ public final class SPF implements Serializable {
                     } else {
                         boolean whitelisted = false;
                         boolean blocklisted = false;
+                        boolean hold = false;
+                        boolean flag = false;
+                        boolean reject = false;
                         TreeSet<String> unblockURLSet = new TreeSet<String>();
                         StringTokenizer ticketRokenizer = new StringTokenizer(ticketSet, ";");
                         int n = ticketRokenizer.countTokens();
@@ -4706,19 +4771,26 @@ public final class SPF implements Serializable {
                                 User.Query queryTicket = user.getQuery(dateTicket);
                                 if (queryTicket != null) {
                                     queryList.add(queryTicket);
+                                    Action actionRED = client == null ? Action.FLAG : client.getActionRED();
                                     String resultLocal = queryTicket.setHeader(
-                                            from, replyto,
+                                            dateTicket, from, replyto,
                                             subject, messageID,
-                                            unsubscribe
+                                            unsubscribe, actionRED
                                     );
                                     if ("WHITE".equals(resultLocal)) {
                                         whitelisted = true;
+                                    } else if ("FLAG".equals(resultLocal)) {
+                                        flag = true;
+                                    } else if ("HOLD".equals(resultLocal)) {
+                                        hold = true;
                                     } else if ("BLOCK".equals(resultLocal)) {
                                         blocklisted = true;
                                         String url = queryTicket.getUnblockURL();
                                         if (url != null) {
                                             unblockURLSet.add(url);
                                         }
+                                    } else if ("REJECT".equals(resultLocal)) {
+                                        reject = true;
                                     }
                                     User.storeDB(dateTicket, queryTicket);
                                 }
@@ -4738,6 +4810,12 @@ public final class SPF implements Serializable {
                             } else {
                                 result = "BLOCKED\n";
                             }
+                        } else if (reject) {
+                            result = "REJECT\n";
+                        } else if (hold) {
+                            result = "HOLD\n";
+                        } else if (flag) {
+                            result = "FLAG\n";
                         } else {
                             result = "CLEAR\n";
                         }
@@ -5033,7 +5111,9 @@ public final class SPF implements Serializable {
                             }
                             Long recipientTrapTime = Trap.getTimeRecipient(client, user, recipient);
                             if (firstToken.equals("CHECK")) {
-                                String results = "\nSPF resolution results:\n";
+                                String results = "\nClient: " + (client == null ? ipAddress.getHostAddress() : client);
+                                results += "\nUser: " + (user == null ? "NOT DEFINED" : user);
+                                results += "\n\nSPF resolution results:\n";
                                 if (spf != null && spf.isInexistent()) {
                                     results += "   NXDOMAIN\n";
                                 } else if (logList == null || logList.isEmpty()) {
@@ -5100,7 +5180,7 @@ public final class SPF implements Serializable {
                                     Block.clear(client, user, ip, sender, hostname, result, null);
                                 }
                                 // Calcula frequencia de consultas.
-                                String url = Core.getURL();
+                                String url = Core.getURL(user);
                                 String ticket = SPF.addQueryHam(
                                         client, user, ip, helo, hostname, sender,
                                         result, recipient, tokenSet, "WHITE"
@@ -5110,21 +5190,22 @@ public final class SPF implements Serializable {
                                 Action action = client == null ? Action.REJECT : client.getActionBLOCK();
                                 if (action == Action.REJECT) {
                                     // Calcula frequencia de consultas.
-                                    long time = Server.getNewUniqueTime();
-                                    User.Query queryLocal = SPF.addQuerySpam(
-                                            time, client, user, ip, helo, hostname, sender,
+                                    Object[] resultSet = SPF.addQuerySpam(
+                                            client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "BLOCK"
                                     );
+                                    long time = resultSet == null ? Server.getNewUniqueTime() : (Long) resultSet[0];
+                                    User.Query queryLocal = resultSet == null ? null : (User.Query) resultSet[1];
                                     action = client == null ? Action.FLAG : client.getActionRED();
                                     if (action != Action.REJECT && queryLocal != null && queryLocal.needHeader()) {
                                         if (action == Action.FLAG) {
                                             queryLocal.setResult("FLAG");
-                                            String url = Core.getURL();
+                                            String url = Core.getURL(user);
                                             String ticket = SPF.createTicket(time, tokenSet);
                                             return "FLAG " + (url == null ? ticket : url + ticket) + "\n";
                                         } else if (action == Action.HOLD) {
                                             queryLocal.setResult("HOLD");
-                                            String url = Core.getURL();
+                                            String url = Core.getURL(user);
                                             String ticket = SPF.createTicket(time, tokenSet);
                                             return "HOLD " + (url == null ? ticket : url + ticket) + "\n";
                                         } else {
@@ -5142,14 +5223,14 @@ public final class SPF implements Serializable {
                                         }
                                     }
                                 } else if (action == Action.FLAG) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "FLAG"
                                     );
                                     return "FLAG " + (url == null ? ticket : url + ticket) + "\n";
                                 } else if (action == Action.HOLD) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "HOLD"
@@ -5160,11 +5241,13 @@ public final class SPF implements Serializable {
                                 }
                             } else if (Generic.containsDynamicDomain(hostname)) {
                                 // Bloquear automaticamente range de IP dinâmico.
-                                String cidr = Subnet.normalizeCIDR(SubnetIPv4.isValidIPv4(ip) ? ip + "/24" : ip + "/48");
-                                if (Block.tryOverlap(cidr)) {
-                                    Server.logDebug("new BLOCK '" + cidr + "' added by '" + hostname + ";DYNAMIC'.");
-                                } else if (Block.tryAdd(ip)) {
-                                    Server.logDebug("new BLOCK '" + ip + "' added by '" + hostname + ";DYNAMIC'.");
+                                if (Analise.isRunning()) {
+                                    String cidr = Subnet.normalizeCIDR(SubnetIPv4.isValidIPv4(ip) ? ip + "/24" : ip + "/48");
+                                    if (Block.tryOverlap(cidr)) {
+                                        Server.logDebug("new BLOCK '" + cidr + "' added by '" + hostname + ";DYNAMIC'.");
+                                    } else if (Block.tryAdd(ip)) {
+                                        Server.logDebug("new BLOCK '" + ip + "' added by '" + hostname + ";DYNAMIC'.");
+                                    }
                                 }
                                 SPF.addQuerySpam(
                                         client, user, ip, helo, hostname, sender,
@@ -5173,7 +5256,7 @@ public final class SPF implements Serializable {
                                 return "INVALID\n";
                             } else if (spf != null && spf.isDefinitelyInexistent()) {
                                 // Bloquear automaticamente IP com reputação vermelha.
-                                if (SPF.isRed(ip)) {
+                                if (Analise.isRunning() && SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
                                         Server.logDebug("new BLOCK '" + ip + "' added by '" + mx + ";NXDOMAIN'.");
                                     }
@@ -5190,12 +5273,12 @@ public final class SPF implements Serializable {
                                 Analise.processToday(ip);
                                 SPF.addQuery(
                                         client, user, ip, helo, hostname, sender,
-                                        result, recipient, tokenSet, "NXDOMAIN"
+                                        result, recipient, tokenSet, "GREYLIST"
                                 );
-                                return "NXDOMAIN\n";
+                                return "GREYLIST\n";
                             } else if (result.equals("FAIL")) {
                                 // Bloquear automaticamente IP com reputação vermelha.
-                                if (SPF.isRed(ip)) {
+                                if (Analise.isRunning() && SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
                                         Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";FAIL'.");
                                     }
@@ -5210,7 +5293,7 @@ public final class SPF implements Serializable {
                                 return "FAIL\n";
                             } else if (sender != null && !Domain.isEmail(sender)) {
                                 // Bloquear automaticamente IP com reputação vermelha.
-                                if (SPF.isRed(ip)) {
+                                if (Analise.isRunning() && SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
                                         Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";INVALID'.");
                                     }
@@ -5223,7 +5306,7 @@ public final class SPF implements Serializable {
                                 return "INVALID\n";
                             } else if (sender != null && Domain.isOfficialTLD(sender)) {
                                 // Bloquear automaticamente IP com reputação vermelha.
-                                if (SPF.isRed(ip)) {
+                                if (Analise.isRunning() && SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
                                         Server.logDebug("new BLOCK '" + ip + "' added by '" + sender + ";RESERVED'.");
                                     }
@@ -5236,7 +5319,7 @@ public final class SPF implements Serializable {
                                 return "INVALID\n";
                             } else if (sender == null && !CacheHELO.match(ip, hostname, false)) {
                                 // Bloquear automaticamente IP com reputação ruim.
-                                if (SPF.isRed(ip)) {
+                                if (Analise.isRunning() && SPF.isRed(ip)) {
                                     if (Block.tryAdd(ip)) {
                                         Server.logDebug("new BLOCK '" + ip + "' added by 'INVALID'.");
                                     }
@@ -5249,7 +5332,7 @@ public final class SPF implements Serializable {
                                 // HELO inválido sem remetente.
                                 return "INVALID\n";
                             } else if (hostname == null && Core.isReverseRequired()) {
-                                if (Block.tryAdd(ip)) {
+                                if (Analise.isRunning() && Block.tryAdd(ip)) {
                                     Server.logDebug("new BLOCK '" + ip + "' added by 'NONE'.");
                                 }
                                 Analise.processToday(ip);
@@ -5270,19 +5353,21 @@ public final class SPF implements Serializable {
                             } else if (recipientTrapTime != null) {
                                 if (System.currentTimeMillis() > recipientTrapTime) {
                                     // Spamtrap
-                                    for (String token : tokenSet) {
-                                        String block;
-                                        Status status = SPF.getStatus(token);
-                                        if (status == Status.RED && (block = Block.add(token)) != null) {
-                                            Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";SPAMTRAP'.");
-                                            Peer.sendBlockToAll(block);
+                                    if (Analise.isRunning()) {
+                                        for (String token : tokenSet) {
+                                            String block;
+                                            Status status = SPF.getStatus(token);
+                                            if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
+                                                Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";SPAMTRAP'.");
+                                                Peer.sendBlockToAll(block);
+                                            }
+                                            if (status != Status.GREEN && !Subnet.isValidIP(token) && (block = Block.addIfNotNull(user, token)) != null) {
+                                                Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";SPAMTRAP'.");
+                                            }
                                         }
-                                        if (status != Status.GREEN && !Subnet.isValidIP(token) && (block = Block.addIfNotNull(user, token)) != null) {
-                                            Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";SPAMTRAP'.");
-                                        }
+                                        Analise.processToday(ip);
+                                        Analise.processToday(mx);
                                     }
-                                    Analise.processToday(ip);
-                                    Analise.processToday(mx);
                                     // Calcula frequencia de consultas.
                                     SPF.addQuerySpam(
                                             client, user, ip, helo, hostname, sender,
@@ -5294,7 +5379,7 @@ public final class SPF implements Serializable {
                                     for (String token : tokenSet) {
                                         String block;
                                         Status status = SPF.getStatus(token);
-                                        if (status == Status.RED && (block = Block.add(token)) != null) {
+                                        if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                                             Server.logDebug("new BLOCK '" + block + "' added by '" + recipient + ";INEXISTENT'.");
                                             Peer.sendBlockToAll(block);
                                         }
@@ -5325,19 +5410,21 @@ public final class SPF implements Serializable {
                                 return "BLOCKED\n";
                             } else if (!result.equals("PASS") && !CacheHELO.match(ip, hostname, false)) {
                                 // Bloquear automaticamente IP com reputação amarela.
-                                if (SPF.isRed(ip)) {
-                                    if (Block.tryAdd(ip)) {
-                                        Server.logDebug("new BLOCK '" + ip + "' added by '" + recipient + ";INVALID'.");
+                                if (Analise.isRunning()) {
+                                    if (SPF.isRed(ip)) {
+                                        if (Block.tryAdd(ip)) {
+                                            Server.logDebug("new BLOCK '" + ip + "' added by '" + recipient + ";INVALID'.");
+                                        }
                                     }
+                                    Analise.processToday(ip);
                                 }
-                                Analise.processToday(ip);
                                 SPF.addQuerySpam(
                                         client, user, ip, helo, hostname, sender,
                                         result, recipient, tokenSet, "INVALID"
                                 );
                                 return "INVALID\n";
                             } else if (recipient != null && recipient.startsWith("postmaster@")) {
-                                String url = Core.getURL();
+                                String url = Core.getURL(user);
                                 String ticket = SPF.getTicket(
                                         client, user, ip, helo, hostname, sender,
                                         result, recipient, tokenSet, "ACCEPT"
@@ -5346,13 +5433,13 @@ public final class SPF implements Serializable {
                             } else if (result.equals("PASS") && SPF.isGood(Provider.containsExact(mx) ? sender : mx)) {
                                 // O remetente é válido e tem excelente reputação,
                                 // ainda que o provedor dele esteja com reputação ruim.
-                                String url = Core.getURL();
+                                String url = Core.getURL(user);
                                 String ticket = SPF.addQueryHam(
                                         client, user, ip, helo, hostname, sender,
                                         result, recipient, tokenSet, "ACCEPT"
                                 );
                                 return "PASS " + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n";
-                            } else if (SPF.hasRed(tokenSet) || Analise.isCusterRED(ip, sender, hostname)) {
+                            } else if (SPF.hasRed(tokenSet)) {
                                 Analise.processToday(ip);
                                 Analise.processToday(mx);
                                 Action action = client == null ? Action.REJECT : client.getActionRED();
@@ -5388,14 +5475,14 @@ public final class SPF implements Serializable {
                                         return "BLOCKED\n";
                                     }
                                 } else if (action == Action.FLAG) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "FLAG"
                                     );
                                     return "FLAG " + (url == null ? ticket : url + ticket) + "\n";
                                 } else if (action == Action.HOLD) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "HOLD"
@@ -5409,7 +5496,7 @@ public final class SPF implements Serializable {
                                 for (String token : tokenSet) {
                                     String block;
                                     Status status = SPF.getStatus(token);
-                                    if (status == Status.RED && (block = Block.add(token)) != null) {
+                                    if (status == Status.RED && Analise.isRunning() && (block = Block.addSafe(token)) != null) {
                                         Server.logDebug("new BLOCK '" + block + "' added by '" + status + "'.");
                                         Peer.sendBlockToAll(block);
                                     }
@@ -5452,14 +5539,14 @@ public final class SPF implements Serializable {
                                         return "BLOCKED\n";
                                     }
                                 } else if (action == Action.FLAG) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "FLAG"
                                     );
                                     return "FLAG " + (url == null ? ticket : url + ticket) + "\n";
                                 } else if (action == Action.HOLD) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "HOLD"
@@ -5468,7 +5555,7 @@ public final class SPF implements Serializable {
                                 } else {
                                     return "ERROR: UNDEFINED ACTION\n";
                                 }
-                            } else if (SPF.hasYellow(tokenSet)
+                            } else if ((SPF.hasYellow(tokenSet) || Analise.isCusterYELLOW(ip, sender, hostname))
                                     && Defer.defer(fluxo, Core.getDeferTimeYELLOW())
                                     ) {
                                 Analise.processToday(ip);
@@ -5482,7 +5569,7 @@ public final class SPF implements Serializable {
                                     );
                                     return "GREYLIST\n";
                                 } else if (action == Action.HOLD) {
-                                    String url = Core.getURL();
+                                    String url = Core.getURL(user);
                                     String ticket = SPF.getTicket(
                                             client, user, ip, helo, hostname, sender,
                                             result, recipient, tokenSet, "HOLD"
@@ -5520,7 +5607,7 @@ public final class SPF implements Serializable {
                                 Analise.processToday(ip);
                                 Analise.processToday(mx);
                                 // Calcula frequencia de consultas.
-                                String url = Core.getURL();
+                                String url = Core.getURL(user);
                                 String ticket = SPF.addQueryHam(
                                         client, user, ip, helo, hostname, sender,
                                         result, recipient, tokenSet, "ACCEPT"
@@ -5566,11 +5653,12 @@ public final class SPF implements Serializable {
                 Server.logDebug("sending liberation by e-mail.");
                 Locale locale = Core.getDefaultLocale(remetente);
                 InternetAddress[] recipients = InternetAddress.parse(remetente);
-                Properties props = System.getProperties();
-                Session session = Session.getDefaultInstance(props);
-                MimeMessage message = new MimeMessage(session);
-                message.setHeader("Date", Core.getEmailDate());
-                message.setFrom(Core.getAdminEmail());
+//                Properties props = System.getProperties();
+//                Session session = Session.getDefaultInstance(props);
+//                MimeMessage message = new MimeMessage(session);
+//                message.setHeader("Date", Core.getEmailDate());
+//                message.setFrom(Core.getAdminInternetAddress());
+                MimeMessage message = Core.newMessage();
                 message.addRecipients(Message.RecipientType.TO, recipients);
                 String subject;
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -5606,7 +5694,7 @@ public final class SPF implements Serializable {
                     ServerHTTP.buildText(builder, "In order for your message to be released, access this link and resolve the reCAPTCHA:");
                 }
                 ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                ServerHTTP.buildFooter(builder, locale);
+                ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                 builder.append("    </div>\n");
                 builder.append("  </body>\n");
                 builder.append("</html>\n");
@@ -5628,7 +5716,7 @@ public final class SPF implements Serializable {
                 message.setContent(content);
                 message.saveChanges();
                 // Enviar mensagem.
-                return Core.sendMessage(message, 5000);
+                return Core.sendMessage(locale, message, 30000);
             } catch (MailConnectException ex) {
                 return false;
             } catch (SendFailedException ex) {
@@ -5722,12 +5810,22 @@ public final class SPF implements Serializable {
             TreeSet<String> tokenSet,
             String result
             ) throws ProcessException {
-        long time = Server.getNewUniqueTime();
-        if (user != null) {
-            user.addQuery(
-                    time, client, ip, helo, hostname,
-                    sender, qualifier, recipient, tokenSet, result
+        long time;
+        if (user == null) {
+            time = Server.getNewUniqueTime();
+        } else {
+            Object[] resultSet = user.getDeferedQuery(
+                    ip, hostname, sender, recipient, result
             );
+            if (resultSet == null) {
+                user.addQuery(
+                        time = Server.getNewUniqueTime(),
+                        client, ip, helo, hostname,
+                        sender, qualifier, recipient, tokenSet, result
+                );
+            } else {
+                time = (Long) resultSet[0];
+            }
         }
         return SPF.createTicket(time, tokenSet);
     }
@@ -5751,29 +5849,23 @@ public final class SPF implements Serializable {
             TreeSet<String> tokenSet,
             String result
             ) throws ProcessException {
-        long time = Server.getNewUniqueTime();
-        String ticket = SPF.createTicket(time, tokenSet);
-        for (String token : expandTokenSet(tokenSet)) {
-            if (isValidReputation(token)) {
-                Distribution distribution = CacheDistribution.get(token, true);
-                distribution.addQueryHam(time);
-                distribution.getStatus(token);
-            }
-        }
-        if (user != null) {
-            user.addQuery(
-                    time, client, ip, helo, hostname,
-                    sender, qualifier, recipient, tokenSet, result
+        long time;
+        if (user == null) {
+            time = Server.getNewUniqueTime();
+        } else {
+            Object[] resultSet = user.getDeferedQuery(
+                    ip, hostname, sender, recipient, result
             );
+            if (resultSet == null) {
+                user.addQuery(
+                        time = Server.getNewUniqueTime(),
+                        client, ip, helo, hostname, sender,
+                        qualifier, recipient, tokenSet, result
+                );
+            } else {
+                time = (Long) resultSet[0];
+            }
         }
-        return ticket;
-    }
-
-    public static String addQueryHam(
-            TreeSet<String> tokenSet
-            ) throws ProcessException {
-        long time = Server.getNewUniqueTime();
-        String ticket = SPF.createTicket(time, tokenSet);
         for (String token : expandTokenSet(tokenSet)) {
             if (isValidReputation(token)) {
                 Distribution distribution = CacheDistribution.get(token, true);
@@ -5781,7 +5873,7 @@ public final class SPF implements Serializable {
                 distribution.getStatus(token);
             }
         }
-        return ticket;
+        return SPF.createTicket(time, tokenSet);
     }
     
     public static boolean setHam(long time, TreeSet<String> tokenSet) {
@@ -5808,7 +5900,7 @@ public final class SPF implements Serializable {
         return modified;
     }
     
-    public static User.Query addQuerySpam(
+    public static Object[] addQuerySpam(
             Client client,
             User user,
             String ip,
@@ -5820,35 +5912,27 @@ public final class SPF implements Serializable {
             TreeSet<String> tokenSet,
             String result
             ) throws ProcessException {
-        long time = Server.getNewUniqueTime();
-        return addQuerySpam(
-                time,
-                client,
-                user,
-                ip,
-                helo,
-                hostname,
-                sender,
-                qualifier,
-                recipient,
-                tokenSet,
-                result
-        );
-    }
-    
-    public static User.Query addQuerySpam(
-            long time,
-            Client client,
-            User user,
-            String ip,
-            String helo,
-            String hostname,
-            String sender,
-            String qualifier,
-            String recipient,
-            TreeSet<String> tokenSet,
-            String result
-            ) throws ProcessException {
+        long time;
+        Object[] resultSet;
+        if (user == null) {
+            time = Server.getNewUniqueTime();
+            resultSet = null;
+        } else {
+            resultSet = user.getDeferedQuery(
+                    ip, hostname, sender, recipient, result
+            );
+            if (resultSet == null) {
+                time = Server.getNewUniqueTime();
+                resultSet = new Object[2];
+                resultSet[0] = time;
+                resultSet[1] = user.addQuery(
+                        time, client, ip, helo, hostname, sender,
+                        qualifier, recipient, tokenSet, result
+                );
+            } else {
+                time = (Long) resultSet[0];
+            }
+        }
         for (String token : expandTokenSet(tokenSet)) {
             if (isValidReputation(token)) {
                 Distribution distribution = CacheDistribution.get(token, true);
@@ -5862,13 +5946,7 @@ public final class SPF implements Serializable {
                 }
             }
         }
-        if (user == null) {
-            return null;
-        } else {
-            return user.addQuery(time, client, ip, helo, hostname,
-                    sender, qualifier, recipient, tokenSet, result
-            );
-        }
+        return resultSet;
     }
     
     public static void addQuery(
@@ -5883,27 +5961,16 @@ public final class SPF implements Serializable {
             TreeSet<String> tokenSet,
             String result
             ) throws ProcessException {
-        long time = Server.getNewUniqueTime();
         if (user != null) {
-            user.addQuery(time, client, ip, helo, hostname,
-                    sender, qualifier, recipient, tokenSet, result
+            Object[] resultSet = user.getDeferedQuery(
+                    ip, hostname, sender, recipient, result
             );
-        }
-    }
-    
-    public static void addQuerySpam(TreeSet<String> tokenSet) {
-        long time = Server.getNewUniqueTime();
-        for (String token : expandTokenSet(tokenSet)) {
-            if (isValidReputation(token)) {
-                Distribution distribution = CacheDistribution.get(token, true);
-                if (Ignore.contains(token)) {
-                    distribution.addQueryHam(time);
-                    distribution.getStatus(token);
-                } else {
-                    distribution.addQuerySpam(time);
-                    distribution.getStatus(token);
-                    Peer.sendToAll(token, distribution);
-                }
+            if (resultSet == null) {
+                user.addQuery(
+                        Server.getNewUniqueTime(),
+                        client, ip, helo, hostname, sender,
+                        qualifier, recipient, tokenSet, result
+                );
             }
         }
     }
@@ -6199,6 +6266,14 @@ public final class SPF implements Serializable {
                 return 0;
             } else {
                 return System.currentTimeMillis() - lastQuery;
+            }
+        }
+        
+        public Float[] getFrequencyXiSum() {
+            if (frequency == null) {
+                return null;
+            } else {
+                return frequency.getXiSum();
             }
         }
 

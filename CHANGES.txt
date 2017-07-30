@@ -1,3 +1,24 @@
+### v2.7.6 ; release 30/07/2017:
+
+NEW) implementação da assinatura DKIM para envio direto de e-mail pelo SPFBL.
+
+NEW) implementação do bloqueio e whitelist automáticos por indução do costume de recebimento de cada usuário.
+
+NEW) implementação do opt-out para que possam solicitar que o sistema pare e enviar mensagens de interatividade.
+
+UPDT) aproveitamento dos registros atrasados, como o GREYLIST e o LISTED.
+
+UPDT) atualização da tabela MySQL para registro de consultas com uma versão estável.
+
+UPDT) implementação de multiplas conexões simultâneas no HTTP do sistema.
+
+FIX) correção da query MySQL quando o usuário determina um e-mail no campo de pesquisa.
+
+FIX) correção do remetente MAILER-DEAMON nas funções de bloqueio e liberação.
+
+FIX) correção da função HEADER para resultados HOLD e FLAG.
+
+
 ### v2.7.5 ; release 09/07/2017:
 
 FIX) correção do modelo de tabela das consultas no MySQL.

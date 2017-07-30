@@ -73,6 +73,13 @@ public class NormalDistribution implements Serializable {
         xi2Sum += value * value;
     }
     
+    public synchronized Float[] getXiSum() {
+        Float[] xiResult = new Float[2];
+        xiResult[0] = xiSum;
+        xiResult[1] = xi2Sum;
+        return xiResult;
+    }
+    
     public float getAverage() {
         return xiSum / POPULATION;
     }

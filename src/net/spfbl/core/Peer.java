@@ -694,10 +694,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
             long time = System.currentTimeMillis();
             if (Core.hasPeerConnection()) {
                 int[] binomial;
+//                Float[] frequency;
                 if (distribuiton == null) {
                     binomial = new int[2];
+//                    frequency = null;
                 } else {
                     binomial = distribuiton.getBinomial();
+//                    frequency = distribuiton.getFrequencyXiSum();
                 }
                 int ham = binomial[0];
                 int spam = binomial[1];
@@ -705,6 +708,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     String origin = null;
                     String result = "SENT";
                     String command = "REPUTATION " + token + " " + ham + " " + spam;
+//                    if (frequency != null) {
+//                        command += " " + frequency[0] + " " + frequency[1];
+//                    }
                     try {
                         for (Peer peer : getReputationSet()) {
                             String address = peer.getAddress();

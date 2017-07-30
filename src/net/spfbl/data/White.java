@@ -1466,7 +1466,12 @@ public class White {
             recipientDomain = null;
         }
         if (sender == null && hostname != null) {
-            sender = "mailer-daemon@" + hostname;
+            try {
+                String domain = Domain.extractDomain(hostname, false);
+                sender = "mailer-daemon@" + domain;
+            } catch (Exception ex) {
+                sender = null;
+            }
         }
         String found;
         if ((found = findSender(userEmail, sender, qualifier,
@@ -1497,6 +1502,10 @@ public class White {
                 return ip + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(ip + ';' + qualifier + '>' + recipientDomain)) {
                 return ip + ';' + qualifier + '>' + recipientDomain;
+            } else if (userEmail == null && sender == null & SET.contains("mailer-daemon@;" + ip)) {
+                return "mailer-daemon@;" + ip;
+            } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
+                return userEmail + ":mailer-daemon@;" + ip;
             } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
                 return userEmail + ":@;" + ip;
             } else if (userEmail != null && SET.contains(userEmail + ':' + ip + ';' + qualifier)) {

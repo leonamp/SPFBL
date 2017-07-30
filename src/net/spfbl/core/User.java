@@ -31,28 +31,31 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.DateFormat;
+import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map.Entry;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
-import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 import javax.mail.internet.MimeUtility;
+import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
+import net.spfbl.data.Ignore;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
 import net.spfbl.data.Trap;
@@ -79,7 +82,7 @@ public class User implements Serializable, Comparable<User> {
     private final String email;
     private String name;
     private Locale locale;
-    private boolean trusted = false;
+//    private boolean trusted = false;
     private boolean local = false;
     private boolean usingHeader = false;
 
@@ -111,14 +114,14 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public boolean setTrusted(boolean trusted) {
-        if (this.trusted == trusted) {
-            return false;
-        } else {
-            this.trusted = trusted;
-            return CHANGED = true;
-        }
-    }
+//    public boolean setTrusted(boolean trusted) {
+//        if (this.trusted == trusted) {
+//            return false;
+//        } else {
+//            this.trusted = trusted;
+//            return CHANGED = true;
+//        }
+//    }
     
     public boolean setLocal(boolean local) {
         if (this.local == local) {
@@ -167,9 +170,9 @@ public class User implements Serializable, Comparable<User> {
         return email.substring(index);
     }
     
-    public boolean isTrusted() {
-        return trusted;
-    }
+//    public boolean isTrusted() {
+//        return trusted;
+//    }
     
     public boolean isLocal() {
         return local;
@@ -296,6 +299,20 @@ public class User implements Serializable, Comparable<User> {
         return locale;
     }
     
+    private Date getDate(String text) {
+        if (text == null) {
+            return null;
+        } else if (text.length() == 0) {
+            return null;
+        } else {
+            try {
+                return DateFormat.getDateInstance(DateFormat.SHORT, locale).parse(text);
+            } catch (ParseException ex) {
+                return null;
+            }
+        }
+    }
+    
     public InternetAddress getInternetAddress() throws UnsupportedEncodingException {
         return new InternetAddress(email, name);
     }
@@ -365,6 +382,9 @@ public class User implements Serializable, Comparable<User> {
         for (long time : headSet(threshold)) {
             Query query = getQuery(time);
             if (query != null) {
+                query.setResult("GREYLIST", "REJECT");
+                query.setResult("LISTED", "REJECT");
+                query.setResult("HOLD", "REJECT");
                 query.storeDB(time);
             }
             if (dropQuery(time)) {
@@ -382,7 +402,7 @@ public class User implements Serializable, Comparable<User> {
             do {
                 if ((time = queryMap.higherKey(time)) == null) {
                     break;
-                } else if ((query = queryMap.get(time)) != null && !query.isHolding()) {
+                } else if ((query = queryMap.get(time)) != null && query.isFinished()) {
                     if (queryMap.remove(time) != null) {
                         CHANGED = true;
                     }
@@ -390,7 +410,6 @@ public class User implements Serializable, Comparable<User> {
             } while (queryMap.size() > QUERY_MAX);
         }
     }
-
     
     public static void dropAllExpiredQuery() {
         for (User user : getSet()) {
@@ -480,6 +499,145 @@ public class User implements Serializable, Comparable<User> {
         HashMap<String,User> map = new HashMap<String,User>();
         map.putAll(MAP);
         return map;
+    }
+    
+    protected static boolean autoUpdate() {
+        Connection connection = Core.poolConnectionMySQL();
+        try {
+            if (connection == null) {
+                return false;
+            } else {
+                try {
+                    PreparedStatement prepareStatement = connection.prepareStatement(
+                            "UPDATE user_query\n"
+                                    + "SET whiteKey = ?, blockKey = ?\n"
+                                    + "WHERE time = ?"
+                    );
+                    Statement statement = connection.createStatement();
+                    ResultSet rs = statement.executeQuery(
+                            "SELECT * FROM user_query\n"
+                                    + "WHERE whiteKey IS NULL OR blockKey IS NULL\n"
+                                    + "LIMIT 100000"
+                    );
+                    while (rs.next()) {
+                        long time = rs.getLong("time");
+                        User user = User.get(rs.getString("user"));
+                        if (user != null) {
+                            Query query = user.getQuery(rs);
+                            prepareStatement.setString(1, query.getWhiteKey());
+                            prepareStatement.setString(2, query.getBlockKey());
+                            prepareStatement.setLong(3, time);
+                            prepareStatement.executeUpdate();
+                        }
+                    }
+                    return true;
+                } catch (SQLException ex) {
+                    Server.logError(ex);
+                    return false;
+                }
+            }
+        } finally {
+            Core.offerConnectionMySQL(connection);
+        }
+    }
+    
+    private static TreeMap<Long,User> getWhiteInductionMap() {
+        Connection connection = Core.poolConnectionMySQL();
+        try {
+            if (connection == null) {
+                return null;
+            } else {
+                try {
+                    TreeMap<Long,User> whiteMap = new TreeMap<Long,User>();
+                    String command = "SELECT MAX(time) AS time, user\n"
+                            + "FROM user_query\n"
+                            + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 3456000) * 1000)\n"
+                            + "GROUP BY user, whiteKey\n"
+                            + "HAVING MAX(result * 1) = 2\n"
+                            + "AND COUNT(*) > 32\n"
+                            + "AND STD(time) / 86400000 > 7";
+                    Statement statement = connection.createStatement();
+                    ResultSet rs = statement.executeQuery(command);
+                    while (rs.next()) {
+                        long time = rs.getLong(1);
+                        User user = User.get(rs.getString(2));
+                        if (user != null) {
+                            whiteMap.put(time, user);
+                        }
+                    }
+                    return whiteMap;
+                } catch (SQLException ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        } finally {
+            Core.offerConnectionMySQL(connection);
+        }
+    }
+    
+    protected static void autoInductionWhite() {
+        Server.logTrace("starting auto white.");
+        TreeMap<Long,User> whiteMap = getWhiteInductionMap();
+        if (whiteMap != null) {
+            for (long time : whiteMap.keySet()) {
+                User user = whiteMap.get(time);
+                Query query = user.getQuerySafe(time);
+                if (query != null && !query.isSenderBlock() && query.whiteSender(time)) {
+                    Server.logDebug("new WHITE '" + query.getUserEmail() + ":" + query.getWhiteKey() + "' added by 'INDUCTION'.");
+                }
+            }
+        }
+    }
+    
+    private static TreeMap<Long,User> getBlockInductionMap() {
+        Connection connection = Core.poolConnectionMySQL();
+        try {
+            if (connection == null) {
+                return null;
+            } else {
+                try {
+                    TreeMap<Long,User> blockMap = new TreeMap<Long,User>();
+                    String command = "SELECT MAX(time) AS time, user\n"
+                            + "FROM user_query\n"
+                            + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 3456000) * 1000)\n"
+                            + "GROUP BY user, blockKey\n"
+                            + "HAVING MIN(result * 1) BETWEEN 3 AND 12\n"
+                            + "AND MAX(result * 1) > 6\n"
+                            + "AND COUNT(*) > 32\n"
+                            + "AND STD(time) / 86400000 > 7";
+                    Statement statement = connection.createStatement();
+                    ResultSet rs = statement.executeQuery(command);
+                    while (rs.next()) {
+                        long time = rs.getLong(1);
+                        User user = User.get(rs.getString(2));
+                        if (user != null) {
+                            blockMap.put(time, user);
+                        }
+                    }
+                    return blockMap;
+                } catch (SQLException ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        } finally {
+            Core.offerConnectionMySQL(connection);
+        }
+    }
+    
+    protected static void autoInductionBlock() {
+        Server.logTrace("starting auto block.");
+        TreeMap<Long,User> blockMap = getBlockInductionMap();
+        if (blockMap != null) {
+            for (long time : blockMap.keySet()) {
+                User user = blockMap.get(time);
+                Query query = user.getQuerySafe(time);
+                if (query != null && !query.isSenderWhite() && query.blockSender(time)) {
+                    Server.logDebug("new BLOCK '" + query.getUserEmail() + ":" + query.getBlockKey() + "' added by 'INDUCTION'.");
+                }
+            }
+        }
     }
     
     public synchronized static void store() {
@@ -673,16 +831,21 @@ public class User implements Serializable, Comparable<User> {
         try {
             if (connection != null) {
                 try {
+                    Date date = getDate(filter);
                     String ipParam = Subnet.isValidIP(filter) ? Subnet.normalizeIP(filter) : null;
                     String emailParam = Domain.isValidEmail(filter) ? filter.toLowerCase() : null;
                     String command = "SELECT * FROM spfbl.user_query\n"
                             + "WHERE user = '" + getEmail() + "'\n"
+                            + (date == null ? "" : "AND time BETWEEN " + date.getTime() + " "
+                            + "AND " + (date.getTime() + 86399999) + "\n")
                             + (begin == null ? "" : "AND time <= " + begin + "\n")
-                            + ("rejeitada".equals(filter) ? "AND result "
-                            + "IN('BLOCK','REJECT')\n" : "")
+                            + ("rejeitada".equals(filter) ? "AND result IN('BLOCK','REJECT')\n" : "")
                             + (ipParam == null ? "" : "AND ip = '" + ipParam + "'\n")
-                            + (emailParam == null ? "" : "AND '" + emailParam + "' "
-                            + "IN(sender, mailFrom, replyto, recipient)\n")
+                            + (emailParam == null ? "" : ""
+                            + "AND (sender = '" + emailParam + "' "
+                            + "OR mailFrom = '" + emailParam + "' "
+                            + "OR replyto = '" + emailParam + "' "
+                            + "OR recipient = '" + emailParam + "')\n")
                             + "ORDER BY time DESC\n"
                             + "LIMIT " + (QUERY_MAX_ROWS + 1);
                     Statement statement = connection.createStatement();
@@ -722,7 +885,7 @@ public class User implements Serializable, Comparable<User> {
                     resultMap.put(time, query);
                 } else if (filter.length() == 0) {
                     resultMap.put(time, query);
-                } else if (query.match(filter)) {
+                } else if (query.match(time, filter)) {
                     resultMap.put(time, query);
                 }
             }
@@ -737,6 +900,10 @@ public class User implements Serializable, Comparable<User> {
                 storeDB(time, query);
             }
         }
+    }
+    
+    private Query getQuery(ResultSet rs) throws SQLException {
+        return new Query(rs);
     }
     
     public Query getQuerySafe(long time) {
@@ -774,6 +941,37 @@ public class User implements Serializable, Comparable<User> {
         return query;
     }
     
+    public Object[] getDeferedQuery(
+            String ip,
+            String hostname,
+            String sender,
+            String recipient,
+            String newResult
+    ) {
+        ip = Subnet.normalizeIP(ip);
+        hostname = Domain.normalizeHostname(hostname, false);
+        long deferTimeRED = Core.getDeferTimeRED() * 60000L;
+        long timeBegin = System.currentTimeMillis() - deferTimeRED;
+        for (long time : getTimeTail(timeBegin).descendingSet()) {
+            User.Query query = getQuery(time);
+            if (query != null) {
+                String oldResult = query.getResult();
+                if (oldResult.equals("GREYLIST") || oldResult.equals("LISTED")) {
+                    if (query.isOrigin(ip, hostname) && query.isMailFromTo(sender, recipient)) {
+                        if (query.setResult(oldResult, newResult)) {
+                            Object[] resultSet = new Object[2];
+                            resultSet[0] = time;
+                            resultSet[1] = query;
+                            storeDB(time, query);
+                            return resultSet;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+    
     public synchronized Query getQuery(long time) {
         if (queryMap == null) {
             return null;
@@ -798,6 +996,26 @@ public class User implements Serializable, Comparable<User> {
         } else {
             TreeSet<Long> timeSet = new TreeSet<Long>();
             timeSet.addAll(queryMap.subMap(begin, end).keySet());
+            return timeSet;
+        }
+    }
+    
+    public synchronized TreeSet<Long> getTimeTail(long from) {
+        if (queryMap == null) {
+            return new TreeSet<Long>();
+        } else {
+            TreeSet<Long> timeSet = new TreeSet<Long>();
+            timeSet.addAll(queryMap.tailMap(from).keySet());
+            return timeSet;
+        }
+    }
+    
+    public synchronized TreeSet<Long> getTimeHead(long from) {
+        if (queryMap == null) {
+            return new TreeSet<Long>();
+        } else {
+            TreeSet<Long> timeSet = new TreeSet<Long>();
+            timeSet.addAll(queryMap.headMap(from).keySet());
             return timeSet;
         }
     }
@@ -906,7 +1124,6 @@ public class User implements Serializable, Comparable<User> {
     public static void sendHoldingWarning() {
         for (User user : getSet()) {
             if (user.isUsingHeader()) {
-                HashSet<String> keySet = new HashSet<String>();
                 TreeSet<Long> timeSet = user.getTimeSet();
                 long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
                 long deferTimeRED = Core.getDeferTimeRED() * 60000L;
@@ -914,39 +1131,15 @@ public class User implements Serializable, Comparable<User> {
                 long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
                 long timeMiddle = System.currentTimeMillis() - deferTimeRED;
                 long timeBegin = System.currentTimeMillis() - deferTimeHOLD;
-                int count = 0;
                 for (long time : timeSet.subSet(timeBegin, timeEnd)) {
                     Query query = user.getQuery(time);
-                    if (
-                            query != null &&
-                            query.hasSubject() &&
-                            query.isNotAdvisedLocal() &&
-                            query.isResult("HOLD") &&
-                            keySet.add(query.getComplainKey())
-                            ) {
-                        if (query.isHoldingFull()) {
-                            if (query.adviseSenderHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            } else if (!query.isSenderAdvised() && !query.isPass() && query.adviseAdminHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            } else if (!query.isSenderAdvised() && query.adviseRecipientHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            } else if (time < timeMiddle && !query.isPass() && query.adviseAdminHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            } else if (time < timeMiddle && query.adviseRecipientHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            } else if (time < timeMiddle && query.adviseAdminHOLD(time)) {
-                                CHANGED = true;
-                                Server.logDebug("retention warning sent by e-mail.");
-                            }
-                        }
-                        if (++count > 1024) {
-                            break;
+                    if (query != null && query.isNotAdvisedAdmin() && query.isHoldingFull()) {
+                        if (time < timeMiddle && query.adviseAdminHOLD(time)) {
+                            query.storeDB(time);
+                        } else if (query.adviseSenderHOLD(time)) {
+                            query.storeDB(time);
+                        } else if (query.adviseAdminHOLD(time)) {
+                            query.storeDB(time);
                         }
                     }
                 }
@@ -954,70 +1147,7 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public static void sendSuspectWarning() {
-        for (User user : getSet()) {
-            if (user.isUsingHeader()) {
-                HashSet<String> keySet = new HashSet<String>();
-                TreeSet<Long> timeSet = user.getTimeSet();
-                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-                long timeBegin = System.currentTimeMillis() - deferTimeRED;
-                int count = 0;
-                for (long time : timeSet.subSet(timeBegin, timeEnd)) {
-                    Query query = user.getQuery(time);
-                    if (query != null &&
-                            query.hasSubject() &&
-                            query.hasMessageID() &&
-                            query.isNotAdvised() &&
-                            query.isResult("ACCEPT") &&
-                            keySet.add(query.getComplainKey()) &&
-                            query.isSuspectFull()
-                            ) {
-                        if (query.adviseRecipientSPAM(time)) {
-                            CHANGED = true;
-                            Server.logDebug("suspect warning sent by e-mail.");
-                        }
-                        if (++count > 1024) {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-//    public static void sendBlockedWarning() {
-//        for (User user : getSet()) {
-//            if (user.isUsingHeader()) {
-//                HashSet<String> keySet = new HashSet<String>();
-//                TreeSet<Long> timeSet = user.getTimeSet();
-//                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-//                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-//                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-//                long timeBegin = System.currentTimeMillis() - deferTimeRED;
-//                int count = 0;
-//                for (long time : timeSet.subSet(timeBegin, timeEnd)) {
-//                    Query query = user.getQuery(time);
-//                    if (query != null &&
-//                            query.isNotAdvised() &&
-//                            query.isResult("BLOCK") &&
-//                            keySet.add(query.getComplainKey())
-//                            ) {
-//                        if (query.adviseSenderBLOCK(time)) {
-//                            CHANGED = true;
-//                            Server.logDebug("reject warning sent by e-mail.");
-//                            if (++count > 32) {
-//                                break;
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//    }
-    
-    public static void sendBlockedWarning() {
+    public static void sendWarningMessages() {
         for (User user : getSet()) {
             long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
             long deferTimeRED = Core.getDeferTimeRED() * 60000L;
@@ -1025,14 +1155,57 @@ public class User implements Serializable, Comparable<User> {
             long timeBegin = System.currentTimeMillis() - deferTimeRED;
             for (long time : user.getTimeSet(timeBegin, timeEnd)) {
                 Query query = user.getQuery(time);
-                if (query != null && query.isResult("BLOCK")) {
-                    if (query.adviseSenderBLOCK(time)) {
-                        Server.logDebug("reject warning sent by e-mail.");
+                if (query != null) {
+                    boolean store = Core.hasMySQL();
+                    if (query.isResult("HOLD")) {
+                        store = false;
+                    } else if (query.isResult("GREYLIST")) {
+                        store = false;
+                    } else if (query.isResult("LISTED")) {
+                        store = false;
+                    } else if (query.isResult("ACCEPT")) {
+                        if (query.hasSubject()) {
+                            store = false;
+                            if (query.isSuspectFull() && query.adviseRecipientSPAM(time)) {
+                                Server.logDebug("suspect warning sent by e-mail.");
+                            }
+                        }
+                    } else if (query.isResult("BLOCK")) {
+                        if (query.adviseSenderBLOCK(time)) {
+                            Server.logDebug("reject warning sent by e-mail.");
+                        }
                     }
-                    if (query.storeDB(time)) {
+                    if (store && query.storeDB(time)) {
                         // Drop from memory because 
                         // it was stored in MySQL.
                         user.dropQuery(time);
+                    }
+                }
+            }
+        }
+    }
+    
+    public static void storeAndDropFinished() {
+        if (Core.hasMySQL()) {
+            for (User user : getSet()) {
+                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
+                long timeBegin = System.currentTimeMillis() - deferTimeRED;
+                for (long time : user.getTimeHead(timeBegin)) {
+                    Query query = user.getQuery(time);
+                    if (query != null) {
+                        boolean store = true;
+                        if (query.isResult("HOLD")) {
+                            store = false;
+                        } else if (query.isResult("LISTED")) {
+                            store = query.setResult("LISTED", "REJECT");
+                        } else if (query.isResult("GREYLIST")) {
+                            store = query.setResult("GREYLIST", "REJECT");
+                        }
+                        if (store && query.storeDB(time)) {
+                            // Drop from memory because 
+                            // it was stored in MySQL.
+                            user.dropQuery(time);
+                        }
                     }
                 }
             }
@@ -1054,7 +1227,7 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    private static final String MYSQL_STORE_COMMAND =
+    private static final String MYSQL_STORE_COMMAND_2_7_5 =
             "INSERT INTO user_query "
             + "(time, user, client, ip, helo, hostname, "
             + "sender, qualifier, recipient, tokenSet, complainKey, "
@@ -1063,7 +1236,26 @@ public class User implements Serializable, Comparable<User> {
             + "adminAdvised, senderAdvised, recipientAdvised)\n"
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
             + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n"
-            + "ON DUPLICATE KEY UPDATE result = ?, mailFrom = ?, "
+            + "ON DUPLICATE KEY UPDATE "
+            + "result = ?, mailFrom = ?, "
+            + "replyto = ?, subject = ?, messageID = ?, "
+            + "unsubscribe = ?, linkMap = ?, malware = ?, "
+            + "adminAdvised = ?, senderAdvised = ?, "
+            + "recipientAdvised = ?";
+    
+    private static final String MYSQL_STORE_COMMAND_2_7_6 =
+            "INSERT INTO user_query "
+            + "(time, user, client, ip, helo, hostname, "
+            + "sender, qualifier, recipient, tokenSet, "
+            + "complainKey, whiteKey, blockKey, "
+            + "result, mailFrom, replyto, subject, "
+            + "messageID, unsubscribe, linkMap, malware, "
+            + "adminAdvised, senderAdvised, recipientAdvised)\n"
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n"
+            + "ON DUPLICATE KEY UPDATE "
+            + "whiteKey = ?, blockKey = ?, "
+            + "result = ?, mailFrom = ?, "
             + "replyto = ?, subject = ?, messageID = ?, "
             + "unsubscribe = ?, linkMap = ?, malware = ?, "
             + "adminAdvised = ?, senderAdvised = ?, "
@@ -1075,24 +1267,46 @@ public class User implements Serializable, Comparable<User> {
             Connection connection = Core.poolConnectionMySQL();
             try {
                 if (connection != null) {
-                    PreparedStatement statement =
-                            connection.prepareStatement(
-                                    MYSQL_STORE_COMMAND
-                            );
                     try {
-                        connection.setAutoCommit(true);
-                        for (User user : getSet()) {
-                            for (long time : user.getTimeSet()) {
-                                Query query = user.getQuery(time);
-                                if (query != null) {
-                                    query.storeDB(statement, time);
+                        PreparedStatement statement
+                                = connection.prepareStatement(
+                                        MYSQL_STORE_COMMAND_2_7_6
+                                );
+                        try {
+                            connection.setAutoCommit(true);
+                            for (User user : getSet()) {
+                                for (long time : user.getTimeSet()) {
+                                    Query query = user.getQuery(time);
+                                    if (query != null) {
+                                        query.storeDB_2_7_6(statement, time);
+                                    }
                                 }
                             }
+                            Server.logMySQL(time2, "user_query stored");
+                        } finally {
+                            connection.setAutoCommit(false);
+                            statement.close();
                         }
-                        Server.logMySQL(time2, "user_query stored");
-                    } finally {
-                        connection.setAutoCommit(false);
-                        statement.close();
+                    } catch (SQLException ex) {
+                        PreparedStatement statement
+                                = connection.prepareStatement(
+                                        MYSQL_STORE_COMMAND_2_7_5
+                                );
+                        try {
+                            connection.setAutoCommit(true);
+                            for (User user : getSet()) {
+                                for (long time : user.getTimeSet()) {
+                                    Query query = user.getQuery(time);
+                                    if (query != null) {
+                                        query.storeDB_2_7_5(statement, time);
+                                    }
+                                }
+                            }
+                            Server.logMySQL(time2, "user_query stored");
+                        } finally {
+                            connection.setAutoCommit(false);
+                            statement.close();
+                        }
                     }
                 }
             } finally {
@@ -1151,13 +1365,17 @@ public class User implements Serializable, Comparable<User> {
         }
         
         private synchronized Query put(long time, Query query) {
-            Query previous = QUEUE.put(time, query);
-            if (isAlive()) {
-                notify();
+            if (run) {
+                Query previous = QUEUE.put(time, query);
+                if (isAlive()) {
+                    notify();
+                } else {
+                    start();
+                }
+                return previous;
             } else {
-                start();
+                return null;
             }
-            return previous;
         }
         
         private synchronized boolean continueRun() {
@@ -1214,11 +1432,20 @@ public class User implements Serializable, Comparable<User> {
                         try {
                             PreparedStatement statement =
                                     connection.prepareStatement(
-                                            MYSQL_STORE_COMMAND
+                                            MYSQL_STORE_COMMAND_2_7_6
                                     );
-                            query.storeDB(statement, time);
+                            query.storeDB_2_7_6(statement, time);
                         } catch (SQLException ex) {
                             Server.logError(ex);
+                            try {
+                                PreparedStatement statement
+                                        = connection.prepareStatement(
+                                                MYSQL_STORE_COMMAND_2_7_5
+                                        );
+                                query.storeDB_2_7_5(statement, time);
+                            } catch (SQLException ex2) {
+                                Server.logError(ex2);
+                            }
                         }
                     }
                 }
@@ -1309,16 +1536,30 @@ public class User implements Serializable, Comparable<User> {
                     if (connection == null) {
                         return false;
                     } else {
-                        PreparedStatement statement
-                                = connection.prepareStatement(
-                                        MYSQL_STORE_COMMAND
-                                );
                         try {
-                            connection.setAutoCommit(true);
-                            return storeDB(statement, time);
-                        } finally {
-                            connection.setAutoCommit(false);
-                            statement.close();
+                            PreparedStatement statement
+                                    = connection.prepareStatement(
+                                            MYSQL_STORE_COMMAND_2_7_6
+                                    );
+                            try {
+                                connection.setAutoCommit(true);
+                                return storeDB_2_7_6(statement, time);
+                            } finally {
+                                connection.setAutoCommit(false);
+                                statement.close();
+                            }
+                        } catch (SQLException ex) {
+                            PreparedStatement statement
+                                    = connection.prepareStatement(
+                                            MYSQL_STORE_COMMAND_2_7_5
+                                    );
+                            try {
+                                connection.setAutoCommit(true);
+                                return storeDB_2_7_5(statement, time);
+                            } finally {
+                                connection.setAutoCommit(false);
+                                statement.close();
+                            }
                         }
                     }
                 } finally {
@@ -1330,8 +1571,9 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private boolean storeDB(PreparedStatement statement, long time) {
+        private boolean storeDB_2_7_5(PreparedStatement statement, long time) {
             if (this.CHANGED.acquireIf(true)) {
+                long start = System.currentTimeMillis();
                 try {
                     statement.setLong(1, time);
                     statement.setString(2, getEmail());
@@ -1371,15 +1613,79 @@ public class User implements Serializable, Comparable<User> {
                     this.CHANGED.release(false);
                     User.CHANGED = true;
                     if (update == 0) {
-                        Server.logMySQL(time, statement, "NOT UPDATED");
+                        Server.logMySQL(start, statement, "NOT UPDATED");
                     } else {
-                        Server.logMySQL(time, statement, "UPDATED");
+                        Server.logMySQL(start, statement, "UPDATED");
                     }
                     return true;
                 } catch (SQLException ex) {
                     this.STORED = false;
                     this.CHANGED.release(true);
-                    Server.logMySQL(time, statement, ex);
+                    Server.logMySQL(start, statement, ex);
+                    return false;
+                }
+            } else {
+                return true;
+            }
+        }
+        
+        private boolean storeDB_2_7_6(PreparedStatement statement, long time) {
+            if (this.CHANGED.acquireIf(true)) {
+                long start = System.currentTimeMillis();
+                try {
+                    String whiteKey = getWhiteKey();
+                    String blockKey = getBlockKey();
+                    statement.setLong(1, time);
+                    statement.setString(2, getEmail());
+                    statement.setString(3, client);
+                    statement.setString(4, ip);
+                    statement.setString(5, helo);
+                    statement.setString(6, hostname);
+                    statement.setString(7, sender);
+                    statement.setString(8, SPF.Qualifier.name(qualifier));
+                    statement.setString(9, recipient);
+                    statement.setString(10, Core.getSequence(tokenSet, ";"));
+                    statement.setString(11, getComplainKey());
+                    statement.setString(12, whiteKey);
+                    statement.setString(13, blockKey);
+                    statement.setString(14, result);
+                    statement.setString(15, from);
+                    statement.setString(16, replyto);
+                    statement.setString(17, subject);
+                    statement.setString(18, messageID);
+                    statement.setString(19, getUnsubscribeString());
+                    statement.setString(20, Core.getSequence(linkMap, ";"));
+                    statement.setString(21, malware);
+                    statement.setBoolean(22, adminAdvised);
+                    statement.setBoolean(23, senderAdvised);
+                    statement.setBoolean(24, recipientAdvised);
+                    statement.setString(25, whiteKey);
+                    statement.setString(26, blockKey);
+                    statement.setString(27, result);
+                    statement.setString(28, from);
+                    statement.setString(29, replyto);
+                    statement.setString(30, subject);
+                    statement.setString(31, messageID);
+                    statement.setString(32, getUnsubscribeString());
+                    statement.setString(33, Core.getSequence(linkMap, ";"));
+                    statement.setString(34, malware);
+                    statement.setBoolean(35, adminAdvised);
+                    statement.setBoolean(36, senderAdvised);
+                    statement.setBoolean(37, recipientAdvised);
+                    int update = statement.executeUpdate();
+                    this.STORED = true;
+                    this.CHANGED.release(false);
+                    User.CHANGED = true;
+                    if (update == 0) {
+                        Server.logMySQL(start, statement, "NOT UPDATED");
+                    } else {
+                        Server.logMySQL(start, statement, "UPDATED");
+                    }
+                    return true;
+                } catch (SQLException ex) {
+                    this.STORED = false;
+                    this.CHANGED.release(true);
+                    Server.logMySQL(start, statement, ex);
                     return false;
                 }
             } else {
@@ -1478,6 +1784,7 @@ public class User implements Serializable, Comparable<User> {
         
         public String getUnblockURL() throws ProcessException {
             return Core.getUnblockURL(
+                    User.this.getLocale(),
                     getEmail(),
                     getIP(),
                     getMailFrom(),
@@ -1690,6 +1997,70 @@ public class User implements Serializable, Comparable<User> {
             return this.result.equals(result);
         }
         
+        public boolean isClient(Client client) {
+            if (client == null) {
+                return false;
+            } else {
+                return client.isDomain(this.client);
+            }
+        }
+        
+        public boolean isIP(String ip) {
+            if (ip == null) {
+                return false;
+            } else {
+                return ip.equals(this.ip);
+            }
+        }
+        
+        public boolean isHostname(String hostname) {
+            if (hostname == null) {
+                return false;
+            } else {
+                return hostname.equals(this.hostname);
+            }
+        }
+        
+        public boolean isOrigin(String ip, String hostname) {
+            if (hostname == null) {
+                return isIP(ip);
+            } else {
+                return isHostname(hostname);
+            }
+        }
+        
+        public boolean isSender(String sender) {
+            if (sender == null) {
+                return false;
+            } else {
+                return sender.equals(this.sender);
+            }
+        }
+        
+        public boolean isMailFromTo(String sender, String recipient) {
+            if (isMailFrom(sender)) {
+                return isRecipient(recipient);
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean isMailFrom(String sender) {
+            if (sender == null) {
+                return this.sender == null;
+            } else {
+                return sender.equals(this.sender);
+            }
+        }
+        
+        public boolean isRecipient(String recipient) {
+            if (recipient == null) {
+                return false;
+            } else {
+                return recipient.equals(this.recipient);
+            }
+        }
+        
         public boolean isMessage(String MessageID) {
             if (MessageID == null || MessageID.length() == 0) {
                 return false;
@@ -1709,11 +2080,47 @@ public class User implements Serializable, Comparable<User> {
             return key;
         }
         
+        private String getBlockKey() {
+            String key = getBlockSender();
+            if (key == null) {
+                key = getValidHostDomain();
+                if (key == null) {
+                    key = getValidHostname();
+                    if (key == null) {
+                        key = "mailer-daemon@;" + getIP();
+                    } else {
+                        key = "mailer-daemon@" + key;
+                    }
+                } else {
+                    key = "mailer-daemon@" + key;
+                }
+            }
+            return key;
+        }
+        
+        private String getWhiteKey() {
+            String key = getWhiteSender();
+            if (key == null) {
+                key = getValidHostDomain();
+                if (key == null) {
+                    key = getValidHostname();
+                    if (key == null) {
+                        key = "mailer-daemon@;" + getIP();
+                    } else {
+                        key = "mailer-daemon@" + key;
+                    }
+                } else {
+                    key = "mailer-daemon@" + key;
+                }
+            }
+            return key;
+        }
+        
         public void processComplainForWhite() {
-            String complainKey = getComplainKey();
+            String whiteKey = getWhiteKey();
             for (long time : getTimeSet().descendingSet()) {
                 Query query = getQuerySafe(time);
-                if (query != null && complainKey.equals(query.getComplainKey())) {
+                if (query != null && whiteKey.equals(query.getWhiteKey())) {
                     if (query.isWhite()) {
                         query.clearBlock();
                         if (!query.hasMalware()) {
@@ -1725,10 +2132,10 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public void processComplainForBlock() {
-            String complainKey = getComplainKey();
+            String blockKey = getBlockKey();
             for (long time : getTimeSet().descendingSet()) {
                 Query query = getQuerySafe(time);
-                if (query != null && complainKey.equals(query.getComplainKey())) {
+                if (query != null && blockKey.equals(query.getBlockKey())) {
                     if (query.isBlock()) {
                         query.clearWhite();
                         complain(time);
@@ -1739,7 +2146,16 @@ public class User implements Serializable, Comparable<User> {
         
         public void clearWhite() {
             try {
-                White.clear(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
+                String mailFrom = getMailFrom();
+                if (mailFrom == null) {
+                    String domain = this.getOriginDomain(false);
+                    if (domain == null) {
+                        mailFrom = null;
+                    } else {
+                        mailFrom = "mailer-daemon@" + domain;
+                    }
+                }
+                White.clear(null, User.this, ip, mailFrom, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
             } catch (ProcessException ex) {
                 Server.logError(ex);
             }
@@ -1752,7 +2168,16 @@ public class User implements Serializable, Comparable<User> {
         
         public void clearBlock() {
             try {
-                Block.clear(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
+                String mailFrom = getMailFrom();
+                if (mailFrom == null) {
+                    String domain = this.getOriginDomain(false);
+                    if (domain == null) {
+                        mailFrom = null;
+                    } else {
+                        mailFrom = "mailer-daemon@" + domain;
+                    }
+                }
+                Block.clear(null, User.this, ip, mailFrom, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
             } catch (ProcessException ex) {
                 Server.logError(ex);
             }
@@ -1781,31 +2206,31 @@ public class User implements Serializable, Comparable<User> {
             switch (situation) {
                 case AUTHENTIC:
                 case NONE:
-                    return User.this.getEmail() + ':' + getSenderSimplified(true, true);
+                    return getSenderSimplified(true, true);
                 case ZONE:
                 case IP:
-                    return User.this.getEmail() + ':' + getSenderDomain(true) + ";NOTPASS";
+                    return getSenderDomain(true) + ";NOTPASS";
                 case SAME:
                     String validator = getValidator(false);
                     if (validator == null) {
                         return null;
                     } else {
-                        return User.this.getEmail() + ':' + getSenderSimplified(true, true) + ";" + validator;
+                        return getSenderSimplified(true, true) + ";" + validator;
                     }
                 case DOMAIN:
                     String senderSimplified = getSenderSimplified(true, true);
                     if (senderSimplified == null) {
                         return null;
                     } else {
-                        return User.this.getEmail() + ':' + senderSimplified;
+                        return senderSimplified;
                     }
                 case ORIGIN:
                 case ALL:
                     String domain = this.getOriginDomain(false);
                     if (domain == null) {
-                        return null;
+                        return "mailer-daemon@;" + getIP();
                     } else {
-                        return User.this.getEmail() + ':' + "@;" + domain;
+                        return "mailer-daemon@" + domain;
                     }
                 default:
                     return null;
@@ -1822,7 +2247,7 @@ public class User implements Serializable, Comparable<User> {
                 Situation situation;
                 String senderLocal = getSender();
                 if (senderLocal == null) {
-                    return false;
+                    situation = Situation.ORIGIN;
                 } else if (senderLocal.equals(sender)) {
                     situation = getSituation(true);
                 } else {
@@ -1881,9 +2306,9 @@ public class User implements Serializable, Comparable<User> {
                     case ALL:
                         String domain = this.getOriginDomain(false);
                         if (domain == null) {
-                            return false;
+                            return Block.add(User.this, "mailer-daemon@;" + getIP());
                         } else {
-                            return Block.add(User.this, "@;" + domain);
+                            return Block.add(User.this, "mailer-daemon@" + domain);
                         }
                     case RECIPIENT:
                         String recipientAddr = getRecipient();
@@ -1911,11 +2336,46 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        public String getWhiteSender() {
+            Situation situation;
+            String senderLocal = getSender();
+            if (senderLocal == null) {
+                return null;
+            } else if (senderLocal.equals(sender)) {
+                situation = getSituation(true);
+            } else {
+                situation = getSituation(false);
+            }
+            String domain;
+            switch (situation) {
+                case IP:
+                    return getSenderSimplified(false, true) + ";" + getIP();
+                case ZONE:
+                    domain = getValidHostDomain();
+                    if (domain == null) {
+                        return null;
+                    } else {
+                        return getSenderSimplified(false, true) + ";" + domain;
+                    }
+                case AUTHENTIC:
+                    return getSenderSimplified(false, true) + ";PASS";
+                case SAME:
+                    String validator = getValidator(false);
+                    if (validator == null) {
+                        return null;
+                    } else {
+                        return getSenderSimplified(false, true) + ";" + validator;
+                    }
+                default:
+                    return null;
+            }
+        }
+        
         public boolean whiteSender(long time) {
             Situation situation;
             String senderLocal = getSender();
             if (senderLocal == null) {
-                return false;
+                situation = Situation.ORIGIN;
             } else if (senderLocal.equals(sender)) {
                 situation = getSituation(true);
             } else {
@@ -1934,7 +2394,12 @@ public class User implements Serializable, Comparable<User> {
                     SPF.setHam(time, tokenSet);
                     switch (situation) {
                         case ORIGIN:
-                            return White.add(User.this, "@;" + getOrigin(false));
+                            domain = getValidHostDomain();
+                            if (domain == null) {
+                                return White.add(User.this, "mailer-daemon@;" + getIP());
+                            } else {
+                                return White.add(User.this, "mailer-daemon@" + domain + ";" + domain);
+                            }
                         case IP:
                             return White.add(User.this, getSenderSimplified(false, true) + ";" + getIP());
                         case ZONE:
@@ -1970,7 +2435,7 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean hasSender() {
+        public boolean hasMailFrom() {
             return sender != null;
         }
         
@@ -1980,6 +2445,10 @@ public class User implements Serializable, Comparable<User> {
         
         public boolean hasMessageID() {
             return messageID != null;
+        }
+        
+        public boolean hasHeaderFrom() {
+            return from != null;
         }
         
         public boolean hasSubject() {
@@ -1994,12 +2463,22 @@ public class User implements Serializable, Comparable<User> {
             return result.equals("HOLD");
         }
         
+        public boolean isFinished() {
+            return !result.equals("HOLD") && !result.equals("LISTED") && !result.equals("GREYLIST");
+        }
+        
+        public boolean isDelivered() {
+            return result.equals("WHITE") || result.equals("ACCEPT");
+        }
+        
         public boolean isHoldingFull() {
             if (!isHolding()) {
                 return false;
             } else if (isWhiteSender()) {
                 return false;
             } else if (isBlockSender()) {
+                return false;
+            } else if (isAnyLinkBLOCK()) {
                 return false;
             } else {
                 return true;
@@ -2020,8 +2499,6 @@ public class User implements Serializable, Comparable<User> {
             } else if (hasTokenRed()) {
                 return true;
             } else if (isAnyLinkRED()) {
-                return true;
-            } else if (hasClusterRed()) {
                 return true;
             } else {
                 return false;
@@ -2046,6 +2523,10 @@ public class User implements Serializable, Comparable<User> {
         
         public boolean isNotAdvisedLocal() {
             return !recipientAdvised && !adminAdvised;
+        }
+        
+        public boolean isNotAdvisedAdmin() {
+            return !adminAdvised;
         }
         
         public boolean isWhite() {
@@ -2204,7 +2685,33 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isOriginWhite() {
-            return White.containsExtact(User.this, "@;" + getOrigin(false));
+            String domain = getOriginDomain(false);
+            if (domain == null) {
+                return White.containsExtact(User.this, "mailer-daemon@;" + getIP());
+            } else {
+                return White.containsExtact(User.this, "mailer-daemon@" + domain + ";" + domain);
+            }
+        }
+        
+        public boolean isSenderBlock() {
+            if (isSenderBlock(false)) {
+                return true;
+            } else {
+                Situation situation;
+                String senderLocal = getSender();
+                if (senderLocal == null) {
+                    return false;
+                } else if (senderLocal.equals(sender)) {
+                    situation = getSituation(true);
+                } else {
+                    situation = Situation.NONE;
+                }
+                if (situation == Situation.AUTHENTIC) {
+                    return false;
+                } else {
+                    return isSenderBlock(true);
+                }
+            }
         }
         
         public boolean isSenderBlock(boolean validation) {
@@ -2216,17 +2723,22 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isOriginBlock() {
-            return Block.containsExact(User.this, "@;" + getOrigin(false));
-        }
-        
-        public boolean isOriginDomainBlock() {
             String domain = getOriginDomain(false);
             if (domain == null) {
-                return false;
+                return Block.containsExact(User.this, "mailer-daemon@;" + getIP());
             } else {
-                return Block.containsExact(User.this, "@;" + domain);
+                return Block.containsExact(User.this, "mailer-daemon@" + domain);
             }
         }
+        
+//        public boolean isOriginDomainBlock() {
+//            String domain = getOriginDomain(false);
+//            if (domain == null) {
+//                return false;
+//            } else {
+//                return Block.containsExact(User.this, "mailer-daemon@" + domain);
+//            }
+//        }
         
         public boolean isSenderRed() {
             String tueSender = getSender();
@@ -2290,8 +2802,8 @@ public class User implements Serializable, Comparable<User> {
             return SPF.hasRed(tokenSet);
         }
         
-        public boolean hasClusterRed() {
-            return Analise.isCusterRED(ip, sender, hostname);
+        public boolean hasClusterYellow() {
+            return Analise.isCusterYELLOW(ip, sender, hostname);
         }
         
         public boolean hasYellow() {
@@ -2331,6 +2843,35 @@ public class User implements Serializable, Comparable<User> {
             return malware;
         }
         
+        public boolean setResult(String oldResult, String newResult) {
+            if (oldResult == null) {
+                return false;
+            } else if (newResult == null) {
+                return false;
+            } else {
+                boolean changed;
+                if (CHANGED.acquireIf(true)) {
+                    changed = true;
+                } else if (CHANGED.acquireIf(false)) {
+                    changed = false;
+                } else {
+                    return false;
+                }
+                if (newResult.equals(this.result)) {
+                    this.CHANGED.release(changed);
+                    return true;
+                } else if (oldResult.equals(this.result)) {
+                    this.result = newResult;
+                    this.STORED = false;
+                    this.CHANGED.release(true);
+                    return User.CHANGED = true;
+                } else {
+                    this.CHANGED.release(changed);
+                    return false;
+                }
+            }
+        }
+        
         public boolean setResult(String result) {
             if (result == null) {
                 return false;
@@ -2352,14 +2893,20 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private boolean match(String filter) {
+        private boolean match(long time, String filter) {
             if (filter == null) {
                 return false;
             } else if (filter.equals("retida") && isResult("HOLD")) {
                 return true;
+            } else if (filter.equals("retido") && isResult("HOLD")) {
+                return true;
             } else if (filter.equals("rejeitada") && isResult("BLOCK")) {
                 return true;
+            } else if (filter.equals("rejeitado") && isResult("BLOCK")) {
+                return true;
             } else if (filter.equals("rejeitada") && isResult("REJECT")) {
+                return true;
+            } else if (filter.equals("rejeitado") && isResult("REJECT")) {
                 return true;
             } else if (SubnetIPv4.isValidIPv4(filter)) {
                 filter = SubnetIPv4.normalizeIPv4(filter);
@@ -2417,7 +2964,14 @@ public class User implements Serializable, Comparable<User> {
 //                    return false;
 //                }
             } else {
-                return false;
+                Date date = getDate(filter);
+                if (date == null) {
+                    return false;
+                } else if (time < date.getTime()) {
+                    return false;
+                } else {
+                    return time < date.getTime() + 86400000;
+                }
             }
         }
         
@@ -2621,7 +3175,8 @@ public class User implements Serializable, Comparable<User> {
                 String replyto,
                 String subject,
                 String messageID,
-                String unsubscribe
+                String unsubscribe,
+                Action actionRED
         ) {
             this.CHANGED.acquire();
             User.this.usingHeader = true;
@@ -2728,10 +3283,22 @@ public class User implements Serializable, Comparable<User> {
                 this.complain(time);
                 this.result = "REJECT";
                 resultReturn = "REJECT";
-            } else if (hasMiscellaneousSymbols()) {
+            } else if (!hasMailFrom() && !hasHeaderFrom()) {
                 this.complain(time);
                 this.result = "REJECT";
                 resultReturn = "REJECT";
+            } else if (!hasMessageID() || hasMiscellaneousSymbols() || hasTokenRed() || isAnyLinkRED()) {
+                if (actionRED == Action.FLAG) {
+                    this.result = "FLAG";
+                    resultReturn = "FLAG";
+                } else if (actionRED == Action.HOLD) {
+                    this.result = "HOLD";
+                    resultReturn = "HOLD";
+                } else {
+                    this.complain(time);
+                    this.result = "REJECT";
+                    resultReturn = "REJECT";
+                }
             } else {
                 resultReturn = null;
             }
@@ -2796,9 +3363,10 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public Situation getOriginBlockSituation() {
-            if (isOriginDomainBlock()) {
-                return Situation.ALL;
-            } else if (isOriginBlock()) {
+//            if (isOriginDomainBlock()) {
+//                return Situation.ALL;
+//            } else
+            if (isOriginBlock()) {
                 return Situation.ORIGIN;
             } else if (isBlock()) {
                 return Situation.SAME;
@@ -2809,14 +3377,18 @@ public class User implements Serializable, Comparable<User> {
         
         public Situation getSenderBlockSituation() {
             String validator = getValidator(false);
-            if (validator == null && isOriginDomainBlock()) {
-                return Situation.ALL;
+//            if (validator == null && isOriginDomainBlock()) {
+//                return Situation.ALL;
+//            } else
+            if (validator == null) {
+                return Situation.ORIGIN;
             } else if (isSenderBlock(false)) {
                 return Situation.DOMAIN;
             } else if (isSenderBlock(true)) {
-                if (validator == null) {
-                    return Situation.ORIGIN;
-                } else if (Subnet.isValidIP(validator)) {
+//                if (validator == null) {
+//                    return Situation.ORIGIN;
+//                } else
+                if (Subnet.isValidIP(validator)) {
                     return Situation.IP;
                 } else {
                     return Situation.ZONE;
@@ -2862,17 +3434,22 @@ public class User implements Serializable, Comparable<User> {
                                 subjectLocal = "Message retention warning";
                             }
                         }
+                        Locale locale = User.this.getLocale();
                         String qualifierLocal = getQualifierName();
+                        String messageidLocal = getMessageID();
                         InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-                        Properties props = System.getProperties();
-                        Session session = Session.getDefaultInstance(props);
-                        MimeMessage message = new MimeMessage(session);
-                        message.setHeader("Date", Core.getEmailDate());
-                        message.setFrom(Core.getAdminInternetAddress());
+//                        Properties props = System.getProperties();
+//                        Session session = Session.getDefaultInstance(props);
+//                        MimeMessage message = new MimeMessage(session);
+//                        message.setHeader("Date", Core.getEmailDate());
+//                        message.setFrom(Core.getAdminInternetAddress());
+                        MimeMessage message = Core.newMessage();
                         message.addRecipients(Message.RecipientType.TO, recipients);
                         message.setReplyTo(User.this.getInternetAddresses());
                         message.setSubject(subjectLocal);
-                        Locale locale = User.this.getLocale();
+                        if (messageidLocal != null) {
+                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
+                        }
                         // Corpo da mensagem.
                         StringBuilder builder = new StringBuilder();
                         builder.append("<!DOCTYPE html>\n");
@@ -2926,7 +3503,7 @@ public class User implements Serializable, Comparable<User> {
                                 ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
                             }
                         }
-                        ServerHTTP.buildFooter(builder, locale);
+                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                         builder.append("    </div>\n");
                         builder.append("  </body>\n");
                         builder.append("</html>\n");
@@ -2948,7 +3525,15 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        return recipientAdvised = Core.sendMessage(message, 30000);
+                        if (Core.sendMessage(locale, message, 30000)) {
+                            this.CHANGED.acquire();
+                            this.recipientAdvised = true;
+                            User.CHANGED = true;
+                            this.CHANGED.release(true);
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
                 } catch (MailConnectException ex) {
                     return false;
@@ -2970,17 +3555,22 @@ public class User implements Serializable, Comparable<User> {
             String mailFrom = getMailFrom();
             String recipientLocal = getRecipient();
             String subjectLocal = getSubject();
+            String messageidLocal = getMessageID();
             if (recipientAdvised) {
                 return false;
             } else if (mailFrom == null) {
                 return false;
+            } else if (recipientLocal == null) {
+                return false;
             } else if (subjectLocal == null) {
+                return false;
+            } else if (messageidLocal == null) {
+                return false;
+            } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else if (!Domain.isValidEmail(recipientLocal)) {
                 return false;
             } else if (NoReply.contains(recipientLocal, true)) {
-                return false;
-            } else if (!Core.hasOutputSMTP()) {
                 return false;
             } else {
                 try {
@@ -2989,20 +3579,18 @@ public class User implements Serializable, Comparable<User> {
                         return false;
                     } else {
                         Server.logDebug("sending suspect alert by e-mail.");
-                        String messageidLocal = getMessageID();
+                        Locale locale = User.this.getLocale();
                         InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-                        Properties props = System.getProperties();
-                        Session session = Session.getDefaultInstance(props);
-                        MimeMessage message = new MimeMessage(session);
-                        message.setHeader("Date", Core.getEmailDate());
-                        message.setFrom(Core.getAdminInternetAddress());
+//                        Properties props = System.getProperties();
+//                        Session session = Session.getDefaultInstance(props);
+//                        MimeMessage message = new MimeMessage(session);
+//                        message.setHeader("Date", Core.getEmailDate());
+//                        message.setFrom(Core.getAdminInternetAddress());
+                        MimeMessage message = Core.newMessage();
                         message.addRecipients(Message.RecipientType.TO, recipients);
                         message.setReplyTo(User.this.getInternetAddresses());
                         message.setSubject(subjectLocal);
-                        if (messageidLocal != null) {
-                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-                        }
-                        Locale locale = User.this.getLocale();
+                        message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
                         // Corpo da mensagem.
                         StringBuilder builder = new StringBuilder();
                         builder.append("<!DOCTYPE html>\n");
@@ -3051,7 +3639,7 @@ public class User implements Serializable, Comparable<User> {
                                 ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
                             }
                         }
-                        ServerHTTP.buildFooter(builder, locale);
+                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                         builder.append("    </div>\n");
                         builder.append("  </body>\n");
                         builder.append("</html>\n");
@@ -3073,7 +3661,15 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        return recipientAdvised = Core.sendMessage(message, 30000);
+                        if (Core.sendMessage(locale, message, 30000)) {
+                            this.CHANGED.acquire();
+                            this.recipientAdvised = true;
+                            User.CHANGED = true;
+                            this.CHANGED.release(true);
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
                 } catch (MailConnectException ex) {
                     return false;
@@ -3095,7 +3691,7 @@ public class User implements Serializable, Comparable<User> {
             String mailFrom = getMailFrom();
             String recipientLocal = getRecipient();
             if (senderAdvised) {
-                return false;
+                return true;
             } else if (mailFrom == null) {
                 return false;
             } else if (recipientLocal == null) {
@@ -3128,11 +3724,12 @@ public class User implements Serializable, Comparable<User> {
                         }
                         String messageidLocal = getMessageID();
                         InternetAddress[] recipients = InternetAddress.parse(mailFrom);
-                        Properties props = System.getProperties();
-                        Session session = Session.getDefaultInstance(props);
-                        MimeMessage message = new MimeMessage(session);
-                        message.setHeader("Date", Core.getEmailDate());
-                        message.setFrom(Core.getAdminInternetAddress());
+//                        Properties props = System.getProperties();
+//                        Session session = Session.getDefaultInstance(props);
+//                        MimeMessage message = new MimeMessage(session);
+//                        message.setHeader("Date", Core.getEmailDate());
+//                        message.setFrom(Core.getAdminInternetAddress());
+                        MimeMessage message = Core.newMessage();
                         message.addRecipients(Message.RecipientType.TO, recipients);
                         message.setReplyTo(User.this.getInternetAddresses());
                         message.setSubject(subjectLocal);
@@ -3167,7 +3764,7 @@ public class User implements Serializable, Comparable<User> {
                             ServerHTTP.buildText(builder, "If you consider this a mistake, access this URL to request its release:");
                         }
                         ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                        ServerHTTP.buildFooter(builder, locale);
+                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                         builder.append("    </div>\n");
                         builder.append("  </body>\n");
                         builder.append("</html>\n");
@@ -3189,10 +3786,23 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        return senderAdvised = Core.sendMessage(message, 30000);
+                        if (Core.sendMessage(locale, message, 30000)) {
+                            this.CHANGED.acquire();
+                            this.senderAdvised = true;
+                            User.CHANGED = true;
+                            this.CHANGED.release(true);
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
+                } catch (ServiceUnavailableException ex) {
+                    blockSender(time);
+                    return false;
                 } catch (NameNotFoundException ex) {
                     blockSender(time);
+                    return false;
+                } catch (CommunicationException ex) {
                     return false;
                 } catch (MailConnectException ex) {
                     blockSender(time);
@@ -3214,7 +3824,7 @@ public class User implements Serializable, Comparable<User> {
             String mailFrom = getMailFrom();
             String recipientLocal = getRecipient();
             if (senderAdvised) {
-                return false;
+                return true;
             } else if (mailFrom == null) {
                 return false;
             } else if (recipientLocal == null) {
@@ -3251,13 +3861,13 @@ public class User implements Serializable, Comparable<User> {
                         }
                         String messageidLocal = getMessageID();
                         InternetAddress[] recipients = InternetAddress.parse(mailFrom);
-                        Properties props = System.getProperties();
-                        Session session = Session.getDefaultInstance(props);
-                        MimeMessage message = new MimeMessage(session);
-                        message.setHeader("Date", Core.getEmailDate());
-                        message.setFrom(Core.getAdminInternetAddress());
+//                        Properties props = System.getProperties();
+//                        Session session = Session.getDefaultInstance(props);
+//                        MimeMessage message = new MimeMessage(session);
+//                        message.setHeader("Date", Core.getEmailDate());
+//                        message.setFrom(Core.getAdminInternetAddress());
+                        MimeMessage message = Core.newMessage();
                         message.addRecipients(Message.RecipientType.TO, recipients);
-//                        message.addRecipients(Message.RecipientType.BCC, InternetAddress.parse("leandro@spfbl.net")); // Temporário.
                         message.setReplyTo(User.this.getInternetAddresses());
                         message.setSubject(subjectLocal);
                         if (messageidLocal != null) {
@@ -3283,15 +3893,15 @@ public class User implements Serializable, Comparable<User> {
                         builder.append("      </div>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             ServerHTTP.buildMessage(builder, "Aviso de bloqueio de mensagem");
-                            ServerHTTP.buildText(builder, "A mensagem, que foi enviada para " + recipientLocal + " foi rejeitada por bloqueio manual.");
+                            ServerHTTP.buildText(builder, "A mensagem, que foi enviada para " + recipientLocal + ", foi rejeitada por bloqueio manual.");
                             ServerHTTP.buildText(builder, "Se você considera isto um engano, acesse esta URL para solicitar o desbloqueio:");
                         } else {
                             ServerHTTP.buildMessage(builder, "Message block warning");
-                            ServerHTTP.buildText(builder, "The message, which was sent to " + recipientLocal + " was rejected by manual block.");
+                            ServerHTTP.buildText(builder, "The message, which was sent to " + recipientLocal + ", was rejected by manual block.");
                             ServerHTTP.buildText(builder, "If you consider this a mistake, access this URL to request unblock:");
                         }
                         ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                        ServerHTTP.buildFooter(builder, locale);
+                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                         builder.append("    </div>\n");
                         builder.append("  </body>\n");
                         builder.append("</html>\n");
@@ -3313,7 +3923,7 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (Core.sendMessage(message, 30000)) {
+                        if (Core.sendMessage(locale, message, 30000)) {
                             this.CHANGED.acquire();
                             this.senderAdvised = true;
                             User.CHANGED = true;
@@ -3324,8 +3934,13 @@ public class User implements Serializable, Comparable<User> {
                             return false;
                         }
                     }
+                } catch (ServiceUnavailableException ex) {
+                    blockSender(time);
+                    return false;
                 } catch (NameNotFoundException ex) {
                     blockSender(time);
+                    return false;
+                } catch (CommunicationException ex) {
                     return false;
                 } catch (MailConnectException ex) {
                     blockSender(time);
@@ -3347,7 +3962,7 @@ public class User implements Serializable, Comparable<User> {
             String senderLocal = getSender();
             String userEmail = getEmail();
             if (adminAdvised) {
-                return false;
+                return true;
             } else if (senderLocal == null) {
                 return false;
             } else if (userEmail == null) {
@@ -3382,16 +3997,17 @@ public class User implements Serializable, Comparable<User> {
                         String messageidLocal = getMessageID();
                         TreeSet<String> linkSet = getLinkSet();
                         InternetAddress[] recipients = User.this.getInternetAddresses();
-                        Properties props = System.getProperties();
-                        Session session = Session.getDefaultInstance(props);
-                        MimeMessage message = new MimeMessage(session);
-                        message.setHeader("Date", Core.getEmailDate());
-                        message.setFrom(Core.getAdminInternetAddress());
+//                        Properties props = System.getProperties();
+//                        Session session = Session.getDefaultInstance(props);
+//                        MimeMessage message = new MimeMessage(session);
+//                        message.setHeader("Date", Core.getEmailDate());
+//                        message.setFrom(Core.getAdminInternetAddress());
+                        MimeMessage message = Core.newMessage();
                         message.addRecipients(Message.RecipientType.TO, recipients);
                         message.setReplyTo(InternetAddress.parse(senderLocal));
                         message.setSubject(subjectLocal);
                         if (messageidLocal != null) {
-                            message.setHeader("Message-ID", messageidLocal);
+                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
                         }
                         // Corpo da mensagem.
                         StringBuilder builder = new StringBuilder();
@@ -3487,7 +4103,7 @@ public class User implements Serializable, Comparable<User> {
                             ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
                         }
 
-                        ServerHTTP.buildFooter(builder, locale);
+                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                         builder.append("    </div>\n");
                         builder.append("  </body>\n");
                         builder.append("</html>\n");
@@ -3509,7 +4125,15 @@ public class User implements Serializable, Comparable<User> {
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        return adminAdvised = Core.sendMessage(message, 30000);
+                        if (Core.sendMessage(locale, message, 30000)) {
+                            this.CHANGED.acquire();
+                            this.adminAdvised = true;
+                            User.CHANGED = true;
+                            this.CHANGED.release(true);
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
                 } catch (MailConnectException ex) {
                     return false;
@@ -3524,7 +4148,7 @@ public class User implements Serializable, Comparable<User> {
         
         @Override
         public String toString() {
-            return client + ": " + (helo == null ? ip : helo + " [" + ip + "]")
+            return email + ": " + (helo == null ? ip : helo + " [" + ip + "]")
                     + (getSender() == null ? "" : " " + getSender())
                     + " " + getQualifierName() + " > " + recipient + " = " + result;
         }

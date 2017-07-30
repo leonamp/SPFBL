@@ -20,6 +20,10 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
+import de.agitos.dkim.Canonicalization;
+import de.agitos.dkim.DKIMSigner;
+import de.agitos.dkim.SMTPDKIMMessage;
+import de.agitos.dkim.SigningAlgorithm;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
 import it.sauronsoftware.junique.MessageHandler;
@@ -37,7 +41,10 @@ import java.net.SocketException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -67,6 +74,7 @@ import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
 import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -90,7 +98,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 7;
-    private static final byte RELEASE = 5;
+    private static final byte RELEASE = 6;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -220,16 +228,20 @@ public class Core {
             String recipient
             ) throws ProcessException {
         // Definição do e-mail do usuário.
+        Locale locale = null;
         String userEmail = null;
         if (user != null) {
+            locale = user.getLocale();
             userEmail = user.getEmail();
         } else if (client != null) {
             userEmail = client.getEmail();
+            locale = Core.getDefaultLocale(userEmail);
         }
-        return getUnblockURL(userEmail, ip, sender, hostname, recipient);
+        return getUnblockURL(locale, userEmail, ip, sender, hostname, recipient);
     }
     
     public static String getUnblockURL(
+            Locale locale,
             String userEmail,
             String ip,
             String sender,
@@ -251,7 +263,7 @@ public class Core {
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -283,6 +295,7 @@ public class Core {
     }
     
     public static String getUnblockURL(
+            Locale locale,
             String client,
             String ip
             ) throws ProcessException {
@@ -295,7 +308,7 @@ public class Core {
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -324,13 +337,17 @@ public class Core {
         }
     }
     
-    public static String getHoldingURL(User user, long time) throws ProcessException {
+    public static String getHoldingURL(
+            User user,
+            long time
+    ) throws ProcessException {
         if (user == null) {
             return null;
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            Locale locale = user.getLocale();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -356,13 +373,17 @@ public class Core {
         }
     }
     
-    public static String getUnholdURL(User user, long time) throws ProcessException {
+    public static String getUnholdURL(
+            User user,
+            long time
+    ) throws ProcessException {
         if (user == null) {
             return null;
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            Locale locale = user.getLocale();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -388,13 +409,54 @@ public class Core {
         }
     }
     
-    public static String getBlockURL(User user, long time) throws ProcessException {
+    public static String getListUnsubscribeURL(
+            Locale locale,
+            InternetAddress recipient
+    ) {
+        if (recipient == null) {
+            return null;
+        } else if (complainHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = complainHTTP.getURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    long time = Server.getNewUniqueTime();
+                    String ticket = "unsubscribe";
+                    ticket += ' ' + recipient.getAddress();
+                    byte[] byteArray = Core.HUFFMAN.encodeByteArray(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getBlockURL(
+            User user,
+            long time
+    ) {
         if (user == null) {
             return null;
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            Locale locale = user.getLocale();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -412,7 +474,8 @@ public class Core {
                     byteArray[7] = (byte) ((time >>> 8) & 0xFF);
                     return url + Server.encryptURLSafe(byteArray);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(ex);
+                    return null;
                 }
             }
         } else {
@@ -421,6 +484,7 @@ public class Core {
     }
     
     public static String getWhiteURL(
+            Locale locale,
             String white,
             String client,
             String ip,
@@ -441,7 +505,7 @@ public class Core {
         } else if (complainHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = complainHTTP.getURL();
+            String url = complainHTTP.getURL(locale);
             if (url == null) {
                 return null;
             } else {
@@ -478,6 +542,16 @@ public class Core {
             return null;
         } else {
             return complainHTTP.getURL();
+        }
+    }
+    
+    public static String getURL(User user) {
+        if (complainHTTP == null) {
+            return null;
+        } else if (user == null) {
+            return complainHTTP.getURL();
+        } else {
+            return complainHTTP.getURL(user.getLocale());
         }
     }
     
@@ -553,6 +627,8 @@ public class Core {
                     Core.setPortSMTP(properties.getProperty("smtp_port"));
                     Core.setUserSMTP(properties.getProperty("smtp_user"));
                     Core.setPasswordSMTP(properties.getProperty("smtp_password"));
+                    Core.setSelectorDKIM(properties.getProperty("dkim_selector"));
+                    Core.setPrivateDKIM(properties.getProperty("dkim_private"));
                     Core.setPortAdmin(properties.getProperty("admin_port"));
                     Core.setPortWHOIS(properties.getProperty("whois_port"));
                     Core.setPortSPFBL(properties.getProperty("spfbl_port"));
@@ -584,6 +660,7 @@ public class Core {
                     PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
                     QueryDNS.setConnectionLimit(properties.getProperty("dnsbl_limit"));
                     QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
+                    ServerHTTP.setConnectionLimit(properties.getProperty("http_limit"));
                     Analise.setAnaliseExpires(properties.getProperty("analise_expires"));
                     Analise.setAnaliseIP(properties.getProperty("analise_ip"));
                     Analise.setAnaliseMX(properties.getProperty("analise_mx"));
@@ -1407,6 +1484,32 @@ public class Core {
         }
     }
     
+    private static String DKIM_SELECTOR = null;
+    private static PrivateKey DKIM_PRIVATE = null;
+    
+    public static synchronized void setSelectorDKIM(String selector) {
+        if (selector != null && selector.length() > 0) {
+            if (Domain.isHostname(selector)) {
+                Core.DKIM_SELECTOR = Domain.normalizeHostname(selector, false);
+            } else {
+                Server.logError("invalid DKIM selector '" + selector + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPrivateDKIM(String privateKey) {
+        if (privateKey != null && privateKey.length() > 0) {
+            try {
+                byte[] privateKeyBytes = BASE64.decode(privateKey);
+                PKCS8EncodedKeySpec encodedKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+                KeyFactory kf = KeyFactory.getInstance("RSA");
+                Core.DKIM_PRIVATE = kf.generatePrivate(encodedKeySpec);
+            } catch (Exception ex) {
+                Server.logError("invalid DKIM private key '" + privateKey + "'.");
+            }
+        }
+    }
+    
     private static boolean SMTP_IS_AUTH = true;
     private static boolean SMTP_STARTTLS = true;
     private static String SMTP_HOST = null;
@@ -1545,8 +1648,51 @@ public class Core {
         }
     }
     
-    public static synchronized boolean sendMessage(
-            Message message, int timeout
+    private static DKIMSigner getDKIMSigner() {
+        if (ADMIN_EMAIL == null) {
+            return null;
+        } else if (DKIM_SELECTOR == null) {
+            return null;
+        } else if (DKIM_PRIVATE == null) {
+            return null;
+        } else {
+            try {
+                final String DKIM_DOMAIN = Domain.extractHost(ADMIN_EMAIL, false);
+                DKIMSigner dkimSigner = new DKIMSigner(DKIM_DOMAIN, DKIM_SELECTOR, DKIM_PRIVATE);
+                dkimSigner.setIdentity(ADMIN_EMAIL);
+                dkimSigner.setHeaderCanonicalization(Canonicalization.SIMPLE);
+                dkimSigner.setBodyCanonicalization(Canonicalization.RELAXED);
+                dkimSigner.setLengthParam(true);
+                dkimSigner.setSigningAlgorithm(SigningAlgorithm.SHA1withRSA);
+//                dkimSigner.setZParam(true); // Debug
+                dkimSigner.addHeaderToSign("List-Unsubscribe");
+                return dkimSigner;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
+    public static MimeMessage newMessage() throws Exception {
+        Properties props = System.getProperties();
+        Session session = Session.getDefaultInstance(props);
+        DKIMSigner dkimSigner;
+        MimeMessage message;
+        if (!isDirectSMTP()) {
+            message = new MimeMessage(session);
+        } else if ((dkimSigner = getDKIMSigner()) == null) {
+            message = new MimeMessage(session);
+        } else {
+            message = new SMTPDKIMMessage(session, dkimSigner);
+        }
+        message.setHeader("Date", Core.getEmailDate());
+        message.setFrom(Core.getAdminInternetAddress());
+        return message;
+    }
+    
+    public static boolean sendMessage(
+            Locale locale, Message message, int timeout
     ) throws Exception {
         if (message == null) {
             return false;
@@ -1559,10 +1705,16 @@ public class Core {
             props.put("mail.smtp.port", "25");
             props.put("mail.smtp.timeout", Integer.toString(timeout));   
             props.put("mail.smtp.connectiontimeout", "3000");
+            
             InternetAddress[] recipients = (InternetAddress[]) message.getAllRecipients();
             Exception lastException = null;
             for (InternetAddress recipient : recipients) {
                 String domain = Domain.normalizeHostname(recipient.getAddress(), false);
+                String url = Core.getListUnsubscribeURL(locale, recipient);
+                if (url != null) {
+                    message.setHeader("List-Unsubscribe", "<" + url + ">");
+                }
+                message.saveChanges();
                 for (String mx : Reverse.getMXSet(domain)) {
                     mx = mx.substring(1);
                     props.put("mail.smtp.starttls.enable", "true");
@@ -1587,6 +1739,7 @@ public class Core {
                         lastException = ex;
                     } catch (SendFailedException ex) {
                         Server.logSendMTP("send failed.");
+                        Server.logSendMTP("last response: " + transport.getLastServerResponse());
                         throw ex;
                     } catch (MessagingException ex) {
                         if (ex.getMessage().contains(" TLS ")) {
@@ -1611,11 +1764,14 @@ public class Core {
                                 break;
                             } catch (SendFailedException ex2) {
                                 Server.logSendMTP("send failed.");
+                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
                                 throw ex2;
                             } catch (Exception ex2) {
                                 lastException = ex2;
                             }
                         } else {
+                            Server.logSendMTP("send failed.");
+                            Server.logSendMTP("last response: " + transport.getLastServerResponse());
                             lastException = ex;
                         }
                     } catch (Exception ex) {
@@ -1891,24 +2047,13 @@ public class Core {
         }
     }
     
-    private static class TimerSendSuspectWarningMessages extends TimerTask {
+    private static class TimerSendWarningMessages extends TimerTask {
         @Override
         public void run() {
             try {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                User.sendSuspectWarning();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerSendBlockedWarningMessages extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                User.sendBlockedWarning();
+                User.sendWarningMessages();
+                User.storeAndDropFinished();
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2044,8 +2189,7 @@ public class Core {
         TIMER.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerSendSuspectWarningMessages(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerSendBlockedWarningMessages(), 3600000, 3600000); // Frequência de 1 hora.
+        TIMER.schedule(new TimerSendWarningMessages(), 3600000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
         if (CACHE_TIME_STORE > 0) {
             TIMER.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
@@ -2263,9 +2407,11 @@ public class Core {
             while (tokenizer.hasMoreTokens()) {
                 String token = tokenizer.nextToken();
                 int index = token.indexOf('=');
-                boolean value = Boolean.parseBoolean(token.substring(index + 1));
-                String key = token.substring(0, index);
-                resultMap.put(key, value);
+                if (index != -1) {
+                    boolean value = Boolean.parseBoolean(token.substring(index + 1));
+                    String key = token.substring(0, index);
+                    resultMap.put(key, value);
+                }
             }
             return resultMap;
         }

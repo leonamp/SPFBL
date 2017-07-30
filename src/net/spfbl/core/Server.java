@@ -46,7 +46,6 @@ import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -59,8 +58,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -108,6 +105,7 @@ public abstract class Server extends Thread {
      */
     public static void loadCache() {
         Client.load();
+        NoReply.load();
         User.load();
         Owner.load();
         Domain.load();
@@ -117,16 +115,15 @@ public abstract class Server extends Thread {
         Handle.load();
         NameServer.load();
         Peer.load();
+        Provider.load();
+        Ignore.load();
         Analise.load();
         Reverse.load();
         Generic.load();
         Block.load();
         White.load();
         Trap.load();
-        Ignore.load();
-        Provider.load();
         SPF.load();
-        NoReply.load();
         Defer.load();
         QueryDNS.load();
     }
@@ -143,6 +140,9 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
+                User.autoUpdate();
+                User.autoInductionWhite();
+                User.autoInductionBlock();
                 storeAll(true, true);
             } finally {
                 SEMAPHORE_STORE.release();
@@ -556,7 +556,8 @@ public abstract class Server extends Thread {
             long time,
             Core.Level level,
             String type,
-            Throwable ex) {
+            Throwable ex
+    ) {
         if (ex != null) {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream printStream = new PrintStream(baos);
