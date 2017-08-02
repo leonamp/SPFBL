@@ -2108,6 +2108,37 @@ case $1 in
 					fi
 				fi
 			;;
+			'send-totp')
+				if [ $# -lt "3" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 user send-totp <email>\n"
+				else
+					response=$(echo $OTP_CODE"USER SEND $3 TOTP" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					
+					if [[ $response == "" ]]; then
+						$(incrementTimeout)
+						if [ "$?" -le "$MAX_TIMEOUT" ]; then
+							response="TIMEOUT"
+						else
+							response="OUT OF SERVICE"
+						fi
+					else
+						$(resetTimeout)
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == "ADDED" ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
 			*)
 				head
 				printf "Syntax:\n    $0 user add email nome\n    $0 user drop email\n    $0 user show\n"
@@ -4510,7 +4541,7 @@ case $1 in
 		printf "    $0 provider { add sender | drop sender | show }\n"
 		printf "    $0 ignore { add sender | drop sender | show }\n"
 		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"
-		printf "    $0 user { add email nome | drop email | show }\n"
+		printf "    $0 user { add email nome | drop email | send-totp email | show }\n"
 		printf "    $0 superblock { add sender | drop sender | show [all] | split | overlap }\n"
 		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
 		printf "    $0 analise <ip> or { show | dump | drop }\n"
