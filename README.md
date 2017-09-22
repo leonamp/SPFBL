@@ -312,14 +312,20 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
-PayPal:<br>
+PayPal em Real:<br>
 [![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=7FKHCPESUWH4L)
+
+PayPal em Dólar:<br>
+[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=77CP8774HLDU8)
 
 Patreon:<br>
 <a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
 
 Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+
+Ative seu cartão pré-pago EBANX com este link promocional pois o projeto SPFBL ganha 5 dólares por ativação:<br>
+<a href="https://www.ebanx.com/br/ebanx-dollar-card?referral_code=HE6042900H&referral_name=Leandro">Link promocional para ativação do cartão pré-pago EBANX</a>
 
 Página oficial:<br>
 <a href="http://spfbl.net">SPFBL oficial website</a>
@@ -341,6 +347,8 @@ Palestra GTER 42:<br>
 <a href="http://multirbl.valli.org/lookup/">14/09/2016 Valli.org: O SPFBL.net entra na lista MultiRBL da valli.org.</a></br>
 
 <a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
+
+<a href="http://www.dnsbl.info/">20/08/2017 DNSBL.info: O SPFBL.net entra na lista MultiRBL da dnsbl.info.</a></br>
 
 
 ### Forum de discussão SPFBL
