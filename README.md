@@ -324,9 +324,6 @@ Patreon:<br>
 Bitcoin:<br>
 ![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
 
-Ative seu cartão pré-pago EBANX com este link promocional pois o projeto SPFBL ganha 5 dólares por ativação:<br>
-<a href="https://www.ebanx.com/br/ebanx-dollar-card?referral_code=HE6042900H&referral_name=Leandro">Link promocional para ativação do cartão pré-pago EBANX</a>
-
 Página oficial:<br>
 <a href="http://spfbl.net">SPFBL oficial website</a>
 
