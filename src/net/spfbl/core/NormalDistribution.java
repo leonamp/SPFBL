@@ -47,6 +47,30 @@ public class NormalDistribution implements Serializable {
         xi2Sum = 0.0f;
     }
     
+    private NormalDistribution(float xiSum, float xi2Sum) {
+        this.xiSum = xiSum;
+        this.xi2Sum = xi2Sum;
+    }
+    
+    public static NormalDistribution newDistribution(
+            String xiSum,
+            String xi2Sum
+    ) {
+        if (xiSum == null || xiSum.length() == 0) {
+            return null;
+        } else if (xi2Sum == null || xi2Sum.length() == 0) {
+            return null;
+        } else {
+            try {
+                float xiSumLocal = Float.parseFloat(xiSum);
+                float xi2SumLocal = Float.parseFloat(xi2Sum);
+                return new NormalDistribution(xiSumLocal, xi2SumLocal);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
+    }
+    
     public NormalDistribution replicate() {
         NormalDistribution clone = new NormalDistribution();
         clone.xiSum = this.xiSum;

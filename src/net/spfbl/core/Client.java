@@ -93,7 +93,7 @@ public class Client implements Serializable, Comparable<Client> {
             this.domain = Domain.extractHost(domain, false);
             if (email == null || email.length() == 0) {
                 this.email = null;
-            } else if (Domain.isEmail(email)) {
+            } else if (Domain.isValidEmail(email)) {
                 this.email = email.toLowerCase();
             } else {
                 throw new ProcessException("INVALID EMAIL");
@@ -119,7 +119,7 @@ public class Client implements Serializable, Comparable<Client> {
         if (email == null || email.length() == 0) {
             this.email = null;
             CHANGED = true;
-        } else if (Domain.isEmail(email)) {
+        } else if (Domain.isValidEmail(email)) {
             this.email = email.toLowerCase();
             CHANGED = true;
         } else {
@@ -454,7 +454,7 @@ public class Client implements Serializable, Comparable<Client> {
     /**
      * Mapa de usuário com busca log2(n).
      */
-    private static final TreeMap<String,Client> MAP = new TreeMap<String,Client>();
+    private static final TreeMap<String,Client> MAP = new TreeMap<>();
     
     /**
      * Flag que indica se o cache foi modificado.
@@ -483,13 +483,13 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public synchronized static TreeSet<Client> getSet() {
-        TreeSet<Client> clientSet = new TreeSet<Client>();
+        TreeSet<Client> clientSet = new TreeSet<>();
         clientSet.addAll(MAP.values());
         return clientSet;
     }
     
     public static TreeSet<Client> getClientSet(String domain) {
-        TreeSet<Client> clientSet = new TreeSet<Client>();
+        TreeSet<Client> clientSet = new TreeSet<>();
         for (Client client : getSet()) {
             if (client.isDomain(domain)) {
                 clientSet.add(client);
@@ -499,7 +499,7 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static TreeSet<Client> dropAll() throws ProcessException {
-        TreeSet<Client> clientSet = new TreeSet<Client>();
+        TreeSet<Client> clientSet = new TreeSet<>();
         for (Client client : getSet()) {
             if (client != null) {
                 String cidr = client.getCIDR();
@@ -542,14 +542,16 @@ public class Client implements Serializable, Comparable<Client> {
         return client;
     }
     
-    public static String getOrigin(InetAddress address) {
+    public static String getOrigin(InetAddress address, String permissao) {
         if (address == null) {
             return "UNKNOWN";
         } else {
             String ip = address.getHostAddress();
-            Client client = Client.get(address);
+            Client client = Client.get(address, permissao);
             if (client == null) {
                 return ip + " UNKNOWN";
+            } else if (client.isPermission("DNSBL")) {
+                return ip + " " + client.getDomain();
             } else if (client.hasEmail()) {
                 return ip + " " + client.getDomain() + " " + client.getEmail();
             } else {
@@ -590,7 +592,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static Client getByEmail(String email) throws ProcessException {
         if (email == null) {
             return null;
-        } else if (!Domain.isEmail(email)) {
+        } else if (!Domain.isValidEmail(email)) {
             throw new ProcessException("INVALID E-MAIL");
         } else {
             return MAP.get(email);
@@ -600,7 +602,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static Client getByEmailSafe(String email) {
         if (email == null) {
             return null;
-        } else if (!Domain.isEmail(email)) {
+        } else if (!Domain.isValidEmail(email)) {
             return null;
         } else {
             return MAP.get(email);
@@ -636,10 +638,16 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static Client get(InetAddress address, String permissao) {
-        if (address == null) {
-            return null;
-        } else {
+        if (address instanceof Inet4Address) {
             return getByIP(address.getHostAddress(), permissao);
+        } else if (address instanceof Inet6Address) {
+            String ip = SubnetIPv6.getIPv4(address.getHostAddress());
+            if (ip == null) {
+                ip = address.getHostAddress();
+            }
+            return getByIP(ip, permissao);
+        } else {
+            return null;
         }
     }
     
@@ -649,14 +657,21 @@ public class Client implements Serializable, Comparable<Client> {
             ) throws ProcessException {
         Client client = get(address, permissao);
         if (client == null) {
+            String ip = null;
             String cidr = null;
             if (address instanceof Inet4Address) {
-                cidr = address.getHostAddress() + "/32";
+                ip = SubnetIPv4.normalizeIPv4(address.getHostAddress());
+                cidr = ip + "/32";
             } else if (address instanceof Inet6Address) {
-                cidr = SubnetIPv6.normalizeCIDRv6(address.getHostAddress() + "/64");
+                ip = SubnetIPv6.getIPv4(address.getHostAddress());
+                if (ip == null) {
+                    ip = SubnetIPv6.normalizeIPv6(address.getHostAddress());
+                    cidr = ip + "/64";
+                } else {
+                    cidr = ip + "/32";
+                }
             }
-            if (cidr != null) {
-                String ip = address.getHostAddress();
+            if (ip != null && cidr != null) {
                 String hostame = Reverse.getHostname(ip);
                 String domain;
                 if (Generic.containsGeneric(hostame)) {
@@ -681,14 +696,14 @@ public class Client implements Serializable, Comparable<Client> {
         if (permission == null) {
             return null;
         } else {
-            HashMap<Object,TreeSet<Client>> clientMap = new HashMap<Object,TreeSet<Client>>();
+            HashMap<Object,TreeSet<Client>> clientMap = new HashMap<>();
             for (Client client : getSet()) {
                 if (client.hasPermission(permission)) {
                     User user = client.getUser();
                     Object key = user == null ? client.getDomain() : user;
                     TreeSet<Client> clientSet = clientMap.get(key);
                     if (clientSet == null) {
-                        clientSet = new TreeSet<Client>();
+                        clientSet = new TreeSet<>();
                         clientMap.put(key, clientSet);
                     }
                     clientSet.add(client);
@@ -699,14 +714,14 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static HashMap<Object,TreeSet<Client>> getAdministratorMap() {
-        HashMap<Object,TreeSet<Client>> clientMap = new HashMap<Object,TreeSet<Client>>();
+        HashMap<Object,TreeSet<Client>> clientMap = new HashMap<>();
         for (Client client : getSet()) {
             if (client.isAdministrator()) {
                 User user = client.getUser();
                 Object key = user == null ? client.getDomain() : user;
                 TreeSet<Client> clientSet = clientMap.get(key);
                 if (clientSet == null) {
-                    clientSet = new TreeSet<Client>();
+                    clientSet = new TreeSet<>();
                     clientMap.put(key, clientSet);
                 }
                 clientSet.add(client);
@@ -719,7 +734,7 @@ public class Client implements Serializable, Comparable<Client> {
         if (permission == null) {
             return null;
         } else {
-            TreeSet<Client> clientSet = new TreeSet<Client>();
+            TreeSet<Client> clientSet = new TreeSet<>();
             for (Client client : getSet()) {
                 if (client.hasPermission(permission)) {
                     clientSet.add(client);
@@ -730,7 +745,7 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static TreeSet<Client> getAdministratorSet() {
-        TreeSet<Client> clientSet = new TreeSet<Client>();
+        TreeSet<Client> clientSet = new TreeSet<>();
         for (Client client : getSet()) {
             if (client.isAdministrator()) {
                 clientSet.add(client);
@@ -807,7 +822,7 @@ public class Client implements Serializable, Comparable<Client> {
             SortedMap<String,Client> subMap = MAP.subMap(
                     keyFirst, true, keyLast, true
             );
-            TreeSet<Client> clientSet = new TreeSet<Client>();
+            TreeSet<Client> clientSet = new TreeSet<>();
             for (Client client : subMap.values()) {
                 if (client.isPermission(permission)) {
                     if (client.contains(first)) {
@@ -831,13 +846,13 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static synchronized HashMap<String,Client> getMap() {
-        HashMap<String,Client> map = new HashMap<String,Client>();
+        HashMap<String,Client> map = new HashMap<>();
         map.putAll(MAP);
         return map;
     }
     
     public static synchronized HashMap<String,Client> getCloneMap() {
-        HashMap<String,Client> map = new HashMap<String,Client>();
+        HashMap<String,Client> map = new HashMap<>();
         for (String key : MAP.keySet()) {
             Client value = MAP.get(key);
             map.put(key, new Client(value));
@@ -848,7 +863,6 @@ public class Client implements Serializable, Comparable<Client> {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing client.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Client> map = getCloneMap();
                 for (String key : map.keySet()) {
@@ -859,13 +873,10 @@ public class Client implements Serializable, Comparable<Client> {
                     }
                 }
                 File file = new File("./data/client.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -880,11 +891,8 @@ public class Client implements Serializable, Comparable<Client> {
         if (file.exists()) {
             try {
                 HashMap<String,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
@@ -951,6 +959,14 @@ public class Client implements Serializable, Comparable<Client> {
         int frequencyInt = frequency.getMaximumInt();
         long idleTimeInt = getIdleTimeMillis();
         return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
+    }
+    
+    public boolean isIdle() {
+        if (frequency == null) {
+            return true;
+        } else {
+            return frequency.getMinimumInt() > 60000;
+        }
     }
     
     public String getFrequencyLiteral() {

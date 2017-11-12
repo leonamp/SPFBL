@@ -42,7 +42,7 @@ public class NoReply {
     /**
      * Conjunto de destinatarios de não envio.
      */
-    private static final HashSet<String> SET = new HashSet<String>();
+    private static final HashSet<String> SET = new HashSet<>();
     /**
      * Flag que indica se o cache foi modificado.
      */
@@ -67,7 +67,7 @@ public class NoReply {
     }
 
     private static synchronized TreeSet<String> getAll() throws ProcessException {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         blockSet.addAll(SET);
         return blockSet;
     }
@@ -79,7 +79,7 @@ public class NoReply {
     private static String normalize(String recipient) {
         if (recipient == null) {
             return null;
-        } else if (Domain.isEmail(recipient)) {
+        } else if (Domain.isValidEmail(recipient)) {
             return recipient.toLowerCase();
         } else if (recipient.endsWith("@")) {
             return recipient.toLowerCase();
@@ -103,7 +103,7 @@ public class NoReply {
     }
 
     public static TreeSet<String> dropAll() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String trap : getAll()) {
             if (dropExact(trap)) {
                 trapSet.add(trap);
@@ -123,7 +123,7 @@ public class NoReply {
     }
 
     public static TreeSet<String> getSet() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String recipient : getAll()) {
             if (!recipient.contains(":")) {
                 trapSet.add(recipient);
@@ -145,9 +145,13 @@ public class NoReply {
             return true;
         } else if (address.contains("-noreply@")) {
             return true;
+        } else if (address.startsWith("mailer-daemon@")) {
+            return true;
         } else if (address.startsWith("return-")) {
             return true;
         } else if (address.startsWith("noreply-")) {
+            return true;
+        } else if (address.startsWith("no-reply=")) {
             return true;
         } else if (address.startsWith("prvs=")) {
             return true;
@@ -200,16 +204,12 @@ public class NoReply {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing noreply.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/noreply.set");
                 TreeSet<String> set = getAll();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(set, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -224,11 +224,8 @@ public class NoReply {
         if (file.exists()) {
             try {
                 Set<String> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : set) {
                     addExact(token);

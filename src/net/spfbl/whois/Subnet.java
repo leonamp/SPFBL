@@ -21,7 +21,6 @@ import net.spfbl.core.ProcessException;
 import java.io.BufferedReader;
 import java.io.Serializable;
 import java.io.StringReader;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -66,7 +65,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     /**
      * Lista dos servidores de nome do bloco.
      */
-    private final ArrayList<String> nameServerList = new ArrayList<String>();
+    private final ArrayList<String> nameServerList = new ArrayList<>();
     
     // Protected temporário até final da transição.
     protected String server = null; // Servidor onde a informação do bloco pode ser encontrada.
@@ -217,6 +216,8 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         }
     }
     
+    public abstract Subnet drop();
+    
     /**
      * Atualiza os campos do registro com resultado do WHOIS.
      * @param result o resultado do WHOIS.
@@ -237,12 +238,11 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             String inetrevNew = null;
             Date createdNew = null;
             Date changedNew = null;
-            ArrayList<String> nameServerListNew = new ArrayList<String>();
+            ArrayList<String> nameServerListNew = new ArrayList<>();
             boolean reducedNew = false;
             String inetnumResult = null;
             SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyyMMdd");
-            BufferedReader reader = new BufferedReader(new StringReader(result));
-            try {
+            try (BufferedReader reader = new BufferedReader(new StringReader(result))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
@@ -369,8 +369,6 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                         Server.logError("Linha não reconhecida: " + line);
                     }
                 }
-            } finally {
-                reader.close();
             }
             if (inetnumResult == null) {
                 throw new ProcessException("ERROR: SUBNET NOT FOUND");
@@ -665,7 +663,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     private static TreeSet<Subnet> getSubnetSet() {
-        TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
+        TreeSet<Subnet> subnetSet = new TreeSet<>();
         subnetSet.addAll(SubnetIPv4.getSubnetSet());
         subnetSet.addAll(SubnetIPv6.getSubnetSet());
         return subnetSet;
@@ -702,6 +700,8 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                     // Fazer nada.
                 } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
                     // Fazer nada.
+                } else if (ex.isErrorMessage("SUBNET NOT ASSIGNED")) {
+                    subnetMax.drop();
                 } else {
                     Server.logError(ex);
                 }
@@ -767,7 +767,12 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else if (key.startsWith("owner/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            return getOwner().get(key, updated);
+            Owner ownerLocal = getOwner();
+            if (ownerLocal == null) {
+                return null;
+            } else {
+                return ownerLocal.get(key, updated);
+            }
         } else if (key.startsWith("abuse-c/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
@@ -798,7 +803,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             for (String nserver : nameServerList) {
                 NameServer nameServer = NameServer.getNameServer(nserver);
                 String result = nameServer.get(key);

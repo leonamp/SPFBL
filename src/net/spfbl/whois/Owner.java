@@ -131,8 +131,10 @@ public class Owner implements Serializable, Comparable<Owner> {
         this.refresh();
     }
     
-    public static String normalizeID(String id) throws ProcessException {
+    public static String normalizeID(String id) {
         if (id == null) {
+            return null;
+        } else if (id.length() == 0) {
             return null;
         } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
             return id;
@@ -141,7 +143,7 @@ public class Owner implements Serializable, Comparable<Owner> {
         } else if (Pattern.matches("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
             return "0" + id;
         } else {
-            throw new ProcessException("ERROR: INVALID ID");
+            return null;
         }
     }
     
@@ -403,28 +405,7 @@ public class Owner implements Serializable, Comparable<Owner> {
     /**
      * Mapa de domínios com busca de hash O(1).
      */
-    private static final HashMap<String,Owner> MAP = new HashMap<String,Owner>();
-    
-//    /**
-//     * Adciiona o registro de domínio no cache.
-//     * @param owner o owner que deve ser adicionado.
-//     */
-//    private static synchronized void addOwner(Owner owner) {
-//        MAP.put(owner.getOwnerID(), owner);
-//        // Atualiza flag de atualização.
-//        OWNER_CHANGED = true;
-//    }
-    
-//    /**
-//     * Remove o registro de domínio do cache.
-//     * @param owner o dono que deve ser removido.
-//     */
-//    private static synchronized void removeOwner(Owner owner) {
-//        if (MAP.drop(owner.getOwnerID()) != null) {
-//            // Atualiza flag de atualização.
-//            OWNER_CHANGED = true;
-//        }
-//    }
+    private static final HashMap<String,Owner> MAP = new HashMap<>();
     
     /**
      * Remove registro de domínio do cache.
@@ -435,8 +416,10 @@ public class Owner implements Serializable, Comparable<Owner> {
     public static synchronized Owner removeOwner(String id) throws ProcessException {
         String key = normalizeID(id);
         Owner owner = MAP.remove(key);
-        // Atualiza flag de atualização.
-        OWNER_CHANGED = true;
+        if (owner != null) {
+            // Atualiza flag de atualização.
+            OWNER_CHANGED = true;
+        }
         return owner;
     }
     
@@ -452,30 +435,32 @@ public class Owner implements Serializable, Comparable<Owner> {
      */
     public static synchronized void refreshOwner(String id) throws ProcessException {
         String key = normalizeID(id);
-        // Busca eficiente O(1).
-        if (MAP.containsKey(key)) {
-            // Owner encontrado.
-            Owner owner = MAP.get(key);
-            // Atualizando campos do registro.
-            if (!owner.refresh()) {
-                // Owner real do resultado WHOIS não bate com o registro.
-                // Apagando registro de dono do cache.
-                if (MAP.remove(owner.getOwnerID()) != null) {
-                    // Atualiza flag de atualização.
-                    OWNER_CHANGED = true;
+        if (key != null) {
+            // Busca eficiente O(1).
+            if (MAP.containsKey(key)) {
+                // Owner encontrado.
+                Owner owner = MAP.get(key);
+                // Atualizando campos do registro.
+                if (!owner.refresh()) {
+                    // Owner real do resultado WHOIS não bate com o registro.
+                    // Apagando registro de dono do cache.
+                    if (MAP.remove(owner.getOwnerID()) != null) {
+                        // Atualiza flag de atualização.
+                        OWNER_CHANGED = true;
+                    }
+                    // Segue para nova consulta.
                 }
-                // Segue para nova consulta.
             }
+            // Não encontrou o dono em cache.
+            // Selecionando servidor da pesquisa WHOIS.
+            String server = Server.WHOIS_BR;
+            // Realizando a consulta no WHOIS.
+            Owner owner = new Owner(key);
+            owner.server = server; // Temporário até final de transição.
+            // Adicinando registro em cache.
+            MAP.put(owner.getOwnerID(), owner);
+            OWNER_CHANGED = true;
         }
-        // Não encontrou o dono em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = Server.WHOIS_BR;
-        // Realizando a consulta no WHOIS.
-        Owner owner = new Owner(key);
-        owner.server = server; // Temporário até final de transição.
-        // Adicinando registro em cache.
-        MAP.put(owner.getOwnerID(), owner);
-        OWNER_CHANGED = true;
     }
     
     /**
@@ -486,37 +471,41 @@ public class Owner implements Serializable, Comparable<Owner> {
      */
     public static synchronized Owner getOwner(String id) throws ProcessException {
         String key = normalizeID(id);
-        // Busca eficiente O(1).
-        if (MAP.containsKey(key)) {
-            // Owner encontrado.
-            Owner owner = MAP.get(key);
-            owner.queries++;
-            if (owner.isRegistryExpired()) {
-                // Registro desatualizado.
-                // Atualizando campos do registro.
-                if (owner.refresh()) {
-                    // Owner real do resultado WHOIS bate com o registro.
+        if (key == null) {
+            return null;
+        } else {
+            // Busca eficiente O(1).
+            if (MAP.containsKey(key)) {
+                // Owner encontrado.
+                Owner owner = MAP.get(key);
+                owner.queries++;
+                if (owner.isRegistryExpired()) {
+                    // Registro desatualizado.
+                    // Atualizando campos do registro.
+                    if (owner.refresh()) {
+                        // Owner real do resultado WHOIS bate com o registro.
+                        return owner;
+                    } else if (MAP.remove(owner.getOwnerID()) != null) {
+                        // Owner real do resultado WHOIS não bate com o registro.
+                        OWNER_CHANGED = true;
+                        // Segue para nova consulta.
+                    }
+                } else {
+                    // Registro atualizado.
                     return owner;
-                } else if (MAP.remove(owner.getOwnerID()) != null) {
-                    // Owner real do resultado WHOIS não bate com o registro.
-                    OWNER_CHANGED = true;
-                    // Segue para nova consulta.
                 }
-            } else {
-                // Registro atualizado.
-                return owner;
             }
+            // Não encontrou o dominio em cache.
+            // Selecionando servidor da pesquisa WHOIS.
+            String server = Server.WHOIS_BR;
+            // Realizando a consulta no WHOIS.
+            Owner owner = new Owner(key);
+            owner.server = server; // Temporário até final de transição.
+            // Adicinando registro em cache.
+            MAP.put(owner.getOwnerID(), owner);
+            OWNER_CHANGED = true;
+            return owner;
         }
-        // Não encontrou o dominio em cache.
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = Server.WHOIS_BR;
-        // Realizando a consulta no WHOIS.
-        Owner owner = new Owner(key);
-        owner.server = server; // Temporário até final de transição.
-        // Adicinando registro em cache.
-        MAP.put(owner.getOwnerID(), owner);
-        OWNER_CHANGED = true;
-        return owner;
     }
     
     /**

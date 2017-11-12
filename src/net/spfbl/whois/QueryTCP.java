@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -79,7 +78,7 @@ public final class QueryTCP extends Server {
         
         
         public Connection() {
-            super("WHSTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("WHSTCP" + Core.formatCentena(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
             Server.logTrace(getName() + " thread allocation.");
@@ -225,7 +224,7 @@ public final class QueryTCP extends Server {
             } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating WHSTCP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Server.logDebug("creating WHSTCP" + Core.formatCentena(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 connection.start();
                 CONNECTION_COUNT++;
@@ -251,13 +250,12 @@ public final class QueryTCP extends Server {
                         long time = System.currentTimeMillis();
                         Connection connection = pollConnection();
                         if (connection == null) {
-                            String result = "ERROR: TOO MANY CONNECTIONS\n";
+                            String result = "TOO MANY CONNECTIONS\n";
                             try {
                                 OutputStream outputStream = socket.getOutputStream();
                                 outputStream.write(result.getBytes("ISO-8859-1"));
                             } finally {
                                 socket.close();
-                                System.out.print(result);
                             }
                         } else {
                             connection.process(socket, time);
@@ -278,6 +276,7 @@ public final class QueryTCP extends Server {
     
     @Override
     protected void close() throws Exception {
+        long last = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -285,9 +284,14 @@ public final class QueryTCP extends Server {
                     CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else if (connection.isAlive()) {
                     connection.close();
+                    last = System.currentTimeMillis();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
+            }
+            if ((System.currentTimeMillis() - last) > 60000) {
+                Server.logError("querie TCP socket close timeout.");
+                break;
             }
         }
         Server.logDebug("unbinding querie TCP socket on port " + PORT + "...");

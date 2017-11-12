@@ -49,7 +49,7 @@ public class Ignore {
      */
     private static class SET {
         
-        private static final HashSet<String> SET = new HashSet<String>();
+        private static final HashSet<String> SET = new HashSet<>();
         
         public static synchronized boolean isEmpty() {
             return SET.isEmpty();
@@ -60,7 +60,7 @@ public class Ignore {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             set.addAll(SET);
             return set;
         }
@@ -83,7 +83,7 @@ public class Ignore {
      */
     private static class CIDR {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -253,7 +253,7 @@ public class Ignore {
         }
     }
 
-    private static boolean addExact(String token) throws ProcessException {
+    public static boolean addExact(String token) throws ProcessException {
         if (token == null) {
             return false;
         } else if (token.contains("CIDR=")) {
@@ -277,7 +277,7 @@ public class Ignore {
         return ignoreSet;
     }
 
-    private static boolean containsExact(String address) {
+    public static boolean containsExact(String address) {
         return SET.contains(address);
     }
 
@@ -314,7 +314,7 @@ public class Ignore {
     }
 
     public static TreeSet<String> dropAll() throws ProcessException {
-        TreeSet<String> ignoreSet = new TreeSet<String>();
+        TreeSet<String> ignoreSet = new TreeSet<>();
         for (String token : getAll()) {
             if (dropExact(token)) {
                 ignoreSet.add(token);
@@ -335,6 +335,25 @@ public class Ignore {
     
     public static boolean containsCIDR(String ip) {
         return CIDR.get(null, ip) != null;
+    }
+    
+    public static boolean containsSoft(String token) {
+        if (token == null) {
+            return false;
+        } else if (Domain.isValidEmail(token)) {
+            if (Ignore.containsExact(token = token.toLowerCase())) {
+                return true;
+            } else {
+                int index = token.indexOf('@') + 1;
+                String hostname = token.substring(index);
+                return Ignore.containsHost(hostname);
+            }
+        } else if (Domain.isHostname(token)) {
+            String hostname = Domain.normalizeHostname(token, true);
+            return Ignore.containsHost(hostname);
+        } else {
+            return false;
+        }
     }
 
     public static boolean contains(String token) {
@@ -451,11 +470,8 @@ public class Ignore {
         if (file.exists()) {
             try {
                 Set<String> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 // Processo temporário de transição.
                 for (String token : set) {

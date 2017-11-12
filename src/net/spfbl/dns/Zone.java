@@ -38,6 +38,7 @@ public class Zone implements Serializable, Comparable<Zone> {
     
     public enum Type {
         DNSBL,
+        URIBL,
         DNSWL
     }
     
@@ -77,20 +78,31 @@ public class Zone implements Serializable, Comparable<Zone> {
         return type == Type.DNSBL;
     }
     
+    public boolean isURIBL() {
+        return type == Type.URIBL;
+    }
+    
     public boolean isDNSWL() {
         return type == Type.DNSWL;
     }
 
     public String getMessage(Locale locale, String token) {
         if (type == Type.DNSBL) {
-            String url = Core.getURL(locale, token);
+            String url = Core.getURL(true, locale, token);
+            if (url == null) {
+                return message;
+            } else {
+                return url;
+            }
+        } else if (type == Type.URIBL) {
+            String url = Core.getURL(true, locale, token);
             if (url == null) {
                 return message;
             } else {
                 return url;
             }
         } else if (type == Type.DNSWL) {
-            String url = Core.getURL(locale, token);
+            String url = Core.getURL(true, locale, token);
             if (url == null) {
                 return message;
             } else {
@@ -114,9 +126,21 @@ public class Zone implements Serializable, Comparable<Zone> {
     public String toString() {
         return hostname;
     }
+    
+    private static String normalizeDomain(String host) {
+        if (host == null) {
+            return null;
+        } else if (host.contains("@") && Domain.isValidEmail(host)) {
+            return host.toLowerCase();
+        } else {
+            return Domain.normalizeHostname(host, true);
+        }
+    }
 
     public String extractDomain(String host) {
-        if ((host = Domain.normalizeHostname(host, true)) == null) {
+        if (host == null) {
+            return null;
+        } else if ((host = normalizeDomain(host)) == null) {
             return null;
         } else if (host.equals(this.hostname)) {
             return null;
@@ -124,6 +148,8 @@ public class Zone implements Serializable, Comparable<Zone> {
             int index = host.length() - this.hostname.length();
             String result = host.substring(0, index);
             if (Domain.isHostname(result)) {
+                return result;
+            } else if (Domain.isValidEmail(result)) {
                 return result;
             } else {
                 return null;

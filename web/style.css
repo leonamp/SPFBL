@@ -74,7 +74,7 @@ a:active {
 	text-align: justify;
 	font-size: 14px;
 }
-#recaptcha_widget_div{
+#recaptcha_widget_div, .g-recaptcha {
 	margin: 0 auto;
 	display: block;
 	width: 318px;
@@ -83,7 +83,7 @@ a:active {
 	padding: 20px 0;
 	text-align: center;
 }
-#btngo{
+#btngo {
 	margin: 5px auto;
 	background-color: #337ab7;
 	border: none;
@@ -95,7 +95,7 @@ a:active {
 	font-size: 15px;
 	border-radius: 5px;
 }
-#btngo:disabled{
+#btngo:disabled {
 	background-color: grey;
 }
 #divfooter {

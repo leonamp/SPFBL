@@ -73,7 +73,7 @@ public final class QueryDNS extends Server {
     /**
      * Mapa para cache dos registros DNS consultados.
      */
-    private static final HashMap<String,Zone> MAP = new HashMap<String,Zone>();
+    private static final HashMap<String,Zone> MAP = new HashMap<>();
 
     private static final long SERIAL = 2015102500;
 
@@ -113,19 +113,19 @@ public final class QueryDNS extends Server {
     }
 
     private static synchronized TreeSet<String> keySet() {
-        TreeSet<String> keySet = new TreeSet<String>();
+        TreeSet<String> keySet = new TreeSet<>();
         keySet.addAll(MAP.keySet());
         return keySet;
     }
     
     private static synchronized HashMap<String,Zone> getMap() {
-        HashMap<String,Zone> map = new HashMap<String,Zone>();
+        HashMap<String,Zone> map = new HashMap<>();
         map.putAll(MAP);
         return map;
     }
 
     public static synchronized HashMap<String,Zone> getDNSBLMap() {
-        HashMap<String,Zone> map = new HashMap<String,Zone>();
+        HashMap<String,Zone> map = new HashMap<>();
         for (String key : MAP.keySet()) {
             Zone zone = MAP.get(key);
             if (zone.isDNSBL()) {
@@ -135,8 +135,19 @@ public final class QueryDNS extends Server {
         return map;
     }
     
+    public static synchronized HashMap<String,Zone> getURIBLMap() {
+        HashMap<String,Zone> map = new HashMap<>();
+        for (String key : MAP.keySet()) {
+            Zone zone = MAP.get(key);
+            if (zone.isURIBL()) {
+                map.put(key, zone);
+            }
+        }
+        return map;
+    }
+    
     public static synchronized HashMap<String,Zone> getDNSWLMap() {
-        HashMap<String,Zone> map = new HashMap<String,Zone>();
+        HashMap<String,Zone> map = new HashMap<>();
         for (String key : MAP.keySet()) {
             Zone zone = MAP.get(key);
             if (zone.isDNSWL()) {
@@ -155,7 +166,7 @@ public final class QueryDNS extends Server {
     }
 
     public static synchronized TreeSet<Zone> getValues() {
-        TreeSet<Zone> serverSet = new TreeSet<Zone>();
+        TreeSet<Zone> serverSet = new TreeSet<>();
         serverSet.addAll(MAP.values());
         return serverSet;
     }
@@ -169,6 +180,21 @@ public final class QueryDNS extends Server {
         } else if (Domain.isHostname(hostname)) {
             hostname = Domain.normalizeHostname(hostname, true);
             Zone server = new Zone(Zone.Type.DNSBL, hostname, message);
+            return putExact(hostname, server) ;
+        } else {
+            return false;
+        }
+    }
+    
+    /**
+     * Adiciona um registro DNS no mapa de cache.
+     */
+    public static boolean addURIBL(String hostname, String message) {
+        if (hostname == null) {
+            return false;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            Zone server = new Zone(Zone.Type.URIBL, hostname, message);
             return putExact(hostname, server) ;
         } else {
             return false;
@@ -219,7 +245,7 @@ public final class QueryDNS extends Server {
     }
     
     public static TreeSet<Zone> dropAllDNSBL() {
-        TreeSet<Zone> serverSet = new TreeSet<Zone>();
+        TreeSet<Zone> serverSet = new TreeSet<>();
         for (Zone zone : getValues()) {
             if (zone != null && zone.isDNSBL()) {
                 String hostname = zone.getHostName();
@@ -232,8 +258,22 @@ public final class QueryDNS extends Server {
         return serverSet;
     }
     
+    public static TreeSet<Zone> dropAllURIBL() {
+        TreeSet<Zone> serverSet = new TreeSet<>();
+        for (Zone zone : getValues()) {
+            if (zone != null && zone.isURIBL()) {
+                String hostname = zone.getHostName();
+                zone = dropExact(hostname);
+                if (zone != null) {
+                    serverSet.add(zone);
+                }
+            }
+        }
+        return serverSet;
+    }
+    
     public static TreeSet<Zone> dropAllDNSWL() {
-        TreeSet<Zone> serverSet = new TreeSet<Zone>();
+        TreeSet<Zone> serverSet = new TreeSet<>();
         for (Zone zone : getValues()) {
             if (zone != null && zone.isDNSWL()) {
                 String hostname = zone.getHostName();
@@ -253,6 +293,24 @@ public final class QueryDNS extends Server {
             hostname = Domain.normalizeHostname(hostname, true);
             Zone zone = dropExact(hostname);
             if (zone.isDNSBL()) {
+                return zone;
+            } else if (putExact(hostname, zone)) {
+                return null;
+            } else {
+                return zone;
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static Zone dropURIBL(String hostname) {
+        if (hostname == null) {
+            return null;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            Zone zone = dropExact(hostname);
+            if (zone.isURIBL()) {
                 return zone;
             } else if (putExact(hostname, zone)) {
                 return null;
@@ -289,12 +347,9 @@ public final class QueryDNS extends Server {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/zone.map");
                 HashMap<String,Zone> map = getMap();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -309,11 +364,8 @@ public final class QueryDNS extends Server {
         if (file.exists()) {
             try {
                 Map<String,Zone> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Zone value = map.get(key);
@@ -329,11 +381,8 @@ public final class QueryDNS extends Server {
             if (file.exists()) {
                 try {
                     Map<String,ServerDNSBL> map;
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
+                    try (FileInputStream fileInputStream = new FileInputStream(file)) {
                         map = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
                     }
                     for (String key : map.keySet()) {
                         ServerDNSBL value = map.get(key);
@@ -345,6 +394,28 @@ public final class QueryDNS extends Server {
                     Server.logError(ex);
                 }
             }
+        }
+    }
+    
+    private static String normalizeHost(String address, boolean pontuacao) {
+        if (address == null) {
+            return null;
+        } else if (address.length() == 0) {
+            return null;
+        } else if (address.contains("@")) {
+            address = address.replace("\\@", "@");
+            address = Core.removerAcentuacao(address);
+            return address.toLowerCase();
+        } else if (!Domain.isHostname(address)) {
+            return null;
+        } else if (pontuacao && !address.startsWith(".")) {
+            return "." + Core.removerAcentuacao(address).toLowerCase();
+        } else if (pontuacao && address.startsWith(".")) {
+            return Core.removerAcentuacao(address).toLowerCase();
+        } else if (!pontuacao && !address.startsWith(".")) {
+            return Core.removerAcentuacao(address).toLowerCase();
+        } else{
+            return Core.removerAcentuacao(address.substring(1)).toLowerCase();
         }
     }
 
@@ -362,7 +433,8 @@ public final class QueryDNS extends Server {
         Server.logTrace(getName() + " thread allocation.");
     }
 
-    private int CONNECTION_ID = 1;
+    private int CONNECTION_ID = 0;
+    private long CONNECTION_TIME = 0;
 
     /**
      * Representa uma conexão ativa.
@@ -374,16 +446,46 @@ public final class QueryDNS extends Server {
          * O poll de pacotes de consulta a serem processados.
          */
         private DatagramPacket PACKET = null;
-
+        private int ID = 0;
         private final Semaphore SEMAPHORE = new Semaphore(0);
-
         private long time = 0;
         
         public Connection() {
-            super("DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
-            // Toda connexão recebe prioridade mínima.
+//            super("DNSUDP" + Core.formatCentena(CONNECTION_ID++));
+            String name = getNextName();
+            Server.logDebug("creating " + name + "...");
+            setName(name);
+            // Toda connexão recebe prioridade normal.
             setPriority(Thread.NORM_PRIORITY);
             Server.logTrace(getName() + " thread allocation.");
+        }
+        
+        private synchronized String getNextName() {
+            CONNECTION_TIME = System.currentTimeMillis();
+            return "DNSUDP" + Core.formatCentena(ID = ++CONNECTION_ID);
+        }
+        
+        private synchronized boolean closeIfLast() {
+            if (ID == 1) {
+                return false;
+            } else if (ID < CONNECTION_ID) {
+                return false;
+            } else if (System.currentTimeMillis() - CONNECTION_TIME < 60000) {
+                return false;
+            } else if (isIdle()) {
+                close();
+                CONNECTION_ID--;
+                CONNECTION_TIME = System.currentTimeMillis();
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        @Override
+        public void start() {
+            CONNECTION_COUNT++;
+            super.start();
         }
 
         /**
@@ -425,9 +527,13 @@ public final class QueryDNS extends Server {
             PACKET = null;
         }
         
-        private NormalDistribution frequency = null;
+        private final NormalDistribution frequency = new NormalDistribution(50);
         private long last = 0;
-        private final int limit = 10;
+        private final int LIMIT = 10;
+        
+        private boolean isIdle() {
+            return frequency.getMinimum() > 100.0f;
+        }
         
         private long getIdleTimeMillis() {
             if (last == 0) {
@@ -449,7 +555,7 @@ public final class QueryDNS extends Server {
             } else if (isDead()) {
                 return false;
             } else {
-                return frequency.getMaximumInt() < limit;
+                return frequency.getMaximumInt() < LIMIT;
             }
         }
         
@@ -469,9 +575,6 @@ public final class QueryDNS extends Server {
             Float interval = getInterval();
             if (interval == null) {
                 return false;
-            } else if (frequency == null) {
-                frequency = new NormalDistribution(interval < 1000 ? 1000 : interval);
-                return true;
             } else {
                 frequency.addElement(interval);
                 return true;
@@ -493,6 +596,7 @@ public final class QueryDNS extends Server {
                         InetAddress ipAddress = packet.getAddress();
                         String origin = ipAddress.getHostAddress();
                         String query = "ERROR";
+                        String type = null;
                         String result = "IGNORED";
                         String tag = "DNSQR";
                         try {
@@ -507,7 +611,7 @@ public final class QueryDNS extends Server {
                                 result = "IGNORED";
                             } else {
                                 Name name = question.getName();
-                                String type = Type.string(question.getType());
+                                type = Type.string(question.getType());
                                 query = name.toString();
                                 if (interrupted) {
                                     result = "INTERRUPTED";
@@ -517,21 +621,18 @@ public final class QueryDNS extends Server {
                                     if (client == null) {
                                         result = "IGNORED";
                                     } else if (client.hasPermission(Permission.NONE)) {
-                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
                                     } else if (isCongested() && client.isAbusing()) {
-                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
                                     } else {
-                                        this.addQuery();
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         long ttl = 3600; // Uma hora padrão.
-                                        String host = Domain.extractHost(query, false);
+                                        String host = normalizeHost(query, false);
                                         Zone zone = null;
                                         String clientQuery = null;
                                         if (host == null) {
@@ -555,6 +656,17 @@ public final class QueryDNS extends Server {
                                             if (zone == null) {
                                                 // Não existe zona cadastrada.
                                                 result = "NXDOMAIN";
+                                            } else if (type.equals("NS")) {
+                                                if (zone.isHostName(host)) {
+                                                    // O NS é o próprio servidor.
+                                                    if ((result = Core.getHostname()) == null) {
+                                                        result = "NXDOMAIN";
+                                                    } else {
+                                                        result += '.';
+                                                    }
+                                                } else {
+                                                    result = "NXDOMAIN";
+                                                }
                                             } else if (type.equals("A") && zone.isHostName(host)) {
                                                 // O A é o próprio servidor.
                                                 if ((result = Core.getHostname()) == null) {
@@ -562,13 +674,6 @@ public final class QueryDNS extends Server {
                                                 } else {
                                                     InetAddress address = InetAddress.getByName(result);
                                                     result = address.getHostAddress();
-                                                }
-                                            } else if (type.equals("NS") && zone.isHostName(host)) {
-                                                // O NS é o próprio servidor.
-                                                if ((result = Core.getHostname()) == null) {
-                                                    result = "NXDOMAIN";
-                                                } else {
-                                                    result += '.';
                                                 }
                                             } else if (host.equals(hostname)) {
                                                 // Consulta do próprio hostname do servidor.
@@ -616,9 +721,14 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
-//                                                    } else if (Block.containsHREF(clientQuery)) {
-//                                                        result = "127.0.0.4";
-//                                                        ttl = 86400; // Um dia.
+                                                    } else {
+                                                        Analise.processToday(clientQuery);
+                                                        result = "NXDOMAIN";
+                                                    }
+                                                } else if (zone.isURIBL()) {
+                                                    if (Block.containsHREF(clientQuery)) {
+                                                        result = "127.0.0.2";
+                                                        ttl = 86400; // Um dia.
                                                     } else {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
@@ -653,6 +763,7 @@ public final class QueryDNS extends Server {
                                             } else if (SubnetIPv6.isReverseIPv6(reverse)) {
                                                 // A consulta é um IPv6.
                                                 clientQuery = SubnetIPv6.reverseToIPv6(reverse);
+                                                clientQuery = SubnetIPv6.tryTransformToIPv4(clientQuery);
                                                 if (clientQuery.equals("0:0:0:0:0:ffff:7f00:1")) {
                                                     // Consulta de teste para negativo.
                                                     result = "NXDOMAIN";
@@ -690,14 +801,19 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
-//                                                    } else if (Block.containsHREF(clientQuery)) {
-//                                                        result = "127.0.0.4";
-//                                                        ttl = 86400; // Um dia.
                                                     } else if (status == SPF.Status.YELLOW) {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
                                                     } else if (SubnetIPv6.isSLAAC(clientQuery)) {
                                                         result = "NXDOMAIN";
+                                                    } else {
+                                                        Analise.processToday(clientQuery);
+                                                        result = "NXDOMAIN";
+                                                    }
+                                                } else if (zone.isURIBL()) {
+                                                    if (Block.containsHREF(clientQuery)) {
+                                                        result = "127.0.0.2";
+                                                        ttl = 86400; // Um dia.
                                                     } else {
                                                         Analise.processToday(clientQuery);
                                                         result = "NXDOMAIN";
@@ -748,7 +864,7 @@ public final class QueryDNS extends Server {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
                                                         }
-                                                    } else if (Block.containsDomain(clientQuery, true)) {
+                                                    } else if (Block.contains(clientQuery)) {
                                                         if (status == SPF.Status.RED) {
                                                             result = "127.0.0.2";
                                                             ttl = 604800; // Sete dias.
@@ -765,8 +881,13 @@ public final class QueryDNS extends Server {
                                                         Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
-                                                    } else if (Block.containsHREF(clientQuery)) {
-                                                        result = "127.0.0.4";
+                                                    } else {
+                                                        Analise.processToday(clientQuery);
+                                                        result = "NXDOMAIN";
+                                                    }
+                                                } else if (zone.isURIBL()) {
+                                                    if (Block.containsHREF(clientQuery)) {
+                                                        result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
                                                     } else {
                                                         Analise.processToday(clientQuery);
@@ -780,10 +901,10 @@ public final class QueryDNS extends Server {
                                                     } else if (Generic.containsGenericSoft(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
-                                                    } else if (Block.containsDomain(clientQuery, true)) {
+                                                    } else if (Block.contains(clientQuery)) {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
-                                                    } else if (Ignore.containsHost(clientQuery)) {
+                                                    } else if (Ignore.contains(clientQuery)) {
                                                         if (SPF.isGood(clientQuery)) {
                                                             result = "127.0.0.2";
                                                         } else {
@@ -793,7 +914,7 @@ public final class QueryDNS extends Server {
                                                     } else if (SPF.isGood(clientQuery)) {
                                                         result = "127.0.0.2";
                                                         ttl = 259200; // Três dias.
-                                                    } else if (White.containsDomain(clientQuery)) {
+                                                    } else if (White.contains(clientQuery)) {
                                                         result = "127.0.0.4";
                                                     } else {
                                                         result = "NXDOMAIN";
@@ -802,7 +923,6 @@ public final class QueryDNS extends Server {
                                                 } else {
                                                     result = "NXDOMAIN";
                                                 }
-                                                clientQuery = Domain.normalizeHostname(clientQuery, false);
                                             } else {
                                                 // Não está listado.
                                                 result = "NXDOMAIN";
@@ -813,15 +933,14 @@ public final class QueryDNS extends Server {
                                         } else {
                                             tag = zone.getTypeName();
                                         }
-                                        if (type.equals("TXT") && result.startsWith("127.0.0.")) {
+                                        String information = null;
+                                        if (result.startsWith("127.0.0.")) {
                                             if (zone == null) {
                                                 result = "NXDOMAIN";
                                             } else {
-                                                String information = zone.getMessage(null, clientQuery);
+                                                information = zone.getMessage(null, clientQuery);
                                                 if (information == null) {
                                                     result = "NXDOMAIN";
-                                                } else {
-                                                    result = information;
                                                 }
                                             }
                                         }
@@ -840,17 +959,24 @@ public final class QueryDNS extends Server {
                                                         name, SERIAL, refresh, retry, expire, minimum);
                                                 message.addRecord(soa, Section.AUTHORITY);
                                             }
-                                        } else if (type.equals("TXT")) {
-                                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result);
-                                            message.addRecord(txt, Section.ANSWER);
-                                        } else if (result.startsWith("127.0.0.")) {
-                                            InetAddress address = InetAddress.getByName(result);
-                                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
-                                            message.addRecord(a, Section.ANSWER);
                                         } else if (type.equals("NS")) {
                                             Name hostname = Name.fromString(result);
                                             NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
                                             message.addRecord(ns, Section.ANSWER);
+                                        } else if (type.equals("A") || type.equals("AAAA")) {
+                                            InetAddress address = InetAddress.getByName(result);
+                                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                                            message.addRecord(a, Section.ANSWER);
+                                        } else if (type.equals("TXT")) {
+                                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, result = information);
+                                            message.addRecord(txt, Section.ANSWER);
+                                        } else if (type.equals("ANY") || type.equals("CNAME")) {
+                                            InetAddress address = InetAddress.getByName(result);
+                                            ARecord a = new ARecord(name, DClass.IN, ttl, address);
+                                            message.addRecord(a, Section.ANSWER);
+                                            TXTRecord txt = new TXTRecord(name, DClass.IN, ttl, information);
+                                            message.addRecord(txt, Section.ANSWER);
+                                            result += " " + information;
                                         } else {
                                             InetAddress address = InetAddress.getByName(result);
                                             ARecord a = new ARecord(name, DClass.IN, ttl, address);
@@ -866,7 +992,6 @@ public final class QueryDNS extends Server {
                                         );
                                         SERVER_SOCKET.send(sendPacket);
                                     }
-                                    query = type + " " + query;
                                 }
                             }
                         } catch (SocketException ex) {
@@ -884,13 +1009,15 @@ public final class QueryDNS extends Server {
                                     time,
                                     tag,
                                     origin,
-                                    query,
+                                    type == null ? query : type + " " + query,
                                     result
                             );
+                            addQuery();
                             clearPacket();
                             // Oferece a conexão ociosa na última posição da lista.
                             offer(this);
                             CONNECION_SEMAPHORE.release();
+                            notifyConnection();
                         }
                     }
                 } while (interrupted);
@@ -906,20 +1033,20 @@ public final class QueryDNS extends Server {
     /**
      * Pool de conexões ativas.
      */
-    private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
-    private final LinkedList<Connection> CONNECTION_USE = new LinkedList<Connection>();
+    private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<>();
+    private final LinkedList<Connection> CONNECTION_USE = new LinkedList<>();
 
     /**
      * Semáforo que controla o pool de conexões.
      */
-    private final Semaphore CONNECION_SEMAPHORE = new Semaphore(0);
+    private Semaphore CONNECION_SEMAPHORE;
 
     /**
      * Quantidade total de conexões intanciadas.
      */
     private int CONNECTION_COUNT = 0;
 
-    private static byte CONNECTION_LIMIT = 16;
+    private static byte CONNECTION_LIMIT = 8;
 
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
@@ -942,6 +1069,10 @@ public final class QueryDNS extends Server {
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
+    
+    private synchronized int pollSize() {
+        return CONNECTION_POLL.size();
+    }
 
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
@@ -951,6 +1082,31 @@ public final class QueryDNS extends Server {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
     }
+    
+    private Connection pollAndCloseIfLast() {
+        Connection connection = poll();
+        if (connection == null) {
+            return null;
+        } else if (connection.closeIfLast()) {
+            return poll();
+        } else {
+            return connection;
+        }
+    }
+    
+    private synchronized void notifyConnection() {
+        notify();
+    }
+    
+    private synchronized Connection waitConnection() {
+        try {
+            wait(100);
+            return poll();
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
 
     /**
      * Coleta uma conexão ociosa ou inicia uma nova.
@@ -958,21 +1114,16 @@ public final class QueryDNS extends Server {
      */
     private Connection pollConnection() {
         try {
-            if (CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS)) {
-                Connection connection = poll();
+            if (CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS)) {
+                Connection connection = pollAndCloseIfLast();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.release();
-                } else {
-                    use(connection);
+                    connection = waitConnection();
+                    if (connection == null) {
+                        connection = new Connection();
+                        connection.start();
+                    }
                 }
-                return connection;
-            } else if (CONNECTION_COUNT < CONNECTION_LIMIT) {
-                // Cria uma nova conexão se não houver conecões ociosas.
-                // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating DNSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
-                Connection connection = new Connection();
-                connection.start();
-                CONNECTION_COUNT++;
+                use(connection);
                 return connection;
             } else {
                 // Se não houver liberação, ignorar consulta DNS.
@@ -993,6 +1144,7 @@ public final class QueryDNS extends Server {
     public void run() {
         try {
             Server.logInfo("listening DNS on UDP port " + PORT + ".");
+            CONNECION_SEMAPHORE = new Semaphore(CONNECTION_LIMIT);
             while (continueListenning()) {
                 try {
                     byte[] receiveData = new byte[1024];
@@ -1033,20 +1185,25 @@ public final class QueryDNS extends Server {
 
     /**
      * Fecha todas as conexões e finaliza o servidor UDP.
-     * @throws Exception se houver falha em algum fechamento.
      */
     @Override
     protected void close() {
+        long last = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
                 if (connection == null) {
-                    CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
+                    CONNECION_SEMAPHORE.tryAcquire(1, TimeUnit.SECONDS);
                 } else {
                     connection.close();
+                    last = System.currentTimeMillis();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
+            }
+            if ((System.currentTimeMillis() - last) > 60000) {
+                Server.logError("DNS socket close timeout.");
+                break;
             }
         }
         Server.logDebug("unbinding DNS socket on port " + PORT + "...");

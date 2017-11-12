@@ -430,6 +430,11 @@ public final class SubnetIPv4 extends Subnet {
      */
     private static final TreeMap<Long,SubnetIPv4> MAP = new TreeMap<Long,SubnetIPv4>();
     
+    @Override
+    public synchronized SubnetIPv4 drop() {
+        return MAP.remove((long) address);
+    }
+    
     /**
      * Remove registro de bloco de IP para AS do cache.
      * @param ip o IP cujo bloco deve ser removido.

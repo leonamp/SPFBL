@@ -63,21 +63,21 @@ public class White {
      */
     private static class SET {
         
-        private static final HashSet<String> SET = new HashSet<String>();
+        private static final HashSet<String> SET = new HashSet<>();
         
         public static synchronized boolean isEmpty() {
             return SET.isEmpty();
         }
         
         public static synchronized TreeSet<String> clear() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             set.addAll(SET);
             SET.clear();
             return set;
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             set.addAll(SET);
             return set;
         }
@@ -100,7 +100,7 @@ public class White {
      */
     private static class WHOIS {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -113,7 +113,7 @@ public class White {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (String whois : MAP.get(client)) {
                     if (client == null) {
@@ -160,7 +160,7 @@ public class White {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             return set.add(whois);
@@ -198,7 +198,7 @@ public class White {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
-                TreeSet<String> subSet = new TreeSet<String>();
+                TreeSet<String> subSet = new TreeSet<>();
                 String[] array = getArray(null);
                 if (array != null) {
                     subSet.addAll(Arrays.asList(array));
@@ -272,7 +272,7 @@ public class White {
      */
     private static class REGEX {
         
-        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<String,ArrayList<Pattern>>();
+        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -285,7 +285,7 @@ public class White {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (Pattern pattern : MAP.get(client)) {
                     if (client == null) {
@@ -338,7 +338,7 @@ public class White {
             }
             ArrayList<Pattern> list = MAP.get(client);
             if (list == null) {
-                list = new ArrayList<Pattern>();
+                list = new ArrayList<>();
                 MAP.put(client, list);
             }
             for (index = 0; index < list.size(); index++) {
@@ -389,7 +389,6 @@ public class White {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
-//                long time = System.currentTimeMillis();
                 String result = null;
                 Pattern[] patternArray = getArray(null);
                 if (patternArray != null) {
@@ -421,7 +420,6 @@ public class White {
                         }
                     }
                 }
-//                logTrace(time, "REGEX lookup for " + tokenSet + ".");
                 return result;
             }
         }
@@ -432,7 +430,7 @@ public class White {
      */
     private static class CIDR {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -445,7 +443,7 @@ public class White {
         }
         
         public static synchronized ArrayList<String> getKeySet() {
-            ArrayList<String> resultSet = new ArrayList<String>();
+            ArrayList<String> resultSet = new ArrayList<>();
             resultSet.addAll(MAP.keySet());
             return resultSet;
         }
@@ -464,7 +462,7 @@ public class White {
         }
         
         public static synchronized TreeSet<String> getExtended() {
-            TreeSet<String> returnSet = new TreeSet<String>();
+            TreeSet<String> returnSet = new TreeSet<>();
             TreeSet<String> cidrSet = MAP.get(null);
             if (cidrSet != null) {
                 returnSet.addAll(cidrSet);
@@ -481,7 +479,7 @@ public class White {
         }
         
         public static synchronized TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             TreeSet<String> cidrSet = MAP.get(user);
             if (cidrSet != null) {
                 for (String cidr : cidrSet) {
@@ -523,7 +521,7 @@ public class White {
         }
         
         public static TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : getKeySet()) {
                 Object[] clientArray = getClientArray(client);
                 if (clientArray != null) {
@@ -666,7 +664,7 @@ public class White {
             String cidr = token.substring(index+1);
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -685,7 +683,7 @@ public class White {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -744,7 +742,7 @@ public class White {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -757,12 +755,12 @@ public class White {
                 String lastExpanded = Subnet.expandIP(lastCIDR) + "/99";
                 String floorExpanded = set.floor(firstExpanded);
                 String floor = Subnet.normalizeCIDR(floorExpanded);
-                TreeSet<String> intersectsSet = new TreeSet<String>();
+                TreeSet<String> intersectsSet = new TreeSet<>();
                 intersectsSet.addAll(set.subSet(firstExpanded, lastExpanded));
                 if (Subnet.containsIP(floor, firstCIDR)) {
                     intersectsSet.add(floorExpanded);
                 }
-                TreeSet<String> overlapSet = new TreeSet<String>();
+                TreeSet<String> overlapSet = new TreeSet<>();
                 StringBuilder errorBuilder = new StringBuilder();
                 for (String elementExpanded : intersectsSet) {
                     String element = Subnet.normalizeCIDR(elementExpanded);
@@ -877,7 +875,6 @@ public class White {
         }
 
         public static String get(String client, String ip) {
-//            long time = System.currentTimeMillis();
             String result;
             String cidr = getFloor(null, ip);
             if (Subnet.containsIP(cidr, ip)) {
@@ -891,7 +888,6 @@ public class White {
             } else {
                 result = null;
             }
-//            logTrace(time, "CIDR lookup for '" + ip + "'.");
             return result;
         }
     }
@@ -901,7 +897,6 @@ public class White {
             return false;
         } else if (token.contains("WHOIS/")) {
             if (WHOIS.dropExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -909,7 +904,6 @@ public class White {
             }
         } else if (token.contains("CIDR=")) {
             if (CIDR.dropExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -917,14 +911,12 @@ public class White {
             }
         } else if (token.contains("REGEX=")) {
             if (REGEX.dropExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         } else if (SET.dropExact(token)) {
-//            Peer.releaseAll(token);
             CHANGED = true;
             return true;
         } else {
@@ -966,7 +958,7 @@ public class White {
                 if (System.currentTimeMillis() - date > 432000000) {
                     return "EXPIRED TICKET\n";
                 } else {
-                    String query = Core.HUFFMAN.decode(byteArray, 8);
+                    String query = Core.decodeHuffman(byteArray, 8);
                     StringTokenizer tokenizer = new StringTokenizer(query, " ");
                     String command = tokenizer.nextToken();
                     if (command.equals("spam")) {
@@ -985,7 +977,7 @@ public class White {
                             User.Query userQuery = user.getQuerySafe(date);
                             if (userQuery == null) {
                                 return "QUERY NOT FOUND\n";
-                            } else if (userQuery.whiteSender(date)) {
+                            } else if (userQuery.whiteKey(date)) {
                                 userQuery.setResult("WHITE");
                                 return "ADDED\n";
                             } else {
@@ -1009,7 +1001,6 @@ public class White {
             return false;
         } else if (token.contains("WHOIS/")) {
             if (WHOIS.addExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -1017,7 +1008,6 @@ public class White {
             }
         } else if (token.contains("CIDR=")) {
             if (CIDR.addExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
@@ -1025,14 +1015,12 @@ public class White {
             }
         } else if (token.contains("REGEX=")) {
             if (REGEX.addExact(token)) {
-//                Peer.releaseAll(token);
                 CHANGED = true;
                 return true;
             } else {
                 return false;
             }
         } else if (SET.addExact(token)) {
-//            Peer.releaseAll(token);
             CHANGED = true;
             return true;
         } else {
@@ -1056,9 +1044,27 @@ public class White {
         }
     }
     
+    public static boolean contains(String token) {
+        if (token == null) {
+            return false;
+        } else if (Domain.isHostname(token)) {
+            String hostname = Domain.normalizeHostname(token, true);
+            return White.containsDomain(hostname);
+        } else if (Domain.isValidEmail(token)) {
+            if (White.containsExact(token = token.toLowerCase())) {
+                return true;
+            } else {
+                int index = token.indexOf('@') + 1;
+                String hostname = '.' + token.substring(index);
+                return White.containsDomain(hostname);
+            }
+        } else {
+            return false;
+        }
+    }
+    
     public static boolean containsDomain(String host) {
-        host = Domain.extractHost(host, true);
-        if (host == null) {
+        if ((host = Domain.extractHost(host, true)) == null) {
             return false;
         } else {
             do {
@@ -1204,7 +1210,7 @@ public class White {
     }
 
     public static boolean add(String client, String token) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if ((token = normalizeTokenWhite(token)) == null) {
             throw new ProcessException("TOKEN INVALID");
@@ -1244,7 +1250,7 @@ public class White {
     }
     
     public static boolean drop(String client, String token) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if ((token = normalizeTokenWhite(token)) == null) {
             throw new ProcessException("TOKEN INVALID");
@@ -1282,7 +1288,7 @@ public class White {
     }
 
     public static TreeSet<String> get(Client client, User user) throws ProcessException {
-        TreeSet<String> whiteSet = new TreeSet<String>();
+        TreeSet<String> whiteSet = new TreeSet<>();
         // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
@@ -1303,7 +1309,7 @@ public class White {
     }
 
     public static TreeSet<String> getAll(Client client, User user) throws ProcessException {
-        TreeSet<String> whiteSet = new TreeSet<String>();
+        TreeSet<String> whiteSet = new TreeSet<>();
         // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
@@ -1326,7 +1332,7 @@ public class White {
     }
 
     public static TreeSet<String> getAllTokens(String value) {
-        TreeSet<String> whiteSet = new TreeSet<String>();
+        TreeSet<String> whiteSet = new TreeSet<>();
         if (Subnet.isValidIP(value)) {
             String ip = Subnet.normalizeIP(value);
             if (SET.contains(ip)) {
@@ -1369,7 +1375,7 @@ public class White {
     }
 
     public static TreeSet<String> get() throws ProcessException {
-        TreeSet<String> whiteSet = new TreeSet<String>();
+        TreeSet<String> whiteSet = new TreeSet<>();
         for (String token : getAll()) {
             int index = Math.max(0, token.indexOf(':'));
             String email = token.substring(0, index);
@@ -1418,7 +1424,7 @@ public class White {
                 Server.logInfo("false negative WHITE '" + white + "' detected by '" + userEmail + "'.");
             }
         }
-        TreeSet<String> whiteSet = new TreeSet<String>();
+        TreeSet<String> whiteSet = new TreeSet<>();
         while ((white = find(client, user, ip, sender, hostname, qualifier, recipient)) != null) {
             if (whiteSet.contains(white)) {
                 throw new ProcessException("FATAL WHITE ERROR " + white);
@@ -1441,13 +1447,67 @@ public class White {
         return find(client, user, ip, sender, hostname, qualifier, recipient) != null;
     }
     
+    public static String key(
+            Client client,
+            User user,
+            String ip,
+            String sender,
+            String hostname,
+            String qualifier
+    ) {
+        String userEmail = null;
+        if (user != null) {
+            userEmail = user.getEmail();
+        } else if (client != null) {
+            userEmail = client.getEmail();
+        }
+        if (userEmail == null) {
+            userEmail = "";
+        } else {
+            userEmail += ":";
+        }
+        if (sender == null) {
+            try {
+                if (hostname == null) {
+                    return userEmail + "mailer-daemon@;" + ip;
+                } else {
+                    String domain = Domain.extractDomain(hostname, false);
+                    return userEmail + "mailer-daemon@" + domain;
+                }
+            } catch (Exception ex) {
+                return userEmail + ip;
+            }
+        } else {
+            int index = sender.indexOf('@');
+            sender = sender.toLowerCase();
+            String senderDomain = sender.substring(index);
+            String validator;
+            if ("PASS".equals(qualifier)) {
+                validator = "PASS";
+            } else if (hostname == null) {
+                validator = ip;
+            } else {
+                try {
+                    validator = Domain.extractDomain(hostname, false);
+                } catch (ProcessException ex) {
+                    validator = ip;
+                }
+            }
+            if (Provider.containsExact(senderDomain)) {
+                return userEmail + sender + ";" + validator;
+            } else {
+                return userEmail + senderDomain + ";" + validator;
+            }
+        }
+    }
+    
     public static String find(
             Client client, User user,
             String ip, String sender, String hostname,
             String qualifier, String recipient
     ) {
-        TreeSet<String> whoisSet = new TreeSet<String>();
-        TreeSet<String> regexSet = new TreeSet<String>();
+        TreeSet<String> whoisSet = new TreeSet<>();
+        TreeSet<String> regexSet = new TreeSet<>();
         // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
@@ -1469,6 +1529,11 @@ public class White {
             try {
                 String domain = Domain.extractDomain(hostname, false);
                 sender = "mailer-daemon@" + domain;
+                if (containsExact(sender + ";PASS")) {
+                    return sender + ";PASS";
+                } else if (containsExact(userEmail + ":" + sender + ";PASS")) {
+                    return userEmail + ":" + sender + ";PASS";
+                }
             } catch (Exception ex) {
                 sender = null;
             }
@@ -1506,8 +1571,8 @@ public class White {
                 return "mailer-daemon@;" + ip;
             } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
                 return userEmail + ":mailer-daemon@;" + ip;
-            } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
-                return userEmail + ":@;" + ip;
+//            } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
+//                return userEmail + ":@;" + ip;
             } else if (userEmail != null && SET.contains(userEmail + ':' + ip + ';' + qualifier)) {
                 return userEmail + ':' + ip + ';' + qualifier;
             } else if (userEmail != null && recipient != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipient)) {
@@ -1595,26 +1660,26 @@ public class White {
                 return userEmail + ':' + senderDomain + ';' + validation + '>' + recipientDomain;
             } else if ((found = findHost(userEmail, sender, "." + senderDomain.substring(1), validation, recipient, recipientDomain, whoisSet, regexSet, false)) != null) {
                 return found;
-            } else if (recipient != null && SET.contains("@>" + recipient)) {
-                return "@>" + recipient;
-            } else if (recipientDomain != null && SET.contains("@>" + recipientDomain)) {
-                return "@>" + recipientDomain;
-            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@>" + recipient)) {
-                return userEmail + ":@>" + recipient;
-            } else if (recipientDomain != null && userEmail != null && SET.contains(userEmail + ":@>" + recipientDomain)) {
-                return userEmail + ":@>" + recipientDomain;
-            } else if (recipient != null && SET.contains("@;" + validation)) {
-                return "@;" + validation;
-            } else if (recipient != null && SET.contains("@;" + validation +  ">" + recipient)) {
-                return "@;" + validation +  ">" + recipient;
-            } else if (recipientDomain != null && SET.contains("@;" + validation +  ">" + recipientDomain)) {
-                return "@;" + validation +  ">" + recipientDomain;
-            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@;" + validation)) {
-                return userEmail + ":@;" + validation;
-            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@;" + validation +  ">" + recipient)) {
-                return userEmail + ":@;" + validation +  ">" + recipient;
-            } else if (recipientDomain != null && userEmail != null && SET.contains(userEmail + ":@;" + validation +  ">" + recipientDomain)) {
-                return userEmail + ":@;" + validation +  ">" + recipientDomain;
+//            } else if (recipient != null && SET.contains("@>" + recipient)) {
+//                return "@>" + recipient;
+//            } else if (recipientDomain != null && SET.contains("@>" + recipientDomain)) {
+//                return "@>" + recipientDomain;
+//            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@>" + recipient)) {
+//                return userEmail + ":@>" + recipient;
+//            } else if (recipientDomain != null && userEmail != null && SET.contains(userEmail + ":@>" + recipientDomain)) {
+//                return userEmail + ":@>" + recipientDomain;
+//            } else if (recipient != null && SET.contains("@;" + validation)) {
+//                return "@;" + validation;
+//            } else if (recipient != null && SET.contains("@;" + validation +  ">" + recipient)) {
+//                return "@;" + validation +  ">" + recipient;
+//            } else if (recipientDomain != null && SET.contains("@;" + validation +  ">" + recipientDomain)) {
+//                return "@;" + validation +  ">" + recipientDomain;
+//            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@;" + validation)) {
+//                return userEmail + ":@;" + validation;
+//            } else if (recipient != null && userEmail != null && SET.contains(userEmail + ":@;" + validation +  ">" + recipient)) {
+//                return userEmail + ":@;" + validation +  ">" + recipient;
+//            } else if (recipientDomain != null && userEmail != null && SET.contains(userEmail + ":@;" + validation +  ">" + recipientDomain)) {
+//                return userEmail + ":@;" + validation +  ">" + recipientDomain;
             } else {
                 int index3 = senderDomain.length();
                 while ((index3 = senderDomain.lastIndexOf('.', index3 - 1)) > index2) {
@@ -1676,6 +1741,90 @@ public class White {
         return null;
     }
 
+    public static boolean isDesactive(
+            Client client,
+            User user,
+            String ip,
+            String hostname,
+            String recipient
+    ) {
+        String recipientDomain;
+        if (recipient != null && recipient.contains("@")) {
+            int index = recipient.indexOf('@');
+            recipient = recipient.toLowerCase();
+            recipientDomain = recipient.substring(index);
+        } else {
+            recipient = null;
+            recipientDomain = null;
+        }
+        if (recipient != null && SET.contains("@>" + recipient)) {
+            return true;
+        } else if (recipientDomain != null && SET.contains("@>" + recipientDomain)) {
+            return true;
+        } else if (client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + ip)) {
+            return true;
+        } else if (user != null && SET.contains(user.getEmail() + ":@;" + ip)) {
+            return true;
+        } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@>" + recipient)) {
+            return true;
+        } else if (recipient != null && user != null && SET.contains(user.getEmail() + ":@>" + recipient)) {
+            return true;
+        } else if (recipientDomain != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@>" + recipientDomain)) {
+            return true;
+        } else if (recipientDomain != null && user != null && SET.contains(user.getEmail() + ":@>" + recipientDomain)) {
+            return true;
+        } else if (recipient != null && SET.contains("@;" + ip)) {
+            return true;
+        } else if (recipient != null && SET.contains("@;" + ip +  ">" + recipient)) {
+            return true;
+        } else if (recipientDomain != null && SET.contains("@;" + ip +  ">" + recipientDomain)) {
+            return true;
+        } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + ip)) {
+            return true;
+        } else if (recipient != null && user != null && SET.contains(user.getEmail() + ":@;" + ip)) {
+            return true;
+        } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + ip +  ">" + recipient)) {
+            return true;
+        } else if (recipient != null && user != null && SET.contains(user.getEmail() + ":@;" + ip +  ">" + recipient)) {
+            return true;
+        } else if (recipientDomain != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + ip +  ">" + recipientDomain)) {
+            return true;
+        } else if (recipientDomain != null && user != null && SET.contains(user.getEmail() + ":@;" + ip +  ">" + recipientDomain)) {
+            return true;
+        } else if (hostname == null) {
+            return false;
+        } else {
+            do {
+                int index = hostname.indexOf('.') + 1;
+                hostname = hostname.substring(index);
+                if (client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + hostname)) {
+                    return true;
+                } else if (user != null && SET.contains(user.getEmail() + ":@;" + hostname)) {
+                    return true;
+                } else if (recipient != null && SET.contains("@;" + hostname)) {
+                    return true;
+                } else if (recipient != null && SET.contains("@;" + hostname +  ">" + recipient)) {
+                    return true;
+                } else if (recipientDomain != null && SET.contains("@;" + hostname +  ">" + recipientDomain)) {
+                    return true;
+                } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + hostname)) {
+                    return true;
+                } else if (recipient != null && user != null && SET.contains(user.getEmail() + ":@;" + hostname)) {
+                    return true;
+                } else if (recipient != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + hostname +  ">" + recipient)) {
+                    return true;
+                } else if (recipient != null && user != null && SET.contains(user.getEmail() + ":@;" + hostname +  ">" + recipient)) {
+                    return true;
+                } else if (recipientDomain != null && client != null && client.hasEmail() && SET.contains(client.getEmail() + ":@;" + hostname +  ">" + recipientDomain)) {
+                    return true;
+                } else if (recipientDomain != null && user != null && SET.contains(user.getEmail() + ":@;" + hostname +  ">" + recipientDomain)) {
+                    return true;
+                }
+            } while (hostname.contains("."));
+            return false;
+        }
+    }
+
     private static String findHost(String userEmail,
             String sender, String hostname, String qualifier,
             String recipient, String recipientDomain,
@@ -1691,8 +1840,8 @@ public class White {
                 return token + ';' + qualifier + '>' + recipient;
             } else if (recipientDomain != null && SET.contains(token + ';' + qualifier + '>' + recipientDomain)) {
                 return token + ';' + qualifier + '>' + recipientDomain;
-            } else if (userEmail != null && SET.contains(userEmail + ":@;" + hostname)) {
-                return userEmail + ":@;" + hostname;
+//            } else if (userEmail != null && SET.contains(userEmail + ":@;" + hostname)) {
+//                return userEmail + ":@;" + hostname;
             } else if (userEmail != null && SET.contains(userEmail + ':' + token)) {
                 return userEmail + ':' + token;
             } else if (userEmail != null && SET.contains(userEmail + ':' + token + ';' + qualifier)) {
@@ -1739,12 +1888,9 @@ public class White {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/white.set");
                 TreeSet<String> set = getAll();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(set, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -1759,11 +1905,8 @@ public class White {
         if (file.exists()) {
             try {
                 Set<String> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 // Processo temporário de transição.
                 for (String token : set) {
@@ -1805,7 +1948,7 @@ public class White {
                         try {
                             if (client == null) {
                                 addExact(identifier);
-                            } else if (Domain.isEmail(client)) {
+                            } else if (Domain.isValidEmail(client)) {
                                 addExact(client + ':' + identifier);
                             }
                         } catch (ProcessException ex) {

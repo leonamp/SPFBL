@@ -21,22 +21,35 @@ import net.spfbl.data.Ignore;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.Serializable;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.URL;
 import java.net.UnknownHostException;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.NavigableMap;
-import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import net.spfbl.data.Generic;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.spf.SPF.Status;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
-import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -50,6 +63,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     private final String address; // Endereço de acesso ao peer.
     private short port; // Porta de acesso ao peer.
+    private short ports = 0; // Porta secura de acesso ao peer.
+    private short https = 0; // Porta secura para validação do peer.
+    private SecretKey encryptKey = null;
+    private SecretKey decryptKey = null;
     private Send send = Send.REPUTATION; // Status de envio para este peer.
     private Receive receive = Receive.DROP; // Status de recebimento deste peer.
     private String email = null; // E-mail do responsável.
@@ -59,15 +76,28 @@ public final class Peer implements Serializable, Comparable<Peer> {
     private long create = System.currentTimeMillis(); // Data de criação.
     
     /**
+     * Versão do peer.
+     */
+    private byte version = 0;
+    private byte subversion = 0;
+    
+    /**
      * Tabela de reputação do peer.
      */
     private final HashMap<String,Binomial> reputationMap = null;
-    private TreeMap<String,Binomial> reputationMap2 = new TreeMap<String,Binomial>();
+    private TreeMap<String,Binomial> reputationMap2 = new TreeMap<>();
+    private TreeMap<String,NormalDistribution> frequencyMap = new TreeMap<>();
     private short reputationMax = 0;
     
     private Peer(Peer other) {
         this.address = other.address;
         this.port = other.port;
+        this.ports = other.ports;
+        this.https = other.https;
+        this.encryptKey = other.encryptKey;
+        this.decryptKey = other.decryptKey;
+        this.version = other.version;
+        this.subversion = other.subversion;
         this.send = other.send;
         this.receive = other.receive;
         this.email = other.email;
@@ -82,12 +112,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
         this.reputationMap2.putAll(other.getReputationMap());
         this.reputationMax = other.reputationMax;
     }
-    
-//    /**
-//     * Retém os bloqueios que necessitam de confirmação.
-//     */
-//    private TreeSet<String> retainSet = new TreeSet<String>();
-    
+
     public enum Send {
         NEVER, // Nunca enviar bloqueios e tabela de reputação para este peer.
         DUNNO, // Obsoleto.
@@ -109,10 +134,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
         MIRROR // Trata o peer como espelho no recebimento.
      }
     
-    private Peer(String address, int port) throws ProcessException {
+    private Peer(String address, int port, int ports, int https) throws ProcessException {
         if (Domain.isHostname(address) || Subnet.isValidIP(address)) {
             this.address = Domain.extractHost(address, false);
             this.setPort(port);
+            this.setSecuredPort(ports, https);
         } else {
             throw new ProcessException("INVALID PEER");
         }
@@ -123,8 +149,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
             throw new ProcessException("INVALID PORT");
         } else if (this.port != port) {
             this.port = (short) port;
-            CHANGED = true;
-            return true;
+            return CHANGED = true;
         } else {
             return false;
         }
@@ -139,13 +164,65 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public boolean setSecuredPort(int port, int https) throws ProcessException {
+        if (port != 0 && (port < 1024 || port >= 49152)) {
+            throw new ProcessException("INVALID P2P PORT");
+        } else if (https != 0 && https != 443 && (port < 1024 || port >= 49152)) {
+            throw new ProcessException("INVALID HTTPS PORT");
+        }
+        if (port == 0) {
+            https = 0;
+        } else if (https == 0) {
+            https = 443;
+        }
+        if (this.ports != port || this.https != https) {
+            this.ports = (short) port;
+            this.https = (short) https;
+            return CHANGED = true;
+        } else {
+            return false;
+        }
+    }
+    
+    public boolean setSecuredPort(String port, String https) throws ProcessException {
+        if (port == null || port.length() == 0) {
+            port = "0";
+            https = "0";
+        } else if (https == null || https.length() == 0) {
+            https = "443";
+        }
+        int portInt;
+        int httpsInt;
+        try {
+            portInt = Integer.parseInt(port);
+        } catch (NumberFormatException ex) {
+            throw new ProcessException("INVALID P2P PORT", ex);
+        }
+        try {
+            httpsInt = Integer.parseInt(https);
+        } catch (NumberFormatException ex) {
+            throw new ProcessException("INVALID HTTPS PORT", ex);
+        }
+        return setSecuredPort(portInt, httpsInt);
+    }
+    
     public String getAddress() {
         return address;
     }
     
+    public String getAddressHTTPS() {
+        if (https == 0) {
+            return null;
+        } else if (https == 443) {
+            return address;
+        } else {
+            return address + ":" + https;
+        }
+    }
+    
     public double getCorrelacao() {
-        ArrayList<Float> xList = new ArrayList<Float>();
-        ArrayList<Float> yList = new ArrayList<Float>();
+        ArrayList<Float> xList = new ArrayList<>();
+        ArrayList<Float> yList = new ArrayList<>();
         float xSum = 0;
         float ySum = 0;
         int n = 0;
@@ -197,6 +274,90 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return port;
     }
     
+    public short getSecuredPort() {
+        return ports;
+    }
+        
+    public synchronized SecretKey getEncryptKey() {
+        return encryptKey;
+    }
+    
+    public synchronized SecretKey getDecryptKey() {
+        return decryptKey;
+    }
+    
+    public synchronized String newDecryptKey() {
+        try {
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(new SecureRandom());
+            SecretKey secretKey = keyGen.generateKey();
+            String result = Core.BASE64.encodeAsString(secretKey.getEncoded());
+            decryptKey = secretKey;
+            Server.logTrace("new decrypt key for " + getAddress() + ": " + result);
+            return result;
+        } catch (Exception ex) {
+            decryptKey = null;
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public synchronized boolean requestSecretKey(String hostname) {
+        String addressHTTPS = getAddressHTTPS();
+        if (addressHTTPS == null) {
+            return false;
+        } else if (getSendStatus() == Send.NEVER) {
+            return false;
+        } else {
+            KeyStore keyStore = Core.loadKeyStore(hostname);
+            if (keyStore == null) {
+                return false;
+            } else {
+                try {
+                    KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
+                    kmf.init(keyStore, hostname.toCharArray());
+                    KeyManager[] km = kmf.getKeyManagers();
+                    TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
+                    tmf.init(keyStore);
+                    TrustManager[] tm = tmf.getTrustManagers();
+                    SSLContext sslContext = SSLContext.getInstance("TLS");
+                    sslContext.init(km, tm, null);
+                    SSLSocketFactory socketFactory = sslContext.getSocketFactory();
+
+                    URL url = new URL("https://" + addressHTTPS + "/.well-known/secret-key/" + hostname);
+                    HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+                    conn.setSSLSocketFactory(socketFactory);
+                    conn.connect();
+                    try {
+                        int responseCode = conn.getResponseCode();
+                        if (responseCode == HttpURLConnection.HTTP_OK) {
+                            StringBuilder builder = new StringBuilder();
+                            try (InputStream inputStream = conn.getInputStream()) {
+                                int code;
+                                while ((code = inputStream.read()) != -1) {
+                                    builder.append((char) code);
+                                }
+                            }
+                            byte[] encodedKey = Core.BASE64.decode(builder.toString());
+                            encryptKey = new SecretKeySpec(encodedKey, "AES");
+                            Server.logTrace("new encrypt key for " + getAddress() + ": " + builder);
+                            return true;
+                        } else {
+                            encryptKey = null;
+                            return false;
+                        }
+                    } finally {
+                        conn.disconnect();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    encryptKey = null;
+                    return false;
+                }
+            }
+        }
+    }
+    
     public Send getSendStatus() {
         return send;
     }
@@ -207,6 +368,24 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     public String getEmail() {
         return email;
+    }
+    
+    public String getVersion() {
+        if (version == 0) {
+            return null;
+        } else {
+            return version + "." + subversion;
+        }
+    }
+    
+    public boolean isCompatible(int version, int subversion) {
+        if (this.version > version) {
+            return true;
+        } else if (this.version < version) {
+            return false;
+        } else  {
+            return this.subversion >= subversion;
+        }
     }
     
     public User getUser() {
@@ -223,13 +402,38 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 this.email = null;
                 CHANGED = true;
             }
-        } else if (Domain.isEmail(email)) {
+        } else if (Domain.isValidEmail(email)) {
             if (!email.toLowerCase().equals(this.email)) {
                 this.email = email.toLowerCase();
                 CHANGED = true;
             }
         } else {
             throw new ProcessException("INVALID EMAIL");
+        }
+    }
+    
+    public boolean setVersion(String token) throws ProcessException {
+        if (token == null || token.length() == 0) {
+            return false;
+        } else {
+            StringTokenizer tokenizer = new StringTokenizer(token, ".");
+            if (tokenizer.countTokens() >= 2) {
+                try {
+                    byte versionNew = Byte.valueOf(tokenizer.nextToken());
+                    byte subversionNew = Byte.valueOf(tokenizer.nextToken());
+                    if (this.version != versionNew || this.subversion != subversionNew) {
+                        this.version = versionNew;
+                        this.subversion = subversionNew;
+                        return CHANGED = true;
+                    } else {
+                        return false;
+                    }
+                } catch (NumberFormatException ex) {
+                    throw new ProcessException("INVALID VERSION");
+                }
+            } else {
+                throw new ProcessException("INVALID VERSION");
+            }
         }
     }
     
@@ -280,7 +484,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public synchronized TreeSet<String> getReputationKeySet() {
-        TreeSet<String> keySet = new TreeSet<String>();
+        TreeSet<String> keySet = new TreeSet<>();
         if (reputationMap2 != null) {
             keySet.addAll(reputationMap2.keySet());
         }
@@ -288,7 +492,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public TreeMap<String,Binomial> getReputationMap() {
-        TreeMap<String,Binomial> returnSet = new TreeMap<String,Binomial>();
+        TreeMap<String,Binomial> returnSet = new TreeMap<>();
         for (String key : getReputationKeySet()) {
             Binomial binomial = getReputation(key);
             if (binomial != null) {
@@ -298,130 +502,18 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return returnSet;
     }
     
-//    public TreeSet<String> getRetationSet() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        returnSet.addAll(retainSet);
-//        return returnSet;
-//    }
-    
-//    public static TreeSet<String> getAllRetationSet() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (Peer peer : Peer.getSet()) {
-//            for (String token : peer.getRetationSet()) {
-//                returnSet.add(peer.getAddress() + ':' + token);
-//            }
-//        }
-//        return returnSet;
-//    }
-    
-//    public boolean dropExact(String token) {
-//        return retainSet.remove(token);
-//    }
-    
-//    public String reject(String token) {
-//        if (dropExact(token)) {
-//            return "REJECTED";
-//        } else {
-//            return "NOT FOUND";
-//        }
-//    }
-    
-//    public TreeSet<String> reject() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (String token : getRetationSet()) {
-//            String response = reject(token);
-//            if (!response.equals("NOT FOUND")) {
-//                returnSet.add(token + " => " + response);
-//            }
-//        }
-//        return returnSet;
-//    }
-    
     public static TreeSet<String> getReputationKeyAllSet() {
-        TreeSet<String> keySet = new TreeSet<String>();
+        TreeSet<String> keySet = new TreeSet<>();
         for (Peer peer : Peer.getSet()) {
             keySet.addAll(peer.getReputationKeySet());
         }
         return keySet;
     }
     
-//    public static TreeSet<String> rejectAll() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (Peer peer : Peer.getSet()) {
-//            for (String response : peer.reject()) {
-//                returnSet.add(peer.getAddress() + ':' + response);
-//            }
-//        }
-//        return returnSet;
-//    }
-    
-//    public static TreeSet<String> rejectAll(String token) {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (Peer peer : Peer.getSet()) {
-//            String response = peer.reject(token);
-//            returnSet.add(peer.getAddress() + ':' + response);
-//        }
-//        return returnSet;
-//    }
-    
-//    public String release(String token) {
-//        if (dropExact(token)) {
-//            try {
-//                if (Ignore.contains(token)) {
-//                    return "IGNORED";
-//                } else if (Block.addExact(token)) {
-//                    if (isReceiveRepass()) {
-//                        sendToOthers(token);
-//                        return "REPASSED";
-//                    } else {
-//                        sendToRepass(token);
-//                        return "ADDED";
-//                    }
-//                } else {
-//                    return "EXISTS";
-//                }
-//            } catch (ProcessException ex) {
-//                return ex.getErrorMessage();
-//            }
-//        } else {
-//            return "NOT FOUND";
-//        }
-//    }
-    
-//    public TreeSet<String> release() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (String token : getRetationSet()) {
-//            String response = release(token);
-//            if (!response.equals("NOT FOUND")) {
-//                returnSet.add(token + " => " + response);
-//            }
-//        }
-//        return returnSet;
-//    }
-    
-//    public static TreeSet<String> releaseAll() {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (Peer peer : Peer.getSet()) {
-//            for (String response : peer.release()) {
-//                returnSet.add(peer.getAddress() + ':' + response);
-//            }
-//        }
-//        return returnSet;
-//    }
-    
-//    public static TreeSet<String> releaseAll(String token) {
-//        TreeSet<String> returnSet = new TreeSet<String>();
-//        for (Peer peer : Peer.getSet()) {
-//            String response = peer.release(token);
-//            returnSet.add(peer.getAddress() + ':' + response);
-//        }
-//        return returnSet;
-//    }
-    
     /**
      * Mapa de usuário com busca de hash O(1).
      */
-    private static final HashMap<String,Peer> MAP = new HashMap<String,Peer>();
+    private static final HashMap<String,Peer> MAP = new HashMap<>();
     
     /**
      * Flag que indica se o cache foi modificado.
@@ -433,7 +525,11 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public Peer clone(String hostname) throws ProcessException {
-        Peer peerNew = create(hostname, port);
+        Peer peerNew = create(hostname, port, ports, https);
+        peerNew.encryptKey = this.encryptKey;
+        peerNew.decryptKey = this.decryptKey;
+        peerNew.version = this.version;
+        peerNew.subversion = this.subversion;
         peerNew.send = this.send;
         peerNew.receive = this.receive;
         peerNew.email = this.email;
@@ -445,24 +541,26 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static Peer create(
-            String hostname, String port
+            String hostname, String port, String ports, String https
             ) throws ProcessException {
         try {
             int portInt = Integer.parseInt(port);
-            return create(hostname, portInt);
+            int portsInt = ports == null ? 0 : Integer.parseInt(ports);
+            int httpsInt = https == null ? 0 : Integer.parseInt(https);
+            return create(hostname, portInt, portsInt, httpsInt);
         } catch (NumberFormatException ex) {
             throw new ProcessException("INVALID PORT", ex);
         }
     }
     
     public synchronized static Peer create(
-            String hostname, int port
+            String hostname, int port, int ports, int https
             ) throws ProcessException {
         hostname = Domain.extractHost(hostname, false);
         if (MAP.containsKey(hostname)) {
             return null;
         } else {
-            Peer peer = new Peer(hostname, port);
+            Peer peer = new Peer(hostname, port, ports, https);
             MAP.put(hostname, peer);
             CHANGED = true;
             return peer;
@@ -470,13 +568,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public synchronized static TreeSet<Peer> getSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         peerSet.addAll(MAP.values());
         return peerSet;
     }
     
     public static TreeSet<Peer> getSendAllSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             switch (peer.getSendStatus()) {
                 case REPUTATION:
@@ -491,7 +589,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static TreeSet<Peer> getReputationSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             switch (peer.getSendStatus()) {
                 case BLOCK:
@@ -507,7 +605,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public TreeSet<Peer> getSendSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             if (!peer.equals(this)) {
                 switch (peer.getSendStatus()) {
@@ -523,7 +621,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public TreeSet<Peer> getRepassSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             if (!peer.equals(this)) {
                 switch (peer.getSendStatus()) {
@@ -537,7 +635,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static TreeSet<Peer> getMirrorSet() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             if (peer.getSendStatus() == Send.MIRROR) {
                 peerSet.add(peer);
@@ -547,7 +645,7 @@ public final class Peer implements Serializable, Comparable<Peer> {
     }
     
     public static TreeSet<Peer> dropAll() {
-        TreeSet<Peer> peerSet = new TreeSet<Peer>();
+        TreeSet<Peer> peerSet = new TreeSet<>();
         for (Peer peer : getSet()) {
             if (peer.drop()) {
                 peerSet.add(peer);
@@ -572,17 +670,15 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
+    public boolean isAddress(InetAddress inetAddress) {
+        String ip = inetAddress.getHostAddress();
+        return SPF.matchHELO(ip, getAddress());
+    }
+    
     public static Peer get(InetAddress inetAddress) {
         String ip = inetAddress.getHostAddress();
         ip = Subnet.normalizeIP(ip);
         for (Peer peer : getSet()) {
-//            try {
-//                if (ip.equals(peer.getIP())) {
-//                    return peer;
-//                }
-//            } catch (UnknownHostException ex) {
-//                Server.logDebug("peer '" + peer.getAddress() + "' has unknown host.");
-//            }
             if (SPF.matchHELO(ip, peer.getAddress())) {
                 return peer;
             }
@@ -590,8 +686,19 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return null;
     }
     
+    public static boolean has(InetAddress inetAddress) {
+        String ip = inetAddress.getHostAddress();
+        ip = Subnet.normalizeIP(ip);
+        for (Peer peer : getSet()) {
+            if (SPF.matchHELO(ip, peer.getAddress())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     public static HashMap<String,Peer> getMap() {
-        HashMap<String,Peer> map = new HashMap<String,Peer>();
+        HashMap<String,Peer> map = new HashMap<>();
         for (Peer peer : getSet()) {
             Peer clone = new Peer(peer);
             map.put(clone.getAddress(), clone);
@@ -599,33 +706,24 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return map;
     }
     
-//    public void sendAll() {
+//    public void send(String token) {
 //        if (Core.hasPeerConnection()) {
-//            TreeMap<String,Distribution> distributionSet = SPF.getDistributionMap();
-//            for (String token : distributionSet.keySet()) {
-//                Distribution distribution = distributionSet.get(token);
-//                if (distribution.isBlocked(token)) {
-//                    send(token);
-//                }
-//                try {
-//                    Thread.sleep(100);
-//                } catch (InterruptedException ex) {
-//                    // Interrompido.
-//                }
+//            long time = System.currentTimeMillis();
+//            String origin = null;
+//            String address = getAddress();
+//            int port = getPort();
+//            int ports = 0;
+//            SecretKey key = null;
+//            if (isCompatible(2, 8)) {
+//                ports = getSecuredPort();
+//                key = getEncryptKey();
 //            }
+//            String result = Core.sendCommandToPeer(
+//                    token, address, port, ports, key
+//            );
+//            Server.logPeerSend(time, origin, token, result);
 //        }
 //    }
-    
-    public void send(String token) {
-        if (Core.hasPeerConnection()) {
-            long time = System.currentTimeMillis();
-            String origin = null;
-            String address = getAddress();
-            int port = getPort();
-            String result = Core.sendCommandToPeer(token, address, port);
-            Server.logPeerSend(time, origin, token, result);
-        }
-    }
     
     public void sendToOthers(String token) {
         long time = System.currentTimeMillis();
@@ -636,7 +734,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 for (Peer peer : getSendSet()) {
                     String address = peer.getAddress();
                     int port = peer.getPort();
-                    Core.sendCommandToPeer(token, address, port);
+                    int ports = 0;
+                    SecretKey key = null;
+                    if (peer.isCompatible(2, 8)) {
+                        ports = peer.getSecuredPort();
+                        key = peer.getEncryptKey();
+                    }
+                    Core.sendCommandToPeer(
+                            token, address,
+                            port, ports, key
+                    );
                 }
             } catch (Exception ex) {
                 result = ex.getMessage();
@@ -645,23 +752,32 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public static void sendToAll(String token) {
-        long time = System.currentTimeMillis();
-        if (Core.hasPeerConnection()) {
-            String origin = null;
-            String result = "SENT";
-            try {
-                for (Peer peer : getSendAllSet()) {
-                    String address = peer.getAddress();
-                    int port = peer.getPort();
-                    Core.sendCommandToPeer(token, address, port);
-                }
-            } catch (Exception ex) {
-                result = ex.getMessage();
-            }
-            Server.logPeerSend(time, origin, token, result);
-        }
-    }
+//    public static void sendToAll(String token) {
+//        long time = System.currentTimeMillis();
+//        if (Core.hasPeerConnection()) {
+//            String origin = null;
+//            String result = "SENT";
+//            try {
+//                for (Peer peer : getSendAllSet()) {
+//                    String address = peer.getAddress();
+//                    int port = peer.getPort();
+//                    int ports = 0;
+//                    SecretKey key = null;
+//                    if (peer.isCompatible(2, 8)) {
+//                        ports = peer.getSecuredPort();
+//                        key = peer.getEncryptKey();
+//                    }
+//                    Core.sendCommandToPeer(
+//                            token, address,
+//                            port, ports, key
+//                    );
+//                }
+//            } catch (Exception ex) {
+//                result = ex.getMessage();
+//            }
+//            Server.logPeerSend(time, origin, token, result);
+//        }
+//    }
     
     public static void sendBlockToAll(String token) {
         if (isValidBlock(token)) {
@@ -674,7 +790,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     for (Peer peer : getSendAllSet()) {
                         String address = peer.getAddress();
                         int port = peer.getPort();
-                        Core.sendCommandToPeer(command, address, port);
+                        int ports = 0;
+                        SecretKey key = null;
+                        if (peer.isCompatible(2, 8)) {
+                            ports = peer.getSecuredPort();
+                            key = peer.getEncryptKey();
+                        }
+                        Core.sendCommandToPeer(
+                                command, address,
+                                port, ports, key
+                        );
                     }
                 } catch (Exception ex) {
                     result = ex.getMessage();
@@ -694,33 +819,56 @@ public final class Peer implements Serializable, Comparable<Peer> {
             long time = System.currentTimeMillis();
             if (Core.hasPeerConnection()) {
                 int[] binomial;
-//                Float[] frequency;
+                Float[] frequency;
                 if (distribuiton == null) {
                     binomial = new int[2];
-//                    frequency = null;
+                    frequency = null;
                 } else {
                     binomial = distribuiton.getBinomial();
-//                    frequency = distribuiton.getFrequencyXiSum();
+                    frequency = distribuiton.getFrequencyXiSum();
                 }
                 int ham = binomial[0];
                 int spam = binomial[1];
                 if (spam % 3 == 0) {
                     String origin = null;
-                    String result = "SENT";
-                    String command = "REPUTATION " + token + " " + ham + " " + spam;
-//                    if (frequency != null) {
-//                        command += " " + frequency[0] + " " + frequency[1];
-//                    }
-                    try {
-                        for (Peer peer : getReputationSet()) {
-                            String address = peer.getAddress();
-                            int port = peer.getPort();
-                            Core.sendCommandToPeer(command, address, port);
+                    String result = null;
+                    String commandShort = "REPUTATION " + token + " " + ham + " " + spam;
+                    String commandLong = null;
+                    if (Core.isTooBigForPeers(commandShort)) {
+                        result = "TOO BIG";
+                    } else if (frequency == null) {
+                        commandLong = commandShort;
+                    } else if (ham + spam == 0) {
+                        commandLong = commandShort;
+                    } else {
+                        commandLong = commandShort + " " + frequency[0] + " " + frequency[1];
+                        if (Core.isTooBigForPeers(commandLong)) {
+                            commandLong = commandShort;
                         }
-                    } catch (Exception ex) {
-                        result = ex.getMessage();
                     }
-                    Server.logPeerSend(time, origin, command, result);
+                    if (result == null) {
+                        try {
+                            result = "NO PEERS";
+                            for (Peer peer : getReputationSet()) {
+                                String address = peer.getAddress();
+                                int port = peer.getPort();
+                                int ports = 0;
+                                SecretKey key = null;
+                                if (peer.isCompatible(2, 8)) {
+                                    ports = peer.getSecuredPort();
+                                    key = peer.getEncryptKey();
+                                }
+                                Core.sendCommandToPeer(
+                                        commandLong, address,
+                                        port, ports, key
+                                );
+                                result = "SENT";
+                            }
+                        } catch (Exception ex) {
+                            result = ex.getMessage();
+                        }
+                    }
+                    Server.logPeerSend(time, origin, commandShort, result);
                 }
             }
         }
@@ -732,12 +880,23 @@ public final class Peer implements Serializable, Comparable<Peer> {
             return false;
         } else {
             String origin = null;
-            String email = Core.getAdminEmail();
-            String helo = "HELO " + connection + (email == null ? "" : " " + email);
+            String emailLocal = Core.getAdminEmail();
+            String connectionSecured = Core.getPeerSecuredConnection();
+            String helo;
+            if (connectionSecured != null && isCompatible(2, 8)) {
+                helo = "HELO " + connectionSecured + " " + Core.getSubVersion() + (emailLocal == null ? "" : " " + emailLocal);
+            } else {
+                helo = "HELO " + connection + (emailLocal == null ? "" : " " + emailLocal);
+            }
             long time = System.currentTimeMillis();
-            String address = getAddress();
+            String addressLocal = getAddress();
             int port = getPort();
-            String result = Core.sendCommandToPeer(helo, address, port);
+            int ports = 0;
+            SecretKey key = null;
+            String result = Core.sendCommandToPeer(
+                    helo, addressLocal,
+                    port, ports, key
+            );
             Server.log(time, Core.Level.DEBUG, "PEERP", origin, helo, result);
             return true;
         }
@@ -750,16 +909,28 @@ public final class Peer implements Serializable, Comparable<Peer> {
             String origin = null;
             String result = "SENT";
             String email = Core.getAdminEmail();
-            String helo = "HELO " + connection + (email == null ? "" : " " + email);
+            String connectionSecured = Core.getPeerSecuredConnection();
+            String helo;
             try {
                 for (Peer peer : getSendAllSet()) {
+                    if (connectionSecured != null && peer.isCompatible(2, 8)) {
+                        helo = "HELO " + connectionSecured + " " + Core.getSubVersion() + (email == null ? "" : " " + email);
+                    } else {
+                        helo = "HELO " + connection + (email == null ? "" : " " + email);
+                    }
                     String address = peer.getAddress();
                     int port = peer.getPort();
-                    Core.sendCommandToPeer(helo, address, port);
+                    int ports = 0;
+                    SecretKey key = null;
+                    Core.sendCommandToPeer(
+                            helo, address,
+                            port, ports, key
+                    );
                 }
             } catch (Exception ex) {
                 result = ex.getMessage();
             }
+            helo = "HELO " + connection + " " + Core.getSubVersion() + (email == null ? "" : " " + email);
             Server.log(time, Core.Level.DEBUG, "PEERP", origin, helo, result);
         }
     }
@@ -773,7 +944,16 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 for (Peer peer : getRepassSet()) {
                     String address = peer.getAddress();
                     int port = peer.getPort();
-                    Core.sendCommandToPeer(token, address, port);
+                    int ports = 0;
+                    SecretKey key = null;
+                    if (peer.isCompatible(2, 8)) {
+                        ports = peer.getSecuredPort();
+                        key = peer.getEncryptKey();
+                    }
+                    Core.sendCommandToPeer(
+                            token, address,
+                            port, ports, key
+                    );
                 }
             } catch (Exception ex) {
                 result = ex.getMessage();
@@ -782,14 +962,14 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    private static boolean isValidBlock(String token) {
+    protected static boolean isValidBlock(String token) {
         if (token == null || token.length() == 0) {
             return false;
         } else if (Subnet.isValidIP(token)) {
             return false;
         } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
             return true;
-        } else if (token.contains("@") && Domain.isEmail(token)) {
+        } else if (token.contains("@") && Domain.isMailFrom(token)) {
             return true;
         } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
             return true;
@@ -798,41 +978,32 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-//    private static boolean isValidReputation(String token) {
-//        if (token == null || token.length() == 0) {
-//            return false;
-//        } else if (Subnet.isValidIP(token)) {
-//            return true;
-//        } else if (token.startsWith(".") && Domain.isHostname(token.substring(1))) {
-//            return true;
-//        } else if (token.contains("@") && Domain.isEmail(token)) {
-//            return true;
-//        } else if (token.contains("#") && !token.contains("##") && Domain.isEmail(token.replace('#', '0'))) {
-//            return true;
-//        } else if (token.startsWith("@") && Domain.containsDomain(token.substring(1))) {
-//            return true;
-//        } else {
-//            return false;
+//    public static void sendToMirros(String command) {
+//        long time = System.currentTimeMillis();
+//        if (Core.hasPeerConnection()) {
+//            String origin = null;
+//            String result = "SENT";
+//            try {
+//                for (Peer mirror : getMirrorSet()) {
+//                    String address = mirror.getAddress();
+//                    int port = mirror.getPort();
+//                    int ports = 0;
+//                    SecretKey key = null;
+//                    if (mirror.isCompatible(2, 8)) {
+//                        ports = mirror.getSecuredPort();
+//                        key = mirror.getEncryptKey();
+//                    }
+//                    Core.sendCommandToPeer(
+//                            command, address,
+//                            port, ports, key
+//                    );
+//                }
+//            } catch (Exception ex) {
+//                result = ex.getMessage();
+//            }
+//            Server.logPeerSend(time, origin, command, result);
 //        }
 //    }
-    
-    public static void sendToMirros(String command) {
-        long time = System.currentTimeMillis();
-        if (Core.hasPeerConnection()) {
-            String origin = null;
-            String result = "SENT";
-            try {
-                for (Peer mirror : getMirrorSet()) {
-                    String address = mirror.getAddress();
-                    int port = mirror.getPort();
-                    Core.sendCommandToPeer(command, address, port);
-                }
-            } catch (Exception ex) {
-                result = ex.getMessage();
-            }
-            Server.logPeerSend(time, origin, command, result);
-        }
-    }
     
     private boolean isReceiveDrop() {
         return receive == Receive.DROP;
@@ -842,55 +1013,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
         return receive == Receive.REJECT;
     }
     
-//    private boolean isReceiveRetain() {
-//        return receive == Receive.RETAIN;
-//    }
-    
     private boolean isReceiveRepass() {
         return receive == Receive.REPASS;
     }
-    
-//    private boolean addRetain(String token) {
-//        return retainSet.add(token);
-//    }
-    
-//    @Deprecated
-//    public String processReceive(String token) {
-//        try {
-//            if (!isValidBlock(token)) {
-//                return "INVALID";
-//            } else if (Generic.contains(token)) {
-//                return "GENERIC";
-//            } else if (Domain.isReserved(token)) {
-//                return "RESERVED";
-//            } else if (Ignore.contains(token)) {
-//                return "IGNORED";
-//            } else if (isReceiveReject()) {
-//                return "REJECTED";
-//            } else if (isReceiveDrop()) {
-//                return "DROPPED";
-//            } else if (isReceiveRetain()) {
-//                if (addRetain(token)) {
-//                    return "RETAINED";
-//                } else {
-//                    return "DROPPED";
-//                }
-//            } else if (Block.addExact(token)) {
-//                if (isReceiveRepass()) {
-//                    sendToOthers(token);
-//                    return "REPASSED";
-//                } else {
-//                    sendToRepass(token);
-//                    return "ADDED";
-//                }
-//            } else {
-//                return "EXISTS";
-//            }
-//        } catch (Exception ex) {
-//            Server.logError(ex);
-//            return ex.getMessage();
-//        }
-//    }
     
     public String processBlock(String token) {
         try {
@@ -908,12 +1033,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "EXISTS";
             } else if (SPF.isGreen(token, false)) {
                 return "GREEN";
-//            } else if (isReceiveRetain()) {
-//                if (addRetain(token)) {
-//                    return "RETAINED";
-//                } else {
-//                    return "DROPPED";
-//                }
             } else if (Block.addExact(token)) {
                 if (isReceiveRepass()) {
                     sendToOthers(token);
@@ -934,17 +1053,13 @@ public final class Peer implements Serializable, Comparable<Peer> {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing peer.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Peer> map = getMap();
                 File file = new File("./data/peer.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -959,23 +1074,20 @@ public final class Peer implements Serializable, Comparable<Peer> {
         if (file.exists()) {
             try {
                 HashMap<Object,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (Object key : map.keySet()) {
                     Object value = map.get(key);
                     if (key instanceof InetAddress) {
                         InetAddress address = (InetAddress) key;
                         Integer port = (Integer) value;
-                        create(address.getHostAddress(), port);
+                        create(address.getHostAddress(), port, 0, 0);
                     } else if (key instanceof String) {
                         String address = (String) key;
                         if (value instanceof Integer) {
                             Integer port = (Integer) value;
-                            create(address, port);
+                            create(address, port, 0, 0);
                         } else if (value instanceof Peer) {
                             Peer peer = (Peer) value;
                             if (peer.send == Send.DUNNO) {
@@ -993,18 +1105,24 @@ public final class Peer implements Serializable, Comparable<Peer> {
                                 // Obsoleto.
                                 peer.receive = Receive.REPUTATION;
                             }
-//                            if (peer.retainSet == null) {
-//                                peer.retainSet = new TreeSet<String>();
-//                            }
                             if (peer.limit == 0) {
                                 peer.limit = 100;
                             }
                             if (peer.reputationMap2 == null) {
-                                peer.reputationMap2 = new TreeMap<String,Binomial>();
+                                peer.reputationMap2 = new TreeMap<>();
+                            }
+                            if (peer.frequencyMap == null) {
+                                peer.frequencyMap = new TreeMap<>();
                             }
                             if (peer.reputationMap != null) {
                                 peer.reputationMap2.putAll(peer.reputationMap);
                                 peer.reputationMap.clear();
+                            }
+                            if (peer.version == 0) {
+                                String adress = peer.getAddress();
+                                if (adress.equals("matrix.spfbl.net")) {
+                                    peer.setVersion("2.8");
+                                }
                             }
                             MAP.put(address, peer);
                         }
@@ -1017,9 +1135,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
         } else {
             try {
                 if (Core.hasPeerConnection()) {
-                    Peer matrix = Peer.create("matrix.spfbl.net", 9877);
+                    Peer matrix = Peer.create("matrix.spfbl.net", 9877, 9878, 443);
                     matrix.setReceiveStatus(Receive.ACCEPT);
                     matrix.setSendStatus(Send.REPUTATION);
+                    matrix.setVersion("2.8");
                     matrix.sendHELO();
                 }
             } catch (ProcessException ex) {
@@ -1122,19 +1241,20 @@ public final class Peer implements Serializable, Comparable<Peer> {
     
     @Override
     public String toString() {
+        String versionLocal = getVersion();
         User user = getUser();
         if (user == null) {
-            return address + ":" + port
+            return address + ":" + port + (ports == 0 ? "" : ":" + ports + (https == 443 ? "" : ":" + https))
+                    + (versionLocal == null ? "" : " " + versionLocal)
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
-//                    + (retainSet == null ? "" : " " + retainSet.size())
                     + " " + getFrequencyLiteral() + " " + reputationMax
                     + (email == null ? "" : " <" + email + ">");
         } else {
-            return address + ":" + port
+            return address + ":" + port + (ports == 0 ? "" : ":" + ports + (https == 443 ? "" : ":" + https))
+                    + (versionLocal == null ? "" : " " + versionLocal)
                     + (send == null ? "" : " " + send.name())
                     + (receive == null ? "" : " " + receive.name())
-//                    + (retainSet == null ? "" : " " + retainSet.size())
                     + " " + getFrequencyLiteral() + " " + reputationMax
                     + " " + user.getContact();
         }
@@ -1143,7 +1263,9 @@ public final class Peer implements Serializable, Comparable<Peer> {
     protected String setReputation(
             String key,
             String ham,
-            String spam
+            String spam,
+            String frequencyXi,
+            String frequencyXi2
     ) {
         try {
             if (!SPF.isValidReputation(key)) {
@@ -1159,18 +1281,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
             } else if (isReceiveDrop()) {
                 return "DROPPED";
             } else {
-//                if (reputationMap2 == null) {
-//                    reputationMap2 = new TreeMap<String,Binomial>();
-//                }
                 int hamInt = Integer.parseInt(ham);
                 int spamInt = Integer.parseInt(spam);
-//                int total = hamInt + spamInt;
-//                if (total > reputationMax) {
-//                    float proporcion = (float) reputationMax / total;
-//                    hamInt = (int) (hamInt * proporcion);
-//                    spamInt = (int) (spamInt * proporcion);
-//                }
                 Binomial binomial;
+                NormalDistribution frequencyLocal;
                 if (hamInt == 0 && spamInt == 0) {
                     binomial = dropReputation(key);
                     if (binomial == null) {
@@ -1181,7 +1295,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     }
                 } else if ((binomial = getReputation(key)) == null) {
                     binomial = new Binomial(hamInt, spamInt);
-                    putReputation(key, binomial);
+                    frequencyLocal = NormalDistribution.newDistribution(
+                            frequencyXi, frequencyXi2
+                    );
+                    putReputation(key, binomial, frequencyLocal);
                     if (Ignore.contains(key)) {
                         binomial.clear();
                         return "IGNORED";
@@ -1190,6 +1307,10 @@ public final class Peer implements Serializable, Comparable<Peer> {
                     }
                 } else {
                     binomial.set(hamInt, spamInt);
+                    frequencyLocal = NormalDistribution.newDistribution(
+                            frequencyXi, frequencyXi2
+                    );
+                    putReputation(key, frequencyLocal);
                     if (Ignore.contains(key)) {
                         binomial.clear();
                         return "IGNORED";
@@ -1246,86 +1367,52 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-//    public static TreeSet<String> clearAllReputation(String key) {
-//        TreeSet<String> clearSet = new TreeSet<String>();
-//        for (Peer peer : getSet()) {
-//            for (String token : peer.getAllReputations(key)) {
-//                if (peer.clearReputation(token)) {
-//                    clearSet.add(token);
-//                }
-//            }
-//        }
-//        return clearSet;
-//    }
-    
-    private synchronized boolean containsReputationExact(String key) {
-        if (reputationMap2 == null) {
-            return false;
-        } else {
-            return reputationMap2.containsKey(key);
-        }
-    }
-    
-    private synchronized Set<String> subSet(String begin, String end) {
-        TreeSet<String> subSet = new TreeSet<String>();
-        if (reputationMap2 != null) {
-            NavigableMap<String,Binomial> subMap = reputationMap2.subMap(begin, false, end, false);
-            subSet.addAll(subMap.keySet());
-        }
-        return subSet;
-    }
-    
-    private TreeSet<String> getAllReputations(String value) {
-        TreeSet<String> blockSet = new TreeSet<String>();
-        if (Subnet.isValidIP(value)) {
-            String ip = Subnet.normalizeIP(value);
-            if (containsReputationExact(ip)) {
-                blockSet.add(ip);
-            }
-        } else if (Subnet.isValidCIDR(value)) {
-            String cidr = Subnet.normalizeCIDR(value);
-            for (String ip : subSet("0", ":")) {
-                if (Subnet.containsIP(cidr, ip)) {
-                    blockSet.add(ip);
-                }
-            }
-            for (String ip : subSet("a", "g")) {
-                if (SubnetIPv6.containsIP(cidr, ip)) {
-                    blockSet.add(ip);
-                }
-            }
-        } else if (value.startsWith(".")) {
-            String hostname = value;
-            for (String key : subSet(".", "/")) {
-                if (key.endsWith(hostname)) {
-                    blockSet.add(key);
-                }
-            }
-            for (String mx : subSet("@", "A")) {
-                String hostKey = '.' + mx.substring(1);
-                if (hostKey.endsWith(hostname)) {
-                    blockSet.add(hostKey);
-                }
-            }
-        } else if (containsReputationExact(value)) {
-            blockSet.add(value);
-        }
-        return blockSet;
-    }
-    
     private synchronized Binomial dropReputation(String key) {
         if (reputationMap2 == null) {
             return null;
         } else {
+            if (reputationMap2 == null) {
+                reputationMap2 = new TreeMap<>();
+            }
+            if (frequencyMap == null) {
+                frequencyMap = new TreeMap<>();
+            }
+            frequencyMap.remove(key);
             return reputationMap2.remove(key);
         }
     }
     
-    private synchronized Binomial putReputation(String key, Binomial binomial) {
+    private synchronized Binomial putReputation(
+            String key,
+            Binomial binomial,
+            NormalDistribution frequency
+    ) {
         if (reputationMap2 == null) {
-            reputationMap2 = new TreeMap<String,Binomial>();
+            reputationMap2 = new TreeMap<>();
+        }
+        if (frequencyMap == null) {
+            frequencyMap = new TreeMap<>();
+        }
+        if (frequency == null) {
+            frequencyMap.remove(key);
+        } else {
+            frequencyMap.put(key, frequency);
         }
         return reputationMap2.put(key, binomial);
+    }
+    
+    private synchronized NormalDistribution putReputation(
+            String key,
+            NormalDistribution frequency
+    ) {
+        if (frequencyMap == null) {
+            frequencyMap = new TreeMap<>();
+        }
+        if (frequency == null) {
+            return frequencyMap.remove(key);
+        } else {
+            return frequencyMap.put(key, frequency);
+        }
     }
     
     public synchronized Binomial getReputation(String key) {
@@ -1336,12 +1423,12 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    private boolean clearReputation(String key) {
-        Binomial binomial = getReputation(key);
-        if (binomial == null) {
-             return false;
-        } else {
-             return binomial.clear();
+    public static void clearReputation(String token) {
+        for (Peer peer : Peer.getSet()) {
+            Binomial repuation = peer.getReputation(token);
+            if (repuation != null) {
+                repuation.clear();
+            }
         }
     }
     

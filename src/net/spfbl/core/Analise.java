@@ -54,7 +54,6 @@ import net.spfbl.data.White;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
-import net.spfbl.whois.Owner;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
@@ -114,9 +113,9 @@ public class Analise implements Serializable, Comparable<Analise> {
     
     private final String name; // Nome do processo.
     private Semaphore semaphoreSet = new Semaphore(1);
-    private final TreeSet<String> ipSet = new TreeSet<String>(); // Lista dos IPs a serem analisados.
-    private final TreeSet<String> processSet = new TreeSet<String>(); // Lista dos IPs em processamento.
-    private final TreeSet<String> resultSet = new TreeSet<String>(); // Lista dos resultados das analises.
+    private final TreeSet<String> ipSet = new TreeSet<>(); // Lista dos IPs a serem analisados.
+    private final TreeSet<String> processSet = new TreeSet<>(); // Lista dos IPs em processamento.
+    private final TreeSet<String> resultSet = new TreeSet<>(); // Lista dos resultados das analises.
     private transient FileWriter resultWriter = null;
     
     private long last = System.currentTimeMillis();
@@ -190,6 +189,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     public boolean add(String token) {
         if (Subnet.isValidIP(token)) {
             token = Subnet.normalizeIP(token);
+            token = SubnetIPv6.tryTransformToIPv4(token);
         } else if (!token.startsWith("@") && Domain.isDomain(token)) {
             token = "@" + Domain.normalizeHostname(token, false);
         } else if (Domain.isHostname(token)) {
@@ -203,35 +203,38 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     private boolean addNew(String token) {
-        if (!run) {
-            return false;
-        } else if (!semaphoreSet.tryAcquire()) {
-            return false;
-        } else if (ipSet.contains(token)) {
-            semaphoreSet.release();
-            return false;
-        } else if (processSet.contains(token)) {
-            semaphoreSet.release();
-            return false;
-        } else if (resultSet.contains(token)) {
-            semaphoreSet.release();
-            return false;
-        } else if (ipSet.add(token)) {
-            semaphoreSet.release();
-            if (SEMAPHORE.tryAcquire()) {
-                Process process = new Process();
-                process.start();
+        try {
+            semaphoreSet.acquire();
+            if (ipSet.contains(token)) {
+                semaphoreSet.release();
+                return false;
+            } else if (processSet.contains(token)) {
+                semaphoreSet.release();
+                return false;
+            } else if (resultSet.contains(token)) {
+                semaphoreSet.release();
+                return false;
+            } else if (ipSet.add(token)) {
+                semaphoreSet.release();
+                if (SEMAPHORE.tryAcquire()) {
+                    Process process = new Process();
+                    process.start();
+                }
+                last = System.currentTimeMillis();
+                return CHANGED = true;
+            } else {
+                semaphoreSet.release();
+                return false;
             }
-            last = System.currentTimeMillis();
-            return CHANGED = true;
-        } else {
+        } catch (InterruptedException ex) {
+            Server.logError(ex);
             return false;
         }
     }
     
     public static void initProcess() {
         int count = 0;
-        while (count++ < 256 && getProcessTotal() > 0 && SEMAPHORE.tryAcquire()) {
+        while (count++ < MAX && getProcessTotal() > 0 && SEMAPHORE.tryAcquire()) {
             Process process = new Process();
             process.start();
         }
@@ -256,14 +259,13 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public TreeSet<String> getResultFullSet() throws InterruptedException {
-        TreeMap<String,String> map = new TreeMap<String,String>();
+        TreeMap<String,String> map = new TreeMap<>();
         whiteFullSet(map);
         File resultFile = getResultFile();
         if (resultFile.exists()) {
             try {
                 FileReader fileReader = new FileReader(resultFile);
-                BufferedReader bufferedReader = new BufferedReader(fileReader);
-                try {
+                try (BufferedReader bufferedReader = new BufferedReader(fileReader)) {
                     String line;
                     while ((line = bufferedReader.readLine()) != null) {
                         int index = line.indexOf(' ');
@@ -279,14 +281,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                             }
                         }
                     }
-                } finally {
-                    bufferedReader.close();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
             }
         }
-        TreeSet<String> set = new TreeSet<String>();
+        TreeSet<String> set = new TreeSet<>();
         for (String ip : map.keySet()) {
             String result = map.get(ip);
             set.add(ip + " " + result);
@@ -395,52 +395,24 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static TreeSet<String> getIPSet(String hostname) {
-        TreeSet<String> ipSet = new TreeSet<String>();
-        try {
-            Attributes attributesA = Server.getAttributesDNS(
-                    hostname, new String[]{"A"}
-            );
-            if (attributesA != null) {
-                Enumeration enumerationA = attributesA.getAll();
-                while (enumerationA.hasMoreElements()) {
-                    Attribute attributeA = (Attribute) enumerationA.nextElement();
-                    NamingEnumeration enumeration = attributeA.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String address = (String) enumeration.next();
-                        if (SubnetIPv4.isValidIPv4(address)) {
-                            address = SubnetIPv4.normalizeIPv4(address);
-                            ipSet.add(address);
-                        }
-                    }
-                }
-            }
-            Attributes attributesAAAA = Server.getAttributesDNS(
-                    hostname, new String[]{"AAAA"}
-            );
-            if (attributesAAAA != null) {
-                Enumeration enumerationAAAA = attributesAAAA.getAll();
-                while (enumerationAAAA.hasMoreElements()) {
-                    Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
-                    NamingEnumeration enumeration = attributeAAAA.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String address = (String) enumeration.next();
-                        if (SubnetIPv6.isValidIPv6(address)) {
-                            address = SubnetIPv6.normalizeIPv6(address);
-                            ipSet.add(address);
-                        }
-                    }
-                }
-            }
-        } catch (NameNotFoundException ex) {
+        TreeSet<String> ipv4Set = getIPv4Set(hostname);
+        TreeSet<String> ipv6Set = getIPv6Set(hostname);
+        if (ipv4Set == null && ipv6Set == null) {
             return null;
-        } catch (NamingException ex) {
-            // Ignore.
+        } else if (ipv4Set == null) {
+            return ipv6Set;
+        } else if (ipv6Set == null) {
+            return ipv4Set;
+        } else {
+            TreeSet<String> ipSet = new TreeSet<>();
+            ipSet.addAll(ipv4Set);
+            ipSet.addAll(ipv6Set);
+            return ipSet;
         }
-        return ipSet;
     }
     
     public static TreeSet<String> getIPv4Set(String hostname) {
-        TreeSet<String> ipv4Set = new TreeSet<String>();
+        TreeSet<String> ipv4Set = new TreeSet<>();
         try {
             Attributes attributesA = Server.getAttributesDNS(
                     hostname, new String[]{"A"}
@@ -468,7 +440,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static TreeSet<String> getIPv6Set(String hostname) {
-        TreeSet<String> ipv6Set = new TreeSet<String>();
+        TreeSet<String> ipv6Set = new TreeSet<>();
         try {
             Attributes attributesAAAA = Server.getAttributesDNS(
                     hostname, new String[]{"AAAA"}
@@ -586,11 +558,11 @@ public class Analise implements Serializable, Comparable<Analise> {
     /**
      * Fila de processos.
      */
-    private static final LinkedList<Analise> QUEUE = new LinkedList<Analise>();
+    private static final LinkedList<Analise> QUEUE = new LinkedList<>();
     /**
      * Mapa de processos.
      */
-    private static final HashMap<String,Analise> MAP = new HashMap<String,Analise>();
+    private static final HashMap<String,Analise> MAP = new HashMap<>();
     
     private static synchronized int getProcessTotal() {
         int total = 0;
@@ -601,13 +573,13 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static synchronized TreeSet<Analise> getAnaliseSet() {
-        TreeSet<Analise> queue = new TreeSet<Analise>();
+        TreeSet<Analise> queue = new TreeSet<>();
         queue.addAll(QUEUE);
         return queue;
     }
     
     public static TreeSet<Analise> getAnaliseCloneSet() {
-        TreeSet<Analise> queue = new TreeSet<Analise>();
+        TreeSet<Analise> queue = new TreeSet<>();
         for (String name : getNameSet()) {
             Analise analise = get(name, false);
             if (analise != null) {
@@ -625,7 +597,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public static synchronized TreeSet<String> getNameSet() {
-        TreeSet<String> queue = new TreeSet<String>();
+        TreeSet<String> queue = new TreeSet<>();
         for (String name : MAP.keySet()) {
             try {
                 name = URLDecoder.decode(name, "UTF-8");
@@ -1137,60 +1109,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenMX));
             } else {
                 builder.append(Domain.revert(tokenMX));
-                addCluster(extractTLD(tokenMX), statusMX, dist);
-                addCluster(getOwnerID(tokenMX), statusMX, dist);
-            }
-        }
-    }
-    
-    private static String getOwnerID(String host) {
-        if (host == null) {
-            return null;
-        } else {
-            try {
-                String id = Domain.getOwnerID(host);
-                return Owner.normalizeID(id);
-            } catch (ProcessException ex) {
-                return null;
-            }
-        }
-    }
-    
-    private static String convertHostToMask(String host) {
-        if (host == null) {
-            return null;
-        } else if (Generic.containsDynamic(host)) {
-            return null;
-        } else if (Ignore.containsHost(host)) {
-            return null;
-        } else if (Provider.containsDomain(host)) {
-            return null;
-        } else {
-            String mask = Generic.convertDomainToMask(host);
-            if (Generic.containsGenericExact(mask)) {
-                return null;
-            } else {
-                mask = Generic.convertHostToMask(host);
-                if (Generic.containsGenericExact(mask)) {
-                    return null;
-                } else {
-                    return mask;
-                }
-            }
-        }
-    }
-    
-    private static String extractTLD(String host) {
-        if ((host = Domain.normalizeHostname(host, true)) == null) {
-            return null;
-        } else if (host.endsWith(".br")) {
-            return null;
-        } else {
-            try {
-                return Domain.extractTLD(host, true);
-            } catch (ProcessException ex) {
-                Server.logError(ex);
-                return null;
             }
         }
     }
@@ -1235,7 +1153,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             Status statusIP;
             String tokenName;
             Status statusName = Status.NONE;
-            LinkedList<String> nameList = new LinkedList<String>();
+            LinkedList<String> nameList = new LinkedList<>();
             try {
                 for (String ptr : Reverse.getPointerSet(ip)) {
                     nameList.add(ptr);
@@ -1274,7 +1192,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                                 statusName = Status.INVALID;
                             }
                         } catch (NamingException ex) {
-                            statusName = Status.NXDOMAIN;
+                           statusName = Status.NXDOMAIN;
                         }
                     }
                 }
@@ -1394,7 +1312,21 @@ public class Analise implements Serializable, Comparable<Analise> {
                     }
                 }
             }
-            if (statusIP != Status.BLOCK && statusName == Status.DYNAMIC) {
+            if (statusIP == Status.WHITE && (statusName == Status.INVALID || statusName == Status.NONE || statusName == Status.NXDOMAIN)) {
+                int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                String white;
+                if ((white = White.clearCIDR(ip, mask)) != null) {
+                    Server.logDebug("false WHITE '" + white + "' dropped by '" + tokenName + ";" + statusName + "'.");
+                }
+                String token = ip + (ipv4 ? "/32" : "/64");
+                String cidr = Subnet.normalizeCIDR(token);
+                if (Block.tryOverlap(cidr)) {
+                    Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                statusIP = Status.BLOCK;
+            } else if (statusIP != Status.BLOCK && statusName == Status.DYNAMIC) {
                 String token = ip + (SubnetIPv4.isValidIPv4(ip) ? "/24" : "/48");
                 String cidr = Subnet.normalizeCIDR(token);
                 if (Block.tryOverlap(cidr)) {
@@ -1444,11 +1376,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + ip + "' added by 'SLAAC'.");
                 }
                 statusIP = Status.BLOCK;
-//            } else if (statusIP != Status.BLOCK && statusIP != Status.IGNORE && statusIP != Status.WHITE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE && isCusterRED(ip, null, tokenName)) {
-//                if (Block.tryAdd(ip)) {
-//                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";CLUSTER'.");
-//                }
-//                statusIP = Status.BLOCK;
             } else if (statusIP == Status.DNSBL && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
@@ -1516,245 +1443,10 @@ public class Analise implements Serializable, Comparable<Analise> {
                 builder.append(Subnet.expandIP(tokenName));
             } else {
                 builder.append(Domain.revert(tokenName));
-                addCluster(convertHostToMask(tokenName), statusName, dist);
-                addCluster(extractTLD(tokenName), statusName, dist);
-                addCluster(getOwnerID(tokenName), statusName, dist);
             }
-            addCluster(Subnet.normalizeCIDR(ip + (ipv4 ? "/24" : "/56")), statusIP, dist);
         } catch (Exception ex) {
             builder.append("ERROR");
             Server.logError(ex);
-        }
-    }
-    
-    private static final TreeMap<String,Short[]> clusterMap = new TreeMap<String,Short[]>(); // Mapa dos agrupamentos.
-    private static final float CLUSTER_YELLOW = 0.75f;
-    
-    protected static synchronized boolean dropCluster(String token) {
-        return clusterMap.remove(token) != null;
-    }
-    
-    private static synchronized boolean addCluster(String token, Status status, Distribution dist) {
-        try {
-            if (token == null) {
-                return false;
-            } else if (status == Status.PROVIDER) {
-                return false;
-            } else if (status == Status.IGNORE) {
-                return false;
-            } else if (status == Status.DYNAMIC) {
-                return false;
-            } else if (Provider.contains(token)) {
-                return false;
-            } else if (Ignore.contains(token)) {
-                return false;
-            } else {
-                Short[] clusterDist = clusterMap.get(token);
-                if (clusterDist == null) {
-                    clusterDist = new Short[2];
-                    clusterDist[0] = 0;
-                    clusterDist[1] = 0;
-                    clusterMap.put(token, clusterDist);
-                }
-                int ham = clusterDist[0];
-                int spam = clusterDist[1];
-                if (dist != null) {
-                    ham += dist.getHAM();
-                    spam += dist.getSPAM();
-                }
-                switch (status) {
-                    case WHITE: case GREEN:
-                        ham++;
-                        break;
-                    case BLOCK: case RED: case DNSBL: case NXDOMAIN:
-                        spam++;
-                        break;
-                }
-                while (ham + spam > Short.MAX_VALUE) {
-                    ham /= 2;
-                    spam /= 2;
-                }
-                clusterDist[0] = (short) ham;
-                clusterDist[1] = (short) spam;
-                return true;
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-            return false;
-        }
-    }
-    
-    protected static synchronized TreeMap<String,Short[]> getClusterMap() {
-        TreeMap<String,Short[]> cloneMap = new TreeMap<String,Short[]>();
-        cloneMap.putAll(clusterMap);
-        return cloneMap;
-    }
-    
-    protected static void dumpClusterTLD(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterMap();
-        for (String token : map.keySet()) {
-            Short[] dist = map.get(token);
-            int spam = dist[1];
-            if (spam > 512) {
-                int ham = dist[0];
-                float total = ham + spam;
-                float reputation = spam / total;
-                if (reputation > CLUSTER_YELLOW) {
-                    if (Domain.isOfficialTLD(token)) {
-                        if (!Block.contains(token)) {
-                            builder.append(token);
-                            builder.append(' ');
-                            builder.append(ham);
-                            builder.append(' ');
-                            builder.append(spam);
-                            builder.append('\n');
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    protected static void dumpClusterCPF(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterMap();
-        for (String token : map.keySet()) {
-            Short[] dist = map.get(token);
-            int spam = dist[1];
-            if (spam > 512) {
-                int ham = dist[0];
-                float total = ham + spam;
-                float reputation = spam / total;
-                if (reputation > CLUSTER_YELLOW) {
-                    if (Owner.isOwnerCPF(token)) {
-                        if (!Block.contains(token)) {
-                            builder.append(token);
-                            builder.append(' ');
-                            builder.append(ham);
-                            builder.append(' ');
-                            builder.append(spam);
-                            builder.append('\n');
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    protected static void dumpClusterCNPJ(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterMap();
-        for (String token : map.keySet()) {
-            Short[] dist = map.get(token);
-            int spam = dist[1];
-            if (spam > 512) {
-                int ham = dist[0];
-                float total = ham + spam;
-                float reputation = spam / total;
-                if (reputation > CLUSTER_YELLOW) {
-                    if (Owner.isOwnerCNPJ(token)) {
-                        if (!Block.contains(token)) {
-                            builder.append(token);
-                            builder.append(' ');
-                            builder.append(ham);
-                            builder.append(' ');
-                            builder.append(spam);
-                            builder.append('\n');
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    protected static void dumpClusterCIDR(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterMap();
-        for (String token : map.keySet()) {
-            Short[] dist = map.get(token);
-            int spam = dist[1];
-            if (spam > 512) {
-                int ham = dist[0];
-                float total = ham + spam;
-                float reputation = spam / total;
-                if (reputation > CLUSTER_YELLOW) {
-                    if (Subnet.isValidCIDR(token)) {
-                        if (!Block.contains(token)) {
-                            builder.append(token);
-                            builder.append(' ');
-                            builder.append(ham);
-                            builder.append(' ');
-                            builder.append(spam);
-                            builder.append('\n');
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    protected static void dumpClusterMask(StringBuilder builder) {
-        TreeMap<String,Short[]> map = getClusterMap();
-        for (String token : map.keySet()) {
-            if (token.contains("#") || token.contains(".H.")) {
-                Short[] dist = map.get(token);
-                int spam = dist[1];
-                if (spam > 512) {
-                    int ham = dist[0];
-                    float total = ham + spam;
-                    float reputation = spam / total;
-                    if (reputation > CLUSTER_YELLOW) {
-                        if (!Generic.containsGenericExact(token)) {
-                            String hostname = token.replace("#", "0");
-                            hostname = hostname.replace(".H.", ".0a.");
-                            if (!Block.contains(hostname)) {
-                                builder.append(token);
-                                builder.append(' ');
-                                builder.append(ham);
-                                builder.append(' ');
-                                builder.append(spam);
-                                builder.append('\n');
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    public static synchronized boolean isCusterYELLOW(String token) {
-        if (token == null) {
-            return false;
-        } else {
-            Short[] dist = clusterMap.get(token);
-            if (dist == null) {
-                return false;
-            } else {
-                int spam = dist[1];
-                if (spam > 512) {
-                    int ham = dist[0];
-                    float total = ham + spam;
-                    float reputation = spam / total;
-                    return reputation > CLUSTER_YELLOW;
-                } else {
-                    return false;
-                }
-            }
-        }
-    }
-    
-    public static boolean isCusterYELLOW(String ip, String sender, String hostname) {
-        if (isCusterYELLOW(extractTLD(hostname))) {
-            return true;
-        } else if (isCusterYELLOW(extractTLD(sender))) {
-            return true;
-        } else if (isCusterYELLOW(convertHostToMask(hostname))) {
-            return true;
-        } else if (isCusterYELLOW(getOwnerID(hostname))) {
-            return true;
-        } else if (isCusterYELLOW(getOwnerID(sender))) {
-            return true;
-        } else {
-            boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
-            String cidr = Subnet.normalizeCIDR(ip + (ipv4 ? "/24" : "/56"));
-            return isCusterYELLOW(cidr);
         }
     }
     
@@ -1802,28 +1494,10 @@ public class Analise implements Serializable, Comparable<Analise> {
                 long time = System.currentTimeMillis();
                 TreeSet<Analise> set = getAnaliseCloneSet();
                 File file = new File("./data/analise.set");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(set, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-                Server.logStore(time, file);
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-            try {
-//                Server.logTrace("storing cluster.map");
-                long time = System.currentTimeMillis();
-                TreeMap<String,Short[]> map = getClusterMap();
-                File file = new File("./data/cluster.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
-                    SerializationUtils.serialize(map, outputStream);
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -1838,11 +1512,8 @@ public class Analise implements Serializable, Comparable<Analise> {
         if (file.exists()) {
             try {
                 TreeSet<Analise> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (Analise analise : set) {
                     try {
@@ -1854,48 +1525,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                         add(analise);
                     } catch (Exception ex) {
                         Server.logError(ex);
-                    }
-                }
-                Server.logLoad(time, file);
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-        time = System.currentTimeMillis();
-        file = new File("./data/cluster.map");
-        if (file.exists()) {
-            try {
-                TreeMap<String,Short[]> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
-                    map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
-                }
-                for (String token : map.keySet()) {
-                    Short[] value = map.get(token);
-                    if (token.contains("#") || token.contains(".H.")) {
-                        String hostname = token.replace("#", "0").replace(".H.", ".0a.");
-                        if (Domain.isHostname(hostname)) {
-                            if (!Provider.containsDomain(hostname)) {
-                                if (!Ignore.containsHost(hostname)) {
-                                    clusterMap.put(token, value);
-                                }
-                            }
-                        }
-                    } else if (Owner.isOwnerCPF(token.substring(1))) {
-                        String ownerID = Owner.normalizeID(token.substring(1));
-                        clusterMap.put(ownerID, value);
-                    } else if (Owner.isOwnerID(token)) {
-                        String ownerID = Owner.normalizeID(token);
-                        clusterMap.put(ownerID, value);
-                    } else if (Subnet.isValidCIDR(token)) {
-                        clusterMap.put(token, value);
-                    } else if (Domain.isHostname(token)) {
-                        String hostname = Domain.normalizeHostname(token, true);
-                        if (Domain.isOfficialTLD(hostname) && !hostname.endsWith(".br")) {
-                            clusterMap.put(hostname, value);
-                        }
                     }
                 }
                 Server.logLoad(time, file);

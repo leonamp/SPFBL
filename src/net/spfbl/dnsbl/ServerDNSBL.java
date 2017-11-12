@@ -55,15 +55,6 @@ public class ServerDNSBL implements Serializable, Comparable<ServerDNSBL> {
         return message;
     }
 
-    public String getMessage(Locale locale, String token) {
-        String url = Core.getURL(locale, token);
-        if (url == null) {
-            return message;
-        } else {
-            return url;
-        }
-    }
-
     @Override
     public int compareTo(ServerDNSBL other) {
         if (other == null) {

@@ -22,8 +22,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.math.BigInteger;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.util.Arrays;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -188,6 +186,68 @@ public final class SubnetIPv6 extends Subnet {
             return (byteArray[11] & 0xFF) == 0xFF && (byteArray[12] & 0xFF) == 0xFE;
         } else {
             return false;
+        }
+    }
+    
+    public static boolean is6to4(String ip) {
+        if (SubnetIPv6.isValidIPv6(ip)) {
+            short[] shortArray = SubnetIPv6.split(ip);
+            return shortArray[0] == 0x2002;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean isTeredo(String ip) {
+        if (SubnetIPv6.isValidIPv6(ip)) {
+            short[] shortArray = SubnetIPv6.split(ip);
+            return shortArray[0] == 0x2001 && shortArray[1] == 0x0000;
+        } else {
+            return false;
+        }
+    }
+    
+    public static String getIPv4(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (is6to4(ip)) {
+            byte[] byteArray = splitByte(ip);
+            int octet1 = byteArray[2] & 0xFF;
+            int octet2 = byteArray[3] & 0xFF;
+            int octet3 = byteArray[4] & 0xFF;
+            int octet4 = byteArray[5] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else if (isTeredo(ip)) {
+            byte[] byteArray = splitByte(ip);
+            int octet1 = ~byteArray[12] & 0xFF;
+            int octet2 = ~byteArray[13] & 0xFF;
+            int octet3 = ~byteArray[14] & 0xFF;
+            int octet4 = ~byteArray[15] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else {
+            return null;
+        }
+    }
+    
+    public static String tryTransformToIPv4(String ip) {
+        if (ip == null) {
+            return null;
+        } else if (is6to4(ip)) {
+            byte[] byteArray = splitByte(ip);
+            int octet1 = byteArray[2] & 0xFF;
+            int octet2 = byteArray[3] & 0xFF;
+            int octet3 = byteArray[4] & 0xFF;
+            int octet4 = byteArray[5] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else if (isTeredo(ip)) {
+            byte[] byteArray = splitByte(ip);
+            int octet1 = ~byteArray[12] & 0xFF;
+            int octet2 = ~byteArray[13] & 0xFF;
+            int octet3 = ~byteArray[14] & 0xFF;
+            int octet4 = ~byteArray[15] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else {
+            return ip;
         }
     }
     
@@ -555,6 +615,14 @@ public final class SubnetIPv6 extends Subnet {
      * Mapa de blocos IP de ASs com busca em árvore binária log2(n).
      */
     private static final TreeMap<String,SubnetIPv6> MAP = new TreeMap<String,SubnetIPv6>();
+    
+    @Override
+    public synchronized SubnetIPv6 drop() {
+        String cidr = getInetnum();
+        String first = SubnetIPv6.getFirstIP(cidr);
+        String key = expandIPv6(first);
+        return MAP.remove(key);
+    }
     
     /**
      * Remove registro de bloco de IP para AS do cache.

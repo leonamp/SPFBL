@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.data;
 
@@ -66,7 +66,7 @@ public class Block {
      */
     private static class SET {
         
-        private static final HashMap<String,Long> MAP = new HashMap<String,Long>();
+        private static final HashMap<String,Long> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -85,7 +85,7 @@ public class Block {
         }
         
         public static TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             for (String token : getAll()) {
                 if (user == null && !token.contains(":")) {
                     resultSet.add(token);
@@ -108,13 +108,13 @@ public class Block {
         }
         
         public static synchronized TreeMap<String,Long> getMap() {
-            TreeMap<String,Long> map = new TreeMap<String,Long>();
+            TreeMap<String,Long> map = new TreeMap<>();
             map.putAll(MAP);
             return map;
         }
                 
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             set.addAll(MAP.keySet());
             return set;
         }
@@ -146,7 +146,7 @@ public class Block {
      */
     private static class WHOIS {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -165,7 +165,7 @@ public class Block {
         }
         
         public static synchronized TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             TreeSet<String> whoisSet = MAP.get(user);
             if (whoisSet != null) {
                 for (String whois : whoisSet) {
@@ -193,7 +193,7 @@ public class Block {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (String whois : MAP.get(client)) {
                     if (client == null) {
@@ -233,7 +233,7 @@ public class Block {
             String whois = token.substring(index+1);
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             return set.add(whois);
@@ -251,7 +251,7 @@ public class Block {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             return set.add(whois);
@@ -277,18 +277,21 @@ public class Block {
         private static String get(
                 String client,
                 Set<String> tokenSet,
-                boolean autoBlock
+                boolean autoBlock,
+                boolean superBlock
         ) {
             if (tokenSet.isEmpty()) {
                 return null;
             } else {
-                TreeSet<String> subSet = new TreeSet<String>();
-                TreeSet<String> whoisSet = getClientSet(null);
-                if (whoisSet != null) {
-                    subSet.addAll(whoisSet);
+                TreeSet<String> subSet = new TreeSet<>();
+                if (superBlock) {
+                    TreeSet<String> whoisSet = getClientSet(null);
+                    if (whoisSet != null) {
+                        subSet.addAll(whoisSet);
+                    }
                 }
                 if (client != null) {
-                    whoisSet = getClientSet(client);
+                    TreeSet<String> whoisSet = getClientSet(client);
                     if (whoisSet != null) {
                         for (String whois : whoisSet) {
                             subSet.add(client + ':' + whois);
@@ -396,7 +399,7 @@ public class Block {
      */
     private static class DNSBL {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -415,7 +418,7 @@ public class Block {
         }
         
         public static synchronized TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             TreeSet<String> dnsblSet = MAP.get(user);
             if (dnsblSet != null) {
                 for (String dnsbl : dnsblSet) {
@@ -443,7 +446,7 @@ public class Block {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (String dnsbl : MAP.get(client)) {
                     if (client == null) {
@@ -483,7 +486,7 @@ public class Block {
             String dnsbl = token.substring(index+1);
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             return set.add(dnsbl);
@@ -501,7 +504,7 @@ public class Block {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             return set.add(dnsbl);
@@ -528,8 +531,7 @@ public class Block {
             if (ip == null) {
                 return null;
             } else {
-                TreeMap<String,TreeSet<String>> dnsblMap =
-                        new TreeMap<String,TreeSet<String>>();
+                TreeMap<String,TreeSet<String>> dnsblMap = new TreeMap<>();
                 TreeSet<String> registrySet = getClientSet(null);
                 if (registrySet != null) {
                     for (String dnsbl : registrySet) {
@@ -538,7 +540,7 @@ public class Block {
                         String value = dnsbl.substring(index + 1);
                         TreeSet<String> dnsblSet = dnsblMap.get(server);
                         if (dnsblSet == null) {
-                            dnsblSet = new TreeSet<String>();
+                            dnsblSet = new TreeSet<>();
                             dnsblMap.put(server, dnsblSet);
                         }
                         dnsblSet.add(value);
@@ -553,7 +555,7 @@ public class Block {
                             String value = dnsbl.substring(index + 1);
                             TreeSet<String> dnsblSet = dnsblMap.get(server);
                             if (dnsblSet == null) {
-                                dnsblSet = new TreeSet<String>();
+                                dnsblSet = new TreeSet<>();
                                 dnsblMap.put(server, dnsblSet);
                             }
                             dnsblSet.add(value);
@@ -586,7 +588,7 @@ public class Block {
      */
     private static class REGEX {
         
-        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<String,ArrayList<Pattern>>();
+        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -613,7 +615,7 @@ public class Block {
         }
         
         public static TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             ArrayList<Pattern> patternList = getClientList(user);
             if (patternList != null) {
                 for (Pattern pattern : patternList) {
@@ -624,7 +626,7 @@ public class Block {
         }
         
         private static synchronized ArrayList<String> getKeySet() {
-            ArrayList<String> keySet = new ArrayList<String>();
+            ArrayList<String> keySet = new ArrayList<>();
             keySet.addAll(MAP.keySet());
             return keySet;
         }
@@ -650,7 +652,7 @@ public class Block {
         }
         
         public static TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : getKeySet()) {
                 ArrayList<Pattern> patternList = getClientList(client);
                 if (patternList != null) {
@@ -676,7 +678,7 @@ public class Block {
                 String client;
                 if (index == -1) {
                     client = null;
-                } else if (Domain.isEmail(token.substring(0, index))) {
+                } else if (Domain.isValidEmail(token.substring(0, index))) {
                     client = token.substring(0, index);
                 } else {
                     client = null;
@@ -705,7 +707,7 @@ public class Block {
             String regex = token.substring(index+1);
             ArrayList<Pattern> list = MAP.get(client);
             if (list == null) {
-                list = new ArrayList<Pattern>();
+                list = new ArrayList<>();
                 MAP.put(client, list);
             }
             Pattern pattern = Pattern.compile(regex);
@@ -724,7 +726,7 @@ public class Block {
             }
             ArrayList<Pattern> list = MAP.get(client);
             if (list == null) {
-                list = new ArrayList<Pattern>();
+                list = new ArrayList<>();
                 MAP.put(client, list);
             }
             for (index = 0; index < list.size(); index++) {
@@ -838,7 +840,7 @@ public class Block {
      */
     private static class CIDR {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<String,TreeSet<String>>();
+        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -849,7 +851,7 @@ public class Block {
         }
         
         public static synchronized ArrayList<String> getKeySet() {
-            ArrayList<String> resultSet = new ArrayList<String>();
+            ArrayList<String> resultSet = new ArrayList<>();
             resultSet.addAll(MAP.keySet());
             return resultSet;
         }
@@ -863,7 +865,7 @@ public class Block {
             if (clientSet == null) {
                 return null;
             } else {
-                TreeSet<String> resultSet = new TreeSet<String>();
+                TreeSet<String> resultSet = new TreeSet<>();
                 resultSet.addAll(clientSet);
                 return resultSet;
             }
@@ -878,8 +880,30 @@ public class Block {
             }
         }
         
+        public static synchronized String first(String client) {
+            TreeSet<String> clientSet = MAP.get(client);
+            if (clientSet == null) {
+                return null;
+            } else {
+                return clientSet.first();
+            }
+        }
+        
+        public static synchronized String higher(String client, String token) {
+            if (token == null) {
+                return null;
+            } else {
+                TreeSet<String> clientSet = MAP.get(client);
+                if (clientSet == null) {
+                    return null;
+                } else {
+                    return clientSet.higher(token);
+                }
+            }
+        }
+        
         public static synchronized TreeSet<String> getExtended() {
-            TreeSet<String> returnSet = new TreeSet<String>();
+            TreeSet<String> returnSet = new TreeSet<>();
             TreeSet<String> cidrSet = MAP.get(null);
             if (cidrSet != null) {
                 returnSet.addAll(cidrSet);
@@ -896,7 +920,7 @@ public class Block {
         }
         
         public static TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             TreeSet<String> cidrSet = cloneClientSet(user);
             if (cidrSet != null) {
                 for (String cidr : cidrSet) {
@@ -937,25 +961,48 @@ public class Block {
             return count;
         }
         
+//        public static TreeSet<String> getAll() {
+//            TreeSet<String> set = new TreeSet<>();
+//            for (String client : getKeySet()) {
+//                Object[] clientArray = getClientArray(client);
+//                if (clientArray != null) {
+//                    for (Object element : clientArray) {
+//                        String cidr = (String) element;
+//                        if (cidr.contains(":")) {
+//                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
+//                        } else {
+//                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
+//                        }
+//                        if (client == null) {
+//                            set.add("CIDR=" + cidr);
+//                        } else {
+//                            set.add(client + ":CIDR=" + cidr);
+//                        }
+//                    }
+//                }
+//            }
+//            return set;
+//        }
+        
         public static TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : getKeySet()) {
-                Object[] clientArray = getClientArray(client);
-                if (clientArray != null) {
-                    for (Object element : clientArray) {
-                        String cidr = (String) element;
-                        if (cidr.contains(":")) {
-                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
+                String key = first(client);
+                if (key != null) {
+                    do {
+                        String cidr;
+                        if (key.contains(":")) {
+                            cidr = SubnetIPv6.normalizeCIDRv6(key);
                         } else {
-                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
+                            cidr = SubnetIPv4.normalizeCIDRv4(key);
                         }
                         if (client == null) {
                             set.add("CIDR=" + cidr);
                         } else {
                             set.add(client + ":CIDR=" + cidr);
                         }
-                    }
-                }
+                    } while ((key = higher(client, key)) != null);
+                } 
             }
             return set;
         }
@@ -1016,55 +1063,57 @@ public class Block {
             }
         }
         
-        public static void simplify() {
-            try {
-                TreeSet<String> cidrSet = getClientSet(null);
-                if (cidrSet != null && !cidrSet.isEmpty()) {
-                    String cidrExtended = cidrSet.first();
-                    do {
-                        if (SubnetIPv4.isValidCIDRv4(cidrExtended)) {
-                            String cidrSmaller = SubnetIPv4.normalizeCIDRv4(cidrExtended);
-                            short mask = Subnet.getMask(cidrSmaller);
-                            if (mask > 8) {
-                                String ipFirst = SubnetIPv4.getFirstIPv4(cidrSmaller);
-                                String cidrBigger = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + (mask - 1));
-                                ipFirst = SubnetIPv4.getFirstIPv4(cidrBigger);
-                                String ipLast = SubnetIPv4.getLastIPv4(cidrBigger);
-                                String cidr1 = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + mask);
-                                if (CIDR.contains((String) null, cidr1)) {
-                                    String cidr2 = SubnetIPv4.normalizeCIDRv4(ipLast + "/" + mask);
-                                    if (CIDR.contains((String) null, cidr2)) {
-                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr1));
-                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr2));
-                                        CIDR.addExact(null, cidrBigger);
-                                    }
-                                }
-                            }
-                        } else if (SubnetIPv6.isValidCIDRv6(cidrExtended)) {
-                            String cidrSmaller = SubnetIPv6.normalizeCIDRv6(cidrExtended);
-                            short mask = Subnet.getMask(cidrSmaller);
-                            if (mask > 16) {
-                                String ipFirst = SubnetIPv6.getFirstIPv6(cidrSmaller);
-                                String cidrBigger = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + (mask - 1));
-                                ipFirst = SubnetIPv6.getFirstIPv6(cidrBigger);
-                                String ipLast = SubnetIPv6.getLastIPv6(cidrBigger);
-                                String cidr1 = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + mask);
-                                if (CIDR.contains((String) null, cidr1)) {
-                                    String cidr2 = SubnetIPv6.normalizeCIDRv6(ipLast + "/" + mask);
-                                    if (CIDR.contains((String) null, cidr2)) {
-                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr1));
-                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr2));
-                                        CIDR.addExact(null, cidrBigger);
-                                    }
-                                }
-                            }
-                        }
-                    } while ((cidrExtended = cidrSet.higher(cidrExtended)) != null);
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
+//        public static void simplify() {
+//            try {
+//                TreeSet<String> cidrSet = getClientSet(null);
+//                if (cidrSet != null && !cidrSet.isEmpty()) {
+//                    String cidrExtended = cidrSet.first();
+//                    do {
+//                        if (SubnetIPv4.isValidCIDRv4(cidrExtended)) {
+//                            String cidrSmaller = SubnetIPv4.normalizeCIDRv4(cidrExtended);
+//                            short mask = Subnet.getMask(cidrSmaller);
+//                            if (mask > 8) {
+//                                String ipFirst = SubnetIPv4.getFirstIPv4(cidrSmaller);
+//                                String cidrBigger = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + (mask - 1));
+//                                ipFirst = SubnetIPv4.getFirstIPv4(cidrBigger);
+//                                String ipLast = SubnetIPv4.getLastIPv4(cidrBigger);
+//                                String cidr1 = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + mask);
+//                                if (CIDR.contains((String) null, cidr1)) {
+//                                    String cidr2 = SubnetIPv4.normalizeCIDRv4(ipLast + "/" + mask);
+//                                    if (CIDR.contains((String) null, cidr2)) {
+//                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr1));
+//                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr2));
+//                                        CIDR.addExact(null, cidrBigger);
+//                                        Server.logTrace("CIDR simplification " + cidrBigger);
+//                                    }
+//                                }
+//                            }
+//                        } else if (SubnetIPv6.isValidCIDRv6(cidrExtended)) {
+//                            String cidrSmaller = SubnetIPv6.normalizeCIDRv6(cidrExtended);
+//                            short mask = Subnet.getMask(cidrSmaller);
+//                            if (mask > 16) {
+//                                String ipFirst = SubnetIPv6.getFirstIPv6(cidrSmaller);
+//                                String cidrBigger = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + (mask - 1));
+//                                ipFirst = SubnetIPv6.getFirstIPv6(cidrBigger);
+//                                String ipLast = SubnetIPv6.getLastIPv6(cidrBigger);
+//                                String cidr1 = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + mask);
+//                                if (CIDR.contains((String) null, cidr1)) {
+//                                    String cidr2 = SubnetIPv6.normalizeCIDRv6(ipLast + "/" + mask);
+//                                    if (CIDR.contains((String) null, cidr2)) {
+//                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr1));
+//                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr2));
+//                                        CIDR.addExact(null, cidrBigger);
+//                                        Server.logTrace("CIDR simplification " + cidrBigger);
+//                                    }
+//                                }
+//                            }
+//                        }
+//                    } while ((cidrExtended = cidrSet.higher(cidrExtended)) != null);
+//                }
+//            } catch (Exception ex) {
+//                Server.logError(ex);
+//            }
+//        }
         
         private static synchronized boolean addExact(
                 String client, String token
@@ -1073,7 +1122,7 @@ public class Block {
             String cidr = token.substring(index+1);
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -1094,7 +1143,7 @@ public class Block {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -1107,12 +1156,12 @@ public class Block {
                 String lastExpanded = Subnet.expandIP(lastCIDR) + "/99";
                 String floorExpanded = set.floor(firstExpanded);
                 String floor = Subnet.normalizeCIDR(floorExpanded);
-                TreeSet<String> intersectsSet = new TreeSet<String>();
+                TreeSet<String> intersectsSet = new TreeSet<>();
                 intersectsSet.addAll(set.subSet(firstExpanded, lastExpanded));
                 if (Subnet.containsIP(floor, firstCIDR)) {
                     intersectsSet.add(floorExpanded);
                 }
-                TreeSet<String> overlapSet = new TreeSet<String>();
+                TreeSet<String> overlapSet = new TreeSet<>();
                 StringBuilder errorBuilder = new StringBuilder();
                 for (String elementExpanded : intersectsSet) {
                     String element = Subnet.normalizeCIDR(elementExpanded);
@@ -1227,7 +1276,6 @@ public class Block {
         }
 
         public static String get(String client, String ip) {
-//            long time = System.currentTimeMillis();
             String result;
             String cidr = getFloor(null, ip);
             if (Subnet.containsIP(cidr, ip)) {
@@ -1241,13 +1289,12 @@ public class Block {
             } else {
                 result = null;
             }
-//            logTrace(time, "CIDR lookup for '" + ip + "'.");
             return result;
         }
     }
 
     public static void dropExpired() {
-        long max = System.currentTimeMillis() - Server.DAY_TIME * 90L;
+        long max = System.currentTimeMillis() - Server.DAY_TIME * 180L;
         TreeMap<String,Long> map = SET.getMap();
         for (String token : map.keySet()) {
             Long time = map.get(token);
@@ -1334,11 +1381,38 @@ public class Block {
             } else {
                 return false;
             }
+        } else if (isSelfBlock(token)) {
+            return true;
         } else if (SET.addExact(token)) {
             CHANGED = true;
             return true;
         } else {
             return false;
+        }
+    }
+    
+    private static boolean isSelfBlock(String token) {
+        if (token == null) {
+            return false;
+        } else {
+            int index = token.indexOf(':');
+            if (index == -1) {
+                return false;
+            } else {
+                try {
+                    String userEmail = token.substring(0, index);
+                    String userHost = Domain.extractHost(userEmail, false);
+                    String userDomain = Domain.extractDomain(userHost, true);
+                    String blockToken = token.substring(index + 1);
+                    index = blockToken.lastIndexOf(';');
+                    if (index > 0) {
+                        blockToken = blockToken.substring(0, index);
+                    }
+                    return userDomain.equals(blockToken);
+                } catch (ProcessException ex) {
+                    return false;
+                }
+            }
         }
     }
     
@@ -1462,7 +1536,7 @@ public class Block {
     
     private static String normalizeTokenBlock(String token) throws ProcessException {
         int index = token.indexOf(':');
-        if (index > 0 && Domain.isEmail(token.substring(0, index))) {
+        if (index > 0 && Domain.isValidEmail(token.substring(0, index))) {
             String client = token.substring(0, index).toLowerCase();
             token = token.substring(index + 1);
             token = SPF.normalizeToken(token, true, true, true, true, true, true);
@@ -1527,7 +1601,7 @@ public class Block {
     }
     
     public static boolean add(String client, String token) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if ((token = normalizeTokenBlock(token)) == null) {
             throw new ProcessException("TOKEN INVALID");
@@ -1587,7 +1661,7 @@ public class Block {
     }
     
     public static boolean drop(String client, String token) throws ProcessException {
-        if (client == null || !Domain.isEmail(client)) {
+        if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
         } else if ((token = normalizeTokenBlock(token)) == null) {
             throw new ProcessException("TOKEN INVALID");
@@ -1617,7 +1691,7 @@ public class Block {
     }
 
     public static TreeSet<String> get(Client client, User user) throws ProcessException {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
@@ -1640,7 +1714,7 @@ public class Block {
     }
 
     public static TreeSet<String> getAll(Client client, User user) throws ProcessException {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
@@ -1661,7 +1735,7 @@ public class Block {
     }
 
     public static TreeSet<String> getAllTokens(String value) {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         if (Subnet.isValidIP(value)) {
             String ip = Subnet.normalizeIP(value);
             if (SET.contains(ip)) {
@@ -1684,7 +1758,7 @@ public class Block {
                 }
             }
         } else if (Domain.isHostname(value)) {
-            LinkedList<String> regexList = new LinkedList<String>();
+            LinkedList<String> regexList = new LinkedList<>();
             String host = Domain.normalizeHostname(value, true);
             do {
                 int index = host.indexOf('.') + 1;
@@ -1757,7 +1831,7 @@ public class Block {
     }
 
     public static TreeSet<String> get() throws ProcessException {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         for (String token : getAll()) {
             if (!token.contains(":")) {
                 blockSet.add(token);
@@ -1779,40 +1853,13 @@ public class Block {
                     Server.logInfo("false positive BLOCK '" + ip + "/64' detected by '" + name + "'.");
                 }
             }
-            TreeSet<String> blockSet = new TreeSet<String>();
+            TreeSet<String> blockSet = new TreeSet<>();
             String block;
             while ((block = Block.find(null, null, token, false, true, true, false)) != null) {
                 if (blockSet.contains(block)) {
                     throw new ProcessException("FATAL BLOCK ERROR " + block);
-                } else if (Block.drop(block)) {
-                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
-                }
-                blockSet.add(block);
-            }
-        } catch (ProcessException ex) {
-            Server.logError(ex);
-        }
-    }
-    
-    public static void clear(User user, String token, String name) {
-        try {
-            String block;
-            if (SubnetIPv4.isValidIPv4(token)) {
-                String ip = SubnetIPv4.normalizeIPv4(token);
-                if ((block = Block.clearCIDR(ip, 32)) != null) {
-                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
-                }
-            } else if (SubnetIPv6.isValidIPv6(token)) {
-                String ip = SubnetIPv6.normalizeIPv6(token);
-                if ((block = Block.clearCIDR(ip, 64)) != null) {
-                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
-                }
-            }
-            TreeSet<String> blockSet = new TreeSet<String>();
-            while ((block = Block.find(null, user, token, false, true, true, false)) != null) {
-                if (blockSet.contains(block)) {
-                    throw new ProcessException("FATAL BLOCK ERROR " + block);
-                } else if (Block.drop(block)) {
+//                } else if (Block.drop(block)) {
+                } else if (Block.dropExact(block)) {
                     Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
                 }
                 blockSet.add(block);
@@ -1824,12 +1871,20 @@ public class Block {
     
     public static void clearHREF(User user, String token, String name) {
         try {
-            TreeSet<String> blockSet = new TreeSet<String>();
+            TreeSet<String> blockSet = new TreeSet<>();
             String block;
-            while ((block = Block.findHREF(null, user, token, false)) != null) {
+            while ((block = findHREF(null, user, token, false)) != null) {
                 if (blockSet.contains(block)) {
                     throw new ProcessException("FATAL BLOCK ERROR " + block);
-                } else if (Block.drop(block)) {
+                } else if (dropExact(block)) {
+                    Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
+                }
+                blockSet.add(block);
+            }
+            while (((block = find(user, token, false, false, false)) != null)) {
+                if (blockSet.contains(block)) {
+                    throw new ProcessException("FATAL BLOCK ERROR " + block);
+                } else if (dropExact(block)) {
                     Server.logInfo("false positive BLOCK '" + block + "' detected by '" + name + "'.");
                 }
                 blockSet.add(block);
@@ -1842,7 +1897,7 @@ public class Block {
     public static String clearCIDR(String ip, int mask) {
         try {
             if (Subnet.isValidIP(ip)) {
-                TreeSet<String> blockSet = new TreeSet<String>();
+                TreeSet<String> blockSet = new TreeSet<>();
                 String cidr;
                 while ((cidr = CIDR.get(null, ip)) != null) {
                     if (blockSet.contains(cidr)) {
@@ -1963,11 +2018,11 @@ public class Block {
             boolean findWHOIS,
             boolean autoBlock
             ) {
-        TreeSet<String> whoisSet = new TreeSet<String>();
-        LinkedList<String> regexList = new LinkedList<String>();
+        TreeSet<String> whoisSet = new TreeSet<>();
+        LinkedList<String> regexList = new LinkedList<>();
         if (token == null) {
             return null;
-        } else if (Domain.isEmail(token)) {
+        } else if (Domain.isMailFrom(token)) {
             String sender = token.toLowerCase();
             int index1 = sender.indexOf('@');
             int index2 = sender.lastIndexOf('@');
@@ -2079,7 +2134,7 @@ public class Block {
             try {
                 // Verifica critérios do WHOIS.
                 String whois;
-                if ((whois = WHOIS.get(userEmail, whoisSet, autoBlock)) != null) {
+                if ((whois = WHOIS.get(userEmail, whoisSet, autoBlock, true)) != null) {
                     return whois;
                 }
             } catch (Exception ex) {
@@ -2096,7 +2151,7 @@ public class Block {
             ) {
         if (token == null) {
             return null;
-        } else if (Domain.isEmail(token)) {
+        } else if (Domain.isMailFrom(token)) {
             String sender = token.toLowerCase();
             int index1 = sender.indexOf('@');
             int index2 = sender.lastIndexOf('@');
@@ -2235,7 +2290,7 @@ public class Block {
                 Server.logInfo("false positive BLOCK '" + block + "' detected by '" + userEmail + "'.");
             }
         }
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         while ((block = find(userEmail, ip, sender, hostname, qualifier, recipient, false, true, true, false)) != null) {
             if (blockSet.contains(block)) {
                 throw new ProcessException("FATAL BLOCK ERROR " + block);
@@ -2251,33 +2306,20 @@ public class Block {
     }
     
     public static boolean contains(String token) {
-        try {
-            if (token.contains("#") || token.contains(".H.")) {
-                String hostname = token.replace("#", "0");
-                hostname = hostname.replace(".H.", ".0a.");
-                return Block.containsDomain(hostname, false);
-            } else if (Subnet.isValidCIDR(token)) {
-                String cidr = Subnet.normalizeCIDR(token);
-                String firstIP = Subnet.getFirstIP(cidr);
-                String lastIP = Subnet.getLastIP(cidr);
-                String firstCIDR = CIDR.get(null, firstIP);
-                if (firstCIDR == null) {
-                    return false;
-                } else {
-                    String lastCIDR = CIDR.get(null, lastIP);
-                    return firstCIDR.equals(lastCIDR);
-                }
-            } else if (Owner.isOwnerID(token)) {
-                String ownerID = Owner.normalizeID(token);
-                return Block.containsExact("WHOIS/ownerid=" + ownerID);
-            } else if (Domain.isHostname(token)) {
-                String hostname = Domain.normalizeHostname(token, true);
-                return Block.containsDomain(hostname, false);
+        if (token == null) {
+            return false;
+        } else if (Domain.isHostname(token)) {
+            String hostname = Domain.normalizeHostname(token, true);
+            return Block.containsDomain(hostname, false);
+        } else if (Domain.isValidEmail(token)) {
+            if (Block.containsExact(token = token.toLowerCase())) {
+                return true;
             } else {
-                return false;
+                int index = token.indexOf('@') + 1;
+                String hostname = '.' + token.substring(index);
+                return Block.containsDomain(hostname, false);
             }
-        } catch (ProcessException ex) {
-            Server.logError(ex);
+        } else {
             return false;
         }
     }
@@ -2348,9 +2390,8 @@ public class Block {
                 sender = null;
             }
         }
-        TreeSet<String> whoisSet = new TreeSet<String>();
-        TreeSet<String> regexSet = new TreeSet<String>();
-        
+        TreeSet<String> whoisSet = new TreeSet<>();
+        TreeSet<String> regexSet = new TreeSet<>();
         // Definição do destinatário.
         String recipientDomain;
         if (recipient != null && recipient.contains("@")) {
@@ -2462,7 +2503,7 @@ public class Block {
             try {
                 // Verifica critérios do WHOIS.
                 String whois;
-                if ((whois = WHOIS.get(userEmail, whoisSet, autoblock)) != null) {
+                if ((whois = WHOIS.get(userEmail, whoisSet, autoblock,  true)) != null) {
                     return whois;
                 }
             } catch (Exception ex) {
@@ -2695,6 +2736,8 @@ public class Block {
                     return true;
                 }
             }
+        } else if (Domain.isValidEmail(token)) {
+            return SET.contains("HREF=" + token.toLowerCase());
         }
         return false;
     }
@@ -2764,7 +2807,7 @@ public class Block {
         if (host == null) {
             return false;
         } else {
-            LinkedList<String> tokenList = new LinkedList<String>();
+            LinkedList<String> tokenList = new LinkedList<>();
             do {
                 int index = host.indexOf('.') + 1;
                 host = host.substring(index);
@@ -2775,17 +2818,34 @@ public class Block {
         }
     }
     
-    public static boolean containsWHOIS(
-            String host
-            ) throws ProcessException {
+    public static boolean containsWHOIS(String host) {
         host = Domain.extractHost(host, true);
         if (host == null) {
             return false;
         } else if (host.endsWith(".br")) {
             try {
-                TreeSet<String> tokenSet = new TreeSet<String>();
+                TreeSet<String> tokenSet = new TreeSet<>();
                 tokenSet.add(host);
-                return WHOIS.get(null, tokenSet, true) != null;
+                return WHOIS.get(null, tokenSet, true, true) != null;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean containsWHOIS(User user, String host) {
+        host = Domain.extractHost(host, true);
+        if (host == null) {
+            return false;
+        } else if (host.endsWith(".br")) {
+            try {
+                String userEmail = user == null ? null : user.getEmail();
+                TreeSet<String> tokenSet = new TreeSet<>();
+                tokenSet.add(host);
+                return WHOIS.get(userEmail, tokenSet, true, false) != null;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
@@ -2844,37 +2904,30 @@ public class Block {
 
     public static void store(boolean simplify) {
         if (CHANGED) {
-            if (simplify) {
-                Server.logTrace("simplifing block.set");
-                CIDR.simplify();
-            }
+//            if (simplify) {
+//                Server.logTrace("simplifing block.set");
+//                CIDR.simplify();
+//            }
             try {
-//                Server.logTrace("storing block.set");
                 long time = System.currentTimeMillis();
-                File file = new File("./data/block.set");
-                TreeSet<String> tokenSet = getAll();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
-                    SerializationUtils.serialize(tokenSet, outputStream);
+                File file = new File("./data/block.map");
+                TreeMap<String,Long> tokenMap = SET.getMap();
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
+                    SerializationUtils.serialize(tokenMap, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
             }
             try {
-//                Server.logTrace("storing block.map");
+                System.gc();
                 long time = System.currentTimeMillis();
-                File file = new File("./data/block.map");
-                TreeMap<String,Long> tokenMap = SET.getMap();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
-                    SerializationUtils.serialize(tokenMap, outputStream);
+                File file = new File("./data/block.set");
+                TreeSet<String> tokenSet = getAll();
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
+                    SerializationUtils.serialize(tokenSet, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -2889,11 +2942,8 @@ public class Block {
         if (file.exists()) {
             try {
                 Set<String> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : set) {
                     String client;
@@ -2901,7 +2951,7 @@ public class Block {
                     if (token.contains(":")) {
                         int index = token.indexOf(':');
                         client = token.substring(0, index);
-                        if (Domain.isEmail(client)) {
+                        if (Domain.isValidEmail(client)) {
                             identifier = token.substring(index + 1);
                         } else {
                             client = null;
@@ -2929,16 +2979,17 @@ public class Block {
                 Server.logError(ex);
             }
         }
-        time = System.currentTimeMillis();
-        file = new File("./data/block.map");
+        loadMap();
+    }
+    
+    public static void loadMap() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/block.map");
         if (file.exists()) {
             try {
                 Map<String,Long> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : map.keySet()) {
                     Long last = map.get(token);

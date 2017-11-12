@@ -155,6 +155,8 @@ if ($validator->is_uri($arg)) {
                 if (is_ipv6($href)) {
                     $href = ip_expand_address($href, 6);
                 }
+            } elsif ($href =~ m/https?\:\/\/([^\/]+)/g) {
+                $href = $1;
             }
         }
         

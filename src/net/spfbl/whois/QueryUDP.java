@@ -78,7 +78,7 @@ public final class QueryUDP extends Server {
         private long time = 0;
         
         public Connection() {
-            super("WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID++));
+            super("WHSUDP" + Core.formatCentena(CONNECTION_ID++));
             // Toda connexão recebe prioridade mínima.
             setPriority(Thread.MIN_PRIORITY);
             Server.logTrace(getName() + " thread allocation.");
@@ -177,7 +177,7 @@ public final class QueryUDP extends Server {
     /**
      * Pool de conexões ativas.
      */
-    private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<Connection>();
+    private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<>();
     
     /**
      * Semáforo que controla o pool de conexões.
@@ -214,7 +214,7 @@ public final class QueryUDP extends Server {
             } else {
             // Cria uma nova conexão se não houver conecxões ociosas.
                 // O servidor aumenta a capacidade conforme a demanda.
-                Server.logDebug("creating WHSUDP" + Core.CENTENA_FORMAT.format(CONNECTION_ID) + "...");
+                Server.logDebug("creating WHSUDP" + Core.formatCentena(CONNECTION_ID) + "...");
                 Connection connection = new Connection();
                 connection.start();
                 CONNECTION_COUNT++;
@@ -245,9 +245,8 @@ public final class QueryUDP extends Server {
                         if (connection == null) {
                             InetAddress ipAddress = packet.getAddress();
                             int portDestiny = packet.getPort();
-                            String result = "ERROR: TOO MANY CONNECTIONS\n";
+                            String result = "TOO MANY CONNECTIONS\n";
                             send(result, ipAddress, portDestiny);
-                            System.out.print(result);
                         } else {
                             connection.process(packet, time);
                         }
@@ -265,10 +264,10 @@ public final class QueryUDP extends Server {
     
     /**
      * Fecha todas as conexões e finaliza o servidor UDP.
-     * @throws Exception se houver falha em algum fechamento.
      */
     @Override
     protected void close() {
+        long last = System.currentTimeMillis();
         while (CONNECTION_COUNT > 0) {
             try {
                 Connection connection = poll();
@@ -276,9 +275,14 @@ public final class QueryUDP extends Server {
                     CONNECION_SEMAPHORE.tryAcquire(500, TimeUnit.MILLISECONDS);
                 } else if (connection.isAlive()) {
                     connection.close();
+                    last = System.currentTimeMillis();
                 }
             } catch (Exception ex) {
                 Server.logError(ex);
+            }
+            if ((System.currentTimeMillis() - last) > 60000) {
+                Server.logError("querie UDP socket close timeout.");
+                break;
             }
         }
         Server.logDebug("unbinding querie UDP socket on port " + PORT + "...");

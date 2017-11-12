@@ -54,7 +54,7 @@ public class Generic {
      */
     private static class MAP {
         
-        private static final HashMap<String,Boolean> MAP = new HashMap<String,Boolean>();
+        private static final HashMap<String,Boolean> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -72,13 +72,13 @@ public class Generic {
         }
         
         public static synchronized TreeSet<String> getGenericAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             set.addAll(MAP.keySet());
             return set;
         }
         
         public static synchronized TreeSet<String> getDynamicAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String key : MAP.keySet()) {
                 if (MAP.get(key)) {
                     set.add(key);
@@ -88,7 +88,7 @@ public class Generic {
         }
         
         public static synchronized TreeMap<String,Boolean> getMapAll() {
-            TreeMap<String,Boolean> map = new TreeMap<String,Boolean>();
+            TreeMap<String,Boolean> map = new TreeMap<>();
             map.putAll(MAP);
             return map;
         }
@@ -155,7 +155,7 @@ public class Generic {
      */
     private static class REGEX {
         
-        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<String,ArrayList<Pattern>>();
+        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<>();
         
         public static synchronized boolean isEmpty() {
             return MAP.isEmpty();
@@ -166,7 +166,7 @@ public class Generic {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (Pattern pattern : MAP.get(client)) {
                     if (client == null) {
@@ -219,7 +219,7 @@ public class Generic {
             }
             ArrayList<Pattern> list = MAP.get(client);
             if (list == null) {
-                list = new ArrayList<Pattern>();
+                list = new ArrayList<>();
                 MAP.put(client, list);
             }
             for (index = 0; index < list.size(); index++) {
@@ -367,7 +367,7 @@ public class Generic {
                 if (hostname == null) {
                     return false;
                 } else {
-                    LinkedList<String> regexList = new LinkedList<String>();
+                    LinkedList<String> regexList = new LinkedList<>();
                     do {
                         index = hostname.indexOf('.') + 1;
                         hostname = hostname.substring(index);
@@ -413,7 +413,7 @@ public class Generic {
             return null;
         } else if (Subnet.isValidIP(token)) {
             return null;
-        } else if (Domain.isEmail(token)) {
+        } else if (Domain.isMailFrom(token)) {
             return null;
         } else if (SPF.isREGEX(token)) {
             if (regex) {
@@ -508,7 +508,7 @@ public class Generic {
     }
 
     public static TreeSet<String> getGeneric() throws ProcessException {
-        TreeSet<String> genericSet = new TreeSet<String>();
+        TreeSet<String> genericSet = new TreeSet<>();
         for (String token : getGenericAll()) {
             genericSet.add(token);
         }
@@ -516,11 +516,46 @@ public class Generic {
     }
     
     public static TreeSet<String> getDynamic() throws ProcessException {
-        TreeSet<String> genericSet = new TreeSet<String>();
+        TreeSet<String> genericSet = new TreeSet<>();
         for (String token : getDynamicAll()) {
             genericSet.add(token);
         }
         return genericSet;
+    }
+    
+    public static boolean isGenericEC2(String host) {
+        if ((host = Domain.normalizeHostname(host, true)) == null) {
+            return false;
+        } else {
+            String mask = convertHostToMask(host);
+            if (mask == null) {
+                return false;
+            } else if (mask.equals(".ec#-#-#-#-#.ap-northeast-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.ap-south-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.ap-southeast-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.ca-central-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.compute-#.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.eu-central-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.eu-west-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.sa-east-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.us-east-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.us-gov-west-#.compute.amazonaws.com")) {
+                return true;
+            } else if (mask.equals(".ec#-#-#-#-#.us-west-#.compute.amazonaws.com")) {
+                return true;
+            } else {
+                return false;
+            }
+        }
     }
     
     public static boolean containsGeneric(String token) {
@@ -539,8 +574,10 @@ public class Generic {
         if ((host = Domain.normalizeHostname(host, true)) == null) {
             return null;
         } else {
-            try {
-                String domain = Domain.extractDomain(host, true);
+            String domain = Domain.extractDomainSafe(host, true);
+            if (domain == null) {
+                return null;
+            } else {
                 String mask = domain.replace('0', '#');
                 mask = mask.replace('1', '#');
                 mask = mask.replace('2', '#');
@@ -559,8 +596,6 @@ public class Generic {
                 } else {
                     return mask;
                 }
-            } catch (ProcessException ex) {
-                return null;
             }
         }
     }
@@ -594,7 +629,7 @@ public class Generic {
             return null;
         } else if (host.contains("mbox")) {
             return null;
-        } else if (host.startsWith(".www")) {
+        } else if (host.startsWith(".www.")) {
             return null;
         } else if (host.startsWith(".mx-")) {
             return null;
@@ -670,7 +705,7 @@ public class Generic {
             String token
             ) {
         String mask = null;
-        LinkedList<String> regexList = new LinkedList<String>();
+        LinkedList<String> regexList = new LinkedList<>();
         if (token == null) {
             return null;
         } else if (Domain.isHostname(token)) {
@@ -859,7 +894,6 @@ public class Generic {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing generic.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/generic.set");
                 TreeSet<String> set = getGenericAll();
@@ -871,7 +905,6 @@ public class Generic {
                     outputStream.close();
                 }
                 Server.logStore(time, file);
-//                Server.logTrace("storing generic.map");
                 time = System.currentTimeMillis();
                 file = new File("./data/generic.map");
                 TreeMap<String,Boolean> map = getMapAll();
@@ -895,11 +928,8 @@ public class Generic {
         if (file.exists()) {
             try {
                 Map<String,Boolean> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : map.keySet()) {
                     boolean dyn = map.get(token);
@@ -917,11 +947,8 @@ public class Generic {
         } else if ((file = new File("./data/generic.set")).exists()) {
             try {
                 Set<String> set;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     set = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : set) {
                     if (token.startsWith("REGEX=")) {

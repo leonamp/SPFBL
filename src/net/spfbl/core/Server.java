@@ -52,6 +52,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
@@ -68,6 +69,8 @@ import net.spfbl.data.Generic;
 import net.spfbl.dns.QueryDNS;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
+import org.productivity.java.syslog4j.Syslog;
+import org.productivity.java.syslog4j.SyslogIF;
 
 /**
  * Representa um modelo de servidor com métodos comuns.
@@ -84,7 +87,7 @@ public abstract class Server extends Thread {
     /**
      * Armazena todos os servidores intanciados.
      */
-    private static final LinkedList<Server> SERVER_LIST = new LinkedList<Server>();
+    private static final LinkedList<Server> SERVER_LIST = new LinkedList<>();
     
     /**
      * Instancia um servidor.
@@ -106,7 +109,6 @@ public abstract class Server extends Thread {
     public static void loadCache() {
         Client.load();
         NoReply.load();
-        User.load();
         Owner.load();
         Domain.load();
         AutonomousSystem.load();
@@ -126,6 +128,7 @@ public abstract class Server extends Thread {
         SPF.load();
         Defer.load();
         QueryDNS.load();
+        User.load();
     }
     
     private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
@@ -140,7 +143,8 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
-                User.autoUpdate();
+//                User.autoUpdateDates();
+                User.autoUpdateKeys();
                 User.autoInductionWhite();
                 User.autoInductionBlock();
                 storeAll(true, true);
@@ -179,6 +183,7 @@ public abstract class Server extends Thread {
     }
     
     private static void storeAll(boolean simplify, boolean clone) {
+        System.gc();
         Client.store();
         User.store();
         Peer.store();
@@ -200,6 +205,7 @@ public abstract class Server extends Thread {
         SubnetIPv6.store();
         Handle.store();
         NameServer.store();
+        Core.store();
         Block.store(simplify);
         System.gc();
     }
@@ -211,21 +217,15 @@ public abstract class Server extends Thread {
             try {
                 File file = new File("./data/server.key");
                 if (file.exists()) {
-                    FileInputStream fileInputStream = new FileInputStream(file);
-                    try {
+                    try (FileInputStream fileInputStream = new FileInputStream(file)) {
                         privateKey = SerializationUtils.deserialize(fileInputStream);
-                    } finally {
-                        fileInputStream.close();
                     }
                 } else {
                     KeyGenerator keyGen = KeyGenerator.getInstance("AES");
                     keyGen.init(new SecureRandom());
                     SecretKey key = keyGen.generateKey();
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    try {
+                    try (FileOutputStream outputStream = new FileOutputStream(file)) {
                         SerializationUtils.serialize(key, outputStream);
-                    } finally {
-                        outputStream.close();
                     }
                     privateKey = key;
                 }
@@ -457,12 +457,93 @@ public abstract class Server extends Thread {
                 writer.println(text);
             }
         }
+        if (syslog != null) {
+            if (Core.hasHostname()) {
+                syslog.getConfig().setLocalName(Core.getHostname());
+            }
+            syslog.getConfig().setIdent(type);
+            String log = message + (result == null ? "" : " => " + result);
+            switch (level) {
+                case ERROR:
+                    syslog.error(log);
+                    break;
+                case WARN:
+                    syslog.warn(log);
+                    break;
+                case INFO:
+                    syslog.info(log);
+                    break;
+                case DEBUG:
+                    syslog.debug(log);
+                    break;
+            }
+        }
     }
     
     private static File logFolder = null;
     private static File logFile = null;
     private static PrintWriter logWriter = null;
+    private static SyslogIF syslog = null;
     private static short logExpires = 7;
+    
+    public static synchronized void setSyslog(Properties properties) {
+//            String protocol,
+//            String hostname,
+//            String port
+//    ) {
+        if (properties != null) {
+            String protocol = properties.getProperty("log_server_protocol");
+            String hostname = properties.getProperty("log_server_host");
+            String port = properties.getProperty("log_server_port");
+            String facility = properties.getProperty("log_server_facility");
+            if (protocol != null) {
+                protocol = protocol.toLowerCase();
+                if (!protocol.equals("udp") && protocol.equals("tcp")) {
+                    protocol = null;
+                    Server.logError("invalid Syslog server protocol '" + protocol + "'.");
+                }
+            }
+            if (hostname != null) {
+                if (hostname.length() == 0) {
+                    hostname = null;
+                } else if (Domain.isHostname(hostname)) {
+                    hostname = Domain.extractHost(hostname, false);
+                } else if (Subnet.isValidIP(hostname)) {
+                    hostname = Subnet.normalizeIP(hostname);
+                } else {
+                    hostname = null;
+                    Server.logError("invalid Syslog server host '" + hostname + "'.");
+                }
+            }
+            Integer portInt;
+            if (port == null || port.length() == 0) {
+                portInt = null;
+            } else {
+                try {
+                    portInt = Integer.parseInt(port);
+                } catch (Exception ex) {
+                    portInt = null;
+                    Server.logError("invalid Syslog server port '" + port + "'.");
+                }
+            }
+            if (protocol != null && hostname != null && portInt != null) {
+                syslog = Syslog.getInstance(protocol);
+                syslog.getConfig().setHost(hostname);
+                syslog.getConfig().setPort(portInt);
+                syslog.getConfig().setCharSet("UTF-8");
+                if (facility != null) {
+                    facility = facility.toLowerCase();
+                    if (facility.equals("mail")) {
+                        syslog.getConfig().setFacility("mail");
+                    } else if (facility.startsWith("local") && facility.length() == 6 && Character.isDigit(facility.charAt(5))) {
+                        syslog.getConfig().setFacility(facility);
+                    } else {
+                        Server.logError("invalid Syslog facility '" + facility + "'.");
+                    }
+                }
+            }
+        }
+    }
     
     public static synchronized void setLogFolder(String path) {
         if (path == null) {
@@ -581,6 +662,10 @@ public abstract class Server extends Thread {
      */
     public static void logDebug(String message) {
         log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG", message, (String) null);
+    }
+    
+    public static void logAcme(String message) {
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "ACMEP", message, (String) null);
     }
     
     public static void logSendMTP(String message) {
@@ -823,7 +908,6 @@ public abstract class Server extends Thread {
      * Uma iniciativa para formalização das mensagens de log.
      * @param time data exatata no inicio do processamento.
      * @param ipAddress o IP do cliente da conexão.
-     * @param time o tempo de processamento da consulta.
      * @param query a expressão da consulta.
      * @param result a expressão do resultado.
      */
@@ -832,7 +916,7 @@ public abstract class Server extends Thread {
             String type,
             InetAddress ipAddress,
             String query, String result) {
-        String origin = Client.getOrigin(ipAddress);
+        String origin = Client.getOrigin(ipAddress, "DNSBL");
         if (query == null) {
             log(time, Core.Level.INFO, type, origin + ":", result);
         } else {
@@ -927,7 +1011,7 @@ public abstract class Server extends Thread {
      */
     public static void logAdministration(long time,
             InetAddress ipAddress, String command, String result) {
-        String origin = Client.getOrigin(ipAddress);
+        String origin = Client.getOrigin(ipAddress, "SPFBL");
         if (result != null && result.length() > 1024) {
             int index1 = result.indexOf('\n', 1024);
             int index2 = result.indexOf(' ', 1024);
@@ -969,6 +1053,10 @@ public abstract class Server extends Thread {
         storeCache();
         // Fecha pooler de conexão MySQL.
         Core.closeConnectionPooler();
+        if (syslog != null) {
+            // Fecha conexão Syslog.
+            syslog.shutdown();
+        }
         return closed;
     }
     
@@ -1116,12 +1204,12 @@ public abstract class Server extends Thread {
                     WHOIS_CONNECTION_SEMAPHORE.release();
                 }
             } else {
-                throw new ProcessException("ERROR: TOO MANY CONNECTIONS");
+                throw new ProcessException("TOO MANY CONNECTIONS");
             }
         } catch (ProcessException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new ProcessException("ERROR: WHOIS CONNECTION FAIL", ex);
+            throw new ProcessException("WHOIS CONNECTION FAIL", ex);
         }
         try {
             String result = outputStream.toString("ISO-8859-1");
@@ -1145,16 +1233,6 @@ public abstract class Server extends Thread {
     public static Attributes getAttributesDNS(String hostname, String[] types) throws NamingException {
         return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
     }
-    
-//    public static String getProviderDNS() {
-//        try {
-//            Hashtable env = (Hashtable) INITIAL_DIR_CONTEXT.getEnvironment();
-//            return (String) env.get("java.naming.provider.url") + '/';
-//        } catch (NamingException ex) {
-//            Server.logError(ex);
-//            return "";
-//        }
-//    }
     
     static {
         try {
@@ -1209,14 +1287,11 @@ public abstract class Server extends Thread {
                     try {
                         whoisClient.setDefaultTimeout(3000);
                         whoisClient.connect(server);
-                        InputStream inputStream = whoisClient.getInputStream(query);
-                        try {
+                        try (InputStream inputStream = whoisClient.getInputStream(query)) {
                             int code;
                             while ((code = inputStream.read()) != -1) {
                                 outputStream.write(code);
                             }
-                        } finally {
-                            inputStream.close();
                         }
                     } finally {
                         whoisClient.disconnect();
@@ -1225,12 +1300,12 @@ public abstract class Server extends Thread {
                     WHOIS_CONNECTION_SEMAPHORE.release();
                 }
             } else {
-                throw new ProcessException("ERROR: TOO MANY CONNECTIONS");
+                throw new ProcessException("TOO MANY CONNECTIONS");
             }
         } catch (ProcessException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new ProcessException("ERROR: WHOIS CONNECTION FAIL", ex);
+            throw new ProcessException("WHOIS CONNECTION FAIL", ex);
         } 
         try {
             String result = outputStream.toString("ISO-8859-1");
@@ -1241,14 +1316,6 @@ public abstract class Server extends Thread {
             throw new ProcessException("ERROR: ENCODING", ex);
         }
     }
-    
-//    public static synchronized void tryRefreshWHOIS() {
-//        // Evita que muitos processos fiquem 
-//        // presos aguardando a liberação do método.
-//        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
-//            refreshWHOIS();
-//        }
-//    }
     
     /**
      * Atualiza os registros quase expirando.
@@ -1285,13 +1352,15 @@ public abstract class Server extends Thread {
                 }
                 if (Owner.isOwnerID(token) && tokenizer.hasMoreTokens()) {
                     Owner owner = Owner.getOwner(token);
-                    while (tokenizer.hasMoreTokens()) {
-                        String key = tokenizer.nextToken();
-                        String value = owner.get(key, updated);
-                        if (value == null) {
-                            result += '\n';
-                        } else {
-                            result += value + '\n';
+                    if (owner != null) {
+                        while (tokenizer.hasMoreTokens()) {
+                            String key = tokenizer.nextToken();
+                            String value = owner.get(key, updated);
+                            if (value == null) {
+                                result += '\n';
+                            } else {
+                                result += value + '\n';
+                            }
                         }
                     }
                 } else if (Subnet.isValidIP(token) && tokenizer.hasMoreTokens()) {

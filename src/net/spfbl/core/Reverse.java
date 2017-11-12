@@ -29,6 +29,8 @@ import java.util.HashMap;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -430,6 +432,46 @@ public final class Reverse implements Serializable {
         }
     }
     
+    public static boolean isUnavailableDomain(String hostname) {
+        try {
+            hostname = Domain.normalizeHostname(hostname, false);
+            Server.getAttributesDNS(hostname, new String[]{"NS"});
+            return false;
+        } catch (ServiceUnavailableException ex) {
+            return true;
+        } catch (NamingException ex) {
+            return false;
+        }
+    }
+    
+    public static boolean hasValidMailExchange(String hostname) {
+        if ((hostname = Domain.normalizeHostname(hostname, false)) == null) {
+            return false;
+        } else {
+            try {
+                Attributes attributesNS = Server.getAttributesDNS(
+                        hostname, new String[]{"MX"}
+                );
+                if (attributesNS != null) {
+                    Enumeration enumerationNS = attributesNS.getAll();
+                    while (enumerationNS.hasMoreElements()) {
+                        Attribute attributeNS = (Attribute) enumerationNS.nextElement();
+                        NamingEnumeration enumeration = attributeNS.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String ns = (String) enumeration.next();
+                            if (Domain.isHostname(ns)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            } catch (NamingException ex) {
+                return false;
+            }
+        }
+    }
+    
     public static boolean hasValidNameServers(
             String hostname
     ) throws NamingException {
@@ -438,7 +480,8 @@ public final class Reverse implements Serializable {
         } else {
             try {
                 Attributes attributesNS = Server.getAttributesDNS(
-                        hostname, new String[]{"NS"});
+                        hostname, new String[]{"NS"}
+                );
                 if (attributesNS != null) {
                     Enumeration enumerationNS = attributesNS.getAll();
                     while (enumerationNS.hasMoreElements()) {
@@ -459,46 +502,75 @@ public final class Reverse implements Serializable {
         }
     }
     
+    public static TreeSet<String> getAddressSetSafe(String hostname) {
+        try {
+            TreeSet<String> addressSet = getAddressSet(hostname);
+            if (addressSet == null) {
+                return new TreeSet<>();
+            } else {
+                return addressSet;
+            }
+        } catch (NamingException ex) {
+            return new TreeSet<>();
+        }
+    }
+    
     public static TreeSet<String> getAddressSet(
             String hostname
     ) throws NamingException {
         if ((hostname = Domain.normalizeHostname(hostname, false)) == null) {
             return null;
         } else {
-            TreeSet<String> ipSet = new TreeSet<String>();
-            Attributes attributesA = Server.getAttributesDNS(
-                    hostname, new String[]{"A"});
-            if (attributesA != null) {
-                Enumeration enumerationA = attributesA.getAll();
-                while (enumerationA.hasMoreElements()) {
-                    Attribute attributeA = (Attribute) enumerationA.nextElement();
-                    NamingEnumeration enumeration = attributeA.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String address = (String) enumeration.next();
-                        if (SubnetIPv4.isValidIPv4(address)) {
-                            address = SubnetIPv4.normalizeIPv4(address);
-                            ipSet.add(address);
+            NamingException exception = null;
+            TreeSet<String> ipSet = new TreeSet<>();
+            try {
+                Attributes attributesA = Server.getAttributesDNS(
+                        hostname, new String[]{"A"}
+                );
+                if (attributesA != null) {
+                    Enumeration enumerationA = attributesA.getAll();
+                    while (enumerationA.hasMoreElements()) {
+                        Attribute attributeA = (Attribute) enumerationA.nextElement();
+                        NamingEnumeration enumeration = attributeA.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String address = (String) enumeration.next();
+                            if (SubnetIPv4.isValidIPv4(address)) {
+                                address = SubnetIPv4.normalizeIPv4(address);
+                                ipSet.add(address);
+                            }
                         }
                     }
                 }
+            } catch (NamingException ex) {
+                exception = ex;
             }
-            Attributes attributesAAAA = Server.getAttributesDNS(
-                    hostname, new String[]{"AAAA"});
-            if (attributesAAAA != null) {
-                Enumeration enumerationAAAA = attributesAAAA.getAll();
-                while (enumerationAAAA.hasMoreElements()) {
-                    Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
-                    NamingEnumeration enumeration = attributeAAAA.getAll();
-                    while (enumeration.hasMoreElements()) {
-                        String address = (String) enumeration.next();
-                        if (SubnetIPv6.isValidIPv6(address)) {
-                            address = SubnetIPv6.normalizeIPv6(address);
-                            ipSet.add(address);
+            try {
+                Attributes attributesAAAA = Server.getAttributesDNS(
+                        hostname, new String[]{"AAAA"}
+                );
+                if (attributesAAAA != null) {
+                    Enumeration enumerationAAAA = attributesAAAA.getAll();
+                    while (enumerationAAAA.hasMoreElements()) {
+                        Attribute attributeAAAA = (Attribute) enumerationAAAA.nextElement();
+                        NamingEnumeration enumeration = attributeAAAA.getAll();
+                        while (enumeration.hasMoreElements()) {
+                            String address = (String) enumeration.next();
+                            if (SubnetIPv6.isValidIPv6(address)) {
+                                address = SubnetIPv6.normalizeIPv6(address);
+                                ipSet.add(address);
+                            }
                         }
                     }
                 }
+                return ipSet;
+            } catch (NamingException ex) {
+                exception = ex;
             }
-            return ipSet;
+            if (!ipSet.isEmpty() || exception == null) {
+                return ipSet;
+            } else {
+                throw exception;
+            }
         }
     }
     
@@ -506,7 +578,7 @@ public final class Reverse implements Serializable {
         if (host == null) {
             return null;
         } else {
-            TreeSet<String> reverseSet = new TreeSet<String>();
+            TreeSet<String> reverseSet = new TreeSet<>();
             if (Subnet.isValidIP(host)) {
                 if (SubnetIPv4.isValidIPv4(host)) {
                     host = getHostReverse(host, "in-addr.arpa");
@@ -541,7 +613,7 @@ public final class Reverse implements Serializable {
     }
     
     public static ArrayList<String> getMXSet(String host) throws NamingException {
-        TreeMap<Integer,TreeSet<String>> mxMap = new TreeMap<Integer,TreeSet<String>>();
+        TreeMap<Integer,TreeSet<String>> mxMap = new TreeMap<>();
         Attributes atributes = Server.getAttributesDNS(
                 host, new String[]{"MX"}
         );
@@ -567,7 +639,7 @@ public final class Reverse implements Serializable {
                         int last = mx.length() - 1;
                         TreeSet<String> mxSet = mxMap.get(priority);
                         if (mxSet == null) {
-                            mxSet = new TreeSet<String>();
+                            mxSet = new TreeSet<>();
                             mxMap.put(priority, mxSet);
                         }
                         if (Subnet.isValidIP(mx.substring(0, last))) {
@@ -580,7 +652,7 @@ public final class Reverse implements Serializable {
                 }
             }
         }
-        ArrayList<String> mxList = new ArrayList<String>();
+        ArrayList<String> mxList = new ArrayList<>();
         if (mxMap.isEmpty()) {
             // https://tools.ietf.org/html/rfc5321#section-5
             mxList.add(Domain.normalizeHostname(host, true));
@@ -598,7 +670,7 @@ public final class Reverse implements Serializable {
     }
     
     private static TreeSet<String> getIPv4Set(String host) throws NamingException {
-        TreeSet<String> ipSet = new TreeSet<String>();
+        TreeSet<String> ipSet = new TreeSet<>();
         Attributes atributes = Server.getAttributesDNS(
                 host, new String[]{"A"}
         );
@@ -618,7 +690,7 @@ public final class Reverse implements Serializable {
     }
     
     private static TreeSet<String> getIPv6Set(String host) throws NamingException {
-        TreeSet<String> ipSet = new TreeSet<String>();
+        TreeSet<String> ipSet = new TreeSet<>();
         Attributes atributes = Server.getAttributesDNS(
                 host, new String[]{"AAAA"}
         );

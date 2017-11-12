@@ -20,45 +20,90 @@ use strict;
 use URI;
 use HTML::TreeBuilder;
 use Email::Valid;
+use Set::Scalar;
+use LWP::UserAgent;
+use HTTP::Request;
+use Data::Validate::URI;
 
 sub geturldomainlist {
 
-    my $mime_filename = Exim::expand_string('$mime_decoded_filename');
+    my $mime_filename = Exim::expand_string('$acl_c_mime_decoded_filename');
+
+    my $hrefset = new Set::Scalar->new;
 
     my $tree = HTML::TreeBuilder->new;
     $tree->parse_file($mime_filename);
 
-    my $list = "";
-
     for my $element ($tree->look_down(_tag => "a", href => qr/./)) {
-        my $href = lc($element->attr("href"));
-        
+
+        my $href = $element->attr("href");
+    
         if($href =~ m/^https?:\/\//) {
-            my $url = URI->new($href);
-            $href = $url->host;
+            $hrefset->insert($href);
         } elsif ($href =~ m/^mailto:([^?]*)/) {
             my $email = $1;
             if ($email =~ m/<(.+)>/) {
                 $email = $1;
             }
             if (Email::Valid->address($email)) {
-                $href = $email;
-            } else {
-                $href = "";
+                $hrefset->insert(lc($email));
             }
-        } else {
-            $href = "";
         }
+    }
+    
+    my $list = "";
+    
+    if ($hrefset) {
 
-        if ($href ne "") {
-            if ($list eq "") {
-                $list = "$href";
-            } elsif (index($list, $href) == -1) {
-                $list = "$list $href";
+        my $validator = Data::Validate::URI->new();
+        
+        my $ua = LWP::UserAgent->new(keep_alive => 0, timeout => 3);
+        $ua->requests_redirectable(['HEAD']);
+
+        for my $href ($hrefset->elements) {
+
+            if ($href =~ m/^https?:\/\//) {
+
+                my $response = $ua->get($href);
+
+                while ($response->code == 301 || $response->code == 302) {
+                
+                    my $location = $response->header('Location');
+                    
+                    if ($location =~ m/^https?:\/\//) {
+                        $href = $location;
+                        $response = $ua->get($href);
+                    } elsif ($location =~ m/^mailto:([^?]*)/) {
+                        my $email = $1;
+                        if ($email =~ m/<(.+)>/) {
+                            $email = $1;
+                        }
+                        if (Email::Valid->address($email)) {
+                            $href = $email;
+                        }
+                        last;
+                    } else {
+                        last;
+                    }
+                }
+
+                if ($validator->is_uri($href)) {
+                    my $url = URI->new($href);
+                    $href = $url->host;
+                }
+            }
+
+            $href = lc($href);
+
+            if ($href ne "") {
+                if ($list eq "") {
+                    $list = "$href";
+                } elsif (index($list, $href) == -1) {
+                    $list = "$list $href";
+                }
             }
         }
     }
 
     return $list;
 }
-

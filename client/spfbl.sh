@@ -23,29 +23,23 @@
 # no servidor matrix.spfbl.net através do endereço leandro@spfbl.net
 # ou altere o matrix.spfbl.net deste script para seu servidor SPFBL próprio.
 #
-# Atenção! Para utilizar este script é necessário ter o netcat instalado:
+# Atenção! Para utilizar este script é necessário ter o nmap instalado:
 #
-#   sudo apt-get install netcat
-#
-# Se estiver usando a autenticação por OTP, prencha a constante OTP_SECRET
-# com a chave secreta fornecida pelo serviço SPFBL e mantenha a variável 
-# OTP_SECRET vazia. É necessário oathtool para usar esta autenticação:
-#
-#   sudo apt-get install oathtool
+#   sudo apt-get install nmap
 #
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
 PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
-OTP_SECRET=""
+SECURED="false"
 DUMP_PATH="/tmp"
 QUERY_TIMEOUT="10"
-MAX_TIMEOUT="100"
+MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.12"
+version="2.14"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -77,11 +71,10 @@ function resetTimeout() {
 
 }
 
-
-if [[ $OTP_SECRET == "" ]]; then
-	OTP_CODE=""
+if [[ $SECURED == "true" ]]; then
+	NCAT="ncat -w $QUERY_TIMEOUT --ssl-verify"
 else
-	OTP_CODE="$(oathtool --totp -b -d 6 $OTP_SECRET) "
+	NCAT="ncat -w $QUERY_TIMEOUT"
 fi
 
 case $1 in
@@ -93,15 +86,15 @@ case $1 in
 	;;
 	'stop')
 		echo "Parando o serviço do SPFBL"
-		echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN
-		echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN
+		echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
+		echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
 		echo "OK"
 	;;
 	'restart')
 		echo "Reiniciando serviço do SPFBL"
 		cd /opt/spfbl/
-		echo "STORE" | nc $IP_SERVIDOR $PORTA_ADMIN
-		echo "SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN
+		echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
+		echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
 		/usr/bin/java -jar /opt/spfbl/SPFBL.jar &
 		echo "OK"
 	;;
@@ -116,7 +109,7 @@ case $1 in
 		#    3: out of service.
 
 
-		response=$(echo $OTP_CODE"VERSION" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+		response=$(echo "VERSION" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
@@ -152,7 +145,7 @@ case $1 in
 		#    3: out of service.
 
 
-		response=$(echo $OTP_CODE"FIREWALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo "FIREWALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
@@ -188,7 +181,7 @@ case $1 in
 		#    3: out of service.
 
 
-		response=$(echo $OTP_CODE"SHUTDOWN" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
@@ -224,7 +217,7 @@ case $1 in
 		#    3: out of service.
 
 
-		response=$(echo $OTP_CODE"STORE" | nc $IP_SERVIDOR $PORTA_ADMIN)
+		response=$(echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			$(incrementTimeout)
@@ -269,7 +262,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo $OTP_CODE"TLD ADD $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "TLD ADD $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -313,7 +306,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo $OTP_CODE"TLD DROP $tld" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "TLD DROP $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -353,7 +346,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 tld show\n"
 				else
 
-					response=$(echo $OTP_CODE"TLD SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "TLD SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -403,7 +396,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo $OTP_CODE"PROVIDER ADD $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PROVIDER ADD $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -447,7 +440,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo $OTP_CODE"PROVIDER DROP $provider" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PROVIDER DROP $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -487,7 +480,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 provider show\n"
 				else
 
-					response=$(echo $OTP_CODE"PROVIDER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PROVIDER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -538,7 +531,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo $OTP_CODE"IGNORE ADD $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "IGNORE ADD $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -583,7 +576,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo $OTP_CODE"IGNORE DROP $ignore" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "IGNORE DROP $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -623,7 +616,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 ignore show\n"
 				else
 
-					response=$(echo $OTP_CODE"IGNORE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "IGNORE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -676,7 +669,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -723,7 +716,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -765,9 +758,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+						response=$(echo "BLOCK SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+						response=$(echo "BLOCK SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -808,7 +801,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block find token\n"
 				else
 					token=$3
-					response=$(echo $OTP_CODE"BLOCK FIND $token" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "BLOCK FIND $token" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -861,7 +854,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK ADD $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -905,7 +898,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK SPLIT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "BLOCK SPLIT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -950,7 +943,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK OVERLAP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "BLOCK OVERLAP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -994,7 +987,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK EXTRACT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "BLOCK EXTRACT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1041,7 +1034,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo $OTP_CODE"BLOCK DROP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1083,9 +1076,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 superblock show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo $OTP_CODE"BLOCK SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "BLOCK SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"BLOCK SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "BLOCK SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1135,7 +1128,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "GENERIC ADD $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "GENERIC ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1175,7 +1168,7 @@ case $1 in
 				else
 					token=$3
 
-					response=$(echo "GENERIC FIND $token" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "GENERIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1217,7 +1210,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "GENERIC DROP $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "GENERIC DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1259,9 +1252,9 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 generic show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "GENERIC SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "GENERIC SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "GENERIC SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "GENERIC SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1311,7 +1304,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "DYNAMIC ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "DYNAMIC ADD $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1351,7 +1344,7 @@ case $1 in
 				else
 					token=$3
 
-					response=$(echo "DYNAMIC FIND $token" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "DYNAMIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1393,7 +1386,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "DYNAMIC DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "DYNAMIC DROP $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1431,7 +1424,7 @@ case $1 in
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 dynamic show\n"
 				else
-					response=$(echo "DYNAMIC SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "DYNAMIC SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1482,7 +1475,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1527,7 +1520,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "WHITE SENDER $sender" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "WHITE SENDER $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1574,7 +1567,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1614,7 +1607,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 white show\n"
 				else
-					response=$(echo $OTP_CODE"WHITE SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "WHITE SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1665,7 +1658,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"WHITE ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1710,7 +1703,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"WHITE DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1751,9 +1744,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 superwhite show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo $OTP_CODE"WHITE SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "WHITE SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"WHITE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "WHITE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1814,7 +1807,7 @@ case $1 in
 						email=$6
 					fi
 
-					response=$(echo $OTP_CODE"CLIENT ADD $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "CLIENT ADD $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1868,7 +1861,7 @@ case $1 in
 						email=$6
 					fi
 
-					response=$(echo $OTP_CODE"CLIENT SET $cidr $domain $option $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "CLIENT SET $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1910,7 +1903,7 @@ case $1 in
 				else
 					cidr=$3
 
-					response=$(echo $OTP_CODE"CLIENT DROP $cidr" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "CLIENT DROP $cidr" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -1949,7 +1942,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 client show\n"
 				else
 
-					response=$(echo $OTP_CODE"CLIENT SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "CLIENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2001,7 +1994,7 @@ case $1 in
 					email=$3
 					nome="${@:4}"
 
-					response=$(echo $OTP_CODE"USER ADD $email $nome" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "USER ADD $email $nome" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2045,7 +2038,7 @@ case $1 in
 				else
 					email=$3
 
-					response=$(echo $OTP_CODE"USER DROP $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "USER DROP $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2084,7 +2077,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 user show\n"
 				else
-					response=$(echo $OTP_CODE"USER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "USER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2113,8 +2106,8 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 user send-totp <email>\n"
 				else
-					response=$(echo $OTP_CODE"USER SEND $3 TOTP" | nc $IP_SERVIDOR $PORTA_ADMIN)
-					
+					response=$(echo "USER SEND $3 TOTP" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
 						if [ "$?" -le "$MAX_TIMEOUT" ]; then
@@ -2168,9 +2161,9 @@ case $1 in
 
 					if [ -f "$4" ]; then
 						email=$4
-						response=$(echo $OTP_CODE"PEER ADD $host $email" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER ADD $host $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER ADD $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER ADD $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2216,9 +2209,9 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-						response=$(echo $OTP_CODE"PEER DROP ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER DROP ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER DROP $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER DROP $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2261,9 +2254,9 @@ case $1 in
 
 					if [ -f "$3" ]; then
 						host=$3
-						response=$(echo $OTP_CODE"PEER SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER SHOW $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2310,7 +2303,7 @@ case $1 in
 					send=$4
 					receive=$5
 
-					response=$(echo $OTP_CODE"PEER SET $host $send $receive" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PEER SET $host $send $receive" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2352,7 +2345,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo $OTP_CODE"PEER PING $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PEER PING $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2394,7 +2387,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo $OTP_CODE"PEER SEND $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "PEER SEND $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -2445,9 +2438,9 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-						response=$(echo $OTP_CODE"PEER RETENTION SHOW ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER RETENTION SHOW $host" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION SHOW $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2491,9 +2484,9 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-						response=$(echo $OTP_CODE"PEER RETENTION RELEASE ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION RELEASE ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER RETENTION RELEASE $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION RELEASE $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2537,9 +2530,9 @@ case $1 in
 					sender=$3
 
 					if [ "$sender" == "all" ]; then
-						response=$(echo $OTP_CODE"PEER RETENTION REJECT ALL" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION REJECT ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo $OTP_CODE"PEER RETENTION REJECT $sender" | nc $IP_SERVIDOR $PORTA_ADMIN)
+						response=$(echo "PEER RETENTION REJECT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2581,9 +2574,9 @@ case $1 in
 		#    3: out of service.
 
 		if [[ $2 == "cidr" ]]; then
-			response=$(echo $OTP_CODE"REPUTATION CIDR" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo "REPUTATION CIDR" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 		else
-			response=$(echo $OTP_CODE"REPUTATION" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo "REPUTATION" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 		fi
 
 		if [[ $response == "" ]]; then
@@ -2630,7 +2623,7 @@ case $1 in
 			messageID=$2
 			from=$3
 
-			response=$(echo $OTP_CODE"ABUSE $messageID $from" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "ABUSE $messageID $from" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -2680,7 +2673,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo $OTP_CODE"CLEAR $hostname" | nc $IP_SERVIDOR $PORTA_ADMIN)
+			response=$(echo "CLEAR $hostname" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -2724,7 +2717,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo $OTP_CODE"REFRESH $hostname" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "REFRESH $hostname" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -2764,7 +2757,7 @@ case $1 in
 
 		case $2 in
 			'show')
-				response=$(echo $OTP_CODE"ANALISE SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo "ANALISE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
@@ -2788,7 +2781,7 @@ case $1 in
 				fi
 			;;
 			'dump')
-				response=$(echo $OTP_CODE"ANALISE DUMP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo "ANALISE DUMP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
@@ -2813,7 +2806,7 @@ case $1 in
 			;;
 			'drop')
 
-				response=$(echo $OTP_CODE"ANALISE DROP $3" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo "ANALISE DROP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
@@ -2840,7 +2833,7 @@ case $1 in
 				ip=$2
 				list=$3
 
-				response=$(echo $OTP_CODE"ANALISE $ip $list" | nc $IP_SERVIDOR $PORTA_ADMIN)
+				response=$(echo "ANALISE $ip $list" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					$(incrementTimeout)
@@ -2906,7 +2899,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo $OTP_CODE"CHECK '$ip' '$email' '$helo' '$recipient'" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
@@ -2975,7 +2968,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 spam [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
+			if [[ $2 =~ ^https?://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 				# O parâmentro é uma URL de denúncia SPFBL.
 				url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
@@ -2992,7 +2985,7 @@ case $1 in
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z_-]+)" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(https?://.+/[0-9a-zA-Z_-]+)" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -3014,7 +3007,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo $OTP_CODE"SPAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					resposta=$(echo "SPAM $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A reclamação SPFBL não foi enviada por timeout."
@@ -3067,7 +3060,7 @@ case $1 in
 			ticket=$2
 			links=$3
 
-			response=$(echo "LINK $ticket $links" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "LINK $ticket $links" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -3115,12 +3108,13 @@ case $1 in
 		#  4. Timeout no envio do ticket.
 		#  5. Parâmetro inválido.
 		#  6. Ticket inválido.
+                #  7. Aceitar por exceção.
 
 		if [ $# -lt "2" ]; then
 			head
 			printf "Invalid Parameters. Syntax: $0 malware [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
+			if [[ $2 =~ ^https?://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 				# O parâmentro é uma URL de denúncia SPFBL.
 				url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_\;-]{44,}$ ]]; then
@@ -3137,7 +3131,7 @@ case $1 in
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(https?://.+/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -3159,7 +3153,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL como malware.
-					resposta=$(echo $OTP_CODE"MALWARE $ticket $3" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					resposta=$(echo "MALWARE $ticket $3" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A reclamação SPFBL não foi enviada por timeout."
@@ -3167,6 +3161,9 @@ case $1 in
 					elif [[ $resposta == "OK"* ]]; then
 						echo "Reclamação SPFBL enviada com sucesso."
 						exit 0
+                                        elif [[ $resposta == "ACCEPT" ]]; then
+                                                echo "Reclamação ignorada por exceção."
+                                                exit 7
 					elif [[ $resposta == "ERROR: DECRYPTION" ]]; then
 						echo "Ticket SPFBL inválido."
 						exit 6
@@ -3214,7 +3211,7 @@ case $1 in
 			replyto=$4
 			unsubscribe=$5
 
-			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -3259,15 +3256,16 @@ case $1 in
 
 		if [ $# -lt "3" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
+			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Date:[<date>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
 		else
 			ticket=$2
 			from=$3
 			replyto=$4
-			subject=$5
-			unsubscribe=$6
+			date=$5
+			subject=$6
+			unsubscribe=$7
 
-			response=$(echo "HEADER $ticket $from $replyto $subject $unsubscribe" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+			response=$(echo "HEADER $ticket $from $replyto $date $subject $unsubscribe" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -3303,6 +3301,65 @@ case $1 in
 			fi
 		fi
 	;;
+	'body')
+		# Códigos de saída:
+		#
+		#    0: modificado com sucesso.
+		#    1: o parâmetro não é um arquivo.
+		#    2: registro de consulta não encontrado.
+		#    3: arquivo grande demais.
+		#    4: erro desconhecido.
+
+		if [ $# -lt "4" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 body <ticket> <file> <charset>\n"
+		else
+			TICKET=$2
+			FILE=$3
+                        CHARSET=$4
+
+			if [ -f "$FILE" ]; then
+
+				COMPRESSED=$(iconv -f $CHARSET -t utf-8 $FILE | gzip --no-name --quiet --to-stdout)
+				LENGTH=$(echo "$COMPRESSED" | wc -c)
+
+				if [ "$LENGTH" -gt "65535" ]; then
+					response="TOO BIG"
+				else
+					ENCODED=$(iconv -f $CHARSET -t utf-8 $FILE | gzip --no-name --quiet --to-stdout | base64 --wrap=0)
+					response=$(echo "BODY $TICKET $ENCODED" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+				fi
+			else
+				response="NOT A FILE"
+			fi
+
+
+			if [[ $response == "" ]]; then
+				$(incrementTimeout)
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
+					response="TIMEOUT"
+				else
+					response="OUT OF SERVICE"
+				fi
+			else
+				$(resetTimeout)
+			fi
+
+			echo "$response"
+
+			if [[ $response == "CHANGED" ]]; then
+				exit 0
+			elif [[ $response == "NOT A FILE" ]]; then
+				exit 1
+			elif [[ $response == "NOT FOUND" ]]; then
+				exit 2
+			elif [[ $response == "TOO BIG" ]]; then
+				exit 3
+			else
+				exit 4
+			fi
+		fi
+	;;
 	'holding')
 		which exigrep > /dev/null
 
@@ -3314,12 +3371,12 @@ case $1 in
 
 				while read -r message; do
 
-					# ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
-					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD) (http://.+/)?\K([0-9a-zA-Z_-]{44,})$")
-					
+					# ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+
 					if [ $? -eq 0 ]; then
 
-						response=$(echo $OTP_CODE"HOLDING $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+						response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 						if [[ $response == "" ]]; then
 
@@ -3385,7 +3442,7 @@ case $1 in
 			head
 			printf "Invalid Parameters. Syntax: $0 ham [ticketid or file]\n"
 		else
-			if [[ $2 =~ ^http://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
+			if [[ $2 =~ ^https?://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 				# O parâmentro é uma URL de denúncia SPFBL.
 				url=$2
 			elif [[ $2 =~ ^[a-zA-Z0-9/+=_-]{44,1024}$ ]]; then
@@ -3402,7 +3459,7 @@ case $1 in
 					if [ $? -gt 0 ]; then
 
 						# Extrai o ticket incorporado no arquivo.
-						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(http://.+/[0-9a-zA-Z\+/=]+)$" $file)
+						url=$(grep -Pom 1 "^Received-SPFBL: (PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|FLAG|HOLD) \K(https?://.+/[0-9a-zA-Z\+/=]+)$" $file)
 
 						if [ $? -gt 0 ]; then
 							echo "Nenhum ticket SPFBL foi encontrado na mensagem."
@@ -3424,7 +3481,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo $OTP_CODE"HAM $ticket" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					resposta=$(echo "HAM $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A revogação SPFBL não foi enviada por timeout."
@@ -3536,7 +3593,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo $OTP_CODE"SPF '$ip' '$email' '$helo' '$recipient'" | nc -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR)
+			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | $NCAT -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
@@ -3579,7 +3636,9 @@ case $1 in
 				exit 10
 			elif [[ $qualifier == "LISTED"* ]]; then
 				exit 8
-			elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
+			elif [[ $qualifier == "TOO MANY CONNECTIONS" ]]; then
+				exit 6
+			elif [[ $qualifier == "HOST NOT FOUND" ]]; then
 				exit 6
 			elif [[ $qualifier == "ERROR: "* ]]; then
 				exit 7
@@ -3626,7 +3685,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"TRAP ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3671,7 +3730,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"TRAP DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3711,7 +3770,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 trap show\n"
 				else
-					response=$(echo $OTP_CODE"TRAP SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "TRAP SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3762,7 +3821,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"INEXISTENT ADD $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3807,7 +3866,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"INEXISTENT DROP $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3847,7 +3906,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 inexistent show\n"
 				else
-					response=$(echo $OTP_CODE"INEXISTENT SHOW" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3886,7 +3945,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 inexistent is <recipient>\n"
 				else
 					recipient=$3
-					response=$(echo $OTP_CODE"INEXISTENT IS $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "INEXISTENT IS $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3939,7 +3998,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"INEXISTENT ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -3984,7 +4043,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"INEXISTENT DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4024,7 +4083,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 inexistent show\n"
 				else
-					response=$(echo $OTP_CODE"INEXISTENT SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4075,7 +4134,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"NOREPLY ADD $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "NOREPLY ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4120,7 +4179,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"NOREPLY DROP $recipient" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "NOREPLY DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4160,7 +4219,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 noreply show\n"
 				else
-					response=$(echo $OTP_CODE"NOREPLY SHOW" | nc $IP_SERVIDOR $PORTA_ADMIN)
+					response=$(echo "NOREPLY SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4203,7 +4262,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo $OTP_CODE"NOREPLY IS $recipient" | nc $IP_SERVIDOR $PORTA_SERVIDOR)
+					response=$(echo "NOREPLY IS $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						$(incrementTimeout)
@@ -4240,7 +4299,7 @@ case $1 in
 		#
 		# Códigos de saída: nenhum.
 
-		echo $OTP_CODE"DUMP" | nc $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
+		echo "DUMP" | $NCAT $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
 		if [ -f $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") ]; then
 			echo "Dump saved as $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")"
 		else
@@ -4260,7 +4319,7 @@ case $1 in
 			if [ -f $file ]; then
 				while read line; do
 					echo -n "Adding $line ... "
-					echo $OTP_CODE"$line" | nc $IP_SERVIDOR $PORTA_ADMIN
+					echo "$line" | $NCAT $IP_SERVIDOR $PORTA_ADMIN
 				done < $file
 			else
 				echo "File not found."
@@ -4280,8 +4339,8 @@ case $1 in
 				mkdir $PASTABKP
 			fi
 
-			echo "STORE" | nc 127.0.0.1 9875
-			echo "DUMP" | nc 127.0.01 9875 > "$PASTABKP"/dump-"$NOW".txt
+			echo "STORE" | $NCAT 127.0.0.1 9875
+			echo "DUMP" | $NCAT 127.0.0.1 9875 > "$PASTABKP"/dump-"$NOW".txt
 			tar -zcf "$PASTABKP"/spfbl-folder-"$NOW".tar /opt/spfbl --exclude "$PASTABKP" &> /dev/null
 			find $PASTABKP -mtime +"$DAYSTORETAIN" -exec rm {} \;
 		}

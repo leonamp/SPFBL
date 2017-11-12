@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.util.PriorityQueue;
@@ -58,36 +59,83 @@ public class Huffman implements Comparable<Huffman>, Serializable {
     }
     
     public static void main(String[] args) throws Exception {
-        File file = new File("C:\\Users\\Leandro\\Desktop\\amostra.txt");
-        BufferedReader reader = new BufferedReader(new FileReader(file));
-        int[] frequency = new int[256];
-        int count = 0;
-        String line;
-        while ((line = reader.readLine()) != null) {
-            line = " " + line;
-            if (count % 3 == 0) {
-                line += '\0';
+        try {
+            Huffman huffman = load();
+            int[] frequency = new int[256];
+            frequency['+']++;
+            File file = new File("C:\\Users\\Leandro\\Desktop\\amostra.txt");
+            BufferedReader reader = new BufferedReader(new FileReader(file));
+            String line;
+            
+            while ((line = reader.readLine()) != null) {
+                String query = null;
+                byte[] byteArray = null;
+                try {
+                    byteArray = Server.decryptToByteArrayURLSafe(line);
+                } catch (Exception ex) {
+                    try {
+                        byteArray = Server.decryptToByteArray(line);
+                    } catch (Exception ex2) {
+                        try {
+                            query = Server.decrypt(line);
+                        } catch (Exception ex3) {
+                        }
+                    }
+                }
+                if (byteArray != null) {
+                    try {
+                        query = huffman.decode(byteArray, 8);
+                    } catch (Exception ex) {
+                        try {
+                            query = huffman.decode(byteArray, 0);
+                        } catch (Exception ex2) {
+                            query = null;
+                        }
+                    }
+                }
+                if (query != null) {
+                    System.out.println(query);
+                    query += '\0';
+                    char[] input = query.toCharArray();
+                    for (int i = 0; i < input.length; i++) {
+                        frequency[input[i]]++;
+                    }
+                }
             }
-            char[] input = line.toCharArray();
-            for (int i = 0; i < input.length; i++) {
-                frequency[input[i]]++;
-            }
-            count++;
+            reader.close();
+            huffman = buildTree(frequency);
+            FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj");
+            SerializationUtils.serialize(huffman, outputStream);
+            outputStream.close();
+
+//            int[] frequency = new int[256];
+//            int count = 0;
+//            String line;
+//            while ((line = reader.readLine()) != null) {
+//                line = " " + line;
+//                if (count % 3 == 0) {
+//                    line += '\0';
+//                }
+//                char[] input = line.toCharArray();
+//                for (int i = 0; i < input.length; i++) {
+//                    frequency[input[i]]++;
+//                }
+//                count++;
+//            }
+//            reader.close();
+//            huffman = buildTree(frequency);
+//            FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj");
+//            SerializationUtils.serialize(huffman, outputStream);
+//            outputStream.close();
+        } finally {
+            System.exit(0);
         }
-        reader.close();
-        Huffman huffman = buildTree(frequency);
-        FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffman.obj");
-        SerializationUtils.serialize(huffman, outputStream);
-        outputStream.close();
     }
     
-    public static Huffman load() {
+    public static Huffman loadPlus() {
         try {
-            InputStream inputStream = Huffman.class.getResourceAsStream("huffman.obj");
-            try {
+            try (InputStream inputStream = Huffman.class.getResourceAsStream("huffmanplus.obj")) {
                 return SerializationUtils.deserialize(inputStream);
-            } finally {
-                inputStream.close();
             }
         } catch (Exception ex) {
             Server.logError(ex);
@@ -96,34 +144,17 @@ public class Huffman implements Comparable<Huffman>, Serializable {
         }
     }
     
-//    public String encode(String text) throws ProcessException {
-//        text += '\0';
-//        char[] input = text.toCharArray();
-//        String[] st = new String[256];
-//        buildCode(st, this, "");
-//        StringBuilder builder = new StringBuilder();
-//        for (int i = 0; i < input.length; i++) {
-//            String code = st[input[i]];
-//            if (code == null) {
-//                throw new ProcessException("ERROR: COMPRESSION");
-//            } else {
-//                for (int j = 0; j < code.length(); j++) {
-//                    if (code.charAt(j) == '0') {
-//                        builder.append('0');
-//                    } else if (code.charAt(j) == '1') {
-//                        builder.append('1');
-//                    } else {
-//                        throw new ProcessException("ERROR: COMPRESSION");
-//                    }
-//                }
-//            }
-//        }
-//        // Completar o byte final.
-//        while (builder.length() % 8 > 0) {
-//            builder.append('0');
-//        }
-//        return builder.toString();
-//    }
+    public static Huffman load() {
+        try {
+            try (InputStream inputStream = Huffman.class.getResourceAsStream("huffman.obj")) {
+                return SerializationUtils.deserialize(inputStream);
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            System.exit(1);
+            return null;
+        }
+    }
     
     public byte[] encodeByteArray(String text, int deslocamento) throws ProcessException {
         text += '\0';
@@ -212,26 +243,30 @@ public class Huffman implements Comparable<Huffman>, Serializable {
     }
     
     public String decode(String code) {
-        StringBuilder builder = new StringBuilder();
-        char[] array = code.toCharArray();
-        int k = 0;
-        while (k < array.length) {            
-            Huffman node = this;
-            while (!node.isLeaf()) {
-                if (array[k++] == '1') {
-                    node = node.right;
+        try {
+            StringBuilder builder = new StringBuilder();
+            char[] array = code.toCharArray();
+            int k = 0;
+            while (k < array.length) {                
+                Huffman node = this;
+                while (!node.isLeaf()) {
+                    if (array[k++] == '1') {
+                        node = node.right;
+                    } else {
+                        node = node.left;
+                    }
+                }
+                if (node.character == '\0') {
+                    // Fim do texto.
+                    break;
                 } else {
-                    node = node.left;
+                    builder.append(node.character);
                 }
             }
-            if (node.character == '\0') {
-                // Fim do texto.
-                break;
-            } else {
-                builder.append(node.character);
-            }
+            return builder.toString();
+        } catch (Exception ex) {
+            return null;
         }
-        return builder.toString();
     }
     
     public String decode(byte[] byteArray, int deslocamento) {

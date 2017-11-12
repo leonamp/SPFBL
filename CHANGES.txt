@@ -1,3 +1,48 @@
+### v2.8.0 ; release 12/11/2017:
+
+NEW) implementação da camada SSL em todas as conexões TCP com o sistema.
+
+NEW) implementação de criptografia simétrica nas conexões P2P.
+
+NEW) implementação do protocolo HTTPS.
+
+NEW) implementação do opt-out para que qualquer usuário pare de receber alertas do sistema.
+
+NEW) implementação da segunda versão do reCAPTHA, pois a primeira versão será descontinuada.
+
+NEW) implementação do protocolo ACME para gerenciamento automático dos certificados digitais.
+
+NEW) implementação do protocolo SYSLOG para centralização dos registros de LOG.
+
+NEW) implementação da consulta URIBL para links bloqueados pelo sistema.
+
+NEW) implementação do carregamento do corpo da mensagem em HTML.
+
+UPDT) atualização da tabela MySQL para registro de consultas com uma versão mais estável.
+
+UPDT) aprimoramento da inteligência na funcionalidade ANALISE.
+
+UPDT) aprimoramento do filtro de consulta do painel de controle.
+
+UPDT) aprimoramento do comportamento do HOLD.
+
+UPDT) carregamento da data no cabeçalho da mensagem.
+
+UPDT) converção de IPv6 (6to4) para o endereço original IPv4.
+
+UPDT) converção de IPv6 (Teredo) para o endereço original IPv4.
+
+FIX) correção do defeito no pooler de conexões MySQL.
+
+FIX) correção do defeito da consulta DNS, quando o servidor DNS responde NXDOMAIN para AAAA quando alguns domínios existentes são consultados.
+
+FIX) pequenas correções nas interpretações do BLOCK.
+
+FIX) pequenas correções nas interpretações do WHITE.
+
+FIX) correção da validação do endereço de e-mail com sinal positivo.
+
+
 ### v2.7.6 ; release 30/07/2017:
 
 NEW) implementação da assinatura DKIM para envio direto de e-mail pelo SPFBL.
