@@ -299,7 +299,6 @@ Aqui vemos alguns pools em funcionamento para que novos membros possam se cadast
 
 Abertos:
 * MatrixDefense: leandro@spfbl.net
-* MX-Protection: gian.spfbl@gmail.com
 * Spamlet: noc@lhost.net.br
 * Papuda: antispam@stoppay.net
 
@@ -322,7 +321,13 @@ Patreon:<br>
 <a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
 
 Bitcoin:<br>
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bitcoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+
+Litecoin:<br>
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/litecoin.png "LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr")
+
+Nano:<br>
+![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/nano.png "xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89")
 
 Página oficial:<br>
 <a href="http://spfbl.net">SPFBL oficial website</a>
@@ -349,6 +354,8 @@ Lojas:<br>
 <a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
 
 <a href="http://www.dnsbl.info/">20/08/2017 DNSBL.info: O SPFBL.net entra na lista MultiRBL da dnsbl.info.</a></br>
+
+<a href="http://computerworld.com.br/provedores-preparam-blacklist-colaborativa-para-reduzir-taxa-de-spam-no-brasil">05/04/2018 ComputerWorld: Provedores preparam "blacklist colaborativa" para reduzir taxa de spam no Brasil.</a></br>
 
 
 ### Forum de discussão SPFBL

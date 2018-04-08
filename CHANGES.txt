@@ -1,3 +1,7 @@
+### v2.8.1 ; release 08/04/2018:
+
+FIX) Security vulnerability in which it allows HTTP users to browse operating system files. Special thanks for fabio@cta.br.
+
 ### v2.8.0 ; release 12/11/2017:
 
 NEW) implementação da camada SSL em todas as conexões TCP com o sistema.

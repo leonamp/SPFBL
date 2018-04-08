@@ -474,11 +474,16 @@ public final class ServerHTTP extends Server {
     private static final File FOLDER = new File("./web/");
     
     public static File getWebFile(String name) {
-        File file = new File(FOLDER, name);
-        if (file.exists()) {
-            return file;
-        } else {
+        if (name.contains("../")) {
+            // Restriction for security.
             return null;
+        } else {
+            File file = new File(FOLDER, name);
+            if (file.exists()) {
+                return file;
+            } else {
+                return null;
+            }
         }
     }
     
