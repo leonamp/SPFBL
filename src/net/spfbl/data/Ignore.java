@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
@@ -94,7 +95,7 @@ public class Ignore {
         }
         
         public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<String>();
+            TreeSet<String> set = new TreeSet<>();
             for (String client : MAP.keySet()) {
                 for (String cidr : MAP.get(client)) {
                     if (cidr.contains(":")) {
@@ -147,7 +148,7 @@ public class Ignore {
             }
             TreeSet<String> set = MAP.get(client);
             if (set == null) {
-                set = new TreeSet<String>();
+                set = new TreeSet<>();
                 MAP.put(client, set);
             }
             String key = Subnet.expandCIDR(cidr);
@@ -300,7 +301,7 @@ public class Ignore {
     }
     
     private static String normalizeTokenCIDR(String token) throws ProcessException {
-        return SPF.normalizeToken(token, false, false, true, false, false, false);
+        return SPF.normalizeToken(token, false, false, true, false, false, false, false, false);
     }
 
     public static boolean add(String token) throws ProcessException {
@@ -450,12 +451,9 @@ public class Ignore {
                 long time = System.currentTimeMillis();
                 File file = new File("./data/ignore.set");
                 TreeSet<String> set = getAll();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(set, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {

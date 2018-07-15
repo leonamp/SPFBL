@@ -252,32 +252,40 @@ public final class SubnetIPv6 extends Subnet {
     }
     
     public static String expandIPv6(String ip) {
-        short[] splitedIP = split(ip);
-        int p1 = splitedIP[0] & 0xFFFF;
-        int p2 = splitedIP[1] & 0xFFFF;
-        int p3 = splitedIP[2] & 0xFFFF;
-        int p4 = splitedIP[3] & 0xFFFF;
-        int p5 = splitedIP[4] & 0xFFFF;
-        int p6 = splitedIP[5] & 0xFFFF;
-        int p7 = splitedIP[6] & 0xFFFF;
-        int p8 = splitedIP[7] & 0xFFFF;
-        return String.format("%4s", Integer.toHexString(p1)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p2)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p3)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p4)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p5)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p6)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p7)).replace(' ', '0') + ":" +
-                String.format("%4s", Integer.toHexString(p8)).replace(' ', '0');
+        if (ip == null) {
+            return null;
+        } else {
+            short[] splitedIP = split(ip);
+            int p1 = splitedIP[0] & 0xFFFF;
+            int p2 = splitedIP[1] & 0xFFFF;
+            int p3 = splitedIP[2] & 0xFFFF;
+            int p4 = splitedIP[3] & 0xFFFF;
+            int p5 = splitedIP[4] & 0xFFFF;
+            int p6 = splitedIP[5] & 0xFFFF;
+            int p7 = splitedIP[6] & 0xFFFF;
+            int p8 = splitedIP[7] & 0xFFFF;
+            return String.format("%4s", Integer.toHexString(p1)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p2)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p3)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p4)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p5)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p6)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p7)).replace(' ', '0') + ":" +
+                    String.format("%4s", Integer.toHexString(p8)).replace(' ', '0');
+        }
     }
     
     public static String expandCIDRv6(String cidr) {
-        int index = cidr.indexOf('/');
-        String ip = cidr.substring(0, index);
-        String mask = cidr.substring(index);
-        ip = expandIPv6(ip);
-        cidr = ip + mask;
-        return cidr;
+        if (cidr == null) {
+            return null;
+        } else {
+            int index = cidr.indexOf('/');
+            String ip = cidr.substring(0, index);
+            String mask = cidr.substring(index);
+            ip = expandIPv6(ip);
+            cidr = ip + mask;
+            return cidr;
+        }
     }
     
     /**
@@ -286,23 +294,27 @@ public final class SubnetIPv6 extends Subnet {
      * @return o endereço IPv6 padronizado.
      */
     public static String normalizeIPv6(String ip) {
-        short[] splitedIP = split(ip);
-        int p1 = splitedIP[0] & 0xFFFF;
-        int p2 = splitedIP[1] & 0xFFFF;
-        int p3 = splitedIP[2] & 0xFFFF;
-        int p4 = splitedIP[3] & 0xFFFF;
-        int p5 = splitedIP[4] & 0xFFFF;
-        int p6 = splitedIP[5] & 0xFFFF;
-        int p7 = splitedIP[6] & 0xFFFF;
-        int p8 = splitedIP[7] & 0xFFFF;
-        return Integer.toHexString(p1) + ":" +
-                Integer.toHexString(p2) + ":" +
-                Integer.toHexString(p3) + ":" +
-                Integer.toHexString(p4) + ":" +
-                Integer.toHexString(p5) + ":" +
-                Integer.toHexString(p6) + ":" +
-                Integer.toHexString(p7) + ":" +
-                Integer.toHexString(p8);
+        if (ip == null) {
+            return null;
+        } else {
+            short[] splitedIP = split(ip);
+            int p1 = splitedIP[0] & 0xFFFF;
+            int p2 = splitedIP[1] & 0xFFFF;
+            int p3 = splitedIP[2] & 0xFFFF;
+            int p4 = splitedIP[3] & 0xFFFF;
+            int p5 = splitedIP[4] & 0xFFFF;
+            int p6 = splitedIP[5] & 0xFFFF;
+            int p7 = splitedIP[6] & 0xFFFF;
+            int p8 = splitedIP[7] & 0xFFFF;
+            return Integer.toHexString(p1) + ":" +
+                    Integer.toHexString(p2) + ":" +
+                    Integer.toHexString(p3) + ":" +
+                    Integer.toHexString(p4) + ":" +
+                    Integer.toHexString(p5) + ":" +
+                    Integer.toHexString(p6) + ":" +
+                    Integer.toHexString(p7) + ":" +
+                    Integer.toHexString(p8);
+        }
     }
     
     /**
@@ -614,14 +626,18 @@ public final class SubnetIPv6 extends Subnet {
     /**
      * Mapa de blocos IP de ASs com busca em árvore binária log2(n).
      */
-    private static final TreeMap<String,SubnetIPv6> MAP = new TreeMap<String,SubnetIPv6>();
+    private static final TreeMap<String,SubnetIPv6> MAP = new TreeMap<>();
     
     @Override
     public synchronized SubnetIPv6 drop() {
         String cidr = getInetnum();
         String first = SubnetIPv6.getFirstIP(cidr);
         String key = expandIPv6(first);
-        return MAP.remove(key);
+        SubnetIPv6 subnet = MAP.remove(key);
+        if (subnet != null) {
+            CHANGED = true;
+        }
+        return subnet;
     }
     
     /**
@@ -650,7 +666,7 @@ public final class SubnetIPv6 extends Subnet {
     private static boolean CHANGED = false;
     
     protected static synchronized TreeSet<Subnet> getSubnetSet() {
-        TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
+        TreeSet<Subnet> subnetSet = new TreeSet<>();
         subnetSet.addAll(MAP.values());
         return subnetSet;
     }
@@ -743,6 +759,40 @@ public final class SubnetIPv6 extends Subnet {
                 Integer.toHexString(p8);
     }
     
+    public static String minimizeCIDRv6(String cidr) {
+        if ((cidr = normalizeCIDRv6(cidr)) == null) {
+            return null;
+        } else {
+            int index = cidr.indexOf('/');
+            String ip = ":" + cidr.substring(0, index) + ":";
+            String mask = cidr.substring(index + 1);
+            if (ip.equals(":0:0:0:0:0:0:0:0:")) {
+                return "::/" + mask;
+            } else if (ip.contains(":0:0:0:0:0:0:0:")) {
+                ip = ip.replaceFirst(":0:0:0:0:0:0:0:", "::");
+            } else if (ip.contains(":0:0:0:0:0:0:")) {
+                ip = ip.replaceFirst(":0:0:0:0:0:0:", "::");
+            } else if (ip.contains(":0:0:0:0:0:")) {
+                ip = ip.replaceFirst(":0:0:0:0:0:", "::");
+            } else if (ip.contains(":0:0:0:0:")) {
+                ip = ip.replaceFirst(":0:0:0:0:", "::");
+            } else if (ip.contains(":0:0:0:")) {
+                ip = ip.replaceFirst(":0:0:0:", "::");
+            } else if (ip.contains(":0:0:")) {
+                ip = ip.replaceFirst(":0:0:", "::");
+            } else if (ip.contains(":0:")) {
+                ip = ip.replaceFirst(":0:", "::");
+            }
+            if (ip.startsWith("::") && ip.endsWith(":")) {
+                return ip.substring(0, ip.length() - 1) + "/" + mask;
+            } else if (ip.endsWith("::") && ip.startsWith(":")) {
+                return ip.substring(1) + "/" + mask;
+            } else {
+                return ip.substring(1, ip.length() - 1) + "/" + mask;
+            }
+        }
+    }
+    
     /**
      * Corrige o endereço da notação CIDR para sem abreviação.
      * @param inetnum o endereço com notação CIDR sem abreviação.
@@ -778,6 +828,44 @@ public final class SubnetIPv6 extends Subnet {
                         Integer.toHexString(p7) + ":" +
                         Integer.toHexString(p8) + "/" + sizeInt;
             }
+        }
+    }
+    
+    /**
+     * Gera uma lista completa dos ranges CIDRv6 de um IP.
+     * @param ip o IPv6 que deve ser usado para gerar os ranges.
+     * @return uma lista com todos os ranges CIDRv6 do IPv6.
+     */
+    public static String[] getRangeArrayIPv6(String ip) {
+        if (isValidIPv6(ip)) {
+            String[] rangeList = new String[129];
+            short[] address = split(ip);
+            for (int maskInt = 128; maskInt >= 0; maskInt--) {
+                short[] mask = getMaskIPv6(maskInt);
+                for (int i = 0; i < 8; i++) {
+                    address[i] &= mask[i];
+                }
+                int p1 = address[0] & 0xFFFF;
+                int p2 = address[1] & 0xFFFF;
+                int p3 = address[2] & 0xFFFF;
+                int p4 = address[3] & 0xFFFF;
+                int p5 = address[4] & 0xFFFF;
+                int p6 = address[5] & 0xFFFF;
+                int p7 = address[6] & 0xFFFF;
+                int p8 = address[7] & 0xFFFF;
+                rangeList[maskInt] =
+                        Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8) + "/" + maskInt;
+            }
+            return rangeList;
+        } else {
+            return null;
         }
     }
     
@@ -893,9 +981,28 @@ public final class SubnetIPv6 extends Subnet {
         return newSubnet(ip);
     }
     
-    private static synchronized TreeMap<String,SubnetIPv6> getMap() {
-        TreeMap<String,SubnetIPv6> map = new TreeMap<String,SubnetIPv6>();
-        map.putAll(MAP);
+    private static synchronized TreeSet<String> getKeySet() {
+        TreeSet<String> keySet = new TreeSet<>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+    
+    private static synchronized SubnetIPv6 getSubnetObj(String key) {
+        return MAP.get(key);
+    }
+    
+    private static TreeMap<String,SubnetIPv6> getMap() {
+        TreeMap<String,SubnetIPv6> map = new TreeMap<>();
+        for (String key : getKeySet()) {
+            SubnetIPv6 subnet = getSubnetObj(key);
+            if (subnet != null) {
+                if (subnet.isRegistryExpired()) {
+                    subnet.drop();
+                } else {
+                    map.put(key, subnet);
+                }
+            }
+        }
         return map;
     }
     
@@ -905,17 +1012,13 @@ public final class SubnetIPv6 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing subnet6.map");
                 long time = System.currentTimeMillis();
                 TreeMap<String,SubnetIPv6> map = getMap();
                 File file = new File("./data/subnet6.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -937,11 +1040,8 @@ public final class SubnetIPv6 extends Subnet {
         if (file.exists()) {
             try {
                 TreeMap<Object,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (Object value : map.values()) {
                     if (value instanceof SubnetIPv6) {
@@ -999,7 +1099,7 @@ public final class SubnetIPv6 extends Subnet {
     /**
      * Mapa completo dos blocos alocados aos países.
      */
-    private static final TreeMap<String,SubnetIPv6> SERVER_MAP = new TreeMap<String,SubnetIPv6>();
+    private static final TreeMap<String,SubnetIPv6> SERVER_MAP = new TreeMap<>();
     
     /**
      * Adiciona um servidor WHOIS na lista com seu respecitivo bloco.

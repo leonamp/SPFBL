@@ -19,7 +19,6 @@ package net.spfbl.core;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.mysql.jdbc.exceptions.MySQLTimeoutException;
-import com.mysql.jdbc.exceptions.jdbc4.MySQLNonTransientConnectionException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import de.agitos.dkim.Canonicalization;
@@ -54,6 +53,8 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -64,27 +65,30 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import net.spfbl.whois.QueryTCP;
 import net.spfbl.spf.QuerySPF;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
@@ -104,6 +108,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.data.Block;
+import net.spfbl.data.NoReply;
 import net.spfbl.dns.QueryDNS;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -113,13 +118,13 @@ import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.codec.binary.Base64;
+import org.shredzone.acme4j.Account;
+import org.shredzone.acme4j.AccountBuilder;
 import org.shredzone.acme4j.Authorization;
 import org.shredzone.acme4j.Certificate;
-import org.shredzone.acme4j.Registration;
-import org.shredzone.acme4j.RegistrationBuilder;
-import org.shredzone.acme4j.challenge.Challenge;
+import org.shredzone.acme4j.Order;
+import org.shredzone.acme4j.OrderBuilder;
 import org.shredzone.acme4j.challenge.Http01Challenge;
-import org.shredzone.acme4j.exception.AcmeConflictException;
 import org.shredzone.acme4j.util.CSRBuilder;
 import org.shredzone.acme4j.util.KeyPairUtils;
 
@@ -131,8 +136,8 @@ import org.shredzone.acme4j.util.KeyPairUtils;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 8;
-    private static final byte RELEASE = 1;
+    private static final byte SUBVERSION = 9;
+    private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -231,7 +236,11 @@ public class Core {
     private static final Huffman HUFFMANPLUS = Huffman.loadPlus();
     
     public static byte[] encodeHuffmanPlus(String text, int deslocamento) throws ProcessException {
-        return HUFFMANPLUS.encodeByteArray(text, deslocamento);
+        if (text == null) {
+            return null;
+        } else {
+            return HUFFMANPLUS.encodeByteArray(text.toLowerCase(), deslocamento);
+        }
     }
     
     public static String decodeHuffmanPlus(byte[] byteArray, int deslocamento) {
@@ -250,7 +259,11 @@ public class Core {
             return query;
         } else if (query.startsWith("spam ")) {
             return query;
+        } else if (query.startsWith("complain ")) {
+            return query;
         } else if (query.startsWith("unblock ")) {
+            return query;
+        } else if (query.startsWith("unblockpp ")) {
             return query;
         } else if (query.startsWith("unhold ")) {
             return query;
@@ -330,23 +343,19 @@ public class Core {
             String recipient
             ) throws ProcessException {
         // Definição do e-mail do usuário.
-        Locale locale = null;
         String userEmail = null;
         if (user != null) {
-            locale = user.getLocale();
             userEmail = user.getEmail();
         } else if (client != null) {
             userEmail = client.getEmail();
-            locale = Core.getDefaultLocale(userEmail);
         }
         return getUnblockURL(
-                locale, userEmail,
+                userEmail,
                 ip, sender, hostname, recipient
         );
     }
     
     public static String getUnblockURL(
-            Locale locale,
             String userEmail,
             String ip,
             String sender,
@@ -359,16 +368,18 @@ public class Core {
             return null;
         } else if (sender == null) {
             return null;
-        } else if (!Domain.isValidEmail(sender)) {
-            return null;
         } else if (recipient == null) {
             return null;
+        } else if (!Domain.isValidEmail(sender)) {
+            return null;
         } else if (!Domain.isValidEmail(recipient)) {
+            return null;
+        } else if (NoReply.contains(recipient, true)) {
             return null;
         } else if (serviceHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
-            String url = serviceHTTP.getSecuredURL(locale);
+            String url = serviceHTTP.getSecuredURL(null);
             if (url == null) {
                 return null;
             } else {
@@ -421,6 +432,57 @@ public class Core {
                 String ticket = "unblock";
                 ticket += ' ' + client;
                 ticket += ' ' + ip;
+                try {
+                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    Server.logError("compress fail: " + ticket);
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getPayPalUnblockURL(
+            Locale locale,
+            String user,
+            String ip,
+            String token,
+            String playerid,
+            String currency,
+            String price
+            ) throws ProcessException {
+        if (user == null) {
+            return null;
+        } else if (ip == null) {
+            return null;
+        } else if (!Domain.isValidEmail(user)) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                long time = System.currentTimeMillis();
+                String ticket = "unblockpp";
+                ticket += ' ' + user;
+                ticket += ' ' + ip;
+                ticket += ' ' + token;
+                ticket += ' ' + playerid;
+                ticket += ' ' + price;
+                ticket += ' ' + currency;
                 try {
                     byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
                     byteArray[0] = (byte) (time & 0xFF);
@@ -695,6 +757,7 @@ public class Core {
                     Core.setPasswordSMTP(properties.getProperty("smtp_password"));
                     Core.setSelectorDKIM(properties.getProperty("dkim_selector"));
                     Core.setPrivateDKIM(properties.getProperty("dkim_private"));
+                    Core.setInexistentExpires(properties.getProperty("inexistent_expires"));
                     Core.setPortADMIN(properties.getProperty("admin_port"));
                     Core.setPortADMINS(properties.getProperty("admins_port"));
                     Core.setPortWHOIS(properties.getProperty("whois_port"));
@@ -703,6 +766,15 @@ public class Core {
                     Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     Core.setPortHTTP(properties.getProperty("http_port"));
                     Core.setPortHTTPS(properties.getProperty("https_port"));
+                    Core.setPayPalAccount(
+                            properties.getProperty("paypal_account_user"),
+                            properties.getProperty("paypal_account_password"),
+                            properties.getProperty("paypal_account_signature")
+                    );
+                    Core.setPayPalPriceDelistUSD(properties.getProperty("paypal_delist_usd"));
+                    Core.setPayPalPriceDelistEUR(properties.getProperty("paypal_delist_eur"));
+                    Core.setPayPalPriceDelistJPY(properties.getProperty("paypal_delist_jpy"));
+                    Core.setPayPalPriceDelistBRL(properties.getProperty("paypal_delist_brl"));
                     Core.setMaxUDP(properties.getProperty("udp_max"));
                     Core.setFloodTimeIP(properties.getProperty("flood_time_ip"));
                     Core.setFloodTimeHELO(properties.getProperty("flood_time_helo"));
@@ -925,6 +997,178 @@ public class Core {
         }
     }
     
+    private static String PAYPAL_ACCOUNT_USER = null;
+    private static String PAYPAL_ACCOUNT_PASSWORD = null;
+    private static String PAYPAL_ACCOUNT_SIGNATURE = null;
+    
+    private static final DecimalFormat PAYPAL_PRICE_FORMAT = new DecimalFormat("0.00", new DecimalFormatSymbols(Locale.US));
+    private static float PAYPAL_PRICE_DELIST_USD = 0.00f;
+    private static float PAYPAL_PRICE_DELIST_EUR = 0.00f;
+    private static float PAYPAL_PRICE_DELIST_JPY = 0.00f;
+    private static float PAYPAL_PRICE_DELIST_BRL = 0.00f;
+    
+    public static synchronized void setPayPalAccount(
+            String user,
+            String password,
+            String signature
+    ) {
+        if (user != null && password != null && signature != null) {
+            if (user.length() > 0 && password.length() > 0 && signature.length() > 0) {
+                if (Pattern.matches("^(([a-z0-9_]|[a-z0-9_][a-z0-9_+-]{0,61}[a-z0-9_])(\\.([a-z0-9_]|[a-z0-9_][a-z0-9_+-]{0,61}[a-z0-9]))*)$", user)) {
+                    if (Pattern.matches("^[0-9A-Z]{16}$", password)) {
+                        if (Pattern.matches("^[0-9a-zA-Z.-]{56}$", signature)) {
+                            Core.PAYPAL_ACCOUNT_USER = user;
+                            Core.PAYPAL_ACCOUNT_PASSWORD = password;
+                            Core.PAYPAL_ACCOUNT_SIGNATURE = signature;
+                        } else {
+                            Server.logError("invalid PayPal signature '" + signature + "'.");
+                        }
+                    } else {
+                        Server.logError("invalid PayPal password '" + password + "'.");
+                    }
+                } else {
+                    Server.logError("invalid PayPal user '" + user + "'.");
+                }
+            }
+        }
+    }
+    
+    public static void setPayPalPriceDelistUSD(String value) {
+        if (value != null && value.length() > 0) {
+            try {
+                setPayPalPriceDelistUSD(Float.parseFloat(value));
+            } catch (Exception ex) {
+                Server.logError("invalid PayPal delist USD value '" + value + "'.");
+            }
+        }
+    }
+    
+    public static void setPayPalPriceDelistUSD(float value) {
+        if (value < 0.01f || value > 10000.00f) {
+            Server.logError("invalid PayPal delist USD value " + value + ".");
+        } else {
+            Core.PAYPAL_PRICE_DELIST_USD = value;
+        }
+    }
+    
+    public static void setPayPalPriceDelistJPY(String value) {
+        if (value != null && value.length() > 0) {
+            try {
+                setPayPalPriceDelistJPY(Float.parseFloat(value));
+            } catch (Exception ex) {
+                Server.logError("invalid PayPal delist JPY value '" + value + "'.");
+            }
+        }
+    }
+    
+    public static void setPayPalPriceDelistJPY(float value) {
+        if (value < 0.01f || value > 10000.00f) {
+            Server.logError("invalid PayPal delist JPY value " + value + ".");
+        } else {
+            Core.PAYPAL_PRICE_DELIST_JPY = value;
+        }
+    }
+    
+    public static void setPayPalPriceDelistEUR(String value) {
+        if (value != null && value.length() > 0) {
+            try {
+                setPayPalPriceDelistEUR(Float.parseFloat(value));
+            } catch (Exception ex) {
+                Server.logError("invalid PayPal delist EUR value '" + value + "'.");
+            }
+        }
+    }
+    
+    public static void setPayPalPriceDelistEUR(float value) {
+        if (value < 0.01f || value > 10000.00f) {
+            Server.logError("invalid PayPal delist EUR value " + value + ".");
+        } else {
+            Core.PAYPAL_PRICE_DELIST_EUR = value;
+        }
+    }
+    
+    public static void setPayPalPriceDelistBRL(String value) {
+        if (value != null && value.length() > 0) {
+            try {
+                setPayPalPriceDelistBRL(Float.parseFloat(value));
+            } catch (Exception ex) {
+                Server.logError("invalid PayPal delist BRL value '" + value + "'.");
+            }
+        }
+    }
+    
+    public static void setPayPalPriceDelistBRL(float value) {
+        if (value < 0.01f || value > 2000.0f) {
+            Server.logError("invalid PayPal delist BRL value " + value + ".");
+        } else {
+            Core.PAYPAL_PRICE_DELIST_BRL = value;
+        }
+    }
+    
+    public static synchronized boolean hasPayPalAccount() {
+        if (PAYPAL_ACCOUNT_USER == null) {
+            return false;
+        } else if (PAYPAL_ACCOUNT_PASSWORD == null) {
+            return false;
+        } else if (PAYPAL_ACCOUNT_SIGNATURE == null) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    
+    public static String getPayPalAccountUser() {
+        return PAYPAL_ACCOUNT_USER;
+    }
+    
+    public static String getPayPalAccountPassword() {
+        return PAYPAL_ACCOUNT_PASSWORD;
+    }
+    
+    public static String getPayPalAccountSignature() {
+        return PAYPAL_ACCOUNT_SIGNATURE;
+    }
+    
+    public static String getPayPalPriceDelistUSD() {
+        if (PAYPAL_PRICE_DELIST_USD == 0.0f) {
+            return null;
+        } else if (hasPayPalAccount()) {
+            return PAYPAL_PRICE_FORMAT.format(PAYPAL_PRICE_DELIST_USD);
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getPayPalPriceDelistJPY() {
+        if (PAYPAL_PRICE_DELIST_JPY == 0.0f) {
+            return null;
+        } else if (hasPayPalAccount()) {
+            return PAYPAL_PRICE_FORMAT.format(PAYPAL_PRICE_DELIST_JPY);
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getPayPalPriceDelistEUR() {
+        if (PAYPAL_PRICE_DELIST_EUR == 0.0f) {
+            return null;
+        } else if (hasPayPalAccount()) {
+            return PAYPAL_PRICE_FORMAT.format(PAYPAL_PRICE_DELIST_EUR);
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getPayPalPriceDelistBRL() {
+        if (PAYPAL_PRICE_DELIST_BRL == 0.0f) {
+            return null;
+        } else if (hasPayPalAccount()) {
+            return PAYPAL_PRICE_FORMAT.format(PAYPAL_PRICE_DELIST_BRL);
+        } else {
+            return null;
+        }
+    }
+    
     private static String HOSTNAME = null;
     private static String INTERFACE = null;
     private static String ADMIN_EMAIL = null;
@@ -1062,6 +1306,14 @@ public class Core {
     
     public static String getHostname() {
         return HOSTNAME;
+    }
+    
+    public static boolean isHostname(String hostname) {
+        if (hostname == null) {
+            return false;
+        } else {
+            return hostname.equals(HOSTNAME);
+        }
     }
     
     public static boolean hasHostname() {
@@ -1736,6 +1988,30 @@ public class Core {
         }
     }
     
+    private static short INEXISTENT_EXPIRES = 365;
+    
+    public static synchronized void setInexistentExpires(String expires) {
+        if (expires != null && expires.length() > 0) {
+            try {
+                setInexistentExpires(Integer.parseInt(expires));
+            } catch (Exception ex) {
+                Server.logError("invalid inexistent expires integer value '" + expires + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setInexistentExpires(int expires) {
+        if (expires < 1 || expires > Short.MAX_VALUE) {
+            Server.logError("invalid inexistent expires integer value '" + expires + "'.");
+        } else {
+            Core.INEXISTENT_EXPIRES = (short) expires;
+        }
+    }
+    
+    public static long getInexistentExpiresMillis() {
+        return Core.INEXISTENT_EXPIRES * Server.DAY_TIME;
+    }
+    
     private static boolean SMTP_IS_AUTH = true;
     private static boolean SMTP_STARTTLS = true;
     private static String SMTP_HOST = null;
@@ -1851,6 +2127,14 @@ public class Core {
     
     public static synchronized String getEmailDate() {
         return DATE_EMAIL_FULL_FORMAT.format(new Date());
+    }
+    
+    public static synchronized String getEmailDate(Date date) {
+        if (date == null) {
+            return null;
+        } else {
+            return DATE_EMAIL_FULL_FORMAT.format(date);
+        }
     }
     
     public static synchronized Date parseEmailDate(String date) throws ParseException {
@@ -1978,53 +2262,39 @@ public class Core {
             props.put("mail.smtp.timeout", Integer.toString(timeout));   
             props.put("mail.smtp.connectiontimeout", "3000");
             
-            InternetAddress[] recipients = (InternetAddress[]) message.getAllRecipients();
-            Exception lastException = null;
-            for (InternetAddress recipient : recipients) {
-                String domain = Domain.normalizeHostname(recipient.getAddress(), false);
-                String url = Core.getListUnsubscribeURL(locale, recipient);
-                if (url != null) {
-                    message.setHeader("List-Unsubscribe", "<" + url + ">");
+            ArrayList<InternetAddress> recipientList = new ArrayList<>();
+            for (Address address : message.getAllRecipients()) {
+                if (address instanceof InternetAddress) {
+                    recipientList.add((InternetAddress) address);
                 }
-                message.saveChanges();
-                try {
-                    for (String mx : Reverse.getMXSet(domain)) {
-                        mx = mx.substring(1);
-                        props.put("mail.smtp.starttls.enable", "true");
-                        props.put("mail.smtp.host", mx);
-                        props.put("mail.smtp.ssl.trust", mx);
-                        InternetAddress[] recipientAlone = new InternetAddress[1];
-                        recipientAlone[0] = (InternetAddress) recipient;
-                        javax.mail.Session session = javax.mail.Session.getDefaultInstance(props);
-                        SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
-                        try {
-                            transport.setLocalHost(HOSTNAME);
-                            Server.logSendMTP("connecting to " + mx + ":25.");
-                            transport.connect(mx, 25, null, null);
-                            Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
-                            transport.sendMessage(message, recipientAlone);
-                            Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
-                            Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                            return mx + ": " + transport.getLastServerResponse();
-                        } catch (MailConnectException ex) {
-                            Server.logSendMTP("connection failed.");
-                            lastException = ex;
-                        } catch (SendFailedException ex) {
-                            Server.logSendMTP("send failed.");
-                            Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                            throw ex;
-                        } catch (MessagingException ex) {
-//                        if (ex.getMessage().contains(" TLS ")) {
-//                            Server.logSendMTP("cannot establish TLS connection.");
-                            Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                            if (transport.isConnected()) {
-                                transport.close();
-                                Server.logSendMTP("connection closed.");
-                            }
-                            Server.logInfo("sending e-mail message without TLS.");
-                            props.put("mail.smtp.starttls.enable", "false");
-                            session = javax.mail.Session.getDefaultInstance(props);
-                            transport = (SMTPTransport) session.getTransport("smtp");
+            }
+            InternetAddress[] recipients = recipientList.toArray(new InternetAddress[recipientList.size()]);
+            Exception lastException = null;
+            MailConnectException mailConnectException = null;
+            SendFailedException sendFailedException = null;
+            MessagingException messagingException = null;
+            for (InternetAddress recipient : recipients) {
+                String email = recipient.getAddress();
+                if (NoReply.contains(email, true)) {
+                    Server.logDebug("the recipient '" + email +  "' is in no-reply list.");
+                    return false;
+                } else {
+                    String domain = Domain.normalizeHostname(email, false);
+                    String url = Core.getListUnsubscribeURL(locale, recipient);
+                    if (url != null) {
+                        message.setHeader("List-Unsubscribe", "<" + url + ">");
+                    }
+                    message.saveChanges();
+                    try {
+                        for (String mx : Reverse.getMXSet(domain)) {
+                            mx = mx.substring(1);
+                            props.put("mail.smtp.starttls.enable", "true");
+                            props.put("mail.smtp.host", mx);
+                            props.put("mail.smtp.ssl.trust", mx);
+                            InternetAddress[] recipientAlone = new InternetAddress[1];
+                            recipientAlone[0] = (InternetAddress) recipient;
+                            javax.mail.Session session = javax.mail.Session.getDefaultInstance(props);
+                            SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
                             try {
                                 transport.setLocalHost(HOSTNAME);
                                 Server.logSendMTP("connecting to " + mx + ":25.");
@@ -2034,33 +2304,69 @@ public class Core {
                                 Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
                                 Server.logSendMTP("last response: " + transport.getLastServerResponse());
                                 return mx + ": " + transport.getLastServerResponse();
-                            } catch (SendFailedException ex2) {
+                            } catch (MailConnectException ex) {
+                                Server.logSendMTP("connection failed.");
+                                mailConnectException = ex;
+                            } catch (SendFailedException ex) {
                                 Server.logSendMTP("send failed.");
                                 Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                                throw ex2;
-                            } catch (Exception ex2) {
-                                lastException = ex2;
-                            }
-                        } catch (Exception ex) {
-                            Server.logError(ex);
-                            lastException = ex;
-                        } finally {
-                            if (transport.isConnected()) {
-                                transport.close();
-                                Server.logSendMTP("connection closed.");
+                                sendFailedException = ex;
+                            } catch (MessagingException ex) {
+    //                            if (ex.getMessage().contains(" TLS ")) {
+    //                            Server.logSendMTP("cannot establish TLS connection.");
+                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                if (transport.isConnected()) {
+                                    transport.close();
+                                    Server.logSendMTP("connection closed.");
+                                }
+                                messagingException = ex;
+                                Server.logInfo("sending e-mail message without TLS.");
+                                props.put("mail.smtp.starttls.enable", "false");
+                                session = javax.mail.Session.getDefaultInstance(props);
+                                transport = (SMTPTransport) session.getTransport("smtp");
+                                try {
+                                    transport.setLocalHost(HOSTNAME);
+                                    Server.logSendMTP("connecting to " + mx + ":25.");
+                                    transport.connect(mx, 25, null, null);
+                                    Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
+                                    transport.sendMessage(message, recipientAlone);
+                                    Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
+                                    Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                    return mx + ": " + transport.getLastServerResponse();
+                                } catch (SendFailedException ex2) {
+                                    Server.logSendMTP("send failed.");
+                                    Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                    sendFailedException = ex2;
+                                } catch (MessagingException ex2) {
+                                    messagingException = ex;
+                                } catch (Exception ex2) {
+                                    lastException = ex;
+                                }
+                            } catch (Exception ex) {
+                                Server.logError(ex);
+                                lastException = ex;
+                            } finally {
+                                if (transport.isConnected()) {
+                                    transport.close();
+                                    Server.logSendMTP("connection closed.");
+                                }
                             }
                         }
+                    } catch (NamingException ex) {
+                        lastException = ex;
                     }
-                } catch (NamingException ex) {
-                    lastException = ex;
-                } catch (MessagingException ex) {
-                    lastException = ex;
                 }
             }
-            if (lastException == null) {
-                return false;
-            } else {
+            if (messagingException != null) {
+                throw messagingException;
+            } else if (sendFailedException != null) {
+                throw sendFailedException;
+            } else if (mailConnectException!= null) {
+                throw mailConnectException;
+            } else if (lastException != null) {
                 throw lastException;
+            } else {
+                return false;
             }
         } else if (hasRelaySMTP()) {
             Server.logInfo("sending e-mail message.");
@@ -2200,7 +2506,6 @@ public class Core {
                 Core.startTimer();
                 Analise.initProcess();
                 Peer.sendHeloToAll();
-                User.clearFalseBlock();
             }
         } catch (Exception ex) {
             Server.logError(ex);
@@ -2273,9 +2578,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerRefreshWHOIS started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Atualiza registros WHOIS expirando.
                 Server.tryRefreshWHOIS();
+                Server.logTrace("TimerRefreshWHOIS finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2286,9 +2593,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredSPF started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros SPF expirados. 
                 SPF.dropExpiredSPF();
+                Server.logTrace("TimerDropExpiredSPF finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2299,8 +2608,10 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerCheckAccessSMTP started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 Analise.checkAccessSMTP();
+                Server.logTrace("TimerCheckAccessSMTP finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2311,8 +2622,10 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerSendHoldingWarningMessages started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 User.sendHoldingWarning();
+                Server.logTrace("TimerSendHoldingWarningMessages finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2323,9 +2636,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerSendWarningMessages started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 User.sendWarningMessages();
                 User.storeAndDropFinished();
+                Server.logTrace("TimerSendWarningMessages finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2336,10 +2651,12 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredPeer started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Remoção de registros de reputação expirados. 
                 Peer.dropExpired();
                 Peer.sendHeloToAll();
+                Server.logTrace("TimerDropExpiredPeer finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2350,9 +2667,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredHELO started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de DNS de HELO vencidos.
                 SPF.dropExpiredHELO();
+                Server.logTrace("TimerDropExpiredHELO finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2363,9 +2682,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredReverse started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de IP reverso vencidos.
                 Reverse.dropExpired();
+                Server.logTrace("TimerDropExpiredReverse finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2376,11 +2697,13 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredDistribution started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas as distribuições e consultas vencidas.
                 User.dropAllExpiredQuery();
                 SPF.dropExpiredDistribution();
                 Block.dropExpired();
+                Server.logTrace("TimerDropExpiredDistribution finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2391,9 +2714,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDropExpiredDefer started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas os registros de atrazo programado vencidos.
                 Defer.dropExpired();
+                Server.logTrace("TimerDropExpiredDefer finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2404,9 +2729,11 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerStoreCache started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Armazena todos os registros atualizados durante a consulta.
                 Server.tryStoreCache();
+                Server.logTrace("TimerStoreCache finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2417,11 +2744,13 @@ public class Core {
         @Override
         public void run() {
             try {
+                Server.logTrace("TimerDeleteLogExpired started.");
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apaga todos os arquivos de LOG vencidos.
                 Server.deleteLogExpired();
                 // Apaga todos as listas de analise vencidas.
                 Analise.dropExpired();
+                Server.logTrace("TimerDeleteLogExpired finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
             }
@@ -2454,7 +2783,7 @@ public class Core {
         TIMER.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
         TIMER.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
-        TIMER.schedule(new TimerSendHoldingWarningMessages(), 300000, 600000); // Frequência de 10 minutos.
+        TIMER.schedule(new TimerSendHoldingWarningMessages(), 600000, 600000); // Frequência de 10 minutos.
         TIMER.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
         TIMER.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
         TIMER.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
@@ -2674,12 +3003,113 @@ public class Core {
         return file;
     }
     
+//    public static Number getPositiveInteger(String text) {
+//        if (hasOnlyDigits(text)) {
+//            try {
+//                return Byte.parseByte(text);
+//            } catch (NumberFormatException ex1) {
+//                try {
+//                    return Short.parseShort(text);
+//                } catch (NumberFormatException ex2) {
+//                    try {
+//                        return Integer.parseInt(text);
+//                    } catch (NumberFormatException ex3) {
+//                        try {
+//                            return Long.parseLong(text);
+//                        } catch (NumberFormatException ex4) {
+//                            return new BigInteger(text);
+//                        }
+//                    }
+//                }
+//            }
+//        } else {
+//            return null;
+//        }
+//    }
+//    
+//    public static Number getPositiveInteger(byte[] byteArray) {
+//        if (byteArray == null) {
+//            return null;
+//        } else if (byteArray.length == 0) {
+//            return null;
+//        } else if (byteArray.length < 4) {
+//            int value = (byteArray[0] & 0xFF);
+//            for (int i = 1; i < byteArray.length; i++) {
+//                value <<= 8;
+//                value += (byteArray[i] & 0xFF);
+//            }
+//            if (value > Short.MAX_VALUE) {
+//                return value;
+//            } else if (value > Byte.MAX_VALUE) {
+//                return (short) value;
+//            } else {
+//                return (byte) value;
+//            }
+//        } else if (byteArray.length < 8) {
+//            long value = (byteArray[0] & 0xFF);
+//            for (int i = 1; i < byteArray.length; i++) {
+//                value <<= 8;
+//                value += (byteArray[i] & 0xFF);
+//            }
+//            if (value > Integer.MAX_VALUE) {
+//                return value;
+//            } else {
+//                return (int) value;
+//            }
+//        } else {
+//            BigInteger value = new BigInteger(1, byteArray);
+//            try {
+//                return value.longValueExact();
+//            } catch (ArithmeticException ex) {
+//                return value;
+//            }
+//        }
+//    }
+//    
+//    public static byte[] getByteArray(Number value) {
+//        if (value instanceof Byte) {
+//            byte[] array = {(byte) value};
+//            return array;
+//        } else if (value instanceof Short) {
+//            ByteBuffer buffer = ByteBuffer.allocate(2);
+//            buffer.putShort((short) value);
+//            return buffer.array();
+//        } else if (value instanceof Integer) {
+//            ByteBuffer buffer = ByteBuffer.allocate(4);
+//            buffer.putInt((int) value);
+//            return buffer.array();
+//        } else if (value instanceof Long) {
+//            ByteBuffer buffer = ByteBuffer.allocate(8);
+//            buffer.putLong((long) value);
+//            return buffer.array();
+//        } else if (value instanceof BigInteger) {
+//            return ((BigInteger)value).toByteArray();
+//        } else {
+//            return null;
+//        }
+//    }
+    
     public static boolean isLong(String text) {
         try {
             Long.parseLong(text);
             return true;
         } catch (Exception ex) {
             return false;
+        }
+    }
+    
+    public static boolean hasOnlyDigits(String text) {
+        if (text == null) {
+            return false;
+        } else if (text.length() == 0) {
+            return false;
+        } else {
+            for (char character : text.toCharArray()) {
+                if (!Character.isDigit(character)) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
     
@@ -2828,6 +3258,20 @@ public class Core {
         }
     }
     
+    public static TimeZone getDefaultTimeZone(String address) {
+        if (address == null) {
+            return null;
+        } else if (address.endsWith(".br")) {
+            return TimeZone.getTimeZone("America/Sao_Paulo");
+        } else if (address.endsWith(".pt")) {
+            return TimeZone.getTimeZone("Europe/Lisboa");
+        } else if (address.endsWith(".uk")) {
+            return TimeZone.getTimeZone("Europe/London");
+        } else {
+            return TimeZone.getDefault();
+        }
+    }
+    
     public static URL getURL(String url) {
         if (url == null) {
             return null;
@@ -2956,6 +3400,7 @@ public class Core {
     
     private static boolean updateCertificate(KeyStore keyStore, String hostname) {
         if (requestCertificate(keyStore, hostname)) {
+            removeExpiring(hostname);
             return true;
         } else {
             // TODO: manual certificate update.
@@ -2982,107 +3427,139 @@ public class Core {
         }
     }
     
-    private static boolean requestCertificate(KeyStore keyStore, String hostname) {
+    public static boolean requestCertificate(KeyStore keyStore, String hostname) {
         String adminEmail = Core.getAdminEmail();
         URI provider = Core.getProviderACME();
         KeyPair serverKeyPair = Core.getServerKeyPair();
         if (keyStore == null) {
             return false;
-        } else if (hostname == null) {
-            return false;
         } else if (provider == null) {
             return false;
-        } else if (adminEmail == null) {
-            return false;
-        } else if (serverKeyPair == null) {
+        } else if (hostname == null) {
+            Server.logDebug("cannot request a certificate without a hostname.");
             return false;
         } else if (hostname.equals("localhost")) {
+            Server.logDebug("cannot request a certificate for localhost.");
+            return false;
+        } else if (adminEmail == null) {
+            Server.logDebug("cannot request a certificate without an admin e-mail.");
+            return false;
+        } else if (serverKeyPair == null) {
+            Server.logDebug("cannot request a certificate without a server key pair.");
             return false;
         } else if (serviceHTTP == null) {
+            Server.logDebug("cannot request a certificate without HTTP service.");
+            return false;
+        } else if (serviceHTTP.getPort() != 80) {
+            Server.logDebug("cannot request a certificate because HTTP service is not binded at port 80.");
             return false;
         } else {
             try {
                 Server.logAcme("requesting new certificate.");
-                org.shredzone.acme4j.Session session
-                        = new org.shredzone.acme4j.Session(
-//                                "acme://letsencrypt.org/staging",
-                                provider.toString(),
-                                serverKeyPair
+                org.shredzone.acme4j.Session session =
+                        new org.shredzone.acme4j.Session(
+//                                "acme://letsencrypt.org/staging"
+                                provider
                         );
-                RegistrationBuilder builder = new RegistrationBuilder();
-                builder.addContact("mailto:" + adminEmail);
+                AccountBuilder accountBuilder = new AccountBuilder();
+                accountBuilder.addContact("mailto:" + adminEmail);
+                accountBuilder = accountBuilder.agreeToTermsOfService();
+                accountBuilder = accountBuilder.useKeyPair(serverKeyPair);
+                Account account = accountBuilder.create(session);
+                Server.logAcme("registred as " + account.getLocation());
                 
-                Registration registration;
-                try {
-                    registration = builder.create(session);
-                } catch (AcmeConflictException ex) {
-                    registration = Registration.bind(session, ex.getLocation());
-                }
-                URI accountLocationUri = registration.getLocation();
-                Server.logAcme("registred as " + accountLocationUri);
-                
-                URI agreementUri = registration.getAgreement();
-                registration.modify().setAgreement(agreementUri).commit();
-                Server.logAcme("signed agreement " + agreementUri);
-                
-                Authorization auth = registration.authorizeDomain(hostname);
-                Collection<Challenge> combination = auth.findCombination(
-                        Http01Challenge.TYPE
-                );
-                if (combination == null) {
-                    Server.logAcme("no challenge options.");
-                    return false;
-                } else {
-                    Http01Challenge challenge = (Http01Challenge) combination.toArray()[0];
-                    serviceHTTP.setChallenge(challenge);
-                    challenge.trigger(); // Test trigger.
-                    org.shredzone.acme4j.Status status;
-                    do {
-                        Thread.sleep(1000L);
-                        challenge.update();
-                    } while ((status = challenge.getStatus()) == org.shredzone.acme4j.Status.PROCESSING);
-                    if (status == org.shredzone.acme4j.Status.VALID) {
-                        auth.update();
-                        Server.logAcme("autorization " + auth.getLocation());
-                        
-                        KeyPair domainKeyPair = Core.getDomainKeyPair(hostname);
-                        CSRBuilder csrb = new CSRBuilder();
-                        csrb.addDomain(hostname);
-                        csrb.setOrganization(Core.getOrganizationACME());
-                        csrb.setState(Core.getStateACME());
-                        csrb.setCountry(Core.getCountryACME());
-                        csrb.sign(domainKeyPair);
-                        byte[] csr = csrb.getEncoded();
-                        Certificate certificate = registration.requestCertificate(csr);
-                        Server.logAcme("certification " + certificate.getLocation());
-                        Server.logAcme("chain " + certificate.getChainLocation());
-                        
-                        X509Certificate[] chain = new X509Certificate[2];
-                        chain[0] = certificate.download();
-                        chain[1] = certificate.downloadChain()[0];
-                        
-                        keyStore.setKeyEntry(hostname,
-                                domainKeyPair.getPrivate(),
-                                hostname.toCharArray(),
-                                chain
-                        );
-                        return true;
-                    } else if (status == org.shredzone.acme4j.Status.INVALID) {
-                        Server.logAcme("invalid challenge.");
-                        return false;
-                    } else if (status == org.shredzone.acme4j.Status.PENDING) {
-                        Server.logAcme("pending challenge.");
+                OrderBuilder orderBuilder = account.newOrder();
+                orderBuilder = orderBuilder.domain(hostname);
+                Order order = orderBuilder.create();
+
+                for (Authorization auth : order.getAuthorizations()) {
+                    Http01Challenge challenge = auth.findChallenge(Http01Challenge.TYPE);
+                    if (challenge == null) {
+                        Server.logAcme("no HTTP challenge option.");
                         return false;
                     } else {
-                        Server.logAcme("not processed challenge.");
-                        return false;
+                        serviceHTTP.setChallenge(challenge);
+                        challenge.trigger(); // HTTP challenge trigger.
+                        org.shredzone.acme4j.Status status;
+                        do {
+                            Thread.sleep(1000L);
+                            challenge.update();
+                        } while ((status = challenge.getStatus()) == org.shredzone.acme4j.Status.PROCESSING);
+                        if (status == org.shredzone.acme4j.Status.VALID) {
+                            auth.update();
+                            Server.logAcme("autorization " + auth.getLocation());
+                            KeyPair domainKeyPair = Core.getDomainKeyPair(hostname);
+                            CSRBuilder csrb = new CSRBuilder();
+                            csrb.addDomain(hostname);
+                            csrb.setOrganization(Core.getOrganizationACME());
+                            csrb.setState(Core.getStateACME());
+                            csrb.setCountry(Core.getCountryACME());
+                            csrb.sign(domainKeyPair);
+                            byte[] csr = csrb.getEncoded();
+                            order.execute(csr);
+                            do {
+                                Thread.sleep(1000);
+                                order.update();
+                            } while ((status = order.getStatus()) == org.shredzone.acme4j.Status.PROCESSING);
+                            if (status == org.shredzone.acme4j.Status.VALID) {
+                                Certificate certificate = order.getCertificate();
+                                Server.logAcme("certification " + certificate.getLocation());
+
+                                ArrayList<X509Certificate> certificateList = new ArrayList<>();
+                                certificateList.add(certificate.getCertificate());
+                                certificateList.addAll(certificate.getCertificateChain());
+
+                                X509Certificate[] chain = new X509Certificate[certificateList.size()];
+                                chain = certificateList.toArray(chain);
+
+                                keyStore.setKeyEntry(
+                                        hostname,
+                                        domainKeyPair.getPrivate(),
+                                        hostname.toCharArray(),
+                                        chain
+                                );
+                                return true;
+                            } else if (status == org.shredzone.acme4j.Status.INVALID) {
+                                Server.logAcme("order invalid.");
+                                return false;
+                            } else {
+                                Server.logAcme("order timeout.");
+                                return false;
+                            }
+                        } else if (status == org.shredzone.acme4j.Status.INVALID) {
+                            Server.logAcme("invalid challenge.");
+                            return false;
+                        } else if (status == org.shredzone.acme4j.Status.PENDING) {
+                            Server.logAcme("pending challenge.");
+                            Thread.sleep(3000L);
+                            return requestCertificate(keyStore, hostname);
+                        } else {
+                            Server.logAcme("error to process challenge.");
+                            return false;
+                        }
                     }
                 }
+                Server.logAcme("no authorizations found.");
+                return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
             }
         }
+    }
+    
+    private static final HashSet<String> EXPIRING_SET = new HashSet<>();
+    
+    private static synchronized boolean removeExpiring(String token) {
+        return EXPIRING_SET.remove(token);
+    }
+    
+    private static synchronized boolean addExpiring(String token) {
+        return EXPIRING_SET.add(token);
+    }
+    
+    public static synchronized boolean isExpiring(String token) {
+        return EXPIRING_SET.contains(token);
     }
     
     public static boolean validCertificate(KeyStore keyStore, String hostname) {
@@ -3101,6 +3578,7 @@ public class Core {
                         calendar.add(Calendar.DAY_OF_YEAR, 7);
                         X509cert.checkValidity(calendar.getTime());
                         Server.logDebug(hostname + " certificate is valid.");
+                        removeExpiring(hostname);
                         return true;
                     } catch (CertificateExpiredException ex) {
                         try {
@@ -3113,6 +3591,7 @@ public class Core {
                                 } else {
                                     Server.logInfo(hostname + " certificate is valid but will expire soon.");
                                 }
+                                addExpiring(hostname);
                                 return true;
                             }
                         } catch (CertificateExpiredException ex2) {
@@ -3152,6 +3631,14 @@ public class Core {
         }
     }
     
+    public static String compressAsString(String data) throws IOException {
+        if (data == null) {
+            return null;
+        } else {
+            return compressAsString(data.getBytes());
+        }
+    }
+    
     public static String compressAsString(byte[] data) throws IOException {
         return BASE64.encodeAsString(compress(data));
     }
@@ -3169,7 +3656,219 @@ public class Core {
         }
     }
     
+    public static String decompressAsStringSafe(String data) {
+        try {
+            return decompressAsString(data);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+    
+    public static String decompressAsString(String data) throws IOException, DataFormatException {
+        return new String(decompress(data));
+    }
+    
     public static byte[] decompress(String data) throws IOException, DataFormatException {
         return decompress(BASE64.decode(data));
+    }
+    
+    public static boolean isExecutableSignature(String token) {
+        if (token == null) {
+            return false;
+        } else {
+            return Pattern.matches("^[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token);
+        }
+    }
+    
+    public static boolean isSignatureURL(String token) {
+        if (token == null) {
+            return false;
+        } else {
+            return Pattern.matches("^[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?$", token);
+        }
+    }
+    
+    public static String getSignatureHostURL(String token) {
+        if (token == null) {
+            return null;
+        } else {
+            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.[0-9]+\\.https?)$");
+            Matcher matcher = pattern.matcher(token);
+            if (matcher.find()) {
+                String host = matcher.group(2).substring(1);
+                if (SubnetIPv4.isValidIPv4(host)) {
+                    host = SubnetIPv4.reverseToIPv4(host);
+                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                    host = SubnetIPv6.reverseToIPv6(host);
+                    host = SubnetIPv6.tryTransformToIPv4(host);
+                }
+                return host;
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static String tryGetSignatureRootURL(String token) {
+        String url = getSignatureRootURL(token);
+        if (url == null) {
+            return token;
+        } else {
+            return url;
+        }
+    }
+    
+    public static String getSignatureRootURL(String token) {
+        if (token == null) {
+            return null;
+        } else {
+            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.([0-9]+)\\.(https?))$");
+            Matcher matcher = pattern.matcher(token);
+            if (matcher.find()) {
+                String host = matcher.group(2).substring(1);
+                if (SubnetIPv4.isValidIPv4(host)) {
+                    host = SubnetIPv4.reverseToIPv4(host);
+                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                    host = SubnetIPv6.reverseToIPv6(host);
+                    host = SubnetIPv6.tryTransformToIPv4(host);
+                }
+                String port = matcher.group(4);
+                String protocol = matcher.group(5);
+                if (protocol.equals("http") && port.equals("80")) {
+                    port = "";
+                } else if (protocol.equals("https") && port.equals("443")) {
+                    port = "";
+                } else {
+                    port = ":" + port;
+                }
+                return protocol + "://" + host + port + "/";
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    private static final Pattern URL_SIG_PATTERN = Pattern.compile("^(https?)\\:\\/\\/([a-z0-9\\._-]+|\\[[a-f0-9\\:]+\\])(:([0-9]{1,6}))?(\\/|\\?|#|$)");
+    private static final Pattern URL_IPV6_PATTERN = Pattern.compile("^\\[([a-f0-9\\:]+)\\]$");
+    
+    public static boolean isValidURL(String url) {
+        if (url == null) {
+            return false;
+        } else {
+            return URL_SIG_PATTERN.matcher(url).find();
+        }
+    }
+    
+    public static String md2Hex(String token) {
+        if (token == null) {
+            return null;
+        } else {
+            try {
+                MessageDigest md = MessageDigest.getInstance("MD5");
+                md.update(token.getBytes());
+                byte[] digest = md.digest();
+                StringBuilder sb = new StringBuilder();
+                for (byte b : digest) {
+                    sb.append(String.format("%02x", b & 0xff));
+                }
+                return sb.toString();
+            } catch (NoSuchAlgorithmException ex) {
+                return null;
+            }
+        }
+    }
+    
+    public static String getSignatureURL(String url) {
+        Matcher matcher = URL_SIG_PATTERN.matcher(url);
+        if (matcher.find()) {
+            String protocol = matcher.group(1).toLowerCase();
+            String host = matcher.group(2).toLowerCase();
+            String port = matcher.group(4);
+            if (port == null) {
+                if (protocol.equals("http")) {
+                    port = "80";
+                } else {
+                    port = "443";
+                }
+            }
+            if (SubnetIPv4.isValidIPv4(host)) {
+                host = SubnetIPv4.reverseToIPv4(host);
+            } else if ((matcher = URL_IPV6_PATTERN.matcher(host)).find() && SubnetIPv6.isValidIPv6(matcher.group(1))) {
+                host = SubnetIPv6.reverseToIPv6(matcher.group(1));
+            }
+            String signature = md2Hex(url);
+            return signature + "." + host + "." + port + "." + protocol;
+        } else {
+            return null;
+        }
+    }
+    
+    private static final Pattern URL_SHORTENER_PATTERN = Pattern.compile(
+            "^(https?)\\:\\/\\/(1link\\.in|1url\\.com|2big\\.at|2pl\\.us|"
+                    + "2tu\\.us|2ya\\.com|4url\\.cc|6url\\.com|a\\.gg|a\\.nf|"
+                    + "a2a\\.me|abbrr\\.com|adf\\.ly|adjix\\.com|alturl\\.com|"
+                    + "atu\\.ca|b23\\.ru|bacn\\.me|bc\\.vc|bit\\.do|bit\\.ly|"
+                    + "bitly\\.com|bkite\\.com|bloat\\.me|budurl\\.com|buk\\.me|"
+                    + "burnurl\\.com|buzurl\\.com|c-o\\.in|chilp\\.it|clck\\.ru|"
+                    + "cli\\.gs|clickmeter\\.com|cort\\.as|cur\\.lv|cutt\\.us|"
+                    + "cuturl\\.com|db\\.tt|decenturl\\.com|dfl8\\.me|"
+                    + "digbig\\.com|digg\\.com|doiop\\.com|dwarfurl\\.com|"
+                    + "dy\\.fi|easyuri\\.com|easyurl\\.net|eepurl\\.com|"
+                    + "esyurl\\.com|ewerl\\.com|fa\\.b|ff\\.im|fff\\.to|"
+                    + "fhurl\\.com|filoops\\.info|fire\\.to|firsturl\\.de|"
+                    + "flic\\.kr|fly2\\.ws|fon\\.gs|fwd4\\.me|gl\\.am|"
+                    + "go\\.9nl\\.com|go2\\.me|go2cut\\.com|goo\\.gl|"
+                    + "goshrink\\.com|gowat\\.ch|gri\\.ms|gurl\\.es|"
+                    + "hellotxt\\.com|hex\\.io|hover\\.com|href\\.in|"
+                    + "htxt\\.it|hugeurl\\.com|hurl\\.it|hurl\\.me|"
+                    + "hurl\\.ws|icanhaz\\.com|idek\\.net|inreply\\.to|"
+                    + "is\\.gd|iscool\\.net|iterasi\\.net|ity\\.im|"
+                    + "j\\.mp|jijr\\.com|jmp2\\.net|just\\.as|kissa\\.be|"
+                    + "kl\\.am|klck\\.me|korta\\.nu|krunchd\\.com|liip\\.to|"
+                    + "liltext\\.com|lin\\.cr|link\\.zip\\.net|linkbee\\.com|"
+                    + "linkbun\\.ch|liurl\\.cn|ln-s\\.net|ln-s\\.ru|lnk\\.gd|"
+                    + "lnk\\.in|lnkd\\.in|loopt\\.us|lru\\.jp|lt\\.tl|"
+                    + "lurl\\.no|metamark\\.net|migre\\.me|minilien\\.com|"
+                    + "miniurl\\.com|minurl\\.fr|moourl\\.com|myurl\\.in|"
+                    + "ne1\\.net|njx\\.me|nn\\.nf|notlong\\.com|nsfw\\.in|"
+                    + "o-x\\.fr|om\\.ly|ow\\.ly|pd\\.am|pic\\.gd|ping\\.fm|"
+                    + "piurl\\.com|pnt\\.me|po\\.st|poprl\\.com|post\\.ly|"
+                    + "posted\\.at|prettylinkpro\\.com|profile\\.to|q\\.gs|"
+                    + "qicute\\.com|qlnk\\.net|qr\\.ae|qr\\.net|quip-art\\.com|"
+                    + "rb6\\.me|redirx\\.com|ri\\.ms|rickroll\\.it|riz\\.gd|"
+                    + "rsmonkey\\.com|ru\\.ly|rubyurl\\.com|s7y\\.us|safe\\.mn|"
+                    + "scrnch\\.me|sharein\\.com|sharetabs\\.com|shorl\\.com|"
+                    + "short\\.ie|short\\.to|shortlinks\\.co\\.uk|shortna\\.me|"
+                    + "shorturl\\.com|shoturl\\.us|shrinkify\\.com|"
+                    + "shrinkster\\.com|shrt\\.st|shrten\\.com|shrunkin\\.com|"
+                    + "shw\\.me|simurl\\.com|sn\\.im|snipr\\.com|snipurl\\.com|"
+                    + "snurl\\.com|sp2\\.ro|spedr\\.com|sqrl\\.it|"
+                    + "starturl\\.com|sturly\\.com|su\\.pr|t\\.co|tcrn\\.ch|"
+                    + "thrdl\\.es|tighturl\\.com|tiny\\.cc|tiny\\.pl|"
+                    + "tiny123\\.com|tinyarro\\.ws|tinyarrows\\.com|"
+                    + "tinytw\\.it|tinyuri\\.ca|tinyurl\\.com|tinyvid\\.io|"
+                    + "tnij\\.org|to\\.ly|togoto\\.us|tr\\.im|tr\\.my|"
+                    + "traceurl\\.com|turo\\.us|tweetburner\\.com|tweez\\.me|"
+                    + "twirl\\.at|twit\\.ac|twitterpan\\.com|twitthis\\.com|"
+                    + "twiturl\\.de|twurl\\.cc|twurl\\.nl|u\\.bb|"
+                    + "u\\.mavrev\\.com|u\\.nu|u\\.to|u6e\\.de|ub0\\.cc|"
+                    + "updating\\.me|ur1\\.ca|url\\.co\\.uk|url\\.ie|"
+                    + "url4\\.eu|urlao\\.com|urlbrief\\.com|urlcover\\.com|"
+                    + "urlcut\\.com|urlenco\\.de|urlhawk\\.com|urlkiss\\.com|"
+                    + "urlot\\.com|urlpire\\.com|urlx\\.ie|urlx\\.org|"
+                    + "urlzen\\.com|v\\.gd|virl\\.com|vl\\.am|vzturl\\.com|"
+                    + "w3t\\.org|wapurl\\.co\\.uk|wipi\\.es|wp\\.me|x\\.co|"
+                    + "x\\.se|xaddr\\.com|xeeurl\\.com|xr\\.com|xrl\\.in|"
+                    + "xrl\\.us|xurl\\.jp|xzb\\.cc|yep\\.it|yfrog\\.com|"
+                    + "yourls\\.org|yweb\\.com|zi\\.ma|zi\\.pe|"
+                    + "zipmyurl\\.com|zz\\.gd|back\\.ly|ouo\\.io)\\/"
+    );
+    
+    public static boolean isShortenerURL(String url) {
+        if (url == null) {
+            return false;
+        } else {
+            return URL_SHORTENER_PATTERN.matcher(url).find();
+        }
     }
 }

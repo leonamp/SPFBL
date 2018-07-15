@@ -33,12 +33,18 @@ import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -46,11 +52,18 @@ import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import net.spfbl.data.Abuse;
 import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
+import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
 import net.spfbl.data.White;
+import static net.spfbl.http.ServerHTTP.buildFooter;
+import static net.spfbl.http.ServerHTTP.buildMessage;
+import static net.spfbl.http.ServerHTTP.buildText;
+import static net.spfbl.http.ServerHTTP.getWebFile;
+import static net.spfbl.http.ServerHTTP.loadStyleCSS;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
@@ -187,7 +200,15 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
     
     public boolean add(String token) {
-        if (Subnet.isValidIP(token)) {
+        if (!token.startsWith(".") && Core.isExecutableSignature(token)) {
+            return false;
+        } else if (token.startsWith(".") && Core.isExecutableSignature(token.substring(1))) {
+            return false;
+        } else if (!token.startsWith(".") && Core.isSignatureURL(token)) {
+            return false;
+        } else if (token.startsWith(".") && Core.isSignatureURL(token.substring(1))) {
+            return false;
+        } else if (Subnet.isValidIP(token)) {
             token = Subnet.normalizeIP(token);
             token = SubnetIPv6.tryTransformToIPv4(token);
         } else if (!token.startsWith("@") && Domain.isDomain(token)) {
@@ -472,6 +493,14 @@ public class Analise implements Serializable, Comparable<Analise> {
             String token = pollFirst();
             if (token == null) {
                 return false;
+            } else if (!token.startsWith(".") && Core.isExecutableSignature(token)) {
+                return false;
+            } else if (token.startsWith(".") && Core.isExecutableSignature(token.substring(1))) {
+                return false;
+            } else if (!token.startsWith(".") && Core.isSignatureURL(token)) {
+                return false;
+            } else if (token.startsWith(".") && Core.isSignatureURL(token.substring(1))) {
+                return false;
             } else if (Subnet.isReservedIP(token)) {
                 dropProcess(token);
                 return false;
@@ -698,10 +727,20 @@ public class Analise implements Serializable, Comparable<Analise> {
         if (ANALISE_EXPIRES > 0) {
             if (token == null) {
                 return false;
+            } else if (!token.startsWith(".") && Core.isExecutableSignature(token)) {
+                return false;
+            } else if (token.startsWith(".") && Core.isExecutableSignature(token.substring(1))) {
+                return false;
+            } else if (!token.startsWith(".") && Core.isSignatureURL(token)) {
+                return false;
+            } else if (token.startsWith(".") && Core.isSignatureURL(token.substring(1))) {
+                return false;
             } else if (ANALISE_IP && Subnet.isValidIP(token)) {
                 token = Subnet.normalizeIP(token);
             } else if (Domain.isOfficialTLD(token)) {
                 return false;
+            } else if (ANALISE_MX && Domain.isValidEmail(token)) {
+                return processToday(Domain.extractHost(token, true));
             } else if (ANALISE_MX && !token.startsWith("@") && Domain.isDomain(token)) {
                 token = "@" + Domain.normalizeHostname(token, false);
             } else if (ANALISE_IP && Domain.isHostname(token)) {
@@ -814,12 +853,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                 try {
                     for (String ip : Reverse.getAddressSet(mx)) {
                         if (!accessIPv4 && SubnetIPv4.isValidIPv4(ip)) {
-                            Object response = getResponseSMTP(ip, 25, 3000);
+                            Object response = getResponseSMTP(ip, 25, 5000);
                             if (response != Status.TIMEOUT && response != Status.CLOSED) {
                                 accessIPv4 = true;
                             }
                         } else if (!accessIPv6 && SubnetIPv6.isValidIPv6(ip)) {
-                            Object response = getResponseSMTP(ip, 25, 3000);
+                            Object response = getResponseSMTP(ip, 25, 5000);
                             if (response != Status.TIMEOUT && response != Status.CLOSED) {
                                 accessIPv6 = true;
                             }
@@ -878,7 +917,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             props.put("mail.smtp.starttls.enable", "false");
             props.put("mail.smtp.auth", "false");
             props.put("mail.smtp.timeout", Integer.toString(timeout));
-            props.put("mail.smtp.connectiontimeout", "3000");
+            props.put("mail.smtp.connectiontimeout", "5000");
             Session session = Session.getInstance(props, null);
             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
             try {
@@ -1025,8 +1064,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusAddress = Status.BLOCK;
             } else if (statusMX == Status.DYNAMIC && addBlock(tokenAddress, tokenMX + ";DYNAMIC")) {
                 statusAddress = Status.BLOCK;
-            } else if (statusMX == Status.GENERIC && addBlock(tokenAddress, tokenMX + ";GENERIC")) {
-                statusAddress = Status.BLOCK;
             } else if (statusMX == Status.CLOSED && addBlock(tokenAddress, tokenMX + ";CLOSED")) {
                 statusAddress = Status.BLOCK;
             } else if (statusAddress == Status.RED && statusMX == Status.UNAVAILABLE && addBlock(tokenAddress, tokenMX + ";UNAVAILABLE")) {
@@ -1139,6 +1176,30 @@ public class Analise implements Serializable, Comparable<Analise> {
         }
     }
     
+    private static String getGeneric(String ip) {
+        try {
+            TreeSet<String> reverseSet = Reverse.getPointerSet(ip);
+            if (reverseSet == null) {
+                return "NXDOMAIN";
+            } else if (reverseSet.isEmpty()) {
+                return "NXDOMAIN";
+            } else {
+                for (String reverse : reverseSet) {
+                    if (Generic.containsGeneric(reverse)) {
+                        return reverse;
+                    } else if (!Reverse.hasValidNameServers(reverse)) {
+                        return "NXDOMAIN";
+                    }
+                }
+                return null;
+            }
+        } catch (NamingException ex) {
+            return "NXDOMAIN";
+        }
+    }
+    
+//    private static long DNSWLORG_START_TIME = 0L;
+    
     public static void processIP(
             String ip,
             StringBuilder builder,
@@ -1149,6 +1210,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             Distribution dist = SPF.getDistribution(ip, false);
             float probability = dist == null ? 0.0f : dist.getSpamProbability(ip);
             boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
+            String abuseEmail = Abuse.getEmail(ip);
             Object response = null;
             Status statusIP;
             String tokenName;
@@ -1312,11 +1374,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                     }
                 }
             }
-            if (statusIP == Status.WHITE && (statusName == Status.INVALID || statusName == Status.NONE || statusName == Status.NXDOMAIN)) {
+            if (statusIP == Status.WHITE && (statusName == Status.INVALID || statusName == Status.NONE || statusName == Status.NXDOMAIN || statusName == Status.GENERIC)) {
                 int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
                 String white;
                 if ((white = White.clearCIDR(ip, mask)) != null) {
                     Server.logDebug("false WHITE '" + white + "' dropped by '" + tokenName + ";" + statusName + "'.");
+                    sendWhitelistDrop(ip, statusName);
                 }
                 String token = ip + (ipv4 ? "/32" : "/64");
                 String cidr = Subnet.normalizeCIDR(token);
@@ -1327,22 +1390,42 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && statusName == Status.DYNAMIC) {
-                String token = ip + (SubnetIPv4.isValidIPv4(ip) ? "/24" : "/48");
+                String token = ip + (ipv4 ? "/32" : "/48");
                 String cidr = Subnet.normalizeCIDR(token);
                 if (Block.tryOverlap(cidr)) {
                     Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
                 } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
-                String previous = Subnet.getFirstIP(cidr);
-                previous = Subnet.getPreviousIP(previous);
-                previous = Subnet.getPreviousIP(previous);
-                Analise.processToday(previous);
-                String next = Subnet.getLastIP(cidr);
-                next = Subnet.getNextIP(next);
-                next = Subnet.getNextIP(next);
-                Analise.processToday(next);
-                statusIP = Status.BLOCK;
+//                boolean dynamic = true;
+                if (ipv4) {
+                    cidr = SubnetIPv4.normalizeCIDR(ip + "/24");
+                    String next = SubnetIPv4.getFirstIP(cidr);
+                    String rdns;
+                    for (int index = 0; index < 256; index++) {
+                        if ((rdns = getGeneric(next)) == null) {
+//                            dynamic = false;
+                        } else if (Block.tryAdd(next)) {
+                            if (rdns.equals("NXDOMAIN")) {
+                                Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";NONE'.");
+                            } else {
+                                Server.logDebug("new BLOCK '" + next + "' added by '" + rdns + ";DYNAMIC'.");
+                            }
+                        }
+                        next = SubnetIPv4.getNextIP(next);
+                    }
+                }
+//                if (dynamic) {
+                    String previous = Subnet.getFirstIP(cidr);
+                    previous = Subnet.getPreviousIP(previous);
+                    previous = Subnet.getPreviousIP(previous);
+                    Analise.processToday(previous);
+                    String next = Subnet.getLastIP(cidr);
+                    next = Subnet.getNextIP(next);
+                    next = Subnet.getNextIP(next);
+                    Analise.processToday(next);
+                    statusIP = Status.BLOCK;
+//                }
             } else if (statusIP != Status.BLOCK && statusName == Status.NONE) {
                 String token = ip + (ipv4 ? "/32" : "/64");
                 String cidr = Subnet.normalizeCIDR(token);
@@ -1356,13 +1439,18 @@ public class Analise implements Serializable, Comparable<Analise> {
                     String next = Subnet.getFirstIP(cidr);
                     for (int index = 0; index < 256; index++) {
                         if (!hasReverse(next) && Block.tryAdd(next)) {
-                            Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";" + statusName + "'.");
+                            Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";NONE'.");
                         }
                         next = Subnet.getNextIP(next);
                     }
                 }
                 statusIP = Status.BLOCK;
-            } else if (statusIP != Status.BLOCK && (statusName == Status.BLOCK || statusName == Status.RESERVED || statusName == Status.NXDOMAIN)) {
+            } else if (statusIP != Status.BLOCK && statusName == Status.BLOCK) {
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                statusIP = Status.BLOCK;
+            } else if (statusIP != Status.BLOCK && abuseEmail == null && (statusName == Status.RESERVED || statusName == Status.NXDOMAIN)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
@@ -1376,7 +1464,7 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + ip + "' added by 'SLAAC'.");
                 }
                 statusIP = Status.BLOCK;
-            } else if (statusIP == Status.DNSBL && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE)) {
+            } else if (statusIP == Status.DNSBL && abuseEmail == null && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
                 }
@@ -1391,7 +1479,12 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
-            } else if ((statusName == Status.INVALID || statusName == Status.GENERIC) && (statusIP == Status.CLOSED || statusIP == Status.RED || statusIP == Status.YELLOW)) {
+            } else if (statusName == Status.INVALID && (statusIP == Status.CLOSED || statusIP == Status.RED || statusIP == Status.YELLOW)) {
+                if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                statusIP = Status.BLOCK;
+            } else if (statusName == Status.GENERIC && (statusIP == Status.RED || statusIP == Status.YELLOW)) {
                 if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
@@ -1401,6 +1494,14 @@ public class Analise implements Serializable, Comparable<Analise> {
                     Server.logDebug("new BLOCK '" + tokenName + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusName = Status.BLOCK;
+            } else if (statusIP == Status.DNSBL && (statusName == Status.PROVIDER || statusName == Status.IGNORE || statusName == Status.WHITE)) {
+                if (hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+                    statusIP = (Status) response;
+                } else if (dist == null) {
+                    statusIP = Status.GREEN;
+                } else {
+                    statusIP = Status.valueOf(dist.getStatus(ip).name());
+                }
             } else if (statusIP == Status.BLOCK && (statusName == Status.PROVIDER || statusName == Status.IGNORE || statusName == Status.WHITE)) {
                 String cidr;
                 int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
@@ -1420,13 +1521,43 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else {
                     statusIP = Status.valueOf(dist.getStatus(ip).name());
                 }
-            } else if (statusIP == Status.DNSBL && (statusName == Status.PROVIDER || statusName == Status.IGNORE || statusName == Status.WHITE)) {
-                if (hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
-                    statusIP = (Status) response;
-                } else if (dist == null) {
-                    statusIP = Status.GREEN;
-                } else {
-                    statusIP = Status.valueOf(dist.getStatus(ip).name());
+            } else if (statusIP == Status.BLOCK && (statusName == Status.GREEN || statusName == Status.GENERIC)) {
+                String server = "score.senderscore.com";
+                String listed = Reverse.getListedIP(
+                        ip,
+                        server,
+                        "127.0.4.100",
+                        "127.0.4.99",
+                        "127.0.4.98",
+                        "127.0.4.97",
+                        "127.0.4.96",
+                        "127.0.4.95",
+                        "127.0.4.94",
+                        "127.0.4.93",
+                        "127.0.4.92",
+                        "127.0.4.91",
+                        "127.0.4.90"
+                );
+                if (listed != null) {
+                    Server.logDebug("host " + ip + " is listed in '" + server + ";" + listed + "'.");
+                    String cidr;
+                    int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+                    if ((cidr = Block.clearCIDR(ip, mask)) != null) {
+                        Server.logInfo("false positive BLOCK '" + cidr + "' detected by '" + server + ";" + listed + "'.");
+                    }
+                    if (Provider.containsCIDR(ip)) {
+                        statusIP = Status.PROVIDER;
+                    } else if (Ignore.containsCIDR(ip)) {
+                        statusIP = Status.IGNORE;
+                    } else if (Block.containsDNSBL(ip)) {
+                        statusIP = Status.DNSBL;
+                    } else if (hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
+                        statusIP = (Status) response;
+                    } else if (dist == null) {
+                        statusIP = Status.GREEN;
+                    } else {
+                        statusIP = Status.valueOf(dist.getStatus(ip).name());
+                    }
                 }
             }
             builder.append(statusIP);
@@ -1444,9 +1575,106 @@ public class Analise implements Serializable, Comparable<Analise> {
             } else {
                 builder.append(Domain.revert(tokenName));
             }
+            if (abuseEmail == null) {
+                builder.append(" NONE");
+            } else {
+                builder.append(' ');
+                builder.append(abuseEmail);
+            }
         } catch (Exception ex) {
             builder.append("ERROR");
             Server.logError(ex);
+        }
+    }
+    
+    public static boolean sendWhitelistDrop(
+            String ip,
+            Status status
+    ) {
+        String adminEmail = Core.getAdminEmail();
+        if (adminEmail == null) {
+            return false;
+        } else if (ip == null) {
+            return false;
+        } else if (status == null) {
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
+            return false;
+        } else if (NoReply.contains(adminEmail, true)) {
+            return false;
+        } else {
+            try {
+                Locale locale;
+                User user = User.get(adminEmail);
+                if (user == null) {
+                    locale = Core.getDefaultLocale(adminEmail);
+                } else {
+                    locale = user.getLocale();
+                }
+                Server.logDebug("sending whitelist drop event by e-mail.");
+                InternetAddress[] recipients = InternetAddress.parse(adminEmail);
+                MimeMessage message = Core.newMessage();
+                message.addRecipients(Message.RecipientType.TO, recipients);
+                String subject;
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    subject = "Alerta de remoção de whitelist de IP";
+                } else {
+                    subject = "IP whitelist removal alert";
+                }
+                message.setSubject(subject);
+                // Corpo da mensagem.
+                StringBuilder builder = new StringBuilder();
+                builder.append("<!DOCTYPE html>\n");
+                builder.append("<html lang=\"");
+                builder.append(locale.getLanguage());
+                builder.append("\">\n");
+                builder.append("  <head>\n");
+                builder.append("    <meta charset=\"UTF-8\">\n");
+                builder.append("    <title>");
+                builder.append(subject);
+                builder.append("</title>\n");
+                loadStyleCSS(builder);
+                builder.append("  </head>\n");
+                builder.append("  <body>\n");
+                builder.append("    <div id=\"container\">\n");
+                builder.append("      <div id=\"divlogo\">\n");
+                builder.append("        <img src=\"cid:logo\">\n");
+                builder.append("      </div>\n");
+                buildMessage(builder, subject);
+                if (locale.getLanguage().toLowerCase().equals("pt")) {
+                    buildText(builder, "O IP " + ip + " foi removido da whitelist pela análise automatica com o status " + status.name() + ".");
+                } else {
+                    buildText(builder, "IP " + ip + " has been removed from the whitelist by automatic analysis with status " + status.name() + ".");
+                }
+                buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
+                builder.append("    </div>\n");
+                builder.append("  </body>\n");
+                builder.append("</html>\n");
+                // Making HTML part.
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
+                // Making logo part.
+                MimeBodyPart logoPart = new MimeBodyPart();
+                File logoFile = getWebFile("logo.png");
+                logoPart.attachFile(logoFile);
+                logoPart.setContentID("<logo>");
+                logoPart.addHeader("Content-Type", "image/png");
+                logoPart.setDisposition(MimeBodyPart.INLINE);
+                // Join both parts.
+                MimeMultipart content = new MimeMultipart("related");
+                content.addBodyPart(htmlPart);
+                content.addBodyPart(logoPart);
+                // Set multiplart content.
+                message.setContent(content);
+                message.saveChanges();
+                // Enviar mensagem.
+                return Core.sendMessage(locale, message, 30000);
+            } catch (MailConnectException ex) {
+                return false;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
         }
     }
     

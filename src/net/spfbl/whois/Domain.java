@@ -32,8 +32,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import javax.naming.CommunicationException;
 import javax.naming.InvalidNameException;
@@ -97,15 +95,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     private boolean reduced = false; // Diz se a última consulta foi reduzida.
     private int queries = 1; // Contador de consultas.
     
-    private static int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
-    
-    /**
-     * Atualiza o tempo de expiração do registro de domínio.
-     * @param time tempo em dias que os registros de domíno devem ser atualizados.
-     */
-    public static void setRefreshTime(int time) {
-        REFRESH_TIME = time;
-    }
+    private static final int REFRESH_TIME = 21;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
     /**
      * Verifica se o registro atual expirou.
@@ -205,6 +195,14 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    public static String extractDomainSafeNotNull(String address, boolean pontuacao) {
+        try {
+            return extractDomain(address, pontuacao);
+        } catch (ProcessException ex) {
+            return address;
+        }
+    }
+    
     /**
      * Extrai o domínio pelos TLDs conhecidos.
      * @param address o endereço que contém o domínio.
@@ -244,6 +242,22 @@ public class Domain implements Serializable, Comparable<Domain> {
             } else {
                 return address.substring(beginIndex + 1, endIndex);
             }
+        }
+    }
+    
+    public static String extractTLDSafe(String address, boolean ponto) {
+        try {
+            return extractTLD(address, ponto);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+    
+    public static String extractTLDSafeNotNull(String address, boolean ponto) {
+        try {
+            return extractTLD(address, ponto);
+        } catch (Exception ex) {
+            return address;
         }
     }
     
@@ -415,7 +429,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             address = address.trim();
             address = address.toLowerCase();
             if (Pattern.matches(
-                    "^[0-9a-zA-Z._+-]+"
+                    "^[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
                     + "@"
                     + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
                     + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
@@ -816,6 +830,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 return true;
             } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                 return false;
+            } else if (ex.isErrorMessage("RESERVED")) {
+                return false;
             } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
                 return false;
             } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
@@ -955,7 +971,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (ownerLocal == null) {
                 return null;
             } else {
-                return ownerLocal.get(key);
+                return ownerLocal.getValue(key);
             }
         } else if (key.startsWith("admin-c/")) {
             int index = key.indexOf('/') + 1;
@@ -964,7 +980,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (admin == null) {
                 return null;
             } else {
-                return admin.get(key);
+                return admin.getValue(key);
             }
         } else if (key.startsWith("tech-c/")) {
             int index = key.indexOf('/') + 1;
@@ -973,7 +989,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (tech == null) {
                 return null;
             } else {
-                return tech.get(key);
+                return tech.getValue(key);
             }
         } else if (key.startsWith("billing-c/")) {
             int index = key.indexOf('/') + 1;
@@ -982,7 +998,7 @@ public class Domain implements Serializable, Comparable<Domain> {
             if (billing == null) {
                 return null;
             } else {
-                return billing.get(key);
+                return billing.getValue(key);
             }
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;
@@ -1079,9 +1095,28 @@ public class Domain implements Serializable, Comparable<Domain> {
         storeTLD();
     }
     
-    private static synchronized HashMap<String,Domain> getDomainMap() {
+    private static synchronized TreeSet<String> getDomainKeySet() {
+        TreeSet<String> keySet = new TreeSet<>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+    
+    private static synchronized Domain getDomainObj(String key) {
+        return MAP.get(key);
+    }
+    
+    private static HashMap<String,Domain> getDomainMap() {
         HashMap<String,Domain> map = new HashMap<>();
-        map.putAll(MAP);
+        for (String key : getDomainKeySet()) {
+            Domain domain = getDomainObj(key);
+            if (domain != null) {
+                if (domain.isRegistryExpired()) {
+                    domain.drop();
+                } else {
+                    map.put(key, domain);
+                }
+            }
+        }
         return map;
     }
     
@@ -1164,8 +1199,12 @@ public class Domain implements Serializable, Comparable<Domain> {
                 Server.logError(ex);
             }
         }
-        time = System.currentTimeMillis();
-        file = new File("./data/tld.set");
+        loadTLD();
+    }
+    
+    public static void loadTLD() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/tld.set");
         if (file.exists()) {
             try {
                 Collection<String> set;
@@ -1228,8 +1267,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     
     public synchronized boolean drop() {
         if (MAP.remove(getDomain()) != null) {
-            DOMAIN_CHANGED = true;
-            return true;
+            return DOMAIN_CHANGED = true;
         } else {
             return false;
         }
@@ -1294,6 +1332,8 @@ public class Domain implements Serializable, Comparable<Domain> {
                 if (ex.isErrorMessage("WAITING")) {
                     domainMax.drop();
                 } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+                    domainMax.drop();
+                } else if (ex.isErrorMessage("RESERVED")) {
                     domainMax.drop();
                 } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
                     // Fazer nada.
@@ -1383,10 +1423,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                     return null;
                 } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
                     return null;
-                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
-                    return null;
-                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
-                    return null;
                 } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
                     return null;
                 } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
@@ -1420,8 +1456,6 @@ public class Domain implements Serializable, Comparable<Domain> {
                 } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                     return null;
                 } else if (ex.getMessage().equals("ERROR: DOMAIN NOT FOUND")) {
-                    return null;
-                } else if (ex.getMessage().equals("ERROR: WHOIS QUERY LIMIT")) {
                     return null;
                 } else {
                     Server.logError(ex);

@@ -29,6 +29,14 @@ public class BinarySemaphore implements Serializable {
     
     private Boolean state = false;
     
+    public BinarySemaphore(BinarySemaphore other) {
+        this.state = other.state;
+    }
+    
+    public BinarySemaphore duplicate() {
+        return new BinarySemaphore(this);
+    }
+    
     public BinarySemaphore() {
         state = false;
     }

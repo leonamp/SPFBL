@@ -1,18 +1,19 @@
 /*
  * This file is part of SPFBL.
- * 
+ *
  * SPFBL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * SPFBL is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
+ *
  */
 package net.spfbl.core;
 
@@ -35,9 +36,9 @@ import org.apache.commons.lang3.ArrayUtils;
 
 /**
  * Servidor de recebimento de bloqueio por P2P.
- * 
+ *
  * Este serviço ouve todas as informações de bloqueio da rede P2P.
- * 
+ *
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public final class PeerUDP extends Server {
@@ -48,7 +49,7 @@ public final class PeerUDP extends Server {
     private final int SIZE; // Tamanho máximo da mensagem do pacote UDP de reposta.
     private final DatagramSocket SERVER;
     private DatagramSocket SERVERS = null;
-    
+
     /**
      * Configuração e intanciamento do servidor.
      * @param port a porta UDP a ser vinculada.
@@ -68,11 +69,11 @@ public final class PeerUDP extends Server {
         SERVER = new DatagramSocket(port);
         Server.logTrace(getName() + " thread allocation.");
     }
-    
+
     public boolean hasConnection() {
         return HOSTNAME != null;
     }
-    
+
     public String getConnection() {
         if (HOSTNAME == null) {
             return null;
@@ -80,7 +81,7 @@ public final class PeerUDP extends Server {
             return HOSTNAME + ":" + PORT;
         }
     }
-    
+
     public String getSecuredConnection() {
         if (HOSTNAME == null) {
             return null;
@@ -99,7 +100,7 @@ public final class PeerUDP extends Server {
             }
         }
     }
-    
+
     private static boolean hasAddress(String hostname,
             InetAddress ipAddress) throws UnknownHostException {
         for (InetAddress address : InetAddress.getAllByName(hostname)) {
@@ -109,16 +110,16 @@ public final class PeerUDP extends Server {
         }
         return false;
     }
-    
+
     private int CONNECTION_ID = 0;
     private long CONNECTION_TIME = 0;
-    
+
     /**
      * Representa uma conexão ativa.
      * Serve para processar todas as requisições.
      */
     private class Connection extends Thread {
-        
+
         /**
          * O poll de pacotes de consulta a serem processados.
          */
@@ -127,7 +128,7 @@ public final class PeerUDP extends Server {
         private final Semaphore SEMAPHORE = new Semaphore(0);
         private boolean SECURED = false;
         private long time = 0;
-        
+
         public Connection() {
             String name = getNextName();
             Server.logDebug("creating " + name + "...");
@@ -136,12 +137,12 @@ public final class PeerUDP extends Server {
             setPriority(Thread.MIN_PRIORITY);
             Server.logTrace(getName() + " thread allocation.");
         }
-        
+
         private synchronized String getNextName() {
             CONNECTION_TIME = System.currentTimeMillis();
             return "P2PUDP" + Core.formatCentena(ID = ++CONNECTION_ID);
         }
-        
+
         private synchronized boolean closeIfLast() {
             if (ID == 1) {
                 return false;
@@ -158,13 +159,13 @@ public final class PeerUDP extends Server {
                 return false;
             }
         }
-        
+
         @Override
         public void start() {
             CONNECTION_COUNT++;
             super.start();
         }
-        
+
         /**
          * Processa um pacote de consulta.
          * @param packet o pacote de consulta a ser processado.
@@ -175,7 +176,7 @@ public final class PeerUDP extends Server {
             this.time = time;
             SEMAPHORE.release();
         }
-        
+
         /**
          * Fecha esta conexão liberando a thread.
          */
@@ -185,7 +186,7 @@ public final class PeerUDP extends Server {
             SECURED = false;
             SEMAPHORE.release();
         }
-        
+
         public DatagramPacket getPacket() {
             if (PeerUDP.this.continueListenning()) {
                 try {
@@ -198,20 +199,20 @@ public final class PeerUDP extends Server {
                 return null;
             }
         }
-        
+
         public void clearPacket() {
             time = 0;
             PACKET = null;
             SECURED = false;
         }
-        
+
         private final NormalDistribution frequency = new NormalDistribution(50);
         private long last = 0;
-        
+
         private boolean isIdle() {
             return frequency.getMinimum() > 100.f;
         }
-        
+
         private Float getInterval() {
             long current = System.currentTimeMillis();
             Float interval;
@@ -223,7 +224,7 @@ public final class PeerUDP extends Server {
             last = current;
             return interval;
         }
-        
+
         private boolean addQuery() {
             Float interval = getInterval();
             if (interval == null) {
@@ -233,7 +234,7 @@ public final class PeerUDP extends Server {
                 return true;
             }
         }
-        
+
         /**
          * Processamento da consulta e envio do resultado.
          * Aproveita a thead para realizar procedimentos em background.
@@ -411,7 +412,7 @@ public final class PeerUDP extends Server {
             Server.logTrace(getName() + " thread closed.");
         }
     }
-    
+
     public boolean isTooBig(String token) {
         if (token == null) {
             return false;
@@ -423,7 +424,7 @@ public final class PeerUDP extends Server {
             }
         }
     }
-    
+
     /**
      * Envia um pacote do resultado em UDP para o destino.
      * @param message o resultado que deve ser enviado.
@@ -480,25 +481,25 @@ public final class PeerUDP extends Server {
             return "UNREACHABLE";
         }
     }
-    
+
     /**
      * Pool de conexões ativas.
      */
     private final LinkedList<Connection> CONNECTION_POLL = new LinkedList<>();
     private final LinkedList<Connection> CONNECTION_USE = new LinkedList<>();
-    
+
     /**
      * Semáforo que controla o pool de conexões.
      */
     private Semaphore CONNECION_SEMAPHORE;
-    
+
     /**
      * Quantidade total de conexões intanciadas.
      */
     private int CONNECTION_COUNT = 0;
-    
+
     private static byte CONNECTION_LIMIT = 8;
-    
+
     public static void setConnectionLimit(String limit) {
         if (limit != null && limit.length() > 0) {
             try {
@@ -508,7 +509,7 @@ public final class PeerUDP extends Server {
             }
         }
     }
-    
+
     public static void setConnectionLimit(int limit) {
         if (limit < 1 || limit > Byte.MAX_VALUE) {
             Server.logError("invalid P2P connection limit '" + limit + "'.");
@@ -516,24 +517,24 @@ public final class PeerUDP extends Server {
             CONNECTION_LIMIT = (byte) limit;
         }
     }
-    
+
     private synchronized Connection poll() {
         return CONNECTION_POLL.poll();
     }
-    
+
     private synchronized int pollSize() {
         return CONNECTION_POLL.size();
     }
-    
+
     private synchronized void use(Connection connection) {
         CONNECTION_USE.offer(connection);
     }
-    
+
     private synchronized void offer(Connection connection) {
         CONNECTION_USE.remove(connection);
         CONNECTION_POLL.offer(connection);
     }
-    
+
     private Connection pollAndCloseIfLast() {
         Connection connection = poll();
         if (connection == null) {
@@ -544,11 +545,11 @@ public final class PeerUDP extends Server {
             return connection;
         }
     }
-    
+
     private synchronized void notifyConnection() {
         notify();
     }
-    
+
     private synchronized Connection waitConnection() {
         try {
             wait(100);
@@ -558,7 +559,7 @@ public final class PeerUDP extends Server {
             return null;
         }
     }
-    
+
     /**
      * Coleta uma conexão ociosa ou inicia uma nova.
      * @return uma conexão ociosa ou nova se não houver ociosa.
@@ -586,7 +587,7 @@ public final class PeerUDP extends Server {
             return null;
         }
     }
-    
+
     private void startService() {
         try {
             Server.logInfo("listening P2P port " + PORT + ".");
@@ -634,7 +635,7 @@ public final class PeerUDP extends Server {
             Server.logInfo("querie P2P server closed.");
         }
     }
-    
+
     private void startSecuredService() {
         try {
             Server.logInfo("listening P2PS port " + PORTS + ".");
@@ -679,7 +680,7 @@ public final class PeerUDP extends Server {
             Server.logInfo("querie P2PS server closed.");
         }
     }
-    
+
     /**
      * Inicialização do serviço.
      */
@@ -712,7 +713,7 @@ public final class PeerUDP extends Server {
             }
         }
     }
-    
+
     /**
      * Fecha todas as conexões e finaliza o servidor UDP.
      */

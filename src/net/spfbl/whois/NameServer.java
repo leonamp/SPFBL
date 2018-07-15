@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.TreeSet;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -41,14 +42,24 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     private String nsstat;
     private String nslastaa;
     
+    private long lastQuery = 0; // Última vez que houve atualização do registro em milisegundos.
+    
+    private static final int REFRESH_TIME = 84; // Prazo máximo que o registro deve permanecer em cache em dias.
+    
     /**
      * Inicia um registro vazio.
      * @param nserver o host do registro.
      */
     private NameServer(String nserver) {
         this.nserver = nserver;
+        this.lastQuery = System.currentTimeMillis();
         // Atualiza flag de atualização.
         NS_CHANGED = true;
+    }
+    
+    public boolean isRegistryExpired() {
+        long expiredTime = (System.currentTimeMillis() - lastQuery) / Server.DAY_TIME;
+        return expiredTime > REFRESH_TIME;
     }
     
     /**
@@ -61,6 +72,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
             throw new ProcessException("ERROR: INVALID STAT");
         } else if (!nsstat.equals(this.nsstat)) {
             this.nsstat = nsstat;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             NS_CHANGED = true;
         }
@@ -76,6 +88,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
             throw new ProcessException("ERROR: INVALID LASTAA");
         } else if (!nslastaa.equals(this.nslastaa)) {
             this.nslastaa = nslastaa;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             NS_CHANGED = true;
         }
@@ -87,6 +100,7 @@ public class NameServer implements Serializable, Comparable<NameServer> {
      * @return o valor de um campo do registro ou o valor de uma função.
      */
     public String get(String key) {
+        lastQuery = System.currentTimeMillis();
         if (key.equals("nserver")) {
             return nserver;
         } else if (key.equals("nsstat")) {
@@ -101,7 +115,16 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     /**
      * Mapa de registros com busca de hash O(1).
      */
-    private static final HashMap<String,NameServer> NS_MAP = new HashMap<String,NameServer>();
+    private static final HashMap<String,NameServer> NS_MAP = new HashMap<>();
+    
+    protected synchronized boolean drop() {
+        if (NS_MAP.remove(nserver) != null) {
+            NS_CHANGED = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
     
     private static synchronized NameServer getMap(String nserver) {
         return NS_MAP.get(nserver);
@@ -111,9 +134,24 @@ public class NameServer implements Serializable, Comparable<NameServer> {
         return NS_MAP.put(nserver, ns);
     }
     
-    private static synchronized HashMap<String,NameServer> getMap() {
-        HashMap<String,NameServer> map = new HashMap<String, NameServer>();
-        map.putAll(NS_MAP);
+    private static synchronized TreeSet<String> getKeySet() {
+        TreeSet<String> keySet = new TreeSet<>();
+        keySet.addAll(NS_MAP.keySet());
+        return keySet;
+    }
+    
+    private static HashMap<String,NameServer> getMap() {
+        HashMap<String,NameServer> map = new HashMap<>();
+        for (String key : getKeySet()) {
+            NameServer ns = getMap(key);
+            if (ns != null) {
+                if (ns.isRegistryExpired()) {
+                    ns.drop();
+                } else {
+                    map.put(key, ns);
+                }
+            }
+        }
         return map;
     }
     
@@ -143,17 +181,13 @@ public class NameServer implements Serializable, Comparable<NameServer> {
     public static void store() {
         if (NS_CHANGED) {
             try {
-//                Server.logTrace("storing ns.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,NameServer> map = getMap();
                 File file = new File("./data/ns.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     NS_CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -171,11 +205,8 @@ public class NameServer implements Serializable, Comparable<NameServer> {
         if (file.exists()) {
             try {
                 HashMap<String,NameServer> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);

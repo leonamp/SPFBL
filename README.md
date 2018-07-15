@@ -312,22 +312,22 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
 PayPal em Real:<br>
-[![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=7FKHCPESUWH4L)
+[![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=NLBW6XZ3EGQLN)
 
 PayPal em Dólar:<br>
-[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=77CP8774HLDU8)
+[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=LJM9UCLMKFRP6)
 
 Patreon:<br>
 <a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
 
 Bitcoin:<br>
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/bitcoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")
+[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")](1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy)
 
 Litecoin:<br>
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/litecoin.png "LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr")
+[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/litecoin.png "LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr")](LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr)
 
 Nano:<br>
-![Donate](https://github.com/leonamp/SPFBL/blob/master/doc/nano.png "xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89")
+[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/nano.png "xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89")](xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89)
 
 Página oficial:<br>
 <a href="http://spfbl.net">SPFBL oficial website</a>

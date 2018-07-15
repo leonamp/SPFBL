@@ -50,6 +50,7 @@ import net.spfbl.data.Block;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.NormalDistribution;
+import net.spfbl.core.Peer;
 import net.spfbl.core.User;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
@@ -320,13 +321,29 @@ public final class QuerySPF extends Server {
                                         line = line.substring(10);
                                         tokenizer = new StringTokenizer(line, " ");
                                         while (tokenizer.hasMoreElements()) {
-                                            String sender = tokenizer.nextToken();
+                                            String token2 = tokenizer.nextToken();
                                             try {
-                                                boolean added = Block.add(client, sender);
-                                                if (result == null) {
-                                                    result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                if (Core.isValidURL(token2)) {
+                                                    token2 = Core.getSignatureURL(token2);
+                                                }
+                                                if (Core.isExecutableSignature(token2) || Core.isSignatureURL(token2)) {
+                                                    if (client == null) {
+                                                        result = "NOT ADMIN\n";
+                                                    } else if (!client.isAdministrator() && !client.isAdministratorEmail()) {
+                                                        result = "NOT ADMIN\n";
+                                                    } else if (Block.addExact(token2)) {
+                                                        Peer.sendBlockToAll(token2);
+                                                        result = "ADDED\n";
+                                                    } else {
+                                                        result = "ALREADY EXISTS\n";
+                                                    }
                                                 } else {
-                                                    result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                    boolean added = Block.add(client, token2);
+                                                    if (result == null) {
+                                                        result = (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                    } else {
+                                                        result += (added ? "ADDED" : "ALREADY EXISTS") + "\n";
+                                                    }
                                                 }
                                             } catch (ProcessException ex) {
                                                 if (result == null) {
@@ -347,12 +364,24 @@ public final class QuerySPF extends Server {
                                         tokenizer = new StringTokenizer(line, " ");
                                         while (tokenizer.hasMoreElements()) {
                                             try {
-                                                String sender = tokenizer.nextToken();
-                                                boolean droped = Block.drop(client, sender);
-                                                if (result == null) {
-                                                    result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
+                                                String token2 = tokenizer.nextToken();
+                                                if (Core.isExecutableSignature(token2) || Core.isSignatureURL(token2)) {
+                                                    if (client == null) {
+                                                        result = "NOT ADMIN\n";
+                                                    } else if (!client.isAdministrator() && !client.isAdministratorEmail()) {
+                                                        result = "NOT ADMIN\n";
+                                                    } else if (Block.dropExact(token2)) {
+                                                        result = "DROPPED\n";
+                                                    } else {
+                                                        result = "NOT FOUND\n";
+                                                    }
                                                 } else {
-                                                    result += (droped ? "DROPPED" : "NOT FOUND") + "\n";
+                                                    boolean droped = Block.drop(client, token2);
+                                                    if (result == null) {
+                                                        result = (droped ? "DROPPED" : "NOT FOUND") + "\n";
+                                                    } else {
+                                                        result += (droped ? "DROPPED" : "NOT FOUND") + "\n";
+                                                    }
                                                 }
                                             } catch (ProcessException ex) {
                                                 if (result == null) {
@@ -707,7 +736,11 @@ public final class QuerySPF extends Server {
                                                     }
                                                 }
                                             } catch (ProcessException ex) {
-                                                result = ex.getErrorMessage() + "\n";
+                                                if (ex.isErrorMessage("RESERVED")) {
+                                                    result = "RESERVED\n";
+                                                } else {
+                                                    result = ex.getErrorMessage() + "\n";
+                                                }
                                             }
                                         } else {
                                             result = "INVALID COMMAND\n";

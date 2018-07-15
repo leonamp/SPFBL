@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.whois;
 
@@ -21,10 +21,10 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.SerializationUtils;
 
@@ -140,6 +140,20 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
+    public static String minimizeCIDRv4(String inetnum) {
+        if ((inetnum = normalizeCIDRv4(inetnum)) == null) {
+            return null;
+        } else if (inetnum.contains(".0.0.0/")) {
+            return inetnum.replaceFirst(".0.0.0/", "/");
+        } else if (inetnum.contains(".0.0/")) {
+            return inetnum.replaceFirst(".0.0/", "/");
+        } else if (inetnum.contains(".0/")) {
+            return inetnum.replaceFirst(".0/", "/");
+        } else {
+            return inetnum;
+        }
+    }
+    
     /**
      * Corrige o endereço da notação CIDR para sem abreviação.
      * @param inetnum o endereço com notação CIDR sem abreviação.
@@ -151,19 +165,45 @@ public final class SubnetIPv4 extends Subnet {
         } else {
             int index = inetnum.indexOf('/');
             String ip = inetnum.substring(0, index);
-            String size = inetnum.substring(index+1);
+            String size = inetnum.substring(index + 1);
             int sizeInt = Integer.parseInt(size);
             if (sizeInt < 0 || sizeInt > 32) {
                 return null;
             } else {
-                byte[] mask = SubnetIPv4.getMaskIPv4(sizeInt);
-                byte[] address = SubnetIPv4.split(ip, mask);
+                byte[] mask = getMaskIPv4(sizeInt);
+                byte[] address = split(ip, mask);
                 int octet1 = address[0] & 0xFF;
                 int octet2 = address[1] & 0xFF;
                 int octet3 = address[2] & 0xFF;
                 int octet4 = address[3] & 0xFF;
                 return octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + sizeInt;
             }
+        }
+    }
+    
+    /**
+     * Gera uma lista completa dos ranges CIDRv4 de um IP.
+     * @param ip o IPv4 que deve ser usado para gerar os ranges.
+     * @return uma lista com todos os ranges CIDRv4 do IPv4.
+     */
+    public static String[] getRangeArrayIPv4(String ip) {
+        if (isValidIPv4(ip)) {
+            String[] rangeList = new String[33];
+            byte[] address = split(ip);
+            for (int maskInt = 32; maskInt >= 0; maskInt--) {
+                byte[] mask = getMaskIPv4(maskInt);
+                for (int i = 0; i < 4; i++) {
+                    address[i] &= mask[i];
+                }
+                int octet1 = address[0] & 0xFF;
+                int octet2 = address[1] & 0xFF;
+                int octet3 = address[2] & 0xFF;
+                int octet4 = address[3] & 0xFF;
+                rangeList[maskInt] = octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + maskInt;
+            }
+            return rangeList;
+        } else {
+            return null;
         }
     }
     
@@ -216,12 +256,16 @@ public final class SubnetIPv4 extends Subnet {
     }
     
     public static String reverse(String ip) {
-        byte[] splitedIP = SubnetIPv4.split(ip);
-        int octet1 = splitedIP[0] & 0xFF;
-        int octet2 = splitedIP[1] & 0xFF;
-        int octet3 = splitedIP[2] & 0xFF;
-        int octet4 = splitedIP[3] & 0xFF;
-        return octet4 + "." + octet3 + "." + octet2 + "." + octet1;
+        if (ip == null) {
+            return null;
+        } else {
+            byte[] splitedIP = SubnetIPv4.split(ip);
+            int octet1 = splitedIP[0] & 0xFF;
+            int octet2 = splitedIP[1] & 0xFF;
+            int octet3 = splitedIP[2] & 0xFF;
+            int octet4 = splitedIP[3] & 0xFF;
+            return octet4 + "." + octet3 + "." + octet2 + "." + octet1;
+        }
     }
     
     /**
@@ -230,33 +274,45 @@ public final class SubnetIPv4 extends Subnet {
      * @return o endereço IPv4 padronizado.
      */
     public static String normalizeIPv4(String ip) {
-        byte[] splitedIP = split(ip);
-        int octet1 = splitedIP[0] & 0xFF;
-        int octet2 = splitedIP[1] & 0xFF;
-        int octet3 = splitedIP[2] & 0xFF;
-        int octet4 = splitedIP[3] & 0xFF;
-        return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        if (ip == null) {
+            return null;
+        } else {
+            byte[] splitedIP = split(ip);
+            int octet1 = splitedIP[0] & 0xFF;
+            int octet2 = splitedIP[1] & 0xFF;
+            int octet3 = splitedIP[2] & 0xFF;
+            int octet4 = splitedIP[3] & 0xFF;
+            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        }
     }
     
     public static String expandIPv4(String ip) {
-        byte[] splitedIP = split(ip);
-        int octet1 = splitedIP[0] & 0xFF;
-        int octet2 = splitedIP[1] & 0xFF;
-        int octet3 = splitedIP[2] & 0xFF;
-        int octet4 = splitedIP[3] & 0xFF;
-        return String.format("%3s", octet1).replace(' ', '0')
-                + "." + String.format("%3s", octet2).replace(' ', '0')
-                + "." + String.format("%3s", octet3).replace(' ', '0')
-                + "." + String.format("%3s", octet4).replace(' ', '0');
+        if (ip == null) {
+            return null;
+        } else {
+            byte[] splitedIP = split(ip);
+            int octet1 = splitedIP[0] & 0xFF;
+            int octet2 = splitedIP[1] & 0xFF;
+            int octet3 = splitedIP[2] & 0xFF;
+            int octet4 = splitedIP[3] & 0xFF;
+            return String.format("%3s", octet1).replace(' ', '0')
+                    + "." + String.format("%3s", octet2).replace(' ', '0')
+                    + "." + String.format("%3s", octet3).replace(' ', '0')
+                    + "." + String.format("%3s", octet4).replace(' ', '0');
+        }
     }
     
     public static String expandCIDRv4(String cidr) {
-        int index = cidr.indexOf('/');
-        String ip = cidr.substring(0, index);
-        String mask = cidr.substring(index);
-        ip = expandIPv4(ip);
-        cidr = ip + mask;
-        return cidr;
+        if (cidr == null) {
+            return null;
+        } else {
+            int index = cidr.indexOf('/');
+            String ip = cidr.substring(0, index);
+            String mask = cidr.substring(index);
+            ip = expandIPv4(ip);
+            cidr = ip + mask;
+            return cidr;
+        }
     }
     
     /**
@@ -428,11 +484,15 @@ public final class SubnetIPv4 extends Subnet {
     /**
      * Mapa de blocos IP de ASs com busca em árvore binária log2(n).
      */
-    private static final TreeMap<Long,SubnetIPv4> MAP = new TreeMap<Long,SubnetIPv4>();
+    private static final TreeMap<Long,SubnetIPv4> MAP = new TreeMap<>();
     
     @Override
     public synchronized SubnetIPv4 drop() {
-        return MAP.remove((long) address);
+        SubnetIPv4 subnet = MAP.remove((long) address);
+        if (subnet != null) {
+            CHANGED = true;
+        }
+        return subnet;
     }
     
     /**
@@ -461,7 +521,7 @@ public final class SubnetIPv4 extends Subnet {
     private static boolean CHANGED = false;
     
     protected static synchronized TreeSet<Subnet> getSubnetSet() {
-        TreeSet<Subnet> subnetSet = new TreeSet<Subnet>();
+        TreeSet<Subnet> subnetSet = new TreeSet<>();
         subnetSet.addAll(MAP.values());
         return subnetSet;
     }
@@ -566,7 +626,6 @@ public final class SubnetIPv4 extends Subnet {
     }
     
     private static synchronized SubnetIPv4 newSubnet(String ip) throws ProcessException {
-//        Server.logTrace("quering new WHOIS IPv4");
         // Selecionando servidor da pesquisa WHOIS.
         String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
@@ -618,9 +677,28 @@ public final class SubnetIPv4 extends Subnet {
         return newSubnet(ip);
     }
     
-    private static synchronized TreeMap<Long,SubnetIPv4> getMap() {
-        TreeMap<Long,SubnetIPv4> map = new TreeMap<Long,SubnetIPv4>();
-        map.putAll(MAP);
+    private static synchronized TreeSet<Long> getKeySet() {
+        TreeSet<Long> keySet = new TreeSet<>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+    
+    private static synchronized SubnetIPv4 getSubnetObj(Long key) {
+        return MAP.get(key);
+    }
+    
+    private static TreeMap<Long,SubnetIPv4> getMap() {
+        TreeMap<Long,SubnetIPv4> map = new TreeMap<>();
+        for (Long key : getKeySet()) {
+            SubnetIPv4 subnet = getSubnetObj(key);
+            if (subnet != null) {
+                if (subnet.isRegistryExpired()) {
+                    subnet.drop();
+                } else {
+                    map.put(key, subnet);
+                }
+            }
+        }
         return map;
     }
     
@@ -630,17 +708,13 @@ public final class SubnetIPv4 extends Subnet {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing subnet4.map");
                 long time = System.currentTimeMillis();
                 TreeMap<Long,SubnetIPv4> map = getMap();
                 File file = new File("./data/subnet4.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -662,11 +736,8 @@ public final class SubnetIPv4 extends Subnet {
         if (file.exists()) {
             try {
                 TreeMap<Object,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (Object value : map.values()) {
                     if (value instanceof SubnetIPv4) {
@@ -722,7 +793,7 @@ public final class SubnetIPv4 extends Subnet {
     /**
      * Mapa completo dos blocos alocados aos países.
      */
-    private static final TreeMap<Long,SubnetIPv4> SERVER_MAP = new TreeMap<Long,SubnetIPv4>();
+    private static final TreeMap<Long,SubnetIPv4> SERVER_MAP = new TreeMap<>();
     
     /**
      * Adiciona um servidor WHOIS na lista com seu respecitivo bloco.

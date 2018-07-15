@@ -73,15 +73,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     private boolean reduced = false; // Diz se a última consulta foi reduzida.
     private int queries = 1; // Contador de consultas.
     
-    private static int REFRESH_TIME = 84; // Prazo máximo que o registro deve permanecer em cache em dias.
-    
-    /**
-     * Atualiza o tempo de expiração do registro de bloco.
-     * @param time tempo em dias que os registros de bloco devem ser atualizados.
-     */
-    public static void setRefreshTime(int time) {
-        REFRESH_TIME = time;
-    }
+    private static final int REFRESH_TIME = 84; // Prazo máximo que o registro deve permanecer em cache em dias.
     
     protected Subnet(String result) throws ProcessException {
         // Associação da chave primária final.
@@ -178,6 +170,14 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         } else {
             return cidr;
         }
+    }
+    
+    public static String[] getRangeArray(String ip) {
+        String[] rangeArray = SubnetIPv4.getRangeArrayIPv4(ip);
+        if (rangeArray == null) {
+            rangeArray = SubnetIPv6.getRangeArrayIPv6(ip);
+        }
+        return rangeArray;
     }
     
     public static String normalizeIP(String ip) {
@@ -780,7 +780,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             if (abuse == null) {
                 return null;
             } else {
-                return abuse.get(key);
+                return abuse.getValue(key);
             }
         } else if (key.startsWith("owner-c/")) {
             int index = key.indexOf('/') + 1;
@@ -789,7 +789,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             if (owner == null) {
                 return null;
             } else {
-                return owner.get(key);
+                return owner.getValue(key);
             }
         } else if (key.startsWith("tech-c/")) {
             int index = key.indexOf('/') + 1;
@@ -798,7 +798,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
             if (tech == null) {
                 return null;
             } else {
-                return tech.get(key);
+                return tech.getValue(key);
             }
         } else if (key.startsWith("nserver/")) {
             int index = key.indexOf('/') + 1;

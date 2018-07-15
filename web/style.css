@@ -134,3 +134,27 @@ ul {
 p {
 	padding: 2px 0;
 }
+input[type=text] {
+	width: 100%;
+	padding: 10px 20px;
+	margin: 8px 0;
+	box-sizing: border-box;
+	border: 2px solid #ccc;
+	text-align: center;
+}
+input[type=text]:focus {
+	border: 2px solid #555;
+}
+button {
+  border-radius: 6px;
+  background-color: #808080;
+  border: none;
+  color: #FFFFFF;
+  text-align: center;
+  font-size: 12px;
+  padding: 4px;
+  width: 100%;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 0px;
+}

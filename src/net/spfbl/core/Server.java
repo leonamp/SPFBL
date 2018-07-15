@@ -59,12 +59,14 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
+import net.spfbl.data.Abuse;
 import net.spfbl.data.Generic;
 import net.spfbl.dns.QueryDNS;
 import org.apache.commons.lang3.SerializationUtils;
@@ -125,6 +127,7 @@ public abstract class Server extends Thread {
         Block.load();
         White.load();
         Trap.load();
+        Abuse.load();
         SPF.load();
         Defer.load();
         QueryDNS.load();
@@ -143,16 +146,24 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
-//                User.autoUpdateDates();
-                User.autoUpdateKeys();
-                User.autoInductionWhite();
-                User.autoInductionBlock();
+//                User.autoUpdateKeys();
+//                User.autoInductionWhite();
+//                User.autoInductionBlock();
                 storeAll(true, true);
             } finally {
                 SEMAPHORE_STORE.release();
             }
         }
     }
+    
+    public static boolean tryAcquireStoreCache() {
+        return SEMAPHORE_STORE.tryAcquire();
+    }
+    
+    public static void releaseStoreCache() {
+        SEMAPHORE_STORE.release();
+    }
+    
     
     /**
      * Armazenamento de cache em disco.
@@ -165,7 +176,7 @@ public abstract class Server extends Thread {
             return false;
         }
     }
-        
+    
     /**
      * Armazenamento de cache em disco.
      */
@@ -182,6 +193,49 @@ public abstract class Server extends Thread {
         }
     }
     
+    private static Semaphore SEMAPHORE_TEST = new Semaphore(1);
+    
+    private static class Test extends Thread {
+        
+        public Test() {
+            super("BCKGROUND");
+            super.setPriority(MIN_PRIORITY);
+        }
+        
+        @Override
+        public void run() {
+            try {
+//                User.autoUpdateKeys();
+                User.autoInductionWhiteKey();
+                User.autoInductionBlockKey();
+                User.autoInductionBlockSMTP();
+                User.autoInductionHREF();
+            } finally {
+                SEMAPHORE_TEST.release();
+            }
+        }
+    }
+    
+    public static boolean tryAcquireTestCache() {
+        if (SEMAPHORE_TEST.tryAcquire()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    /**
+     * Inicio do teste.
+     */
+    public static boolean tryTestCache() {
+        if (SEMAPHORE_TEST.tryAcquire()) {
+            new Test().start();
+            return true;
+        } else {
+            return false;
+        }
+    }
+        
     private static void storeAll(boolean simplify, boolean clone) {
         System.gc();
         Client.store();
@@ -191,6 +245,7 @@ public abstract class Server extends Thread {
         Ignore.store();
         Generic.store();
         Trap.store();
+        Abuse.store();
         NoReply.store();
         QueryDNS.store();
         White.store(simplify);
@@ -207,6 +262,7 @@ public abstract class Server extends Thread {
         NameServer.store();
         Core.store();
         Block.store(simplify);
+        User.storeDB();
         System.gc();
     }
 
@@ -301,16 +357,22 @@ public abstract class Server extends Thread {
         }
     }
     
+    private static final Pattern BASE64_REGEX = Pattern.compile("^[a-zA-Z0-9_-]+$");
+    
     public static boolean isValidTicket(String code) {
         if (code == null) {
             return false;
-        } else {
+        } else if (code.length() < 32) {
+            return false;
+        } else if (BASE64_REGEX.matcher(code).find()) {
             try {
                 decryptToByteArrayURLSafe(code);
                 return true;
             } catch (ProcessException ex) {
                 return false;
             }
+        } else {
+            return false;
         }
     }
     
@@ -403,6 +465,11 @@ public abstract class Server extends Thread {
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
     public static final long DAY_TIME = HOUR_TIME * 24L;
+    
+    /**
+     * Constante que representa a quantidade de tempo de uma semana em milisegundos.
+     */
+    public static final long WEEK_TIME = DAY_TIME * 7L;
         
     /**
      * Registra uma linha de LOG
@@ -567,7 +634,7 @@ public abstract class Server extends Thread {
             try {
                 setLogExpires(Integer.parseInt(expires));
             } catch (Exception ex) {
-                setLogExpires(-1);
+                Server.logError("invalid LOG expires integer value '" + expires + "'.");
             }
         }
     }
@@ -678,6 +745,14 @@ public abstract class Server extends Thread {
      */
     public static void logTrace(String message) {
         log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", message, (String) null);
+    }
+    
+    /**
+     * Registra as mensagens para depuração de código.
+     * @param message a mensagem a ser registrada.
+     */
+    public static void logTrace(long time, String message) {
+        log(time, Core.Level.TRACE, "TRACE", message, (String) null);
     }
     
     /**
@@ -1032,6 +1107,8 @@ public abstract class Server extends Thread {
         Analise.interrupt();
         Server.logInfo("interrupting user theads...");
         User.interrupt();
+        Server.logInfo("interrupting abuse theads...");
+        Abuse.interrupt();
         Server.logInfo("shutting down server...");
         for (Server server : SERVER_LIST) {
             server.run = false;
@@ -1231,7 +1308,15 @@ public abstract class Server extends Thread {
     private static InitialDirContext INITIAL_DIR_CONTEXT;
     
     public static Attributes getAttributesDNS(String hostname, String[] types) throws NamingException {
-        return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
+        return getAttributesDNS(null, hostname, types);
+    }
+    
+    public static Attributes getAttributesDNS(String server, String hostname, String[] types) throws NamingException {
+        if (server == null) {
+            return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
+        } else {
+            return INITIAL_DIR_CONTEXT.getAttributes("dns://" + server + "/" + hostname, types);
+        }
     }
     
     static {

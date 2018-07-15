@@ -52,18 +52,19 @@ public class Owner implements Serializable, Comparable<Owner> {
     private Date created; // Data de criação do registro.
     private Date changed; // Data da alteração do registro.
     private String provider; // Provedor de responsável.
+    private int domaincount;
     
     /**
      * Lista dos dominios registrados.
      */
-    private final ArrayList<String> domainList = new ArrayList<String>();
+    private final ArrayList<String> domainList = new ArrayList<>();
     
     private String server = null; // Servidor onde a informação do registro pode ser encontrada.
-    private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
+    private long lastQuery = 0; // Última consulta ao registro em milisegundos.
     private boolean reduced = false; // Diz se a última consulta foi reduzida.
     private int queries = 1; // Contador de consultas.
     
-    private static int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
+    private static final int REFRESH_TIME = 84;  // Prazo máximo que o registro deve permanecer em cache em dias.
     
     /**
      * Formatação padrão dos campos de data do WHOIS.
@@ -71,19 +72,11 @@ public class Owner implements Serializable, Comparable<Owner> {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyyMMdd");
     
     /**
-     * Atualiza o tempo de expiração do registro de domínio.
-     * @param time tempo em dias que os registros de domíno devem ser atualizados.
-     */
-    protected static void setRefreshTime(int time) {
-        REFRESH_TIME = time;
-    }
-    
-    /**
      * Verifica se o registro atual expirou.
      * @return verdadeiro se o registro atual expirou.
      */
     public boolean isRegistryExpired() {
-        long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
+        long expiredTime = (System.currentTimeMillis() - lastQuery) / Server.DAY_TIME;
         return expiredTime > REFRESH_TIME;
     }
     
@@ -164,8 +157,7 @@ public class Owner implements Serializable, Comparable<Owner> {
         try {
             boolean reducedLocal = false;
             String owneridResult = null;
-            BufferedReader reader = new BufferedReader(new StringReader(result));
-            try {
+            try (BufferedReader reader = new BufferedReader(new StringReader(result))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
@@ -202,6 +194,9 @@ public class Owner implements Serializable, Comparable<Owner> {
                     } else if (line.startsWith("provider:")) {
                         int index = line.indexOf(':') + 1;
                         provider = line.substring(index).trim();
+                    } else if (line.startsWith("domaincount:")) {
+                        int index = line.indexOf(':') + 1;
+                        domaincount = Integer.parseInt(line.substring(index).trim());
                     } else if (line.startsWith("nic-hdl-br:")) {
                         int index = line.indexOf(':') + 1;
                         String nic_hdl_br = line.substring(index).trim();
@@ -247,13 +242,11 @@ public class Owner implements Serializable, Comparable<Owner> {
                         Server.logError("Linha não reconhecida: " + line);
                     }
                 }
-            } finally {
-                reader.close();
             }
             if (owneridResult == null) {
                 throw new ProcessException("ERROR: OWNER NOT FOUND");
             } else {
-                this.lastRefresh = System.currentTimeMillis();
+                this.lastQuery = System.currentTimeMillis();
                 this.reduced = reducedLocal;
                 this.queries = 1;
                 // Atualiza flag de atualização.
@@ -280,6 +273,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @throws ProcessException se houver falha no processamento.
      */
     public String get(String key, boolean updated) throws ProcessException {
+        lastQuery = System.currentTimeMillis();
         if (key.equals("owner")) {
             return owner;
         } else if (key.equals("ownerid")) {
@@ -317,12 +311,12 @@ public class Owner implements Serializable, Comparable<Owner> {
             if (owner == null) {
                 return null;
             } else {
-                return owner.get(key);
+                return owner.getValue(key);
             }
         } else if (key.startsWith("domain/")) {
             int index = key.indexOf('/') + 1;
             key = key.substring(index);
-            TreeSet<String> resultSet = new TreeSet<String>();
+            TreeSet<String> resultSet = new TreeSet<>();
             for (String domainName : domainList) {
                 Domain domain = Domain.getDomain(domainName);
                 if (domain == null) {
@@ -338,9 +332,28 @@ public class Owner implements Serializable, Comparable<Owner> {
         }
     }
     
-    public static synchronized HashMap<String,Owner> getMap() {
-        HashMap<String,Owner> map = new HashMap<String,Owner>();
-        map.putAll(MAP);
+    private static synchronized TreeSet<String> getKeySet() {
+        TreeSet<String> keySet = new TreeSet<>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+    
+    private static synchronized Owner get(String key) {
+        return MAP.get(key);
+    }
+    
+    public static HashMap<String,Owner> getMap() {
+        HashMap<String,Owner> map = new HashMap<>();
+        for (String key : getKeySet()) {
+            Owner owner = get(key);
+            if (owner != null) {
+                if (owner.isRegistryExpired()) {
+                    owner.drop();
+                } else {
+                    map.put(key, owner);
+                }
+            }
+        }
         return map;
     }
     
@@ -350,17 +363,13 @@ public class Owner implements Serializable, Comparable<Owner> {
     public static void store() {
         if (OWNER_CHANGED) {
             try {
-//                Server.logTrace("storing owner.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Owner> map = getMap();
                 File file = new File("./data/owner.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     OWNER_CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -382,11 +391,8 @@ public class Owner implements Serializable, Comparable<Owner> {
         if (file.exists()) {
             try {
                 HashMap<String,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
@@ -406,6 +412,15 @@ public class Owner implements Serializable, Comparable<Owner> {
      * Mapa de domínios com busca de hash O(1).
      */
     private static final HashMap<String,Owner> MAP = new HashMap<>();
+    
+    protected synchronized boolean drop() {
+        if (MAP.remove(ownerid) != null) {
+            OWNER_CHANGED = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
     
     /**
      * Remove registro de domínio do cache.
@@ -479,6 +494,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                 // Owner encontrado.
                 Owner owner = MAP.get(key);
                 owner.queries++;
+                owner.lastQuery = System.currentTimeMillis();
                 if (owner.isRegistryExpired()) {
                     // Registro desatualizado.
                     // Atualizando campos do registro.

@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import net.spfbl.core.Client;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
 import net.spfbl.whois.Domain;
@@ -110,6 +111,15 @@ public class NoReply {
             }
         }
         return trapSet;
+    }
+    
+    public static boolean dropSafe(String address) {
+        try {
+            return drop(address);
+        } catch (ProcessException ex) {
+            Server.logError(ex);
+            return false;
+        }
     }
 
     public static boolean drop(String address) throws ProcessException {

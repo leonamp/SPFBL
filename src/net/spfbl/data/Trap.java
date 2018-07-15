@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 
 package net.spfbl.data;
@@ -22,9 +22,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeSet;
 import net.spfbl.core.Client;
+import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Server;
 import net.spfbl.core.User;
@@ -41,8 +41,8 @@ public class Trap {
     /**
      * Conjunto de destinatarios de spamtrap.
      */
-//    private static final HashSet<String> SET = new HashSet<String>();
-    private static final HashMap<String,Long> MAP = new HashMap<String,Long>();
+//    private static final HashSet<String> SET = new HashSet<>();
+    private static final HashMap<String,Long> MAP = new HashMap<>();
     /**
      * Flag que indica se o cache foi modificado.
      */
@@ -81,7 +81,7 @@ public class Trap {
             throw new ProcessException("INVALID ADDRESS");
         } else {
             try {
-                long time = timeString == null ? System.currentTimeMillis() + 31536000000L : Long.parseLong(timeString);
+                long time = timeString == null ? System.currentTimeMillis() + Core.getInexistentExpiresMillis() : Long.parseLong(timeString);
                 if (time < System.currentTimeMillis()) {
                     throw new ProcessException("INVALID TIME");
                 } else {
@@ -111,7 +111,7 @@ public class Trap {
             throw new ProcessException("INVALID ADDRESS");
         } else {
             try {
-                long time = timeString == null ? System.currentTimeMillis() + 31536000000L : Long.parseLong(timeString);
+                long time = timeString == null ? System.currentTimeMillis() + Core.getInexistentExpiresMillis() : Long.parseLong(timeString);
                 if (time < System.currentTimeMillis()) {
                     throw new ProcessException("INVALID TIME");
                 } else {
@@ -153,7 +153,7 @@ public class Trap {
     }
 
     public synchronized static TreeSet<String> getTrapAllSet() {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         for (String key : MAP.keySet()) {
             if (System.currentTimeMillis() > MAP.get(key)) {
                 blockSet.add(key);
@@ -163,7 +163,7 @@ public class Trap {
     }
     
     public synchronized static TreeSet<String> getInexistentAllSet() {
-        TreeSet<String> blockSet = new TreeSet<String>();
+        TreeSet<String> blockSet = new TreeSet<>();
         for (String key : MAP.keySet()) {
             if (System.currentTimeMillis() <= MAP.get(key)) {
                 blockSet.add(key);
@@ -181,7 +181,7 @@ public class Trap {
     }
     
     public synchronized static HashMap<String,Long> getMap() {
-        HashMap<String,Long> map = new HashMap<String,Long>();
+        HashMap<String,Long> map = new HashMap<>();
         map.putAll(MAP);
         return map;
     }
@@ -250,7 +250,7 @@ public class Trap {
         } else if (!isValid(recipient)) {
             return false;
         } else {
-            long time = System.currentTimeMillis() + 31536000000L;
+            long time = System.currentTimeMillis() + Core.getInexistentExpiresMillis();
             return putExact(user.getEmail() + ':' + recipient.toLowerCase(), time);
         }
     }
@@ -261,7 +261,7 @@ public class Trap {
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
-            long time = System.currentTimeMillis() + 31536000000L;
+            long time = System.currentTimeMillis() + Core.getInexistentExpiresMillis();
             return putExact(user.getEmail() + ':' + recipient.toLowerCase(), time);
         }
     }
@@ -282,13 +282,13 @@ public class Trap {
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
-            long time = System.currentTimeMillis() + 31536000000L;
+            long time = System.currentTimeMillis() + Core.getInexistentExpiresMillis();
             return putExact(client.getEmail() + ':' + recipient.toLowerCase(), time);
         }
     }
 
     public static TreeSet<String> dropTrapAll() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String trap : getTrapAllSet()) {
             if (dropExact(trap)) {
                 trapSet.add(trap);
@@ -298,7 +298,7 @@ public class Trap {
     }
     
     public static TreeSet<String> dropInexistentAll() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String trap : getInexistentAllSet()) {
             if (dropExact(trap)) {
                 trapSet.add(trap);
@@ -372,6 +372,15 @@ public class Trap {
             return false;
         }
     }
+    
+    public static boolean dropSafe(String address) {
+        try {
+            return drop(address);
+        } catch (ProcessException ex) {
+            Server.logError(ex);
+            return false;
+        }
+    }
 
     public static boolean drop(String recipient) throws ProcessException {
         if (!isValid(recipient)) {
@@ -415,8 +424,14 @@ public class Trap {
     }
     
     public static boolean drop(User user, Client client, String recipient) throws ProcessException {
-        boolean dropped = drop(client, recipient);
-        return dropped |= drop(user, recipient);
+        boolean dropped = false;
+        if (client != null) {
+            dropped |= drop(client, recipient);
+        }
+        if (user != null) {
+            dropped |= drop(user, recipient);
+        }
+        return dropped;
     }
     
     public static boolean drop(String client, String recipient) throws ProcessException {
@@ -434,7 +449,7 @@ public class Trap {
     }
 
     public static TreeSet<String> getTrapSet(Client client) throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         if (client != null && client.hasEmail()) {
             for (String recipient : getTrapAllSet()) {
                 if (recipient.startsWith(client.getEmail() + ':')) {
@@ -448,7 +463,7 @@ public class Trap {
     }
     
     public static TreeSet<String> getInexistentSet(Client client) throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         if (client != null && client.hasEmail()) {
             for (String recipient : getInexistentAllSet()) {
                 if (recipient.startsWith(client.getEmail() + ':')) {
@@ -462,7 +477,7 @@ public class Trap {
     }
 
     public static TreeSet<String> getTrapSet() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String recipient : getTrapAllSet()) {
             if (!recipient.contains(":")) {
                 trapSet.add(recipient);
@@ -472,7 +487,7 @@ public class Trap {
     }
     
     public static TreeSet<String> getInexistentSet() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<String>();
+        TreeSet<String> trapSet = new TreeSet<>();
         for (String recipient : getInexistentAllSet()) {
             if (!recipient.contains(":")) {
                 trapSet.add(recipient);
@@ -716,16 +731,12 @@ public class Trap {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing trap.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/trap.map");
                 HashMap<String,Long> map = getMap();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -740,11 +751,8 @@ public class Trap {
         if (file.exists()) {
             try {
                 Map<String,Long> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String token : map.keySet()) {
                     Long time2 = map.get(token);

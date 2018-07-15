@@ -44,7 +44,9 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import net.spfbl.data.Abuse;
 import net.spfbl.data.Generic;
+import net.spfbl.data.Provider;
 import net.spfbl.spf.SPF;
 import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.spf.SPF.Status;
@@ -1025,6 +1027,8 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 return "INVALID";
             } else if (Ignore.contains(token)) {
                 return "IGNORED";
+            } else if (Provider.contains(token)) {
+                return "PROVIDER";
             } else if (isReceiveReject()) {
                 return "REJECTED";
             } else if (isReceiveDrop()) {
@@ -1043,6 +1047,30 @@ public final class Peer implements Serializable, Comparable<Peer> {
                 }
             } else {
                 return "EXISTS";
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return ex.getMessage();
+        }
+    }
+    
+    public String processAbuse(String domain, String email) {
+        try {
+            if (isReceiveReject()) {
+                return "REJECTED";
+            } else if (isReceiveDrop()) {
+                return "DROPPED";
+            } else if (Abuse.put(domain, email)) {
+                return "ADDED";
+            } else {
+                return "EXISTS";
+            }
+        } catch (ProcessException ex) {
+            if (ex.isErrorMessage("INVALID ADDRESS")) {
+                return "INVALID";
+            } else {
+                Server.logError(ex);
+                return ex.getMessage();
             }
         } catch (Exception ex) {
             Server.logError(ex);

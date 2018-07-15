@@ -12,16 +12,14 @@
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with SPFBL.  If not, see <http://www.gnu.org/licenses/>.
+ * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 package net.spfbl.core;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.util.PriorityQueue;
@@ -64,69 +62,68 @@ public class Huffman implements Comparable<Huffman>, Serializable {
             int[] frequency = new int[256];
             frequency['+']++;
             File file = new File("C:\\Users\\Leandro\\Desktop\\amostra.txt");
-            BufferedReader reader = new BufferedReader(new FileReader(file));
-            String line;
-            
-            while ((line = reader.readLine()) != null) {
-                String query = null;
-                byte[] byteArray = null;
-                try {
-                    byteArray = Server.decryptToByteArrayURLSafe(line);
-                } catch (Exception ex) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String query = null;
+                    byte[] byteArray = null;
                     try {
-                        byteArray = Server.decryptToByteArray(line);
-                    } catch (Exception ex2) {
-                        try {
-                            query = Server.decrypt(line);
-                        } catch (Exception ex3) {
-                        }
-                    }
-                }
-                if (byteArray != null) {
-                    try {
-                        query = huffman.decode(byteArray, 8);
+                        byteArray = Server.decryptToByteArrayURLSafe(line);
                     } catch (Exception ex) {
                         try {
-                            query = huffman.decode(byteArray, 0);
+                            byteArray = Server.decryptToByteArray(line);
                         } catch (Exception ex2) {
-                            query = null;
+                            try {
+                                query = Server.decrypt(line);
+                            } catch (Exception ex3) {
+                            }
                         }
                     }
-                }
-                if (query != null) {
-                    System.out.println(query);
-                    query += '\0';
-                    char[] input = query.toCharArray();
-                    for (int i = 0; i < input.length; i++) {
-                        frequency[input[i]]++;
+                    if (byteArray != null) {
+                        try {
+                            query = huffman.decode(byteArray, 8);
+                        } catch (Exception ex) {
+                            try {
+                                query = huffman.decode(byteArray, 0);
+                            } catch (Exception ex2) {
+                                query = null;
+                            }
+                        }
+                    }
+                    if (query != null) {
+                        System.out.println(query);
+                        query += '\0';
+                        char[] input = query.toCharArray();
+                        for (int i = 0; i < input.length; i++) {
+                            frequency[input[i]]++;
+                        }
                     }
                 }
             }
-            reader.close();
             huffman = buildTree(frequency);
-            FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj");
-            SerializationUtils.serialize(huffman, outputStream);
-            outputStream.close();
-
-//            int[] frequency = new int[256];
-//            int count = 0;
-//            String line;
-//            while ((line = reader.readLine()) != null) {
-//                line = " " + line;
-//                if (count % 3 == 0) {
-//                    line += '\0';
-//                }
-//                char[] input = line.toCharArray();
-//                for (int i = 0; i < input.length; i++) {
-//                    frequency[input[i]]++;
-//                }
-//                count++;
-//            }
-//            reader.close();
-//            huffman = buildTree(frequency);
-//            FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj");
-//            SerializationUtils.serialize(huffman, outputStream);
-//            outputStream.close();
+            try (FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj")) {
+                SerializationUtils.serialize(huffman, outputStream);
+                outputStream.close();
+    //            int[] frequency = new int[256];
+    //            int count = 0;
+    //            String line;
+    //            while ((line = reader.readLine()) != null) {
+    //                line = " " + line;
+    //                if (count % 3 == 0) {
+    //                    line += '\0';
+    //                }
+    //                char[] input = line.toCharArray();
+    //                for (int i = 0; i < input.length; i++) {
+    //                    frequency[input[i]]++;
+    //                }
+    //                count++;
+    //            }
+    //            reader.close();
+    //            huffman = buildTree(frequency);
+    //            FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Leandro\\Desktop\\huffmanplus.obj");
+    //            SerializationUtils.serialize(huffman, outputStream);
+    //            outputStream.close();
+            }
         } finally {
             System.exit(0);
         }
@@ -210,8 +207,8 @@ public class Huffman implements Comparable<Huffman>, Serializable {
         return buildTree(frequency);
     }
 
-    private static Huffman buildTree(int[] frequency) {
-        PriorityQueue<Huffman> queue = new PriorityQueue<Huffman>();
+    public static Huffman buildTree(int[] frequency) {
+        PriorityQueue<Huffman> queue = new PriorityQueue<>();
         for (char i = 0; i < 256; i++) {
             if (frequency[i] > 0) {
                 queue.add(new Huffman(i, frequency[i], null, null));

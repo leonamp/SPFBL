@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import com.mysql.jdbc.exceptions.jdbc4.CommunicationsException;
 import com.mysql.jdbc.exceptions.jdbc4.MySQLNonTransientConnectionException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -120,6 +121,11 @@ public class ConnectionPooler {
         } catch (MySQLNonTransientConnectionException ex) {
             CONNECTION = null;
             Server.logMySQL("connection failed.");
+            SEMAPHORE.release();
+            return null;
+        } catch (CommunicationsException ex) {
+            CONNECTION = null;
+            Server.logMySQL("link failure.");
             SEMAPHORE.release();
             return null;
         } catch (Exception ex) {

@@ -27,6 +27,11 @@
 #
 #   sudo apt-get install nmap
 #
+# Caso esteja usando o freebsb, instale o nmap por este método:
+#
+#   cd /usr/ports/security/nmap
+#   make all install clean
+#
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix.spfbl.net"
@@ -237,6 +242,42 @@ case $1 in
 		elif [[ $response == "TIMEOUT" ]]; then
 			exit 2
 		elif [[ $response == "OK" ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
+	'test')
+		# Comando para testar uma nova funcionalidade em desenvolvimento.
+		#
+		# Códigos de saída:
+		#
+		#    0: processo iniciado com sucesso.
+		#    1: processo anterior não finalizado.
+		#    2: timeout de conexão.
+		#    3: out of service.
+
+
+		response=$(echo "TEST" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+
+		if [[ $response == "" ]]; then
+			$(incrementTimeout)
+			if [ "$?" -le "$MAX_TIMEOUT" ]; then
+				response="TIMEOUT"
+			else
+				response="OUT OF SERVICE"
+			fi
+		else
+			$(resetTimeout)
+		fi
+
+		echo "$response"
+
+		if [[ $response == "OUT OF SERVICE" ]]; then
+			exit 3
+		elif [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response == "STARTING TEST" ]]; then
 			exit 0
 		else
 			exit 1
@@ -660,8 +701,9 @@ case $1 in
 				#
 				#    0: adicionado com sucesso.
 				#    1: erro ao tentar adicionar bloqueio.
-				#    2: timeout de conexão.
-				#    3: out of service.
+				#    2: registro já incluido.
+				#    3: timeout de conexão.
+				#    4: out of service.
 
 				if [ $# -lt "3" ]; then
 					head
@@ -690,6 +732,8 @@ case $1 in
 						exit 2
 					elif [[ $response == "ADDED" ]]; then
 						exit 0
+					elif [[ $response == "ALREADY EXISTS" ]]; then
+						exit 2
 					else
 						exit 1
 					fi
@@ -2417,152 +2461,6 @@ case $1 in
 			;;
 		esac
 	;;
-	'retention')
-		case $2 in
-			'show')
-				# Parâmetros de entrada:
-				#
-				#    1. host: Endereço do peer.
-				#
-				# Códigos de saída:
-				#
-				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar.
-				#    2: timeout de conexão.
-				#    3: out of service.
-
-				if [ $# -lt "3" ]; then
-					head
-					printf "Invalid Parameters. Syntax: $0 retention show { host | all }\n"
-				else
-					host=$3
-
-					if [ "$host" == "all" ]; then
-						response=$(echo "PEER RETENTION SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					else
-						response=$(echo "PEER RETENTION SHOW $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					fi
-
-					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
-					else
-						$(resetTimeout)
-					fi
-
-					echo "$response"
-
-					if [[ $response == "OUT OF SERVICE" ]]; then
-						exit 3
-					elif [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					else
-						exit 0
-					fi
-				fi
-			;;
-			'release')
-				# Parâmetros de entrada:
-				#
-				#    1. sender: Bloqueio recebido do peer.
-				#
-				# Códigos de saída:
-				#
-				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar.
-				#    2: timeout de conexão.
-				#    3: out of service.
-
-				if [ $# -lt "3" ]; then
-					head
-					printf "Invalid Parameters. Syntax: $0 retention release { sender | all }\n"
-				else
-					sender=$3
-
-					if [ "$sender" == "all" ]; then
-						response=$(echo "PEER RETENTION RELEASE ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					else
-						response=$(echo "PEER RETENTION RELEASE $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					fi
-
-					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
-					else
-						$(resetTimeout)
-					fi
-
-					echo "$response"
-
-					if [[ $response == "OUT OF SERVICE" ]]; then
-						exit 3
-					elif [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					else
-						exit 0
-					fi
-				fi
-			;;
-			'reject')
-				# Parâmetros de entrada:
-				#
-				#    1. sender: Bloqueio recebido do peer.
-				#
-				# Códigos de saída:
-				#
-				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar.
-				#    2: timeout de conexão.
-				#    3: out of service.
-
-				if [ $# -lt "3" ]; then
-					head
-					printf "Invalid Parameters. Syntax: $0 retention reject { sender | all }\n"
-				else
-					sender=$3
-
-					if [ "$sender" == "all" ]; then
-						response=$(echo "PEER RETENTION REJECT ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					else
-						response=$(echo "PEER RETENTION REJECT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
-					fi
-
-					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
-					else
-						$(resetTimeout)
-					fi
-
-					echo "$response"
-
-					if [[ $response == "OUT OF SERVICE" ]]; then
-						exit 3
-					elif [[ $response == "TIMEOUT" ]]; then
-						exit 2
-					else
-						exit 0
-					fi
-				fi
-			;;
-			*)
-				head
-				printf "Syntax:\n    $0 retention show { host | all }\n    $0 retention release { sender | all }\n    $0 retention reject { sender | all }\n"
-			;;
-		esac
-	;;
 	'reputation')
 		# Parâmetros de entrada: nenhum
 		#
@@ -3092,6 +2990,50 @@ case $1 in
 			fi
 		fi
 	;;
+	'signer')
+		# Códigos de saída:
+		#
+		#    0: registro incluído.
+		#    1: consulta não encontrada.
+		#    2: timeout de conexão.
+		#    3: consulta inválida.
+		#    4: out of service.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 signer <ticket> <address>\n"
+		else
+			ticket=$2
+			signer=$3
+
+			response=$(echo "SIGNER $ticket $signer" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+
+			if [[ $response == "" ]]; then
+				$(incrementTimeout)
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
+					response="TIMEOUT"
+				else
+					response="OUT OF SERVICE"
+				fi
+			else
+				$(resetTimeout)
+			fi
+
+			echo "$response"
+
+			if [[ $response == "OUT OF SERVICE" ]]; then
+				exit 4
+			elif [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "ADDED" ]]; then
+				exit 0
+			elif [[ $response == "NOT FOUND" ]]; then
+				exit 1
+			else
+				exit 3
+			fi
+		fi
+	;;
 	'malware')
 		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
 		#
@@ -3320,13 +3262,20 @@ case $1 in
 
 			if [ -f "$FILE" ]; then
 
-				COMPRESSED=$(iconv -f $CHARSET -t utf-8 $FILE | gzip --no-name --quiet --to-stdout)
-				LENGTH=$(echo "$COMPRESSED" | wc -c)
+                                #iconv -s -f $CHARSET -t utf-8 $FILE > $FILE.conv
+                                #if [ $? -eq "0" ]; then
+                                #    FILE=$FILE.conv
+                                #else
+                                #    rm $FILE.conv
+                                #fi
+
+                                cat $FILE | gzip --no-name --quiet --to-stdout > $FILE.gz
+                                LENGTH=$(wc -c < "$FILE.gz")
 
 				if [ "$LENGTH" -gt "65535" ]; then
 					response="TOO BIG"
 				else
-					ENCODED=$(iconv -f $CHARSET -t utf-8 $FILE | gzip --no-name --quiet --to-stdout | base64 --wrap=0)
+					ENCODED=$(base64 --wrap=0 $FILE.gz)
 					response=$(echo "BODY $TICKET $ENCODED" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 				fi
 			else
@@ -3361,6 +3310,18 @@ case $1 in
 		fi
 	;;
 	'holding')
+            run=0;
+            if [ -f "/var/tmp/SPFBL_HOLDING" ]; then
+                elapsed=$(($(date +%s) - $(date +%s -r /var/tmp/SPFBL_HOLDING)))
+                if [ $elapsed -gt 3600 ]; then
+                    run=1;
+                fi
+            else
+                run=1;
+            fi
+            if [ $run -eq 1 ]; then
+
+                touch /var/tmp/SPFBL_HOLDING
 		which exigrep > /dev/null
 
 		if [ $? -eq 0 ]; then
@@ -3371,8 +3332,7 @@ case $1 in
 
 				while read -r message; do
 
-					# ticket=$(exim -Mvh $message | grep -Pom 1 "Received-SPFBL: [A-Z]+ (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
-					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD|FLAG) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
 
 					if [ $? -eq 0 ]; then
 
@@ -3420,6 +3380,8 @@ case $1 in
 				done <<< "$list"
 			fi
 		fi
+                rm /var/tmp/SPFBL_HOLDING
+            fi
 	;;
 	'ham')
 		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
@@ -4596,7 +4558,6 @@ case $1 in
 		printf "    $0 clear hostname\n"
 		printf "    $0 tld { add tld | drop tld | show }\n"
 		printf "    $0 peer { add host [email] | drop { host | all } | show [host] | set host send receive | ping host | send host }\n"
-		printf "    $0 retention { show [host] | release { sender | all } | reject { sender | all } }\n"
 		printf "    $0 provider { add sender | drop sender | show }\n"
 		printf "    $0 ignore { add sender | drop sender | show }\n"
 		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"

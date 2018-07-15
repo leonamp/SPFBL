@@ -29,6 +29,7 @@ import java.net.SocketException;
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -44,6 +45,7 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import net.spfbl.core.Client.Permission;
 import net.spfbl.core.Peer.Receive;
+import net.spfbl.data.Abuse;
 import net.spfbl.data.Block;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
@@ -303,6 +305,15 @@ public final class AdministrationTCP extends Server {
                     } else {
                         return Core.getAplication() + "\n" + client + "\n";
                     }
+                } else if (token.equals("THREAD") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("SHOW")) {
+                        for (Thread thread : Thread.getAllStackTraces().keySet()) {
+                            result += thread + "\n";
+                        }
+                    } else {
+                        result = "INVALID PARAMETERS\n";
+                    }
                 } else if (token.equals("ANALISE") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("SHOW")) {
@@ -430,6 +441,10 @@ public final class AdministrationTCP extends Server {
                             }
                             result = "QUEUED\n";
                         }
+                    } else if (Core.isExecutableSignature(token)) {
+                        result = "INVALID PARAMETERS\n";
+                    } else if (Core.isSignatureURL(token)) {
+                        result = "INVALID PARAMETERS\n";
                     } else if (Domain.isHostname(token)) {
                         String hostname =  Domain.normalizeHostname(token, false);
                         if (tokenizer.hasMoreTokens()) {
@@ -495,111 +510,132 @@ public final class AdministrationTCP extends Server {
                         result = "INVALID PARAMETERS\n";
                     }
                 } else if (token.equals("DUMP") && !tokenizer.hasMoreTokens()) {
-                    StringBuilder builder = new StringBuilder();
-                    builder.append("BLOCK DROP ALL\n");
-                    for (String block : Block.getAll()) {
-                        builder.append("BLOCK ADD ");
-                        builder.append(block);
-                        builder.append('\n');
-                    }
-                    builder.append("CLIENT DROP ALL\n");
-                    for (Client clientLocal : Client.getSet()) {
-                        builder.append("CLIENT ADD ");
-                        builder.append(clientLocal.getCIDR());
-                        builder.append(' ');
-                        builder.append(clientLocal.getDomain());
-                        builder.append(' ');
-                        builder.append(clientLocal.getPermission().name());
-                        if (clientLocal.hasEmail()) {
-                            builder.append(' ');
-                            builder.append(clientLocal.getEmail());
+                    if (Server.tryAcquireStoreCache()) {
+                        try {
+                            StringBuilder builder = new StringBuilder();
+                            builder.append("BLOCK DROP ALL\n");
+                            for (String block : Block.getAll()) {
+                                builder.append("BLOCK ADD ");
+                                builder.append(block);
+                                builder.append('\n');
+                            }
+                            builder.append("CLIENT DROP ALL\n");
+                            for (Client clientLocal : Client.getSet()) {
+                                builder.append("CLIENT ADD ");
+                                builder.append(clientLocal.getCIDR());
+                                builder.append(' ');
+                                builder.append(clientLocal.getDomain());
+                                builder.append(' ');
+                                builder.append(clientLocal.getPermission().name());
+                                if (clientLocal.hasEmail()) {
+                                    builder.append(' ');
+                                    builder.append(clientLocal.getEmail());
+                                }
+                                builder.append('\n');
+                            }
+                            builder.append("DNSBL DROP ALL\n");
+                            builder.append("DNSWL DROP ALL\n");
+                            builder.append("URIBL DROP ALL\n");
+                            builder.append("DNSAL DROP ALL\n");
+                            for (Zone zone : QueryDNS.getValues()) {
+                                if (zone.isDNSBL()) {
+                                    builder.append("DNSBL ADD ");
+                                } else if (zone.isURIBL()) {
+                                    builder.append("URIBL ADD ");
+                                } else if (zone.isDNSWL()) {
+                                    builder.append("DNSWL ADD ");
+                                } else if (zone.isDNSAL()) {
+                                    builder.append("DNSAL ADD ");
+                                }
+                                builder.append(zone.getHostName());
+                                builder.append(' ');
+                                builder.append(zone.getMessage());
+                                builder.append('\n');
+                            }
+                            builder.append("GUESS DROP ALL\n");
+                            HashMap<String, String> guessMap = SPF.getGuessMap();
+                            for (String domain : guessMap.keySet()) {
+                                String guess = guessMap.get(domain);
+                                builder.append("GUESS ADD ");
+                                builder.append(domain);
+                                builder.append(" \"");
+                                builder.append(guess);
+                                builder.append("\"\n");
+                            }
+                            builder.append("IGNORE DROP ALL\n");
+                            for (String ignore : Ignore.getAll()) {
+                                builder.append("IGNORE ADD ");
+                                builder.append(ignore);
+                                builder.append('\n');
+                            }
+                            builder.append("PEER DROP ALL\n");
+                            for (Peer peer : Peer.getSet()) {
+                                builder.append("PEER ADD ");
+                                builder.append(peer.getAddress());
+                                builder.append(':');
+                                builder.append(peer.getPort());
+                                builder.append(' ');
+                                builder.append(peer.getSendStatus().name());
+                                builder.append(' ');
+                                builder.append(peer.getReceiveStatus().name());
+                                if (peer.hasEmail()) {
+                                    builder.append(' ');
+                                    builder.append(peer.getEmail());
+                                }
+                                builder.append('\n');
+                            }
+                            builder.append("PROVIDER DROP ALL\n");
+                            for (String provider : Provider.getAll()) {
+                                builder.append("PROVIDER ADD ");
+                                builder.append(provider);
+                                builder.append('\n');
+                            }
+                            builder.append("TLD DROP ALL\n");
+                            for (String tld : Domain.getTLDSet()) {
+                                builder.append("TLD ADD ");
+                                builder.append(tld);
+                                builder.append('\n');
+                            }
+                            builder.append("TRAP DROP ALL\n");
+                            for (String trap : Trap.getTrapAllSet()) {
+                                Long time = Trap.getTime(trap);
+                                builder.append("TRAP ADD ");
+                                builder.append(trap);
+                                builder.append(' ');
+                                builder.append(time);
+                                builder.append('\n');
+                            }
+                            builder.append("ABUSE DROP ALL\n");
+                            for (String address : Abuse.getKeySet()) {
+                                String email = Abuse.getEmail(address);
+                                builder.append("ABUSE ADD ");
+                                builder.append(address);
+                                builder.append(' ');
+                                builder.append(email);
+                                builder.append('\n');
+                            }
+                            builder.append("USER DROP ALL\n");
+                            for (User userLocal : User.getSet()) {
+                                builder.append("USER ADD ");
+                                builder.append(userLocal.getEmail());
+                                builder.append(' ');
+                                builder.append(userLocal.getName());
+                                builder.append('\n');
+                            }
+                            builder.append("WHITE DROP ALL\n");
+                            for (String white : White.getAll()) {
+                                builder.append("WHITE ADD ");
+                                builder.append(white);
+                                builder.append('\n');
+                            }
+                            builder.append("STORE\n");
+                            result = builder.toString();
+                        } finally {
+                            Server.releaseStoreCache();
                         }
-                        builder.append('\n');
+                    } else {
+                        result = "ALREADY STORING\n";
                     }
-                    builder.append("DNSBL DROP ALL\n");
-                    builder.append("DNSWL DROP ALL\n");
-                    for (Zone zone : QueryDNS.getValues()) {
-                        if (zone.isDNSBL()) {
-                            builder.append("DNSBL ADD ");
-                        } else if (zone.isURIBL()) {
-                            builder.append("URIBL ADD ");
-                        } else if (zone.isDNSWL()) {
-                            builder.append("DNSWL ADD ");
-                        }
-                        builder.append(zone.getHostName());
-                        builder.append(' ');
-                        builder.append(zone.getMessage());
-                        builder.append('\n');
-                    }
-                    builder.append("GUESS DROP ALL\n");
-                    HashMap<String,String> guessMap = SPF.getGuessMap();
-                    for (String domain : guessMap.keySet()) {
-                        String guess = guessMap.get(domain);
-                        builder.append("GUESS ADD ");
-                        builder.append(domain);
-                        builder.append(" \"");
-                        builder.append(guess);
-                        builder.append("\"\n");
-                    }
-                    builder.append("IGNORE DROP ALL\n");
-                    for (String ignore : Ignore.getAll()) {
-                        builder.append("IGNORE ADD ");
-                        builder.append(ignore);
-                        builder.append('\n');
-                    }
-                    builder.append("PEER DROP ALL\n");
-                    for (Peer peer : Peer.getSet()) {
-                        builder.append("PEER ADD ");
-                        builder.append(peer.getAddress());
-                        builder.append(':');
-                        builder.append(peer.getPort());
-                        builder.append(' ');
-                        builder.append(peer.getSendStatus().name());
-                        builder.append(' ');
-                        builder.append(peer.getReceiveStatus().name());
-                        if (peer.hasEmail()) {
-                            builder.append(' ');
-                            builder.append(peer.getEmail());
-                        }
-                        builder.append('\n');
-                    }
-                    builder.append("PROVIDER DROP ALL\n");
-                    for (String provider : Provider.getAll()) {
-                        builder.append("PROVIDER ADD ");
-                        builder.append(provider);
-                        builder.append('\n');
-                    }
-                    builder.append("TLD DROP ALL\n");
-                    for (String tld : Domain.getTLDSet()) {
-                        builder.append("TLD ADD ");
-                        builder.append(tld);
-                        builder.append('\n');
-                    }
-                    builder.append("TRAP DROP ALL\n");
-                    for (String trap : Trap.getTrapAllSet()) {
-                        Long time = Trap.getTime(trap);
-                        builder.append("TRAP ADD ");
-                        builder.append(trap);
-                        builder.append(' ');
-                        builder.append(time);
-                        builder.append('\n');
-                    }
-                    builder.append("USER DROP ALL\n");
-                    for (User userLocal : User.getSet()) {
-                        builder.append("USER ADD ");
-                        builder.append(userLocal.getEmail());
-                        builder.append(' ');
-                        builder.append(userLocal.getName());
-                        builder.append('\n');
-                    }
-                    builder.append("WHITE DROP ALL\n");
-                    for (String white : White.getAll()) {
-                        builder.append("WHITE ADD ");
-                        builder.append(white);
-                        builder.append('\n');
-                    }
-                    builder.append("STORE\n");
-                    result = builder.toString();
                 } else if (token.equals("FIREWALL") && !tokenizer.hasMoreTokens()) {
                     String iface = Core.getInterface();
                     HashMap<Object,TreeSet<Client>> clientMap;
@@ -612,14 +648,24 @@ public final class AdministrationTCP extends Server {
                     builder.append("# \n");
                     builder.append("\n");
                     builder.append("# Flush all rules and create the SPFBL chain.\n");
-                    builder.append("iptables -t filter -F SPFBL\n");
-                    builder.append("ip6tables -t filter -F SPFBL\n");
-                    builder.append("\n");
-                    builder.append("iptables -t filter -D INPUT -j SPFBL\n");
-                    builder.append("ip6tables -t filter -D INPUT -j SPFBL\n");
-                    builder.append("\n");
-                    builder.append("iptables -t filter -X SPFBL\n");
-                    builder.append("ip6tables -t filter -X SPFBL\n");
+                    builder.append("COUNT=$(iptables -S | egrep -c \"^-N SPFBL$\")\n");
+                    builder.append("if [ \"$COUNT\" -ne \"0\" ]; then\n");
+                    builder.append("    COUNT=$(iptables -S INPUT | egrep -c \"^-A INPUT -j SPFBL$\")\n");
+                    builder.append("    if [ \"$COUNT\" -ne \"0\" ]; then\n");
+                    builder.append("        iptables -t filter -D INPUT -j SPFBL\n");
+                    builder.append("    fi\n");
+                    builder.append("    iptables -t filter -F SPFBL\n");
+                    builder.append("    iptables -t filter -X SPFBL\n");
+                    builder.append("fi\n");
+                    builder.append("COUNT=$(ip6tables -S | egrep -c \"^-N SPFBL$\")\n");
+                    builder.append("if [ \"$COUNT\" -ne \"0\" ]; then\n");
+                    builder.append("    COUNT=$(ip6tables -S INPUT | egrep -c \"^-A INPUT -j SPFBL$\")\n");
+                    builder.append("    if [ \"$COUNT\" -ne \"0\" ]; then\n");
+                    builder.append("        ip6tables -t filter -D INPUT -j SPFBL\n");
+                    builder.append("    fi\n");
+                    builder.append("    ip6tables -t filter -F SPFBL\n");
+                    builder.append("    ip6tables -t filter -X SPFBL\n");
+                    builder.append("fi\n");
                     builder.append("\n");
                     builder.append("iptables -t filter -N SPFBL\n");
                     builder.append("ip6tables -t filter -N SPFBL\n");
@@ -1022,7 +1068,9 @@ public final class AdministrationTCP extends Server {
                     }
                 } else if (token.equals("SHUTDOWN") && !tokenizer.hasMoreTokens()) {
                     // Comando para finalizar o serviço.
-                    if (shutdown()) {
+                    if (!tryAcquireTestCache()) {
+                        result = "PROCESSING TEST\n";
+                    } else if (shutdown()) {
                         // Fechamento de processos realizado com sucesso.
                         result = "OK\n";
                     } else {
@@ -1035,6 +1083,13 @@ public final class AdministrationTCP extends Server {
                         result = "STARTING STORE\n";
                     } else {
                         result = "ALREADY STORING\n";
+                    }
+                } else if (token.equals("TEST") && !tokenizer.hasMoreTokens()) {
+                    // Comando para testar funções novas.
+                    if (tryTestCache()) {
+                        result = "STARTING TEST\n";
+                    } else {
+                        result = "ALREADY TESTING\n";
                     }
                 } else if (token.equals("TLD") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
@@ -1243,6 +1298,59 @@ public final class AdministrationTCP extends Server {
                     } else {
                         result = "INVALID COMMAND\n";
                     }
+                } else if (token.equals("DNSAL") && tokenizer.hasMoreTokens()) {
+                    token = tokenizer.nextToken();
+                    if (token.equals("ADD") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
+                        }
+                        if (QueryDNS.addDNSAL(hostname, message)) {
+                            result = "ADDED\n";
+                        } else {
+                            result = "ALREADY EXISTS\n";
+                        }
+                    } else if (token.equals("SET") && tokenizer.countTokens() >= 2) {
+                        String hostname = tokenizer.nextToken();
+                        String message = tokenizer.nextToken();
+                        while (tokenizer.hasMoreTokens()) {
+                            message += ' ' + tokenizer.nextToken();
+                        }
+                        if (QueryDNS.set(hostname, message)) {
+                            result = "UPDATED\n";
+                        } else {
+                            result = "NOT FOUND\n";
+                        }
+                    } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                        while (tokenizer.hasMoreTokens()) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                for (Zone zone : QueryDNS.dropAllDNSAL()) {
+                                    result += "DROPPED " + zone + "\n";
+                                }
+                            } else {
+                                Zone zone = QueryDNS.dropDNSAL(token);
+                                if (zone == null) {
+                                    result += "NOT FOUND\n";
+                                } else {
+                                    result += "DROPPED " + zone + "\n";
+                                }
+                            }
+                        }
+                    } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                        HashMap<String,Zone> map = QueryDNS.getDNSALMap();
+                        if (map.isEmpty()) {
+                            result = "EMPTY\n";
+                        } else {
+                            for (String key : map.keySet()) {
+                                Zone zone = map.get(key);
+                                result += zone + " " + zone.getMessage() + "\n";
+                            }
+                        }
+                    } else {
+                        result = "INVALID COMMAND\n";
+                    }
                 } else if (token.equals("PROVIDER") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -1389,20 +1497,24 @@ public final class AdministrationTCP extends Server {
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
                         while (tokenizer.hasMoreElements()) {
                             try {
-                                String blockedToken = tokenizer.nextToken();
-                                int index = blockedToken.indexOf(':');
+                                String blockToken = tokenizer.nextToken();
+                                int index = blockToken.indexOf(':');
                                 String clientLocal = null;
                                 if (index != -1) {
-                                    String prefix = blockedToken.substring(0, index);
+                                    String prefix = blockToken.substring(0, index);
                                     if (Domain.isValidEmail(prefix)) {
                                         clientLocal = prefix;
-                                        blockedToken = blockedToken.substring(index+1);
+                                        blockToken = blockToken.substring(index+1);
                                     }
                                 }
-                                if (clientLocal == null && (blockedToken = Block.add(blockedToken)) != null) {
-                                    Peer.sendBlockToAll(blockedToken);
+                                if (Core.isValidURL(blockToken)) {
+                                    blockToken = Core.getSignatureURL(blockToken);
+                                    clientLocal = null;
+                                }
+                                if (clientLocal == null && (blockToken = Block.add(blockToken)) != null) {
+                                    Peer.sendBlockToAll(blockToken);
                                     result += "ADDED\n";
-                                } else if (clientLocal != null && Block.add(clientLocal, blockedToken)) {
+                                } else if (clientLocal != null && Block.add(clientLocal, blockToken)) {
                                     result += "ADDED\n";
                                 } else {
                                     result += "ALREADY EXISTS\n";
@@ -1877,6 +1989,58 @@ public final class AdministrationTCP extends Server {
                     } else {
                         result = "INVALID COMMAND\n";
                     }
+                } else if (token.equals("ABUSE") && tokenizer.hasMoreTokens()) {
+                    if (Abuse.hasExternalDNSAL()) {
+                        result = "EXTERNAL DNSAL\n";
+                    } else {
+                        token = tokenizer.nextToken();
+                        if (token.equals("ADD") && tokenizer.countTokens() == 2) {
+                            try {
+                                String address = tokenizer.nextToken();
+                                String email = tokenizer.nextToken();
+                                if (Abuse.put(address, email)) {
+                                    result = "ADDED\n";
+                                } else {
+                                    result = "ALREADY EXISTS\n";
+                                }
+                            } catch (ProcessException ex) {
+                                result = ex.getMessage() + "\n";
+                            }
+                        } else if (token.equals("DROP") && tokenizer.hasMoreTokens()) {
+                            token = tokenizer.nextToken();
+                            if (token.equals("ALL")) {
+                                TreeSet<String> domainSet = Abuse.dropAll();
+                                if (domainSet.isEmpty()) {
+                                    result = "EMPTY\n";
+                                } else {
+                                    for (String domain : domainSet) {
+                                        result += "DROPPED " + domain + "\n";
+                                    }
+                                }
+                            } else {
+                                try {
+                                    if (Abuse.drop(token)) {
+                                        result = "DROPPED\n";
+                                    } else {
+                                        result = "NOT FOUND\n";
+                                    }
+                                } catch (ProcessException ex) {
+                                    result = ex.getMessage() + "\n";
+                                }
+                            }
+                        } else if (token.equals("SHOW") && !tokenizer.hasMoreTokens()) {
+                            Map<String,String> abuseMap = Abuse.getMap();
+                            for (String domain : abuseMap.keySet()) {
+                                String email = abuseMap.get(domain);
+                                result += domain + " " + email + "\n";
+                            }
+                            if (result.length() == 0) {
+                                result = "EMPTY\n";
+                            }
+                        } else {
+                            result = "INVALID COMMAND\n";
+                        }
+                    }
                 } else if (token.equals("INEXISTENT") && tokenizer.hasMoreTokens()) {
                     token = tokenizer.nextToken();
                     if (token.equals("ADD") && tokenizer.hasMoreTokens()) {
@@ -2283,17 +2447,30 @@ public final class AdministrationTCP extends Server {
                                     } else {
                                         result = "NOT CHANGED\n";
                                     }
-//                                } else if (token.equals("LOCAL") && tokenizer.hasMoreElements()) {
-//                                    token = tokenizer.nextToken();
-//                                    if (token.equals("TRUE")) {
-//                                        user.setLocal(true);
-//                                        result = "OK\n";
-//                                    } else if (token.equals("FALSE")) {
-//                                        user.setLocal(false);
-//                                        result = "OK\n";
-//                                    } else {
-//                                        result = "INVALID COMMAND\n";
-//                                    }
+                                } else if (token.equals("TIMEZONE") && tokenizer.hasMoreElements()) {
+                                    token = tokenizer.nextToken();
+                                    if (user.setTimeZone(token)) {
+                                        result = "CHANGED TO " + user.getTimeZone().getID() + "\n";
+                                    } else {
+                                        result = "NOT CHANGED\n";
+                                    }
+                                } else if (token.equals("BLOCKCLEAR") && tokenizer.hasMoreElements()) {
+                                    token = tokenizer.nextToken();
+                                    if (token.equals("FALSE")) {
+                                        if (user.setSupressClearBLOCK(true)) {
+                                            result = "CHANGED\n";
+                                        } else {
+                                            result = "NOT CHANGED\n";
+                                        }
+                                    } else if (token.equals("TRUE")) {
+                                        if (user.setSupressClearBLOCK(false)) {
+                                             result = "CHANGED\n";
+                                        } else {
+                                            result = "NOT CHANGED\n";
+                                        }
+                                    } else {
+                                        result = "INVALID COMMAND\n";
+                                    }
                                 } else {
                                     result = "INVALID COMMAND\n";
                                 }

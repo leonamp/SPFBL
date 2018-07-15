@@ -280,11 +280,8 @@ public class Defer implements Serializable, Comparable<Defer> {
         if (file.exists()) {
             try {
                 HashMap<String,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);

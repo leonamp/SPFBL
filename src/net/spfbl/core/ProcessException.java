@@ -17,8 +17,6 @@
 
 package net.spfbl.core;
 
-import com.sun.mail.smtp.SMTPAddressFailedException;
-
 /**
  * Exceção de processamento.
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>

@@ -27,6 +27,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.TreeSet;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -48,6 +49,10 @@ public class Handle implements Serializable, Comparable<Handle> {
     private String provider = null;
     private String country = null;
     
+    private long lastQuery = 0; // Última vez que houve atualização do registro em milisegundos.
+    
+    private static final int REFRESH_TIME = 84; // Prazo máximo que o registro deve permanecer em cache em dias.
+    
     /**
      * Formatação padrão dos campos de data do WHOIS.
      */
@@ -59,8 +64,14 @@ public class Handle implements Serializable, Comparable<Handle> {
      */
     private Handle(String nic_hdl_br) {
         this.nic_hdl_br = nic_hdl_br;
+        this.lastQuery = System.currentTimeMillis();
         // Atualiza flag de atualização.
         CHANGED = true;
+    }
+    
+    public boolean isRegistryExpired() {
+        long expiredTime = (System.currentTimeMillis() - lastQuery) / Server.DAY_TIME;
+        return expiredTime > REFRESH_TIME;
     }
     
     /**
@@ -73,6 +84,7 @@ public class Handle implements Serializable, Comparable<Handle> {
             throw new ProcessException("ERROR: INVALID PERSON");
         } else if (!person.equals(this.person)) {
             this.person = person;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             CHANGED = true;
         }
@@ -86,6 +98,7 @@ public class Handle implements Serializable, Comparable<Handle> {
     public void setEmail(String e_mail) throws ProcessException {
         if (e_mail != null && !e_mail.equals(this.e_mail)) {
             this.e_mail = e_mail;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             CHANGED = true;
         }
@@ -101,11 +114,13 @@ public class Handle implements Serializable, Comparable<Handle> {
             throw new ProcessException("ERROR: INVALID CREATED");
         } else if (created.length() < 8) {
             this.created = null;
+            this.lastQuery = System.currentTimeMillis();
         } else {
             try {
                 Date createdDate = DATE_FORMATTER.parse(created);
                 if (!createdDate.equals(this.created)) {
                     this.created = createdDate;
+                    this.lastQuery = System.currentTimeMillis();
                     // Atualiza flag de atualização.
                     CHANGED = true;
                 }
@@ -128,6 +143,7 @@ public class Handle implements Serializable, Comparable<Handle> {
         } else if (changed.length() == 0) {
             if (this.changed != null) {
                 this.changed = null;
+                this.lastQuery = System.currentTimeMillis();
                 // Atualiza flag de atualização.
                 CHANGED = true;
             }
@@ -136,6 +152,7 @@ public class Handle implements Serializable, Comparable<Handle> {
                 Date changedDate = DATE_FORMATTER.parse(changed);
                 if (!changedDate.equals(this.changed)) {
                     this.changed = changedDate;
+                    this.lastQuery = System.currentTimeMillis();
                     // Atualiza flag de atualização.
                     CHANGED = true;
                 }
@@ -155,11 +172,13 @@ public class Handle implements Serializable, Comparable<Handle> {
         if (provider == null) {
             if (this.provider != null) {
                 this.provider = provider;
+                this.lastQuery = System.currentTimeMillis();
                 // Atualiza flag de atualização.
                 CHANGED = true;
             }
         } else if (!provider.equals(this.provider)) {
             this.provider = provider;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             CHANGED = true;
         }
@@ -174,14 +193,20 @@ public class Handle implements Serializable, Comparable<Handle> {
         if (country == null) {
             if (this.country != null) {
                 this.country = country;
+                this.lastQuery = System.currentTimeMillis();
                 // Atualiza flag de atualização.
                 CHANGED = true;
             }
         } else if (!country.equals(this.country)) {
             this.country = country;
+            this.lastQuery = System.currentTimeMillis();
             // Atualiza flag de atualização.
             CHANGED = true;
         }
+    }
+    
+    private void setQuery() {
+        this.lastQuery = System.currentTimeMillis();
     }
     
     /**
@@ -189,7 +214,8 @@ public class Handle implements Serializable, Comparable<Handle> {
      * @param key o campo do registro cujo valor deve ser retornado.
      * @return o valor de um campo do registro ou o valor de uma função.
      */
-    public String get(String key) throws ProcessException {
+    public String getValue(String key) throws ProcessException {
+        setQuery();
         if (key.equals("nic-hdl-br")) {
             return nic_hdl_br;
         } else if (key.equals("person")) {
@@ -234,12 +260,21 @@ public class Handle implements Serializable, Comparable<Handle> {
     /**
      * Mapa de registros com busca de hash O(1).
      */
-    private static final HashMap<String,Handle> MAP = new HashMap<String,Handle>();
+    private static final HashMap<String,Handle> MAP = new HashMap<>();
     
     /**
      * Flag que indica se o cache em disco foi modificado.
      */
     private static boolean CHANGED = false;
+    
+    protected synchronized boolean drop() {
+        if (MAP.remove(nic_hdl_br) != null) {
+            CHANGED = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
     
     /**
      * Retorna a pessoa de código informado.
@@ -250,7 +285,9 @@ public class Handle implements Serializable, Comparable<Handle> {
         if (nichdlbr == null) {
             return null;
         } else if (MAP.containsKey(nichdlbr)) {
-            return MAP.get(nichdlbr);
+            Handle ns = MAP.get(nichdlbr);
+            ns.setQuery();
+            return ns;
         } else {
             Handle ns = new Handle(nichdlbr);
             MAP.put(nichdlbr, ns);
@@ -258,9 +295,28 @@ public class Handle implements Serializable, Comparable<Handle> {
         }
     }
     
-    public static synchronized HashMap<String,Handle> getMap() {
-        HashMap<String,Handle> map = new HashMap<String,Handle>();
-        map.putAll(MAP);
+    private static synchronized TreeSet<String> getKeySet() {
+        TreeSet<String> keySet = new TreeSet<>();
+        keySet.addAll(MAP.keySet());
+        return keySet;
+    }
+    
+    private static synchronized Handle get(String key) {
+        return MAP.get(key);
+    }
+    
+    public static HashMap<String,Handle> getMap() {
+        HashMap<String,Handle> map = new HashMap<>();
+        for (String key : getKeySet()) {
+            Handle handle = get(key);
+            if (handle != null) {
+                if (handle.isRegistryExpired()) {
+                    handle.drop();
+                } else {
+                    map.put(key, handle);
+                }
+            }
+        }
         return map;
     }
     
@@ -270,17 +326,13 @@ public class Handle implements Serializable, Comparable<Handle> {
     public static void store() {
         if (CHANGED) {
             try {
-//                Server.logTrace("storing handle.map");
                 long time = System.currentTimeMillis();
                 HashMap<String,Handle> map = getMap();
                 File file = new File("./data/handle.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -302,11 +354,8 @@ public class Handle implements Serializable, Comparable<Handle> {
         if (file.exists()) {
             try {
                 HashMap<String,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);

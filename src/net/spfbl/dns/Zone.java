@@ -20,7 +20,8 @@ package net.spfbl.dns;
 import java.io.Serializable;
 import java.util.Locale;
 import net.spfbl.core.Core;
-import net.spfbl.dnsbl.ServerDNSBL;
+import net.spfbl.core.User;
+import net.spfbl.data.Abuse;
 import net.spfbl.whois.Domain;
 
 /**
@@ -39,13 +40,8 @@ public class Zone implements Serializable, Comparable<Zone> {
     public enum Type {
         DNSBL,
         URIBL,
-        DNSWL
-    }
-    
-    public Zone(ServerDNSBL zone) {
-        this.hostname = zone.getHostName();
-        this.message = zone.getMessage();
-        this.type = Type.DNSBL;
+        DNSWL,
+        DNSAL
     }
 
     public Zone(Type type, String hostname, String message) {
@@ -86,6 +82,10 @@ public class Zone implements Serializable, Comparable<Zone> {
         return type == Type.DNSWL;
     }
 
+    public boolean isDNSAL() {
+        return type == Type.DNSAL;
+    }
+
     public String getMessage(Locale locale, String token) {
         if (type == Type.DNSBL) {
             String url = Core.getURL(true, locale, token);
@@ -107,6 +107,18 @@ public class Zone implements Serializable, Comparable<Zone> {
                 return message;
             } else {
                 return url;
+            }
+        } else if (type == Type.DNSAL) {
+            String email = Abuse.getEmail(token);
+            if (email != null) {
+                return email;
+            } else {
+                String url = Core.getURL(true, locale, token);
+                if (url == null) {
+                    return message;
+                } else {
+                    return url;
+                }
             }
         } else {
             return message;

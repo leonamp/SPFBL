@@ -386,27 +386,27 @@ public class Generic {
         }
     }
 
-    public static boolean containsDynamicDomain(String address) {
-        if (address == null) {
-            return false;
-        } else {
-            int index = address.indexOf('@') + 1;
-            address = address.substring(index);
-            String hostname = Domain.normalizeHostname(address, true);
-            if (hostname == null) {
-                return false;
-            } else {
-                do {
-                    index = hostname.indexOf('.') + 1;
-                    hostname = hostname.substring(index);
-                    if (MAP.containsDynamic('.' + hostname)) {
-                        return true;
-                    }
-                } while (hostname.contains("."));
-                return false;
-            }
-        }
-    }
+//    public static boolean containsDynamicDomain(String address) {
+//        if (address == null) {
+//            return false;
+//        } else {
+//            int index = address.indexOf('@') + 1;
+//            address = address.substring(index);
+//            String hostname = Domain.normalizeHostname(address, true);
+//            if (hostname == null) {
+//                return false;
+//            } else {
+//                do {
+//                    index = hostname.indexOf('.') + 1;
+//                    hostname = hostname.substring(index);
+//                    if (MAP.containsDynamic('.' + hostname)) {
+//                        return true;
+//                    }
+//                } while (hostname.contains("."));
+//                return false;
+//            }
+//        }
+//    }
 
     private static String normalizeToken(String token, boolean regex) {
         if (token == null) {

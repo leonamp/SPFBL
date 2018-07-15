@@ -53,7 +53,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     /**
      * Lista dos blocos alocados ao AS.
      */
-    private final TreeSet<String> inetnumSet = new TreeSet<String>();
+    private final TreeSet<String> inetnumSet = new TreeSet<>();
     
     private final String server; // Servidor onde a informação do AS pode ser encontrada.
     private long lastRefresh = 0; // Última vez que houve atualização do registro em milisegundos.
@@ -116,8 +116,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         try {
             boolean reducedLocal = false;
             String autnumResult = null;
-            BufferedReader reader = new BufferedReader(new StringReader(result));
-            try {
+            try (BufferedReader reader = new BufferedReader(new StringReader(result))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
@@ -206,8 +205,6 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                         Server.logError("Linha não reconhecida: " + line);
                     }
                 }
-            } finally {
-                reader.close();
             }
             if (autnumResult == null) {
                 throw new ProcessException("ERROR: AS NOT FOUND");
@@ -288,7 +285,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
             if (owner == null) {
                 return null;
             } else {
-                return owner.get(key);
+                return owner.getValue(key);
             }
         } else if (key.startsWith("routing-c/")) {
             int index = key.indexOf('/') + 1;
@@ -297,7 +294,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
             if (routing == null) {
                 return null;
             } else {
-                return routing.get(key);
+                return routing.getValue(key);
             }
         } else if (key.startsWith("abuse-c/")) {
             int index = key.indexOf('/') + 1;
@@ -306,7 +303,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
             if (abuse == null) {
                 return null;
             } else {
-                return abuse.get(key);
+                return abuse.getValue(key);
             }
         } else {
             return null;
@@ -314,7 +311,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     }
     
     public static synchronized HashMap<String,AutonomousSystem> getMap() {
-        HashMap<String,AutonomousSystem> map = new HashMap<String,AutonomousSystem>();
+        HashMap<String,AutonomousSystem> map = new HashMap<>();
         map.putAll(MAP);
         return map;
     }
@@ -329,13 +326,10 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                 long time = System.currentTimeMillis();
                 HashMap<String,AutonomousSystem> map = getMap();
                 File file = new File("./data/as.map");
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     // Atualiza flag de atualização.
                     AS_CHANGED = false;
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {
@@ -357,11 +351,8 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
         if (file.exists()) {
             try {
                 HashMap<String,Object> map;
-                FileInputStream fileInputStream = new FileInputStream(file);
-                try {
+                try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     map = SerializationUtils.deserialize(fileInputStream);
-                } finally {
-                    fileInputStream.close();
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
@@ -380,7 +371,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     /**
      * Mapa de domínios com busca de hash O(1).
      */
-    private static final HashMap<String,AutonomousSystem> MAP = new HashMap<String,AutonomousSystem>();
+    private static final HashMap<String,AutonomousSystem> MAP = new HashMap<>();
     
 //    /**
 //     * Adciiona o registro de domínio no cache.
@@ -445,7 +436,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     /**
      * Conjunto de registros para atualização em background.
      */
-    private static final TreeSet<AutonomousSystem> REFRESH = new TreeSet<AutonomousSystem>();
+    private static final TreeSet<AutonomousSystem> REFRESH = new TreeSet<>();
     
     /**
      * Atualiza em background todos os registros adicionados no conjunto.

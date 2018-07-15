@@ -1,4 +1,25 @@
-### v2.8.1 ; release 08/04/2018:
+### v2.9.0 ; release 07/17/2018:
+
+NEW) Active feedback system with send of ARF to abuse email address;
+
+NEW) DNS abuse list (DNSAL) to propagate abuse email address data;
+
+NEW) URL and executable signature pattern to discover malware or phishing;
+
+UPDT) Update for ACME process to be compatible with Let's Encrypt;
+
+UPDT) Some improviments for ANALISE process;
+
+UPDT) Timezone for each user;
+
+UPDT) Some changes at MySQL schema;
+
+UPDT) DKIM signer information to apply at query data;
+
+FIX) Calculation of P2P reputation;
+
+
+### v2.8.1 ; release 04/08/2018:
 
 FIX) Security vulnerability in which it allows HTTP users to browse operating system files. Special thanks for fabio@cta.br.
 

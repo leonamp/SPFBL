@@ -1167,7 +1167,7 @@ public class White {
     }
     
     public static String normalizeTokenWhite(String token) throws ProcessException {
-        token = SPF.normalizeToken(token, true, true, true, false, false, false);
+        token = SPF.normalizeToken(token, true, true, true, false, false, false, false, false);
         if (token == null) {
             return null;
         } else if (token.contains(";PASS")) {
@@ -1415,6 +1415,17 @@ public class White {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
+        clear(userEmail, ip, sender, hostname, qualifier, recipient);
+    }
+    
+    public static void clear(
+            String userEmail,
+            String ip,
+            String sender,
+            String hostname,
+            String qualifier,
+            String recipient
+            ) throws ProcessException {
         String white;
         int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
         if ((white = White.clearCIDR(ip, mask)) != null) {
@@ -1425,16 +1436,14 @@ public class White {
             }
         }
         TreeSet<String> whiteSet = new TreeSet<>();
-        while ((white = find(client, user, ip, sender, hostname, qualifier, recipient)) != null) {
+        while ((white = find(userEmail, ip, sender, hostname, qualifier, recipient)) != null) {
             if (whiteSet.contains(white)) {
                 throw new ProcessException("FATAL WHITE ERROR " + white);
             } else if (dropExact(white)) {
-                if (user != null) {
-                    Server.logInfo("false negative WHITE '" + white + "' detected by '" + user.getEmail() + "'.");
-                } else if (client != null && client.hasEmail()) {
-                    Server.logInfo("false negative WHITE '" + white + "' detected by '" + client.getEmail() + "'.");
-                } else {
+                if (userEmail == null) {
                     Server.logInfo("false negative WHITE '" + white + "' detected.");
+                } else {
+                    Server.logInfo("false negative WHITE '" + white + "' detected by '" + userEmail + "'.");
                 }
             }
             whiteSet.add(white);
@@ -1461,6 +1470,16 @@ public class White {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
+        return key(userEmail, ip, sender, hostname, qualifier);
+    }
+    
+    public static String key(
+            String userEmail,
+            String ip,
+            String sender,
+            String hostname,
+            String qualifier
+    ) {
         if (userEmail == null) {
             userEmail = "";
         } else {
@@ -1506,95 +1525,107 @@ public class White {
             String ip, String sender, String hostname,
             String qualifier, String recipient
     ) {
-        TreeSet<String> whoisSet = new TreeSet<>();
-        TreeSet<String> regexSet = new TreeSet<>();
-        // Definição do e-mail do usuário.
         String userEmail = null;
         if (user != null) {
             userEmail = user.getEmail();
         } else if (client != null) {
             userEmail = client.getEmail();
         }
-        // Definição do destinatário.
-        String recipientDomain;
-        if (recipient != null && recipient.contains("@")) {
-            int index = recipient.indexOf('@');
-            recipient = recipient.toLowerCase();
-            recipientDomain = recipient.substring(index);
+        return find(userEmail, ip, sender, hostname, qualifier, recipient);
+    }
+    
+    public static String find(
+            String userEmail,
+            String ip, String sender, String hostname,
+            String qualifier, String recipient
+    ) {
+        String key = key(userEmail, ip, sender, hostname, qualifier);
+        if (SET.contains(key)) {
+            return key;
         } else {
-            recipient = null;
-            recipientDomain = null;
-        }
-        if (sender == null && hostname != null) {
-            try {
-                String domain = Domain.extractDomain(hostname, false);
-                sender = "mailer-daemon@" + domain;
-                if (containsExact(sender + ";PASS")) {
-                    return sender + ";PASS";
-                } else if (containsExact(userEmail + ":" + sender + ";PASS")) {
-                    return userEmail + ":" + sender + ";PASS";
-                }
-            } catch (Exception ex) {
-                sender = null;
+            TreeSet<String> whoisSet = new TreeSet<>();
+            TreeSet<String> regexSet = new TreeSet<>();
+            // Definição do destinatário.
+            String recipientDomain;
+            if (recipient != null && recipient.contains("@")) {
+                int index = recipient.indexOf('@');
+                recipient = recipient.toLowerCase();
+                recipientDomain = recipient.substring(index);
+            } else {
+                recipient = null;
+                recipientDomain = null;
             }
-        }
-        String found;
-        if ((found = findSender(userEmail, sender, qualifier,
-                recipient, recipientDomain, whoisSet, regexSet)) != null) {
-            return found;
-        } else if ((found = findSender(userEmail, sender, ip,
-                recipient, recipientDomain, whoisSet, regexSet)) != null) {
-            return found;
-        }
-        // Verifica o HELO.
-        if ((hostname = Domain.extractHost(hostname, true)) != null) {
-            if ((found = findHost(userEmail, sender, hostname, qualifier,
-                    recipient, recipientDomain, whoisSet, regexSet, SPF.matchHELO(ip, hostname))) != null) {
+            if (sender == null && hostname != null) {
+                try {
+                    String domain = Domain.extractDomain(hostname, false);
+                    sender = "mailer-daemon@" + domain;
+                    if (containsExact(sender + ";PASS")) {
+                        return sender + ";PASS";
+                    } else if (containsExact(userEmail + ":" + sender + ";PASS")) {
+                        return userEmail + ":" + sender + ";PASS";
+                    }
+                } catch (Exception ex) {
+                    sender = null;
+                }
+            }
+            String found;
+            if ((found = findSender(userEmail, sender, qualifier,
+                    recipient, recipientDomain, whoisSet, regexSet)) != null) {
+                return found;
+            } else if ((found = findSender(userEmail, sender, ip,
+                    recipient, recipientDomain, whoisSet, regexSet)) != null) {
                 return found;
             }
-            if (hostname.endsWith(".br") && SPF.matchHELO(ip, hostname)) {
-                whoisSet.add(hostname);
+            // Verifica o HELO.
+            if ((hostname = Domain.extractHost(hostname, true)) != null) {
+                if ((found = findHost(userEmail, sender, hostname, qualifier,
+                        recipient, recipientDomain, whoisSet, regexSet, SPF.matchHELO(ip, hostname))) != null) {
+                    return found;
+                }
+                if (hostname.endsWith(".br") && SPF.matchHELO(ip, hostname)) {
+                    whoisSet.add(hostname);
+                }
+                regexSet.add(hostname);
             }
-            regexSet.add(hostname);
-        }
-        // Verifica o IP.
-        if (ip != null) {
-            ip = Subnet.normalizeIP(ip);
-            String cidr;
-            if (SET.contains(ip + ';' + qualifier)) {
-                return ip + ';' + qualifier;
-            } else if (recipient != null && SET.contains(ip + ';' + qualifier + '>' + recipient)) {
-                return ip + ';' + qualifier + '>' + recipient;
-            } else if (recipientDomain != null && SET.contains(ip + ';' + qualifier + '>' + recipientDomain)) {
-                return ip + ';' + qualifier + '>' + recipientDomain;
-            } else if (userEmail == null && sender == null & SET.contains("mailer-daemon@;" + ip)) {
-                return "mailer-daemon@;" + ip;
-            } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
-                return userEmail + ":mailer-daemon@;" + ip;
-//            } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
-//                return userEmail + ":@;" + ip;
-            } else if (userEmail != null && SET.contains(userEmail + ':' + ip + ';' + qualifier)) {
-                return userEmail + ':' + ip + ';' + qualifier;
-            } else if (userEmail != null && recipient != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipient)) {
-                return userEmail + ':' + ip + ';' + qualifier + '>' + recipient;
-            } else if (userEmail != null && recipientDomain != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
-                return userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain;
-            } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
-                return cidr;
+            // Verifica o IP.
+            if (ip != null) {
+                ip = Subnet.normalizeIP(ip);
+                String cidr;
+                if (SET.contains(ip + ';' + qualifier)) {
+                    return ip + ';' + qualifier;
+                } else if (recipient != null && SET.contains(ip + ';' + qualifier + '>' + recipient)) {
+                    return ip + ';' + qualifier + '>' + recipient;
+                } else if (recipientDomain != null && SET.contains(ip + ';' + qualifier + '>' + recipientDomain)) {
+                    return ip + ';' + qualifier + '>' + recipientDomain;
+                } else if (userEmail == null && sender == null & SET.contains("mailer-daemon@;" + ip)) {
+                    return "mailer-daemon@;" + ip;
+                } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
+                    return userEmail + ":mailer-daemon@;" + ip;
+    //            } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
+    //                return userEmail + ":@;" + ip;
+                } else if (userEmail != null && SET.contains(userEmail + ':' + ip + ';' + qualifier)) {
+                    return userEmail + ':' + ip + ';' + qualifier;
+                } else if (userEmail != null && recipient != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipient)) {
+                    return userEmail + ':' + ip + ';' + qualifier + '>' + recipient;
+                } else if (userEmail != null && recipientDomain != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
+                    return userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain;
+                } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
+                    return cidr;
+                }
+                regexSet.add(ip);
             }
-            regexSet.add(ip);
+            // Verifica um critério do REGEX.
+            String regex;
+            if ((regex = REGEX.get(userEmail, regexSet)) != null) {
+                return regex;
+            }
+            // Verifica critérios do WHOIS.
+            String whois;
+            if ((whois = WHOIS.get(userEmail, whoisSet)) != null) {
+                return whois;
+            }
+            return null;
         }
-        // Verifica um critério do REGEX.
-        String regex;
-        if ((regex = REGEX.get(userEmail, regexSet)) != null) {
-            return regex;
-        }
-        // Verifica critérios do WHOIS.
-        String whois;
-        if ((whois = WHOIS.get(userEmail, whoisSet)) != null) {
-            return whois;
-        }
-        return null;
     }
     
     private static String findSender(

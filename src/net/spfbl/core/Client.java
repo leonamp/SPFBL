@@ -50,6 +50,7 @@ public class Client implements Serializable, Comparable<Client> {
     private Personality personality = Personality.RATIONAL;
     private boolean administrator = false;
     private int limit = 100;
+    
     private NormalDistribution frequency = null;
     private long last = 0;
     
@@ -413,6 +414,10 @@ public class Client implements Serializable, Comparable<Client> {
         return administrator;
     }
     
+    public boolean isAdministratorEmail() {
+        return Core.isAdminEmail(email);
+    }
+    
     public boolean hasPermission(Permission permission) {
         if (this.permission == Permission.NONE) {
             return permission == Permission.NONE;
@@ -471,7 +476,7 @@ public class Client implements Serializable, Comparable<Client> {
                 String ip = Subnet.expandIP(first);
                 Client client = new Client(cidr, domain, email);
                 client.setPermission(permission);
-                MAP.put(ip, client);
+                put(ip, client);
                 CHANGED = true;
                 return client;
             } else {
@@ -480,6 +485,10 @@ public class Client implements Serializable, Comparable<Client> {
         } else {
             throw new ProcessException("INVALID CIDR");
         }
+    }
+    
+    private synchronized static Client put(String ip, Client client) {
+        return MAP.put(ip, client);
     }
     
     public synchronized static TreeSet<Client> getSet() {
@@ -595,7 +604,7 @@ public class Client implements Serializable, Comparable<Client> {
         } else if (!Domain.isValidEmail(email)) {
             throw new ProcessException("INVALID E-MAIL");
         } else {
-            return MAP.get(email);
+            return getExact(email);
         }
     }
     
@@ -605,7 +614,7 @@ public class Client implements Serializable, Comparable<Client> {
         } else if (!Domain.isValidEmail(email)) {
             return null;
         } else {
-            return MAP.get(email);
+            return getExact(email);
         }
     }
     
@@ -777,30 +786,38 @@ public class Client implements Serializable, Comparable<Client> {
         } else if (SubnetIPv4.isValidIPv4(ip)) {
             String key = SubnetIPv4.expandIPv4(ip);
             while ((key = MAP.floorKey(key)) != null) {
-                Client client = MAP.get(key);
-                if (client.isPermission(permissao)) {
-                    if (client.contains(ip)) {
-                        return client;
-                    } else {
+                if (key.contains(":")) {
+                    break;
+                } else {
+                    Client client = MAP.get(key);
+                    if (client.isPermission(permissao)) {
+                        if (client.contains(ip)) {
+                            return client;
+                        } else {
+                            return null;
+                        }
+                    } else if ((key = SubnetIPv4.expandIPv4(SubnetIPv4.getPreviousIPv4(SubnetIPv4.normalizeIPv4(key)))) == null) {
                         return null;
                     }
-                } else if ((key = SubnetIPv4.expandIPv4(SubnetIPv4.getPreviousIPv4(SubnetIPv4.normalizeIPv4(key)))) == null) {
-                    return null;
                 }
             }
             return null;
         } else if (SubnetIPv6.isValidIPv6(ip)) {
             String key = SubnetIPv6.expandIPv6(ip);
             while ((key = MAP.floorKey(key)) != null) {
-                Client client = MAP.get(key);
-                if (client.isPermission(permissao)) {
-                    if (client.contains(ip)) {
-                        return client;
-                    } else {
+                if (key.contains(".")) {
+                    break;
+                } else {
+                    Client client = MAP.get(key);
+                    if (client.isPermission(permissao)) {
+                        if (client.contains(ip)) {
+                            return client;
+                        } else {
+                            return null;
+                        }
+                    } else if ((key = SubnetIPv6.expandIPv6(SubnetIPv6.getPreviousIPv6(SubnetIPv6.normalizeIPv6(key)))) == null) {
                         return null;
                     }
-                } else if ((key = SubnetIPv6.expandIPv6(SubnetIPv6.getPreviousIPv6(SubnetIPv6.normalizeIPv6(key)))) == null) {
-                    return null;
                 }
             }
             return null;
@@ -852,10 +869,21 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static synchronized HashMap<String,Client> getCloneMap() {
+        TreeSet<String> removeSet = new TreeSet<>();
         HashMap<String,Client> map = new HashMap<>();
         for (String key : MAP.keySet()) {
-            Client value = MAP.get(key);
-            map.put(key, new Client(value));
+            Client client = MAP.get(key);
+            if (client.isPermission("DNSBL") && !client.hasEmail() && client.isDead()) {
+                removeSet.add(key);
+            } else {
+                map.put(key, new Client(client));
+            }
+        }
+        for (String key : removeSet) {
+            Client client = MAP.remove(key);
+            if (client != null) {
+                Server.logDebug("EXPIRED " + client);
+            }
         }
         return map;
     }
@@ -885,7 +913,7 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public static synchronized void load() {
+    public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/client.map");
         if (file.exists()) {
@@ -923,7 +951,7 @@ public class Client implements Serializable, Comparable<Client> {
                         if (client.personality == null) {
                             client.personality = Personality.RATIONAL;
                         }
-                        MAP.put(key, client);
+                        put(key, client);
                     }
                 }
                 Server.logLoad(time, file);
@@ -946,9 +974,7 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public boolean isAbusing() {
-        if (frequency == null) {
-            return false;
-        } else if (isDead()) {
+        if (isDead()) {
             return false;
         } else {
             return frequency.getMaximumInt() < limit;
@@ -956,9 +982,13 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public boolean isDead() {
-        int frequencyInt = frequency.getMaximumInt();
-        long idleTimeInt = getIdleTimeMillis();
-        return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
+        if (frequency == null) {
+            return true;
+        } else {
+            int frequencyInt = frequency.getMaximumInt();
+            long idleTimeInt = getIdleTimeMillis();
+            return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
+        }
     }
     
     public boolean isIdle() {
