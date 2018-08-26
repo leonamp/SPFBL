@@ -31,6 +31,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.spfbl.core.ProcessException;
+import net.spfbl.core.Reverse;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;

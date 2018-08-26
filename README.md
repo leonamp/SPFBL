@@ -298,9 +298,9 @@ https://github.com/leonamp/SPFBL/wiki/peer---administrando-listas-de-reten%C3%A7
 Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para cadastrar conexão P2P.
 
 Abertos:
-* MatrixDefense: leandro@spfbl.net
-* Spamlet: noc@lhost.net.br
-* Papuda: antispam@stoppay.net
+* MatrixDefense: matrix.spfbl.net <leandro@spfbl.net>
+* Spamlet: spamlet-01-clusternet.lhost.net.br <noc@lhost.net.br>
+* SimaoBuhler: servidor1.simaoebuhler.com.br <postmaster@simaoebuhler.com.br>
 
 Para se conectar, basta entrar em contato com cada administrador pelo endereço de e-mail e fazer a solicitação.
 
@@ -321,7 +321,7 @@ Patreon:<br>
 <a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
 
 Bitcoin:<br>
-[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/bicoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")](1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy)
+[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/bitcoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")](1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy)
 
 Litecoin:<br>
 [![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/litecoin.png "LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr")](LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr)

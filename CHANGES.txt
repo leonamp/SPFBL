@@ -1,3 +1,16 @@
+### v2.9.1 ; release 08/26/2018:
+
+NEW) Efficient data structure for CIDR to lower RAM consume and operate with write/read full parallelism;
+
+NEW) Incremental data file storage method in real time to avoid data loss if service process is killed;
+
+NEW) Auto DYNAMIC rDNS pattern in ANALISE process;
+
+FIX) Fixed infinite looping at abuse report method;
+
+FIX) Fixed WHITE SENDER command for "In-Reply-To:" parameter;
+
+
 ### v2.9.0 ; release 07/17/2018:
 
 NEW) Active feedback system with send of ARF to abuse email address;

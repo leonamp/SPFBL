@@ -3059,7 +3059,7 @@ case $1 in
 			if [[ $2 =~ ^https?://.+/[a-zA-Z0-9%_-]{44,}$ ]]; then
 				# O parâmentro é uma URL de denúncia SPFBL.
 				url=$2
-			elif [[ $2 =~ ^[a-zA-Z0-9/+=_\;-]{44,}$ ]]; then
+			elif [[ $2 =~ ^(https?://.+/)?[a-zA-Z0-9/+=_\;-]{44,}$ ]]; then
 				# O parâmentro é um ticket SPFBL.
 				ticket=$2
 			elif [ -f "$2" ]; then

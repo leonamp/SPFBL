@@ -57,7 +57,6 @@ import net.spfbl.data.Provider;
 import net.spfbl.data.Trap;
 import net.spfbl.data.White;
 import net.spfbl.whois.Domain;
-import net.spfbl.whois.SubnetIPv6;
 
 /**
  * Servidor de consulta em SPF.
@@ -692,22 +691,53 @@ public final class QuerySPF extends Server {
                                     } else if (line.startsWith("WHITE SENDER ")) {
                                         query = line.substring(13).trim();
                                         type = "WHITE";
+//                                        if (query.startsWith("In-Reply-To:") && query.contains("From:")) {
+//                                            int index = query.lastIndexOf(':') + 1;
+//                                            String from = query.substring(index);
+//                                            query = query.substring(0, index - 1).trim();
+//                                            index = query.indexOf(':') + 1;
+//                                            String messageID = query.substring(index);
+//                                            User fromUser = User.get(from);
+//                                            if (fromUser == null) {
+//                                                index = from.indexOf('@');
+//                                                String postmaster = "postmaster" + from.substring(index);
+//                                                User postmasterUser = User.get(postmaster);
+//                                                if (postmasterUser != null) {
+//                                                    user = postmasterUser;
+//                                                }
+//                                            } else {
+//                                                user = fromUser;
+//                                            }
+//                                            if (user == null) {
+//                                                result = User.whiteAllByMessageID(messageID) + '\n';
+//                                            } else {
+//                                                result = "INVALID ID\n";
+//                                                index = messageID.indexOf('<');
+//                                                if (index >= 0) {
+//                                                    messageID = messageID.substring(index + 1);
+//                                                    index = messageID.indexOf('>');
+//                                                    if (index > 0) {
+//                                                        messageID = messageID.substring(0, index);
+//                                                        result = user.whiteByMessageID(messageID) + '\n';
+//                                                    }
+//                                                }
+//                                            }
+//                                        } else
                                         if (query.startsWith("In-Reply-To:")) {
                                             int index = query.indexOf(':') + 1;
                                             String messageID = query.substring(index);
+                                            index = messageID.indexOf('<');
+                                            if (index >= 0) {
+                                                messageID = messageID.substring(index + 1);
+                                                index = messageID.indexOf('>');
+                                                if (index > 0) {
+                                                    messageID = messageID.substring(0, index);
+                                                }
+                                            }
                                             if (user == null) {
                                                 result = User.whiteAllByMessageID(messageID) + '\n';
                                             } else {
-                                                result = "INVALID ID\n";
-                                                index = messageID.indexOf('<');
-                                                if (index >= 0) {
-                                                    messageID = messageID.substring(index + 1);
-                                                    index = messageID.indexOf('>');
-                                                    if (index > 0) {
-                                                        messageID = messageID.substring(0, index);
-                                                        result = user.whiteByMessageID(messageID) + '\n';
-                                                    }
-                                                }
+                                                result = user.whiteByMessageID(messageID) + '\n';
                                             }
                                         } else if (Domain.isMailFrom(query)) {
                                             try {

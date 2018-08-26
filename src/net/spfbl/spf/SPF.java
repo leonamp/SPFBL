@@ -2727,36 +2727,36 @@ public final class SPF implements Serializable {
             return distributionMap;
         }
         
-        private static TreeMap<String,Binomial> getTreeMapExtendedCIDR() {
-            TreeMap<String,Binomial> binomialMap = new TreeMap<>();
-            for (String cidr : Block.getExtendedCIDR()) {
-                Binomial binomial = new Binomial(Status.BLOCK);
-                binomialMap.put(cidr, binomial);
-            }
-            for (String key : keySet()) {
-                if (SubnetIPv4.isValidIPv4(key)) {
-                    String expandedIP = null;
-                    Distribution distribution = getExact(key);
-                    if (distribution != null) {
-                        expandedIP = SubnetIPv4.expandIPv4(key);
-                        String floor = binomialMap.floorKey(expandedIP + "/9");
-                        if (floor != null && floor.contains(".")) {
-                            String cidr = SubnetIPv4.normalizeCIDRv4(floor);
-                            if (SubnetIPv4.containsIPv4(cidr, key)) {
-                                Binomial binomial = binomialMap.get(floor);
-                                binomial.add(key, distribution);
-                                distribution = null;
-                            }
-                        }
-                    }
-                    if (distribution != null && expandedIP != null) {
-                        Binomial binomial = new Binomial(key, distribution);
-                        binomialMap.put(expandedIP + "/32", binomial);
-                    }
-                }
-            }
-            return binomialMap;
-        }
+//        private static TreeMap<String,Binomial> getTreeMapExtendedCIDR() {
+//            TreeMap<String,Binomial> binomialMap = new TreeMap<>();
+//            for (String cidr : Block.getExtendedCIDR()) {
+//                Binomial binomial = new Binomial(Status.BLOCK);
+//                binomialMap.put(cidr, binomial);
+//            }
+//            for (String key : keySet()) {
+//                if (SubnetIPv4.isValidIPv4(key)) {
+//                    String expandedIP = null;
+//                    Distribution distribution = getExact(key);
+//                    if (distribution != null) {
+//                        expandedIP = SubnetIPv4.expandIPv4(key);
+//                        String floor = binomialMap.floorKey(expandedIP + "/9");
+//                        if (floor != null && floor.contains(".")) {
+//                            String cidr = SubnetIPv4.normalizeCIDRv4(floor);
+//                            if (SubnetIPv4.containsIPv4(cidr, key)) {
+//                                Binomial binomial = binomialMap.get(floor);
+//                                binomial.add(key, distribution);
+//                                distribution = null;
+//                            }
+//                        }
+//                    }
+//                    if (distribution != null && expandedIP != null) {
+//                        Binomial binomial = new Binomial(key, distribution);
+//                        binomialMap.put(expandedIP + "/32", binomial);
+//                    }
+//                }
+//            }
+//            return binomialMap;
+//        }
 
         private static TreeMap<String,Distribution> getMap(TreeSet<String> tokenSet) {
             TreeMap<String, Distribution> distributionMap = new TreeMap<>();
@@ -2800,9 +2800,9 @@ public final class SPF implements Serializable {
         return CacheDistribution.getTreeMapIPv6();
     }
     
-    public static TreeMap<String,Binomial> getDistributionMapExtendedCIDR() {
-        return CacheDistribution.getTreeMapExtendedCIDR();
-    }
+//    public static TreeMap<String,Binomial> getDistributionMapExtendedCIDR() {
+//        return CacheDistribution.getTreeMapExtendedCIDR();
+//    }
 
     public static void dropDistribution(String token) {
         CacheDistribution.drop(token);
@@ -3642,6 +3642,9 @@ public final class SPF implements Serializable {
             return "action=554 5.7.1 SPFBL "
                     + ip + " is not a valid public IP. "
                     + "See http://spfbl.net/en/feedback\n\n";
+        } else if (Subnet.isReservedIP(ip)) {
+            // Message from LAN.
+            return "action=DUNNO\n\n";
         } else if (sender != null && !Domain.isMailFrom(sender)) {
             return "action=554 5.7.1 SPFBL "
                     + sender + " is not a valid sender. "
@@ -3650,9 +3653,6 @@ public final class SPF implements Serializable {
             return "action=554 5.7.1 SPFBL "
                     + recipient + " is not a valid recipient. "
                     + "See http://spfbl.net/en/feedback\n\n";
-        } else if (Subnet.isReservedIP(ip)) {
-            // Message from LAN.
-            return "action=DUNNO\n\n";
         } else if (client != null && client.containsFull(ip)) {
             // Message from LAN.
             return "action=DUNNO\n\n";
@@ -4612,6 +4612,8 @@ public final class SPF implements Serializable {
                 String firstToken = tokenizer.nextToken();
                 if (firstToken.equals("SPAM") && tokenizer.countTokens() == 1) {
                     String ticket = tokenizer.nextToken();
+                    int index = ticket.lastIndexOf("/") + 1;
+                    ticket = ticket.substring(index);
                     TreeSet<String> tokenSet = addComplainURLSafe(origin, ticket, null);
                     if (tokenSet == null) {
                         result = "DUPLICATE COMPLAIN\n";
@@ -4838,6 +4840,8 @@ public final class SPF implements Serializable {
                     StringTokenizer ticketTokenizer = new StringTokenizer(ticketSet, ";");
                     while (ticketTokenizer.hasMoreTokens()) {
                         String ticket = ticketTokenizer.nextToken();
+                        int index = ticket.lastIndexOf("/") + 1;
+                        ticket = ticket.substring(index);
                         TreeSet<String> tokenSet = addComplainURLSafe(origin, ticket, null);
                         if (tokenSet == null) {
                             resultBuilder.append("DUPLICATE COMPLAIN\n");
@@ -5203,13 +5207,13 @@ public final class SPF implements Serializable {
                         ip = SubnetIPv6.tryTransformToIPv4(ip);
                         if (!Subnet.isValidIP(ip)) {
                             return "INVALID\n";
+                        } else if (Subnet.isReservedIP(ip)) {
+                            // Message from LAN.
+                            return "LAN\n";
                         } else if (sender != null && !Domain.isMailFrom(sender)) {
                             return "INVALID\n";
                         } else if (recipient != null && !Domain.isValidEmail(recipient)) {
                             return "INVALID\n";
-                        } else if (Subnet.isReservedIP(ip)) {
-                            // Message from LAN.
-                            return "LAN\n";
                         } else if (client != null && client.containsFull(ip)) {
                             // Message from LAN.
                             return "LAN\n";

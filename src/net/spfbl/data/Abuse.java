@@ -205,6 +205,8 @@ public class Abuse {
                     } else {
                         return txtSet.get(0);
                     }
+                } catch (CommunicationException ex) {
+                    return null;
                 } catch (NameNotFoundException ex) {
                     return null;
                 } catch (Exception ex) {
@@ -213,38 +215,29 @@ public class Abuse {
                 }
             }
         } else if (SubnetIPv4.isValidIPv4(address)) {
-            short mask = 32;
-            while (mask > 0) {
+            for (int mask = 32; mask > 0; mask--) {
                 String cidr = SubnetIPv4.normalizeCIDRv4(address + "/" + mask);
                 String email = getExact(cidr);
-                if (email == null) {
-                    mask--;
-                } else {
+                if (email != null) {
                     return email;
                 }
             }
             return null;
         } else if (SubnetIPv6.isValidIPv6(address)) {
-            short mask = 128;
-            while (mask > 0) {
+            for (int mask = 128; mask > 0; mask--) {
                 String cidr = SubnetIPv6.normalizeCIDRv6(address + "/" + mask);
                 String email = getExact(cidr);
-                if (email == null) {
-                    mask--;
-                } else {
+                if (email != null) {
                     return email;
                 }
             }
             return null;
         } else if (Subnet.isValidCIDR(address)) {
             String ip = Subnet.getFirstIP(address);
-            short mask = Subnet.getMask(address);
-            while (mask > 0) {
+            for (int mask = Subnet.getMask(address); mask > 0; mask--) {
                 String cidr = Subnet.normalizeCIDR(ip + "/" + mask);
                 String email = getExact(cidr);
-                if (email == null) {
-                    mask--;
-                } else {
+                if (email != null) {
                     return email;
                 }
             }
@@ -252,17 +245,23 @@ public class Abuse {
         } else if ((address = Domain.normalizeHostname(address, true)) != null) {
             try {
                 String domain = Domain.extractDomain(address, true);
-                String subdominio = address;
-                while (!subdominio.equals(domain)) {
-                    String email = getExact(subdominio);
-                    if (email == null) {
-                        int index = subdominio.indexOf('.', 1);
-                        subdominio = subdominio.substring(index);
-                    } else {
-                        return email;
+                if (domain == null) {
+                    return getExact(address);
+                } else if (address.endsWith(domain)) {
+                    String subdominio = address;
+                    while (!subdominio.equals(domain)) {
+                        String email = getExact(subdominio);
+                        if (email == null) {
+                            int index = subdominio.indexOf('.', 1);
+                            subdominio = subdominio.substring(index);
+                        } else {
+                            return email;
+                        }
                     }
+                    return getExact(domain);
+                } else {
+                    return getExact(address);
                 }
-                return getExact(domain);
             } catch (ProcessException ex) {
                 return getExact(address);
             }
@@ -279,8 +278,7 @@ public class Abuse {
         } else if (SubnetIPv4.isValidIPv4(address)) {
             email = email.toLowerCase();
             boolean removed = false;
-            short mask = 32;
-            while (mask-- > 0) {
+            for (int mask = 32; mask > 0; mask--) {
                 String key = SubnetIPv4.normalizeCIDRv4(address + "/" + mask);
                 String value = getExact(key);
                 if (email.equals(value) && dropExact(key)) {
@@ -291,8 +289,7 @@ public class Abuse {
         } else if (SubnetIPv6.isValidIPv6(address)) {
             email = email.toLowerCase();
             boolean removed = false;
-            short mask = 128;
-            while (mask-- > 0) {
+            for (int mask = 128; mask > 0; mask--) {
                 String key = SubnetIPv6.normalizeCIDRv6(address + "/" + mask);
                 String value = getExact(key);
                 if (email.equals(value) && dropExact(key)) {
@@ -310,8 +307,7 @@ public class Abuse {
             return false;
         } else if (SubnetIPv4.isValidIPv4(address)) {
             boolean removed = false;
-            short mask = 32;
-            while (mask-- > 0) {
+            for (int mask = 32; mask > 0; mask--) {
                 String key = SubnetIPv4.normalizeCIDRv4(address + "/" + mask);
                 if (dropExact(key)) {
                     removed = true;
@@ -320,8 +316,7 @@ public class Abuse {
             return removed;
         } else if (SubnetIPv6.isValidIPv6(address)) {
             boolean removed = false;
-            short mask = 128;
-            while (mask-- > 0) {
+            for (int mask = 128; mask > 0; mask--) {
                 String key = SubnetIPv6.normalizeCIDRv6(address + "/" + mask);
                 if (dropExact(key)) {
                     removed = true;
@@ -463,8 +458,8 @@ public class Abuse {
                         try {
                             Server.logDebug("sending abuse report by e-mail.");
                             String[] sourceArray = report.getHeader("Source-IP");
-                            InternetAddress[] recipientArray = (InternetAddress[]) report.getRecipients(Message.RecipientType.TO);
                             sourceIP = sourceArray == null || sourceArray.length == 0 ? null : sourceArray[0];
+                            InternetAddress[] recipientArray = (InternetAddress[]) report.getRecipients(Message.RecipientType.TO);
                             abuseEmail = recipientArray == null || recipientArray.length == 0 ? null : recipientArray[0].getAddress();
                             // Enviar mensagem.
                             if (Core.sendMessage(Locale.US, report, 30000)) {

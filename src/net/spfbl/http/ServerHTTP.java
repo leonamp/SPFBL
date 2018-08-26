@@ -166,6 +166,8 @@ public final class ServerHTTP extends Server {
         PORT = port;
         PORTS = ports;
         setPriority(Thread.NORM_PRIORITY);
+        System.setProperty("sun.net.httpserver.maxReqTime", "10");
+        System.setProperty("sun.net.httpserver.maxRspTime", "60");
         // Criando conexões.
         Server.logDebug("binding HTTP socket on port " + port + "...");
         SERVER = HttpServer.create(new InetSocketAddress(port), 0);
@@ -3230,7 +3232,7 @@ public final class ServerHTTP extends Server {
                                         calendar.setTimeZone(timeZone);
                                         calendar.setTimeInMillis(date);
                                         Server.logTrace(dateFormat.format(calendar.getTime()));
-                                        Query queryLocal = userLocal == null ? null : userLocal.getQuerySafe(date);
+                                        Query queryLocal = userLocal.getQuerySafe(date);
                                         if (queryLocal == null) {
                                             type = "text/html";
                                             tag = "BLOCK";
@@ -5318,11 +5320,11 @@ public final class ServerHTTP extends Server {
                 }
                 if (dynamic) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        buildText(builder, "Este IP foi bloqueado por ser <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">dinâmico</a> ou por suspeita de uso exclusivamente doméstico.");
+                        buildText(builder, "Este IP foi marcado por ser <a target=\"_blank\" href=\"http://spfbl.net/dynamic/\">dinâmico</a> ou por suspeita de uso exclusivamente doméstico.");
                         buildText(builder, "Se tiver rodando um serviço de e-mail neste IP, solicite a alteração do <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> ao ISP.");
                         buildText(builder, "A remoção deste IP nesta lista depende desta alteração do <a target=\"_blank\" href=\"http://spfbl.net/rdns/\">rDNS</a> de modo a ser igual ao FQDN do servidor de e-mail.");
                     } else {
-                        buildText(builder, "This IP has been blocked because it is <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic</a> or by suspect to be domestic use only.");
+                        buildText(builder, "This IP has been flagged because it is <a target=\"_blank\" href=\"http://spfbl.net/en/dynamic/\">dynamic</a> or by suspect to be domestic use only.");
                         buildText(builder, "If you are running an email service on this IP, ask ISP to change the <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a>.");
                         buildText(builder, "The removal of this IP from this blacklist depends on change of <a target=\"_blank\" href=\"http://spfbl.net/en/rdns/\">rDNS</a> to match the FQDN of the mail server.");
                     }
@@ -5479,9 +5481,9 @@ public final class ServerHTTP extends Server {
                         }
                     } else {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            buildText(builder, "Este IP foi bloqueado por má configuração do serviço de e-mail ou por suspeita de não haver um MTA nele.");
+                            buildText(builder, "Este IP foi marcado por má configuração do serviço de e-mail ou por suspeita de não haver um MTA nele.");
                         } else {
-                            buildText(builder, "This IP was blocked due to misconfiguration of the e-mail service or the suspicion that there is no MTA at it.");
+                            buildText(builder, "This IP was flagged due to misconfiguration of the e-mail service or the suspicion that there is no MTA at it.");
                         }
                         builder.append("      <hr>\n");
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
@@ -5824,9 +5826,9 @@ public final class ServerHTTP extends Server {
 //                }
             } else {
                 if (locale.getLanguage().toLowerCase().equals("pt")) {
-                    buildText(builder, "Nenhum bloqueio foi encontrado para este domínio.");
+                    buildText(builder, "Nenhum registro foi encontrado para este domínio.");
                 } else {
-                    buildText(builder, "No block was found for this domain.");
+                    buildText(builder, "No registry was found for this domain.");
                 }
                 String abuseEmail = Abuse.getEmail(domain);
                 if (abuseEmail != null) {
@@ -6956,7 +6958,7 @@ public final class ServerHTTP extends Server {
             builder.append(";\n");
             builder.append("      var filterText = '';\n");
             builder.append("      function view(query) {\n");
-            builder.append("        if (query == undefined || query == 0) {\n");
+            builder.append("        if (query == undefined || query == 'rowMore' || query == 0) {\n");
             builder.append("          var viewer = document.getElementById('viewer');\n");
             builder.append("          viewer.src = 'about:blank';\n");
             builder.append("          last = 0;\n");

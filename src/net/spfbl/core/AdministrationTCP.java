@@ -2663,9 +2663,9 @@ public final class AdministrationTCP extends Server {
                         } else if (token.equals("IPV6")) {
                             distributionMap = SPF.getDistributionMapIPv6();
                             binomialMap = null;
-                        } else if (token.equals("CIDR")) {
-                            distributionMap = null;
-                            binomialMap = SPF.getDistributionMapExtendedCIDR();
+//                        } else if (token.equals("CIDR")) {
+//                            distributionMap = null;
+//                            binomialMap = SPF.getDistributionMapExtendedCIDR();
                         } else {
                             distributionMap = null;
                             binomialMap = null;

@@ -21,7 +21,6 @@ import net.spfbl.core.ProcessException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -152,6 +151,17 @@ public final class SubnetIPv4 extends Subnet {
         } else {
             return inetnum;
         }
+    }
+    
+    public static String normalizeCIDRv4(int address, byte mask) {
+        int octet1 = address & 0xFF;
+        address >>>= 8;
+        int octet2 = address & 0xFF;
+        address >>>= 8;
+        int octet3 = address & 0xFF;
+        address >>>= 8;
+        int octet4 = address & 0xFF;
+        return normalizeCIDRv4(octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + mask);
     }
     
     /**

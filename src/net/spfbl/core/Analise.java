@@ -1273,6 +1273,9 @@ public class Analise implements Serializable, Comparable<Analise> {
                 statusIP = Status.PROVIDER;
             } else if (Ignore.containsCIDR(ip)) {
                 statusIP = Status.IGNORE;
+            } else if (abuseEmail == null && Reverse.isListedIP(ip, "dul.dnsbl.sorbs.net", "127.0.0.10")) {
+                statusIP = Status.DYNAMIC;
+                Server.logDebug("host " + ip + " is listed in 'dul.dnsbl.sorbs.net;127.0.0.10'.");
             } else if (Block.containsDNSBL(ip)) {
                 statusIP = Status.DNSBL;
             } else if (statusName == Status.TIMEOUT && hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
@@ -1371,6 +1374,23 @@ public class Analise implements Serializable, Comparable<Analise> {
                         statusName = Status.RESERVED;
                     } else {
                         Server.logError(ex);
+                    }
+                }
+            }
+            if (statusIP == Status.DYNAMIC && statusName != Status.DYNAMIC && statusName != Status.NONE  && statusName != Status.GENERIC && statusName != Status.BLOCK && statusName != Status.TIMEOUT && statusName != Status.UNAVAILABLE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE && statusName != Status.RESERVED) {
+                String mask = Generic.convertHostToMask(tokenName);
+                if (mask != null) {
+                    try {
+                        if (mask.contains("static")) {
+                            if ((mask = Generic.addGeneric(mask)) != null) {
+                                Server.logDebug("new GENERIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
+                            }
+                        } else if ((mask = Generic.addDynamic(mask)) != null) {
+                            Server.logDebug("new DYNAMIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
+                        }
+                        statusName = Status.DYNAMIC;
+                    } catch (ProcessException ex) {
+                        // Do nothing.
                     }
                 }
             }

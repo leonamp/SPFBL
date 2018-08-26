@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import com.google.zxing.BarcodeFormat;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.mysql.jdbc.exceptions.MySQLTimeoutException;
@@ -137,7 +138,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 9;
-    private static final byte RELEASE = 0;
+    private static final byte RELEASE = 1;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -2985,7 +2986,7 @@ public class Core {
     private static final QRCodeWriter qrCodeWriter = new QRCodeWriter();
 
     public static File getQRCodeTempFile(String codigo) throws Exception {
-        BitMatrix matrix = qrCodeWriter.encode(codigo, com.google.zxing.BarcodeFormat.QR_CODE, 256, 256);
+        BitMatrix matrix = qrCodeWriter.encode(codigo, BarcodeFormat.QR_CODE, 256, 256);
         int width = matrix.getWidth();
         int height = matrix.getHeight();
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
