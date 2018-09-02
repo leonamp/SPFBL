@@ -1943,7 +1943,9 @@ public class White {
                 for (String token : set) {
                     String client;
                     String identifier;
-                    if (token.contains(":")) {
+                    if (token == null) {
+                        continue;
+                    } else if (token.contains(":")) {
                         int index = token.indexOf(':');
                         client = token.substring(0, index);
                         identifier = token.substring(index + 1);
@@ -1951,35 +1953,20 @@ public class White {
                         client = null;
                         identifier = token;
                     }
-                    if (client != null && client.startsWith("WHOIS/")) {
-                        // Correção temporária do defeito no registro WHOIS.
-                        while (client.startsWith("WHOIS/")) {
-                            client = client.substring(6);
-                        }
-                        token = client + ':' + identifier;
-                    }
-                    if (identifier.startsWith("WHOIS/WHOIS/")) {
-                        // Correção temporária do defeito no registro WHOIS.
-                        token = null;
-                    } else if (identifier.startsWith("WHOIS/")
-                            && !identifier.contains("=")
-                            && !identifier.contains("<")
-                            && !identifier.contains(">")
-                            ) {
-                        // Correção temporária do defeito no registro WHOIS.
-                        identifier = null;
-                    } else if (Subnet.isValidCIDR(identifier)) {
-                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-                    } else if (Owner.isOwnerID(identifier)) {
-                        identifier = "WHOIS/ownerid=" + identifier;
-                    } else {
-                        identifier = normalizeTokenWhite(identifier);
-                    }
-                    if (identifier != null) {
+//                    if (Subnet.isValidCIDR(identifier)) {
+//                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
+//                    } else if (Owner.isOwnerID(identifier)) {
+//                        identifier = "WHOIS/ownerid=" + identifier;
+//                    } else {
+//                        identifier = normalizeTokenWhite(identifier);
+//                    }
+//                    if (identifier != null) {
+                    if ((identifier = normalizeTokenWhite(identifier)) != null) {
                         try {
                             if (client == null) {
                                 addExact(identifier);
-                            } else if (Domain.isValidEmail(client)) {
+//                            } else if (Domain.isValidEmail(client)) {
+                            } else {
                                 addExact(client + ':' + identifier);
                             }
                         } catch (ProcessException ex) {

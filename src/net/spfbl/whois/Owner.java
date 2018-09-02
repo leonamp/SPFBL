@@ -141,10 +141,13 @@ public class Owner implements Serializable, Comparable<Owner> {
     }
     
     private boolean refresh() throws ProcessException {
-        server = Server.WHOIS_BR; // Temporário até final de transição.
         String result = Server.whoisID(ownerid, server);
-        String ownerResult = refresh(result);
-        return ownerid.equals(ownerResult);
+        if (result == null) {
+            return false;
+        } else {
+            String ownerResult = refresh(result);
+            return ownerid.equals(ownerResult);
+        }
     }
     
     /**
@@ -457,7 +460,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                 Owner owner = MAP.get(key);
                 // Atualizando campos do registro.
                 if (!owner.refresh()) {
-                    // Owner real do resultado WHOIS não bate com o registro.
+                // Owner real do resultado WHOIS não bate com o registro.
                     // Apagando registro de dono do cache.
                     if (MAP.remove(owner.getOwnerID()) != null) {
                         // Atualiza flag de atualização.
@@ -466,15 +469,17 @@ public class Owner implements Serializable, Comparable<Owner> {
                     // Segue para nova consulta.
                 }
             }
-            // Não encontrou o dono em cache.
-            // Selecionando servidor da pesquisa WHOIS.
-            String server = Server.WHOIS_BR;
-            // Realizando a consulta no WHOIS.
-            Owner owner = new Owner(key);
-            owner.server = server; // Temporário até final de transição.
-            // Adicinando registro em cache.
-            MAP.put(owner.getOwnerID(), owner);
-            OWNER_CHANGED = true;
+            if (Server.WHOIS_BR.length() > 0) {
+                // Não encontrou o dono em cache.
+                // Selecionando servidor da pesquisa WHOIS.
+                String server = Server.WHOIS_BR;
+                // Realizando a consulta no WHOIS.
+                Owner owner = new Owner(key);
+                owner.server = server; // Temporário até final de transição.
+                // Adicinando registro em cache.
+                MAP.put(owner.getOwnerID(), owner);
+                OWNER_CHANGED = true;
+            }
         }
     }
     
@@ -511,16 +516,20 @@ public class Owner implements Serializable, Comparable<Owner> {
                     return owner;
                 }
             }
-            // Não encontrou o dominio em cache.
-            // Selecionando servidor da pesquisa WHOIS.
-            String server = Server.WHOIS_BR;
-            // Realizando a consulta no WHOIS.
-            Owner owner = new Owner(key);
-            owner.server = server; // Temporário até final de transição.
-            // Adicinando registro em cache.
-            MAP.put(owner.getOwnerID(), owner);
-            OWNER_CHANGED = true;
-            return owner;
+            if (Server.WHOIS_BR.length() == 0) {
+                return null;
+            } else {
+                // Não encontrou o dominio em cache.
+                // Selecionando servidor da pesquisa WHOIS.
+                String server = Server.WHOIS_BR;
+                // Realizando a consulta no WHOIS.
+                Owner owner = new Owner(key);
+                owner.server = server; // Temporário até final de transição.
+                // Adicinando registro em cache.
+                MAP.put(owner.getOwnerID(), owner);
+                OWNER_CHANGED = true;
+                return owner;
+            }
         }
     }
     

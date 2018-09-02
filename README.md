@@ -317,9 +317,6 @@ PayPal em Real:<br>
 PayPal em Dólar:<br>
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=LJM9UCLMKFRP6)
 
-Patreon:<br>
-<a href="https://www.patreon.com/bePatron?u=2430613">Patreon SPFBL project</a>
-
 Bitcoin:<br>
 [![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/bitcoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")](1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy)
 

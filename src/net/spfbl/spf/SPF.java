@@ -2042,6 +2042,10 @@ public final class SPF implements Serializable {
             query.blockKey(time);
             query.setResult("BLOCK");
             return "BLOCK";
+        } else if (query.hasDynamicIP()) {
+            query.blockKey(time);
+            query.setResult("BLOCK");
+            return "BLOCK";
         } else if (User.isExpiredHOLD(time)) {
             Server.logTrace("query expired.");
             if (query.isRecipientAdvised()) {

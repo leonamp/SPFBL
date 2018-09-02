@@ -3088,6 +3088,14 @@ public class Block {
             return DNSBL.get(null, ip) != null;
         }
     }
+    
+    public static String findDNSBL(String ip) {
+        if ((ip = Subnet.normalizeIP(ip)) == null) {
+            return null;
+        } else {
+            return DNSBL.get(null, ip);
+        }
+    }
 
     private static int parseIntWHOIS(String value) {
         try {

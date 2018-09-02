@@ -138,7 +138,7 @@ public class Core {
     
     private static final byte VERSION = 2;
     private static final byte SUBVERSION = 9;
-    private static final byte RELEASE = 1;
+    private static final byte RELEASE = 2;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -741,6 +741,8 @@ public class Core {
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
                     Server.setProviderDNS(properties.getProperty("dns_provider"));
+                    Server.setServerWHOISBR(properties.getProperty("whois_server_br"));
+                    Core.setShowAdvertisement(properties.getProperty("advertisement_show"));
                     Core.setHostname(properties.getProperty("hostname"));
                     Core.setInterface(properties.getProperty("interface"));
                     Core.setProviderACME(properties.getProperty("acme_provider"));
@@ -1371,6 +1373,26 @@ public class Core {
         } catch (NamingException ex) {
             return false;
         }
+    }
+    
+    private static boolean ADVERTISEMENT_SHOW = true;
+    
+    public static void setShowAdvertisement(String show) {
+        if (show != null && show.length() > 0) {
+            try {
+                setShowAdvertisement(Boolean.parseBoolean(show));
+            } catch (Exception ex) {
+                Server.logError("advertisement_show parameter '" + show + "' is invalid.");
+            }
+        }
+    }
+    
+    public static void setShowAdvertisement(boolean show) {
+        Core.ADVERTISEMENT_SHOW = show;
+    }
+    
+    public static boolean showAdvertisement() {
+        return ADVERTISEMENT_SHOW;
     }
     
     public static synchronized void setHostname(String hostame) {

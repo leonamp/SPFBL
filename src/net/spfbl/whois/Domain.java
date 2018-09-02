@@ -479,8 +479,12 @@ public class Domain implements Serializable, Comparable<Domain> {
     private boolean refresh() throws ProcessException {
         server = getWhoisServer(domain); // Temporário até final de transição.
         String result = Server.whois(domain, server);
-        String domainResult = refresh(result);
-        return domain.equals(domainResult);
+        if (result == null) {
+            return false;
+        } else {
+            String domainResult = refresh(result);
+            return domain.equals(domainResult);
+        }
     }
     
     public static synchronized TreeSet<String> getTLDSet() throws ProcessException {
@@ -518,7 +522,7 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     public static TreeSet<String> dropAllTLD() throws ProcessException {
-        TreeSet<String> tldSet = new TreeSet<String>();
+        TreeSet<String> tldSet = new TreeSet<>();
         for (String tld : getTLDSet()) {
             if (dropExactTLD(tld)) {
                 tldSet.add(tld);
@@ -1386,21 +1390,23 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Domínio existente.
             // Realizando a consulta no WHOIS.
             String result = Server.whois(host, server);
-            try {
-                Domain domain = new Domain(result);
-                domain.server = server; // Temporário até final de transição.
-                // Adicinando registro em cache.
-                MAP.put(domain.getDomain(), domain);
-                DOMAIN_CHANGED = true;
-            } catch (ProcessException ex) {
-                if (ex.isErrorMessage("RESERVED")) {
-                    // A chave de busca é um TLD.
-                    if (TLD_SET.add(host)) {
-                        // Atualiza flag de atualização.
-                        TLD_CHANGED = true;
+            if (result != null) {
+                try {
+                    Domain domain = new Domain(result);
+                    domain.server = server; // Temporário até final de transição.
+                    // Adicinando registro em cache.
+                    MAP.put(domain.getDomain(), domain);
+                    DOMAIN_CHANGED = true;
+                } catch (ProcessException ex) {
+                    if (ex.isErrorMessage("RESERVED")) {
+                        // A chave de busca é um TLD.
+                        if (TLD_SET.add(host)) {
+                            // Atualiza flag de atualização.
+                            TLD_CHANGED = true;
+                        }
                     }
+                    throw ex;
                 }
-                throw ex;
             }
         }
     }
@@ -1486,22 +1492,26 @@ public class Domain implements Serializable, Comparable<Domain> {
         // Domínio existente.
         // Realizando a consulta no WHOIS.
         String result = Server.whois(host, server);
-        try {
-            Domain domain = new Domain(result);
-            domain.server = server; // Temporário até final de transição.
-            // Adicinando registro em cache.
-            MAP.put(domain.getDomain(), domain);
-            DOMAIN_CHANGED = true;
-            return domain;
-        } catch (ProcessException ex) {
-            if (ex.isErrorMessage("RESERVED")) {
-                // A chave de busca é um TLD.
-                if (TLD_SET.add(host)) {
-                    // Atualiza flag de atualização.
-                    TLD_CHANGED = true;
+        if (result == null) {
+            return null;
+        } else {
+            try {
+                Domain domain = new Domain(result);
+                domain.server = server; // Temporário até final de transição.
+                // Adicinando registro em cache.
+                MAP.put(domain.getDomain(), domain);
+                DOMAIN_CHANGED = true;
+                return domain;
+            } catch (ProcessException ex) {
+                if (ex.isErrorMessage("RESERVED")) {
+                    // A chave de busca é um TLD.
+                    if (TLD_SET.add(host)) {
+                        // Atualiza flag de atualização.
+                        TLD_CHANGED = true;
+                    }
                 }
+                throw ex;
             }
-            throw ex;
         }
     }
     

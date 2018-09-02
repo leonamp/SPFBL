@@ -198,7 +198,7 @@ public abstract class Server extends Thread {
     private static class Test extends Thread {
         
         public Test() {
-            super("BCKGROUND");
+            super("BCKGRTEST");
             super.setPriority(MIN_PRIORITY);
         }
         
@@ -1259,48 +1259,66 @@ public abstract class Server extends Thread {
      * @throws ProcessException se houver falha no processamento da informação.
      */
     public static String whoisID(String query, String server) throws ProcessException {
-        long time = System.currentTimeMillis();
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try {
-            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
-                try {
-                    acquireWhoisIDQuery();
-                    WhoisClient whoisClient = new WhoisClient();
+        if (WHOIS_BR.length() == 0) {
+            return null;
+        } else {
+            long time = System.currentTimeMillis();
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            try {
+                if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
                     try {
-                        whoisClient.setDefaultTimeout(3000);
-                        whoisClient.connect(server);
-                        InputStream inputStream = whoisClient.getInputStream(query);
-                        int code;
-                        while ((code = inputStream.read()) != -1) {
-                            outputStream.write(code);
+                        acquireWhoisIDQuery();
+                        WhoisClient whoisClient = new WhoisClient();
+                        try {
+                            whoisClient.setDefaultTimeout(3000);
+                            whoisClient.connect(server);
+                            InputStream inputStream = whoisClient.getInputStream(query);
+                            int code;
+                            while ((code = inputStream.read()) != -1) {
+                                outputStream.write(code);
+                            }
+                        } finally {
+                            whoisClient.disconnect();
                         }
                     } finally {
-                        whoisClient.disconnect();
+                        WHOIS_CONNECTION_SEMAPHORE.release();
                     }
-                } finally {
-                    WHOIS_CONNECTION_SEMAPHORE.release();
+                } else {
+                    throw new ProcessException("TOO MANY CONNECTIONS");
                 }
-            } else {
-                throw new ProcessException("TOO MANY CONNECTIONS");
+            } catch (ProcessException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw new ProcessException("WHOIS CONNECTION FAIL", ex);
             }
-        } catch (ProcessException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new ProcessException("WHOIS CONNECTION FAIL", ex);
-        }
-        try {
-            String result = outputStream.toString("ISO-8859-1");
-            logWhois(time, server, query, result);
-            return result;
-        } catch (UnsupportedEncodingException ex) {
-            throw new ProcessException("ERROR: ENCODING", ex);
+            try {
+                String result = outputStream.toString("ISO-8859-1");
+                logWhois(time, server, query, result);
+                return result;
+            } catch (UnsupportedEncodingException ex) {
+                throw new ProcessException("ERROR: ENCODING", ex);
+            }
         }
     }
     
     /**
-     * Constante do servidor WHOIS brasileiro.
+     * Constante do servidor WHOIS brasileiro definida na partida do sistema.
      */
-    public static final String WHOIS_BR = "whois.nic.br";
+    public static String WHOIS_BR = null;
+    
+    protected static synchronized void setServerWHOISBR(String server) {
+        if (WHOIS_BR == null) {
+            if (server == null || server.length() == 0) {
+                WHOIS_BR = "whois.nic.br";
+            } else if (server.equals("NONE")) {
+                WHOIS_BR = "";
+            } else if ((server = Domain.normalizeHostname(server, false)) != null) {
+                WHOIS_BR = server;
+            }
+            SubnetIPv4.init();
+            SubnetIPv6.init();
+        }
+    }
     
     /**
      * Consulta de registros de nome de domínio.
@@ -1362,43 +1380,47 @@ public abstract class Server extends Thread {
      * @throws ProcessException se houver falha no processamento da informação.
      */
     public static String whois(String query, String server) throws ProcessException {
-        long time = System.currentTimeMillis();
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try {
-            if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
-                try {
-                    acquireWhoisQuery();
-                    WhoisClient whoisClient = new WhoisClient();
+        if (WHOIS_BR.length() == 0) {
+            return null;
+        } else {
+            long time = System.currentTimeMillis();
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            try {
+                if (WHOIS_CONNECTION_SEMAPHORE.tryAcquire()) {
                     try {
-                        whoisClient.setDefaultTimeout(3000);
-                        whoisClient.connect(server);
-                        try (InputStream inputStream = whoisClient.getInputStream(query)) {
-                            int code;
-                            while ((code = inputStream.read()) != -1) {
-                                outputStream.write(code);
+                        acquireWhoisQuery();
+                        WhoisClient whoisClient = new WhoisClient();
+                        try {
+                            whoisClient.setDefaultTimeout(3000);
+                            whoisClient.connect(server);
+                            try (InputStream inputStream = whoisClient.getInputStream(query)) {
+                                int code;
+                                while ((code = inputStream.read()) != -1) {
+                                    outputStream.write(code);
+                                }
                             }
+                        } finally {
+                            whoisClient.disconnect();
                         }
                     } finally {
-                        whoisClient.disconnect();
+                        WHOIS_CONNECTION_SEMAPHORE.release();
                     }
-                } finally {
-                    WHOIS_CONNECTION_SEMAPHORE.release();
+                } else {
+                    throw new ProcessException("TOO MANY CONNECTIONS");
                 }
-            } else {
-                throw new ProcessException("TOO MANY CONNECTIONS");
+            } catch (ProcessException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw new ProcessException("WHOIS CONNECTION FAIL", ex);
+            } 
+            try {
+                String result = outputStream.toString("ISO-8859-1");
+                result = result.replace("\r", "");
+                logWhois(time, server, query, result);
+                return result;
+            } catch (UnsupportedEncodingException ex) {
+                throw new ProcessException("ERROR: ENCODING", ex);
             }
-        } catch (ProcessException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new ProcessException("WHOIS CONNECTION FAIL", ex);
-        } 
-        try {
-            String result = outputStream.toString("ISO-8859-1");
-            result = result.replace("\r", "");
-            logWhois(time, server, query, result);
-            return result;
-        } catch (UnsupportedEncodingException ex) {
-            throw new ProcessException("ERROR: ENCODING", ex);
         }
     }
     

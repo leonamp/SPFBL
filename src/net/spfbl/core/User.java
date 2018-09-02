@@ -597,7 +597,7 @@ public class User implements Serializable, Comparable<User> {
                             + "AND COUNT(*) > 32\n"
                             + "AND STD(time) / 86400000 > 7";
                     try {
-                        TreeMap<Long, User> whiteMap = new TreeMap<>();
+                        TreeMap<Long,User> whiteMap = new TreeMap<>();
                         Statement statement = connection.createStatement();
                         statement.setQueryTimeout(600);
                         ResultSet rs = statement.executeQuery(command);
@@ -854,8 +854,8 @@ public class User implements Serializable, Comparable<User> {
             if (queryMap != null) {
                 for (long time : queryMap.keySet()) {
                     Query query = queryMap.get(time);
-                    boolean white = query.isWhite();
-                    boolean block = !white && query.isBlock();
+                    boolean white = query.isWhiteKey();
+                    boolean block = !white && query.isBlockKey();
                     if (white || block) {
                         TreeSet<String> expandedSet = new TreeSet<>();
                         for (String link : query.getLinkSet()) {
@@ -985,7 +985,7 @@ public class User implements Serializable, Comparable<User> {
                     CHANGED = false;
                 }
                 File file = new File("./data/user.map");
-                if (file.delete()) {
+                if (!file.exists() || file.delete()) {
                     fileTemp.renameTo(file);
                     Server.logStore(time, file);
                 } else {
@@ -2661,6 +2661,14 @@ public class User implements Serializable, Comparable<User> {
             return ip;
         }
         
+        public boolean hasDynamicIP() {
+            return Generic.isDynamicIP(ip);
+        }
+        
+        public boolean hasQualifiedIP() {
+            return Generic.isQualifiedIP(ip);
+        }
+        
         public String getCIDR() {
             if (ip.contains(":")) {
                 return SubnetIPv6.normalizeCIDRv6(ip + "/64");
@@ -3896,10 +3904,10 @@ public class User implements Serializable, Comparable<User> {
                 return block;
             } else if (isSigned(replyto) && (block = Block.find(null, User.this, ip, replyto, getValidHostname(), "PASS", recipient, false, true, true, true)) != null) {
                 return block;
-            } else if (sender == null) {
-                return Block.find(null, User.this, ip, null, getValidHostname(), "NONE", recipient, false, true, true, true);
+            } else if (sender == null && (block = Block.find(null, User.this, ip, null, getValidHostname(), "NONE", recipient, false, true, true, true)) != null) {
+                return block;
             } else {
-                return null;
+                return Block.findDNSBL(ip);
             }
         }
         
@@ -4837,6 +4845,8 @@ public class User implements Serializable, Comparable<User> {
                     return false;
                 } else if (isSenderBlock()) {
                     return false;
+//                } else if (!hasQualifiedIP()) {
+//                    return false;
                 } else if (Block.containsWHOIS(User.this, getSender())) {
                     return false;
                 } else {
@@ -5006,6 +5016,10 @@ public class User implements Serializable, Comparable<User> {
                 } else if (isInexistent(client)) {
                     blockKey(time);
                     resultReturn = "BLOCK";
+                } else if (hasDynamicIP()) {
+                    Analise.processToday(getIP());
+                    blockKey(time);
+                    resultReturn = "BLOCK";
                 } else if (isBlockKey() || isSenderBlock() || isBlockCIDR() || hasExecutableBlocked() || isAnyLinkBLOCK(false) || Block.containsWHOIS(User.this, getSender())) {
                     if (actionBLOCK == Action.FLAG) {
                         resultReturn = "FLAG";
@@ -5017,6 +5031,20 @@ public class User implements Serializable, Comparable<User> {
                     }
                 } else if (isToAdmin()) {
                     resultReturn = null;
+                } else if ((resultReturn = getBlock()) != null) {
+                    Server.logTrace("HEADER isBlock " + resultReturn);
+                    if (actionBLOCK == Action.REJECT && !hasQualifiedIP()) {
+                        Analise.processToday(getIP());
+                        blockKey(time);
+                        resultReturn = "BLOCK";
+                    } else if (actionRED == Action.FLAG) {
+                        resultReturn = "FLAG";
+                    } else if (actionRED == Action.HOLD) {
+                        resultReturn = "HOLD";
+                    } else {
+                        this.complain(time);
+                        resultReturn = "REJECT";
+                    }
                 } else if (reject) {
                     this.complain(time);
                     resultReturn = "REJECT";
@@ -5075,16 +5103,6 @@ public class User implements Serializable, Comparable<User> {
                     }
                 } else if (isSubjectSuspect()) {
                     Server.logTrace("HEADER isSubjectSuspect");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if ((resultReturn = getBlock()) != null) {
-                    Server.logTrace("HEADER isBlock " + resultReturn);
                     if (actionRED == Action.FLAG) {
                         resultReturn = "FLAG";
                     } else if (actionRED == Action.HOLD) {
@@ -5556,6 +5574,11 @@ public class User implements Serializable, Comparable<User> {
                     Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";HREF'.");
                 }
                 return false;
+            } else if (hasDynamicIP()) {
+                if (blockKey(time)) {
+                    Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";DYNAMIC'.");
+                }
+                return false;
             } else {
                 try {
                     String url = Core.getHoldingURL(User.this, time);
@@ -5710,7 +5733,7 @@ public class User implements Serializable, Comparable<User> {
                             if (locale.getLanguage().toLowerCase().equals("pt")) {
                                 subjectLocal = "Aviso de rejeição de mensagem";
                             } else {
-                                subjectLocal = "Message retention warning";
+                                subjectLocal = "Message rejection warning";
                             }
                         }
                         String messageidLocal = getMessageID();

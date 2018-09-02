@@ -84,9 +84,13 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         // Atualizando campos do registro.
         server = getWhoisServer(); // Temporário até final de transição.
         String result = Server.whois(inetnum, server);
-        String inetnumResult = refresh(result);
-        inetnumResult = normalizeCIDR(inetnumResult);
-        return isInetnum(inetnumResult);
+        if (result == null) {
+            return false;
+        } else {
+            String inetnumResult = refresh(result);
+            inetnumResult = normalizeCIDR(inetnumResult);
+            return isInetnum(inetnumResult);
+        }
     }
     
     // Temporário até final da transição.

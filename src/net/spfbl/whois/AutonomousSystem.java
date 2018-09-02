@@ -101,9 +101,11 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
     
     private void refresh() throws ProcessException {
         String result = Server.whois(aut_num, server);
-        refresh(result);
-        // Atualiza flag de atualização.
-        AS_CHANGED = true;
+        if (result != null) {
+            refresh(result);
+            // Atualiza flag de atualização.
+            AS_CHANGED = true;
+        }
     }
     
     /**

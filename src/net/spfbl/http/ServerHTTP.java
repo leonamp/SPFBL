@@ -5330,10 +5330,10 @@ public final class ServerHTTP extends Server {
                     }
                 } else if (genericEC2 && Block.containsCIDR(ip)) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        buildText(builder, "Este IP foi bloqueado por ser um <a target=\"_blank\" href=\"http://spfbl.net/aws/\">EC2 genérico</a> suspeito.");
+                        buildText(builder, "Este IP foi marcado por ser um <a target=\"_blank\" href=\"http://spfbl.net/aws/\">EC2 genérico</a> suspeito.");
                         buildText(builder, "Solicite um <a target=\"_blank\" href=\"https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html\">Elastic IP</a> à AWS se você pretende manter um servidor de e-mail em seu EC2.");
                     } else {
-                        buildText(builder, "This IP has been blocked because it is a suspect <a target=\"_blank\" href=\"http://spfbl.net/en/aws/\">generic EC2</a>.");
+                        buildText(builder, "This IP has been flagged because it is a suspect <a target=\"_blank\" href=\"http://spfbl.net/en/aws/\">generic EC2</a>.");
                         buildText(builder, "Request a <a target=\"_blank\" href=\"https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html\">Elastic IP</a> to AWS if you plan to maintain an email server on your EC2.");
                     }
                 } else if (distribution.isNotGreen(ip)) {
@@ -5365,7 +5365,7 @@ public final class ServerHTTP extends Server {
                         if (generic) {
                             buildText(builder, "Não serão aceitos <a target=\"_blank\" href=\"http://spfbl.net/generic/\">rDNS genéricos</a>.");
                         } else if (blocked) {
-                            buildText(builder, "Este IP foi bloqueado por não ter <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
+                            buildText(builder, "Este IP foi marcado por não ter <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else if (good) {
                             buildText(builder, "Este IP está com reputação muito boa, porém não tem um <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else {
@@ -5381,7 +5381,7 @@ public final class ServerHTTP extends Server {
                         if (generic) {
                             buildText(builder, "<a target=\"_blank\" href=\"http://spfbl.net/en/generic/\">Generic rDNS</a> will not be accepted.");
                         } else if (blocked) {
-                            buildText(builder, "This IP has been blocked because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.");
+                            buildText(builder, "This IP has been flagged because have none valid <a target=\"_blank\" href=\"http://spfbl.net/en/fcrdns/\">FCrDNS</a>.");
                         } else if (good) {
                             buildText(builder, "This IP has a very good reputation, but does not have a <a target=\"_blank\" href=\"http://spfbl.net/fcrdns/\">FCrDNS</a> válido.");
                         } else {
@@ -7387,7 +7387,11 @@ public final class ServerHTTP extends Server {
     private static void buildAdvertise(
             StringBuilder builder
     ) {
-        builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+        if (Core.showAdvertisement()) {
+            builder.append("      <iframe data-aa='455818' src='//ad.a-ads.com/455818?size=468x60' scrolling='no' style='width:468px; height:60px; border:0px; padding:0;overflow:hidden' allowtransparency='true'></iframe>");
+        } else {
+            buildLogo(builder);
+        }
     }
     
     public static void buildMessage(
@@ -7472,9 +7476,15 @@ public final class ServerHTTP extends Server {
         builder.append("      <div id=\"divfooter\">\n");
         if (locale.getLanguage().toLowerCase().equals("pt")) {
             if (unsubscribeURL == null) {
-                builder.append("        <div id=\"divanuncio\">\n");
-                builder.append("          Anuncie aqui pelo <a target=\"_blank\" href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
-                builder.append("        </div>\n");
+                if (Core.showAdvertisement()) {
+                    builder.append("        <div id=\"divanuncio\">\n");
+                    builder.append("          Anuncie aqui pelo <a target=\"_blank\" href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
+                    builder.append("        </div>\n");
+                } else {
+                    builder.append("        <div id=\"divanuncio\">\n");
+                    builder.append("          Obtenha seu <a target=\"_blank\" href='https://spfbl.net/firewall/'>SPAM firewall</a>\n");
+                    builder.append("        </div>\n");
+                }
             } else {
                 builder.append("        <div id=\"divanuncio\">\n");
                 builder.append("          <a target=\"_blank\" href='");
@@ -7487,9 +7497,15 @@ public final class ServerHTTP extends Server {
             builder.append("        </div>\n");
         } else {
             if (unsubscribeURL == null) {
-                builder.append("        <div id=\"divanuncio\">\n");
-                builder.append("          Advertise here by <a target=\"_blank\" href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
-                builder.append("        </div>\n");
+                if (Core.showAdvertisement()) {
+                    builder.append("        <div id=\"divanuncio\">\n");
+                    builder.append("          Advertise here by <a target=\"_blank\" href='http://a-ads.com?partner=455818'>Anonymous Ads</a>\n");
+                    builder.append("        </div>\n");
+                } else {
+                    builder.append("        <div id=\"divanuncio\">\n");
+                    builder.append("          Get your <a target=\"_blank\" href='https://spfbl.net/en/firewall/'>SPAM firewall</a>\n");
+                    builder.append("        </div>\n");
+                }
             } else {
                 builder.append("        <div id=\"divanuncio\">\n");
                 builder.append("          <a target=\"_blank\" href='");

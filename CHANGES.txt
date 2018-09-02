@@ -1,3 +1,12 @@
+### v2.9.2 ; release 09/02/2018:
+
+NEW) Advertisement settings;
+
+NEW) Brazilian WHOIS settings;
+
+FIX) Fixed first user database store;
+
+
 ### v2.9.1 ; release 08/26/2018:
 
 NEW) Efficient data structure for CIDR to lower RAM consume and operate with write/read full parallelism;

@@ -701,12 +701,14 @@ public final class SubnetIPv6 extends Subnet {
         String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        subnet = new SubnetIPv6(result);
-        subnet.server = server; // Temporário até final de transição.
-        key = getFirstIPv6(subnet.getInetnum());
-        key = expandIPv6(key);
-        MAP.put(key, subnet);
-        CHANGED = true;
+        if (result != null) {
+            subnet = new SubnetIPv6(result);
+            subnet.server = server; // Temporário até final de transição.
+            key = getFirstIPv6(subnet.getInetnum());
+            key = expandIPv6(key);
+            MAP.put(key, subnet);
+            CHANGED = true;
+        }
     }
     
     public static String getFirstIPv6(String inetnum) {
@@ -935,13 +937,17 @@ public final class SubnetIPv6 extends Subnet {
         String server = getWhoisServer(ip);
         // Fazer a consulta no WHOIS.
         String result = Server.whois(ip, server);
-        SubnetIPv6 subnet = new SubnetIPv6(result);
-        subnet.server = server; // Temporário até final de transição.
-        String key = getFirstIPv6(subnet.getInetnum());
-        key = expandIPv6(key);
-        MAP.put(key, subnet);
-        CHANGED = true;
-        return subnet;
+        if (result == null) {
+            return null;
+        } else {
+            SubnetIPv6 subnet = new SubnetIPv6(result);
+            subnet.server = server; // Temporário até final de transição.
+            String key = getFirstIPv6(subnet.getInetnum());
+            key = expandIPv6(key);
+            MAP.put(key, subnet);
+            CHANGED = true;
+            return subnet;
+        }
     }
     
     /**
@@ -1150,9 +1156,11 @@ public final class SubnetIPv6 extends Subnet {
      * Construção do mapa dos blocos alocados.
      * Temporário até implementação de busca pelo whois.iana.org.
      */
-    static {
-        addServer("2001:1280::/25", Server.WHOIS_BR);
-        addServer("2801:80::/26", Server.WHOIS_BR);
-        addServer("2804::/16", Server.WHOIS_BR);
+    public static void init() {
+        if (Server.WHOIS_BR.length() > 0) {
+            addServer("2001:1280::/25", Server.WHOIS_BR);
+            addServer("2801:80::/26", Server.WHOIS_BR);
+            addServer("2804::/16", Server.WHOIS_BR);
+        }
     }
 }

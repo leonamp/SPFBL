@@ -1377,18 +1377,22 @@ public class Analise implements Serializable, Comparable<Analise> {
                     }
                 }
             }
-            if (statusIP == Status.DYNAMIC && statusName != Status.DYNAMIC && statusName != Status.NONE  && statusName != Status.GENERIC && statusName != Status.BLOCK && statusName != Status.TIMEOUT && statusName != Status.UNAVAILABLE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE && statusName != Status.RESERVED) {
+            if (statusIP == Status.DYNAMIC && statusName != Status.DYNAMIC && statusName != Status.NONE  && statusName != Status.BLOCK && statusName != Status.TIMEOUT && statusName != Status.UNAVAILABLE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE && statusName != Status.RESERVED) {
                 String mask = Generic.convertHostToMask(tokenName);
-                if (mask != null) {
+                if (mask != null && !Generic.containsGenericExact(mask)) {
                     try {
                         if (mask.contains("static")) {
+                            int index = mask.indexOf("static");
+                            index = mask.lastIndexOf('.', index);
+                            mask = mask.substring(index);
                             if ((mask = Generic.addGeneric(mask)) != null) {
                                 Server.logDebug("new GENERIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
+                                statusName = Status.GENERIC;
                             }
                         } else if ((mask = Generic.addDynamic(mask)) != null) {
                             Server.logDebug("new DYNAMIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
+                            statusName = Status.DYNAMIC;
                         }
-                        statusName = Status.DYNAMIC;
                     } catch (ProcessException ex) {
                         // Do nothing.
                     }

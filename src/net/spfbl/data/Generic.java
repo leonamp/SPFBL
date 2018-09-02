@@ -349,6 +349,52 @@ public class Generic {
         return map;
     }
     
+    public static boolean isQualifiedIP(String ip) {
+        if (ip == null) {
+            return false;
+        } else {
+            Reverse reverse = Reverse.get(ip);
+            if (reverse == null) {
+                return false;
+            } else {
+                TreeSet<String> addressSet = reverse.getAddressSet();
+                if (addressSet.isEmpty()) {
+                    return false;
+                } else {
+                    for (String address : addressSet) {
+                        if (containsGenericDomain(address)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    
+    public static boolean isDynamicIP(String ip) {
+        if (ip == null) {
+            return false;
+        } else {
+            Reverse reverse = Reverse.get(ip);
+            if (reverse == null) {
+                return false;
+            } else {
+                TreeSet<String> addressSet = reverse.getAddressSet();
+                if (addressSet.isEmpty()) {
+                    return false;
+                } else {
+                    for (String address : addressSet) {
+                        if (Generic.containsDynamic(address)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+    }
+    
     public static boolean containsGenericExact(String address) {
         if (address == null) {
             return false;
