@@ -16,17 +16,23 @@
  */
 package net.spfbl.dns;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.SubnetIPv4;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -34,6 +40,7 @@ import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import net.spfbl.core.AbusePeriod;
 import net.spfbl.core.Analise;
 import net.spfbl.data.Block;
 import net.spfbl.core.Client;
@@ -44,6 +51,7 @@ import net.spfbl.data.Abuse;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
 import net.spfbl.data.White;
+import net.spfbl.spf.SPF.Distribution;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
@@ -151,6 +159,17 @@ public final class QueryDNS extends Server {
         return map;
     }
     
+    public static synchronized HashMap<String,Zone> getSCOREMap() {
+        HashMap<String,Zone> map = new HashMap<>();
+        for (String key : MAP.keySet()) {
+            Zone zone = MAP.get(key);
+            if (zone.isSCORE()) {
+                map.put(key, zone);
+            }
+        }
+        return map;
+    }
+    
     public static synchronized HashMap<String,Zone> getDNSALMap() {
         HashMap<String,Zone> map = new HashMap<>();
         for (String key : MAP.keySet()) {
@@ -215,6 +234,21 @@ public final class QueryDNS extends Server {
         } else if (Domain.isHostname(hostname)) {
             hostname = Domain.normalizeHostname(hostname, true);
             Zone server = new Zone(Zone.Type.DNSWL, hostname, message);
+            return putExact(hostname, server) ;
+        } else {
+            return false;
+        }
+    }
+    
+    /**
+     * Adiciona um registro DNS no mapa de cache.
+     */
+    public static boolean addSCORE(String hostname, String message) {
+        if (hostname == null) {
+            return false;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            Zone server = new Zone(Zone.Type.SCORE, hostname, message);
             return putExact(hostname, server) ;
         } else {
             return false;
@@ -305,6 +339,20 @@ public final class QueryDNS extends Server {
         }
         return serverSet;
     }
+    
+    public static TreeSet<Zone> dropAllSCORE() {
+        TreeSet<Zone> serverSet = new TreeSet<>();
+        for (Zone zone : getValues()) {
+            if (zone != null && zone.isSCORE()) {
+                String hostname = zone.getHostName();
+                zone = dropExact(hostname);
+                if (zone != null) {
+                    serverSet.add(zone);
+                }
+            }
+        }
+        return serverSet;
+    }
 
     public static TreeSet<Zone> dropAllDNSAL() {
         TreeSet<Zone> serverSet = new TreeSet<>();
@@ -363,6 +411,24 @@ public final class QueryDNS extends Server {
             hostname = Domain.normalizeHostname(hostname, true);
             Zone zone = dropExact(hostname);
             if (zone.isDNSWL()) {
+                return zone;
+            } else if (putExact(hostname, zone)) {
+                return null;
+            } else {
+                return zone;
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static Zone dropSCORE(String hostname) {
+        if (hostname == null) {
+            return null;
+        } else if (Domain.isHostname(hostname)) {
+            hostname = Domain.normalizeHostname(hostname, true);
+            Zone zone = dropExact(hostname);
+            if (zone.isSCORE()) {
                 return zone;
             } else if (putExact(hostname, zone)) {
                 return null;
@@ -452,7 +518,181 @@ public final class QueryDNS extends Server {
             return Core.removerAcentuacao(address.substring(1)).toLowerCase();
         }
     }
-
+    
+    private static final HashMap<InetAddress,String> CIDR_MAP = new HashMap<>();
+    
+    private static synchronized String getCIDR(InetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            return CIDR_MAP.get(address);
+        }
+    }
+    
+    private static synchronized String removeInetAddress(InetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            return CIDR_MAP.remove(address);
+        }
+    }
+    
+    private static synchronized String putCIDR(
+            InetAddress address, String cidr
+    ) {
+        return CIDR_MAP.put(address, cidr);
+    }
+    
+    public static synchronized ArrayList<InetAddress> getAddressKeySet() {
+        int size = CIDR_MAP.size();
+        ArrayList<InetAddress> addressSet = new ArrayList<>(size);
+        addressSet.addAll(CIDR_MAP.keySet());
+        return addressSet;
+    }
+    
+    private static final HashMap<String,AbusePeriod> ABUSE_MAP = new HashMap<>();
+    
+    private static synchronized boolean containsAbusePeriodKey(String cidr) {
+        if (cidr == null) {
+            return false;
+        } else {
+            return ABUSE_MAP.containsKey(cidr);
+        }
+    }
+    
+    private static synchronized AbusePeriod getAbusePeriod(String cidr) {
+        if (cidr == null) {
+            return null;
+        } else {
+            return ABUSE_MAP.get(cidr);
+        }
+    }
+    
+    private static synchronized AbusePeriod removeAbuseKey(String cidr) {
+        if (cidr == null) {
+            return null;
+        } else {
+            return ABUSE_MAP.remove(cidr);
+        }
+    }
+    
+    private static synchronized AbusePeriod putAbusePeriod(
+            String cidr, AbusePeriod period
+    ) {
+        if (cidr == null) {
+            return null;
+        } else if (period == null) {
+            return null;
+        } else {
+            return ABUSE_MAP.put(cidr, period);
+        }
+    }
+    
+    public static synchronized TreeSet<String> getAbuseKeySet() {
+        TreeSet<String> cidrSet = new TreeSet<>();
+        cidrSet.addAll(ABUSE_MAP.keySet());
+        return cidrSet;
+    }
+    
+    public static TreeSet<String> getBannedKeySet() {
+        TreeSet<String> bannedSet = new TreeSet<>();
+        for (String cidr : getAbuseKeySet()) {
+            AbusePeriod period = getAbusePeriod(cidr);
+            if (period.isBanned()) {
+                bannedSet.add(cidr);
+            } else if (period.isExpired()) {
+                removeAbuseKey(cidr);
+            }
+        }
+        for (InetAddress address : getAddressKeySet()) {
+            String cidr = getCIDR(address);
+            if (!containsAbusePeriodKey(cidr)) {
+                removeInetAddress(address);
+            }
+        }
+        return bannedSet;
+    }
+    
+    private static AbusePeriod registerAbuseEvent(InetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            String cidr = getCIDR(address);
+            if (cidr == null) {
+                if (address instanceof Inet4Address) {
+                    cidr = SubnetIPv4.normalizeCIDRv4(address.getHostAddress() + "/25");
+                    putCIDR(address, cidr);
+                } else if (address instanceof Inet6Address) {
+                    cidr = SubnetIPv6.normalizeCIDRv6(address.getHostAddress() + "/52");
+                    putCIDR(address, cidr);
+                }
+            }
+            if (cidr == null) {
+                return null;
+            } else {
+                AbusePeriod period = getAbusePeriod(cidr);
+                if (period == null) {
+                    period = new AbusePeriod();
+                    putAbusePeriod(cidr, period);
+                }
+                period.registerEvent();
+                if (period.isAbusing(16384, 1000)) {
+                    period.setBannedInterval(Server.WEEK_TIME);
+                }
+                return period;
+            }
+        }
+    }
+    
+    public static void storeAbuse() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/dns.abuse.txt");
+        try (FileWriter writer = new FileWriter(file)) {
+            for (String cidr : getAbuseKeySet()) {
+                AbusePeriod period = getAbusePeriod(cidr);
+                if (period != null) {
+                    writer.append(cidr);
+                    writer.append(' ');
+                    writer.append(period.storeLine());
+                    writer.append('\n');
+                }
+            }
+            Server.logStore(time, file);
+        } catch (Exception ex) {
+            Server.logError(ex);
+        }
+    }
+    
+    public static void loadAbuse() {
+        long time = System.currentTimeMillis();
+        File file = new File("./data/dns.abuse.txt");
+        if (file.exists()) {
+            String line;
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        int index = line.indexOf(' ');
+                        String cidr = line.substring(0, index);
+                        if (cidr.contains(":") && cidr.endsWith("/52")) {
+                            line = line.substring(index + 1);
+                            AbusePeriod period = AbusePeriod.loadLine(line);
+                            putAbusePeriod(cidr, period);
+                        } else if (!cidr.contains(":") && cidr.endsWith("/25")) {
+                            line = line.substring(index + 1);
+                            AbusePeriod period = AbusePeriod.loadLine(line);
+                            putAbusePeriod(cidr, period);
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                    }
+                }
+                Server.logLoad(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+    
     /**
      * Configuração e intanciamento do servidor.
      * @throws java.net.SocketException se houver falha durante o bind.
@@ -561,36 +801,11 @@ public final class QueryDNS extends Server {
             PACKET = null;
         }
         
-        private final NormalDistribution frequency = new NormalDistribution(50);
+        private final NormalDistribution period = new NormalDistribution(50);
         private long last = 0;
-        private final int LIMIT = 10;
         
         private boolean isIdle() {
-            return frequency.getMinimum() > 100.0f;
-        }
-        
-        private long getIdleTimeMillis() {
-            if (last == 0) {
-                return 0;
-            } else {
-                return System.currentTimeMillis() - last;
-            }
-        }
-        
-        private boolean isDead() {
-            int frequencyInt = frequency.getMaximumInt();
-            long idleTimeInt = getIdleTimeMillis();
-            return idleTimeInt > frequencyInt * 5 && idleTimeInt > 3600000;
-        }
-        
-        private boolean isCongested() {
-            if (frequency == null) {
-                return false;
-            } else if (isDead()) {
-                return false;
-            } else {
-                return frequency.getMaximumInt() < LIMIT;
-            }
+            return period.getMinimum() > 100.0f;
         }
         
         private Float getInterval() {
@@ -610,7 +825,7 @@ public final class QueryDNS extends Server {
             if (interval == null) {
                 return false;
             } else {
-                frequency.addElement(interval);
+                period.addElement(interval);
                 return true;
             }
         }
@@ -655,22 +870,19 @@ public final class QueryDNS extends Server {
                                     if (client == null) {
                                         result = "IGNORED";
                                     } else if (client.hasPermission(Permission.NONE)) {
-                                        client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         result = "IGNORED";
-//                                    } else if (isCongested() && client.isAbusing()) {
-//                                        client.addQuery();
-//                                        origin += ' ' + client.getDomain();
-//                                        result = "IGNORED";
                                     } else {
                                         client.addQuery();
                                         origin += ' ' + client.getDomain();
                                         long ttl = 3600; // Uma hora padrão.
-                                        String host = normalizeHost(query, false);
+                                        String host;
                                         Zone zone = null;
                                         String clientQuery = null;
-                                        if (host == null) {
-                                            result = "NXDOMAIN";
+                                        if (client.isAbusing(Permission.DNSBL)) {
+                                            result = "REFUSED";
+                                        } else if ((host = normalizeHost(query, false)) == null) {
+                                            result = "FORMERR";
                                         } else {
                                             int index = host.length() - 1;
                                             host = host.substring(0, index);
@@ -689,7 +901,7 @@ public final class QueryDNS extends Server {
                                             }
                                             if (zone == null) {
                                                 // Não existe zona cadastrada.
-                                                result = "NXDOMAIN";
+                                                result = "NOTAUTH";
                                             } else if (type.equals("NS")) {
                                                 if (zone.isHostName(host)) {
                                                     // O NS é o próprio servidor.
@@ -718,20 +930,16 @@ public final class QueryDNS extends Server {
                                             } else if (SubnetIPv4.isValidIPv4(reverse)) {
                                                 // A consulta é um IPv4.
                                                 clientQuery = SubnetIPv4.reverseToIPv4(reverse);
-                                                if (clientQuery.equals("127.0.0.1")) {
-                                                    // Consulta de teste para negativo.
-                                                    result = "NXDOMAIN";
-                                                } else if (clientQuery.equals("127.0.0.2")) {
-                                                    // Consulta de teste para positivo.
-                                                    result = "127.0.0.2";
-//                                                    ttl = 0;
-                                                } else if (clientQuery.equals("127.0.0.3")) {
-                                                    if (client.isPassive()) {
+                                                if (clientQuery.startsWith("127.")) {
+                                                    if (clientQuery.equals("127.0.0.0")) {
+                                                        // Consulta de teste para negativo.
+                                                        result = "NXDOMAIN";
+                                                    } else if (clientQuery.equals("127.0.0.1")) {
+                                                        // Consulta de teste para negativo.
                                                         result = "NXDOMAIN";
                                                     } else {
                                                         // Consulta de teste para positivo.
-                                                        result = "127.0.0.3";
-//                                                        ttl = 0;
+                                                        result = clientQuery;
                                                     }
                                                 } else if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
@@ -788,6 +996,17 @@ public final class QueryDNS extends Server {
                                                         result = "127.0.0.4";
                                                     } else {
                                                         result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    }
+                                                } else if (zone.isSCORE()) {
+                                                    Distribution distribution = SPF.getDistribution(clientQuery);
+                                                    if (distribution == null) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else {
+                                                        float probability = distribution.getSpamProbability(clientQuery);
+                                                        int score = 100 - (int) (100.0f * probability);
+                                                        result = "127.0.1." + score;
                                                         ttl = 86400; // Um dia.
                                                     }
                                                 } else if (zone.isDNSAL()) {
@@ -882,6 +1101,17 @@ public final class QueryDNS extends Server {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
                                                     }
+                                                } else if (zone.isSCORE()) {
+                                                    Distribution distribution = SPF.getDistribution(clientQuery);
+                                                    if (distribution == null) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else {
+                                                        float probability = distribution.getSpamProbability(clientQuery);
+                                                        int score = 100 - (int) (100.0f * probability);
+                                                        result = "127.0.1." + score;
+                                                        ttl = 86400; // Um dia.
+                                                    }
                                                 } else if (zone.isDNSAL()) {
                                                     String email = Abuse.getEmail(clientQuery);
                                                     if (email != null) {
@@ -900,7 +1130,6 @@ public final class QueryDNS extends Server {
                                                 } else if (clientQuery.equals(".test")) {
                                                     // Consulta de teste para positivo.
                                                     result = "127.0.0.2";
-//                                                    ttl = 0;
                                                 } else if (zone.isDNSBL()) {
                                                     SPF.Status status = SPF.getStatus(clientQuery, false);
                                                     if (Generic.containsDynamic(clientQuery)) {
@@ -925,11 +1154,9 @@ public final class QueryDNS extends Server {
                                                             ttl = 86400; // Um dia.
                                                         }
                                                     } else if (status == SPF.Status.RED) {
-                                                        Analise.processToday(clientQuery);
                                                         result = "127.0.0.2";
                                                         ttl = 86400; // Um dia.
                                                     } else {
-                                                        Analise.processToday(clientQuery);
                                                         String domain = Domain.extractDomainSafe(clientQuery, true);
                                                         if (domain == null) {
                                                             result = "NXDOMAIN";
@@ -986,6 +1213,17 @@ public final class QueryDNS extends Server {
                                                         result = "NXDOMAIN";
                                                         ttl = 86400; // Um dia.
                                                     }
+                                                } else if (zone.isSCORE()) {
+                                                    Distribution distribution = SPF.getDistribution(clientQuery);
+                                                    if (distribution == null) {
+                                                        result = "NXDOMAIN";
+                                                        ttl = 86400; // Um dia.
+                                                    } else {
+                                                        float probability = distribution.getSpamProbability(clientQuery);
+                                                        int score = 100 - (int) (100.0f * probability);
+                                                        result = "127.0.1." + score;
+                                                        ttl = 86400; // Um dia.
+                                                    }
                                                 } else if (zone.isDNSAL()) {
                                                     String email = Abuse.getEmail(clientQuery);
                                                     if (email != null) {
@@ -1008,7 +1246,7 @@ public final class QueryDNS extends Server {
                                             tag = zone.getTypeName();
                                         }
                                         String information = null;
-                                        if (result.startsWith("127.0.0.")) {
+                                        if (result.startsWith("127.")) {
                                             if (zone == null) {
                                                 result = "NXDOMAIN";
                                             } else {
@@ -1018,21 +1256,34 @@ public final class QueryDNS extends Server {
                                                 }
                                             }
                                         }
+                                        AbusePeriod abusePeriod = null;
                                         // Alterando mensagem DNS para resposta.
                                         header.setFlag(Flags.QR);
                                         header.setFlag(Flags.AA);
-                                        if (result.equals("NXDOMAIN")) {
+                                        if (result.equals("REFUSED")) {
+                                            abusePeriod = registerAbuseEvent(ipAddress);
+                                            header.setRcode(Rcode.REFUSED);
+                                        } else if (result.equals("FORMERR")) {
+                                            abusePeriod = registerAbuseEvent(ipAddress);
+                                            header.setRcode(Rcode.FORMERR);
+                                        } else if (result.equals("NOTAUTH")) {
+                                            abusePeriod = registerAbuseEvent(ipAddress);
+                                            header.setRcode(Rcode.NOTAUTH);
+                                        } else if (zone == null) {
+                                            abusePeriod = registerAbuseEvent(ipAddress);
+                                            header.setRcode(Rcode.NOTAUTH);
+                                        } else if (result.equals("NXDOMAIN")) {
                                             header.setRcode(Rcode.NXDOMAIN);
-                                            if (zone != null) {
-                                                long refresh = 1800;
-                                                long retry = 900;
-                                                long expire = 604800;
-                                                long minimum = 300;
-                                                name = new Name(zone.getHostName().substring(1) + '.');
-                                                SOARecord soa = new SOARecord(name, DClass.IN, ttl, name,
-                                                        name, SERIAL, refresh, retry, expire, minimum);
-                                                message.addRecord(soa, Section.AUTHORITY);
-                                            }
+                                            long refresh = 1800;
+                                            long retry = 900;
+                                            long expire = 604800;
+                                            long minimum = 300;
+                                            name = new Name(zone.getHostName().substring(1) + '.');
+                                            SOARecord soa = new SOARecord(
+                                                    name, DClass.IN, ttl, name,
+                                                    name, SERIAL, refresh, retry, expire, minimum
+                                            );
+                                            message.addRecord(soa, Section.AUTHORITY);
                                         } else if (type.equals("NS")) {
                                             Name hostname = Name.fromString(result);
                                             NSRecord ns = new NSRecord(name, DClass.IN, ttl, hostname);
@@ -1056,7 +1307,11 @@ public final class QueryDNS extends Server {
                                             ARecord a = new ARecord(name, DClass.IN, ttl, address);
                                             message.addRecord(a, Section.ANSWER);
                                         }
-                                        result = ttl + " " + result;
+                                        if (abusePeriod == null) {
+                                            result = ttl + " " + result;
+                                        } else {
+                                            result = abusePeriod + " " + abusePeriod.getPopulation() + " " + ttl + " " + result;
+                                        }
                                         // Enviando resposta.
                                         int portDestiny = packet.getPort();
                                         byte[] sendData = message.toWire();
@@ -1106,10 +1361,17 @@ public final class QueryDNS extends Server {
         }
     }
     
+    private static final Pattern EXECUTABLE_SIGNATURE_PATTERN = Pattern.compile("^"
+            + "\\.[0-9a-f]{32}\\.[0-9]+\\."
+            + "(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)"
+            + "$"
+    );
+    
     private static String getBlockedExecutableSignature(String token) {
         if (token == null) {
             return null;
-        } else if (Pattern.matches("^\\.[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token)) {
+//        } else if (Pattern.matches("^\\.[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token)) {
+        } else if (EXECUTABLE_SIGNATURE_PATTERN.matcher(token).matches()) {
             String signature = token.substring(1);
             if (Block.containsExact(signature)) {
                 return signature;

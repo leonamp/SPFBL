@@ -20,7 +20,6 @@ package net.spfbl.dns;
 import java.io.Serializable;
 import java.util.Locale;
 import net.spfbl.core.Core;
-import net.spfbl.core.User;
 import net.spfbl.data.Abuse;
 import net.spfbl.whois.Domain;
 
@@ -41,6 +40,7 @@ public class Zone implements Serializable, Comparable<Zone> {
         DNSBL,
         URIBL,
         DNSWL,
+        SCORE,
         DNSAL
     }
 
@@ -82,6 +82,10 @@ public class Zone implements Serializable, Comparable<Zone> {
         return type == Type.DNSWL;
     }
 
+    public boolean isSCORE() {
+        return type == Type.SCORE;
+    }
+
     public boolean isDNSAL() {
         return type == Type.DNSAL;
     }
@@ -102,6 +106,13 @@ public class Zone implements Serializable, Comparable<Zone> {
                 return url;
             }
         } else if (type == Type.DNSWL) {
+            String url = Core.getURL(true, locale, token);
+            if (url == null) {
+                return message;
+            } else {
+                return url;
+            }
+        } else if (type == Type.SCORE) {
             String url = Core.getURL(true, locale, token);
             if (url == null) {
                 return message;

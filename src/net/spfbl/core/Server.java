@@ -69,6 +69,7 @@ import javax.naming.directory.InitialDirContext;
 import net.spfbl.data.Abuse;
 import net.spfbl.data.Generic;
 import net.spfbl.dns.QueryDNS;
+import net.spfbl.http.ServerHTTP;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 import org.productivity.java.syslog4j.Syslog;
@@ -132,6 +133,9 @@ public abstract class Server extends Thread {
         Defer.load();
         QueryDNS.load();
         User.load();
+        ServerHTTP.load();
+        QueryDNS.loadAbuse();
+        System.gc();
     }
     
     private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
@@ -146,9 +150,6 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
-//                User.autoUpdateKeys();
-//                User.autoInductionWhite();
-//                User.autoInductionBlock();
                 storeAll(true, true);
             } finally {
                 SEMAPHORE_STORE.release();
@@ -205,7 +206,6 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
-//                User.autoUpdateKeys();
                 User.autoInductionWhiteKey();
                 User.autoInductionBlockKey();
                 User.autoInductionBlockSMTP();
@@ -261,8 +261,10 @@ public abstract class Server extends Thread {
         Handle.store();
         NameServer.store();
         Core.store();
-        Block.store(simplify);
+        Block.store();
         User.storeDB();
+        ServerHTTP.store();
+        QueryDNS.storeAbuse();
         System.gc();
     }
 
@@ -829,14 +831,14 @@ public abstract class Server extends Thread {
         log(time, Core.Level.INFO, "LOADC", file.getName(), (String) null);
     }
     
-    /**
-     * Registra as mensagens de checagem DNS.
-     * @param host o host que foi consultado.
-     */
-    public static void logCheckDNS(
-            long time, String host, String result) {
-        log(time, Core.Level.DEBUG, "DNSCK", host, result);
-    }
+//    /**
+//     * Registra as mensagens de checagem DNS.
+//     * @param host o host que foi consultado.
+//     */
+//    public static void logCheckDNS(
+//            long time, String host, String result) {
+//        log(time, Core.Level.DEBUG, "DNSCK", host, result);
+//    }
     
     /**
      * Registra os tiquetes processados.
@@ -1325,15 +1327,25 @@ public abstract class Server extends Thread {
      */
     private static InitialDirContext INITIAL_DIR_CONTEXT;
     
-    public static Attributes getAttributesDNS(String hostname, String[] types) throws NamingException {
+    public static Attributes getAttributesDNS(String hostname, String... types) throws NamingException {
         return getAttributesDNS(null, hostname, types);
     }
     
     public static Attributes getAttributesDNS(String server, String hostname, String[] types) throws NamingException {
-        if (server == null) {
-            return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
+        if (server != null) {
+            if (server.contains(":")) {
+                return INITIAL_DIR_CONTEXT.getAttributes("dns://[" + server + "]/" + hostname, types);
+            } else {
+                return INITIAL_DIR_CONTEXT.getAttributes("dns://" + server + "/" + hostname, types);
+            }
+        } else if (DNS_PROVIDER != null) {
+            if (DNS_PROVIDER.contains(":")) {
+                return INITIAL_DIR_CONTEXT.getAttributes("dns://[" + DNS_PROVIDER + "]/" + hostname, types);
+            } else {
+                return INITIAL_DIR_CONTEXT.getAttributes("dns://" + DNS_PROVIDER + "/" + hostname, types);
+            }
         } else {
-            return INITIAL_DIR_CONTEXT.getAttributes("dns://" + server + "/" + hostname, types);
+            return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
         }
     }
     
@@ -1365,9 +1377,6 @@ public abstract class Server extends Thread {
         env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
         env.put("com.sun.jndi.dns.timeout.initial", "3000");
         env.put("com.sun.jndi.dns.timeout.retries", "1");
-        if (DNS_PROVIDER != null) {
-            env.put("java.naming.provider.url", "dns://" + DNS_PROVIDER);
-        }
         INITIAL_DIR_CONTEXT = new InitialDirContext(env);
     }
     

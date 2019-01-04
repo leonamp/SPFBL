@@ -112,11 +112,11 @@ public class ConnectionPooler {
                 CONNECTION = DriverManager.getConnection(URL, USER, PASSWORD);
                 Server.logMySQL("connection created.");
             }
-            CONNECTION.setAutoCommit(true);
+            CONNECTION.setAutoCommit(false);
             try (Statement statement = CONNECTION.createStatement()) {
                 statement.executeUpdate("SET NAMES 'utf8mb4'");
             }
-            CONNECTION.setAutoCommit(false);
+            CONNECTION.commit();
             return CONNECTION;
         } catch (MySQLNonTransientConnectionException ex) {
             CONNECTION = null;

@@ -184,6 +184,14 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
         return rangeArray;
     }
     
+    public static String[] getRangeArrayCIDR(String cidr) {
+        String[] rangeArray = SubnetIPv4.getRangeArrayCIDRv4(cidr);
+        if (rangeArray == null) {
+            rangeArray = SubnetIPv6.getRangeArrayCIDRv6(cidr);
+        }
+        return rangeArray;
+    }
+    
     public static String normalizeIP(String ip) {
         if (ip == null) {
             return null;

@@ -23,6 +23,8 @@ import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
@@ -187,11 +189,21 @@ public class Trap {
     }
 
     public synchronized static boolean containsTrapExact(String address) {
-        return System.currentTimeMillis() > MAP.get(address);
+        Long time = MAP.get(address);
+        if (time == null) {
+            return false;
+        } else {
+            return System.currentTimeMillis() > time;
+        }
     }
     
     public synchronized static boolean containsInexistentExact(String address) {
-        return System.currentTimeMillis() <= MAP.get(address);
+        Long time = MAP.get(address);
+        if (time == null) {
+            return false;
+        } else {
+            return System.currentTimeMillis() <= time;
+        }
     }
     
     public synchronized static boolean containsAnythingExact(String address) {
@@ -213,6 +225,14 @@ public class Trap {
             throw new ProcessException("RECIPIENT INVALID");
         } else {
             return addTrapExact(recipient.toLowerCase());
+        }
+    }
+    
+    public static boolean addTrapSafe(Client client, String recipient) {
+        try {
+            return addTrap(client, recipient);
+        } catch (ProcessException ex) {
+            return false;
         }
     }
 
@@ -276,11 +296,21 @@ public class Trap {
         }
     }
     
+    public static boolean addInexistentSafe(Client client, String recipient) {
+        try {
+            return addInexistent(client, recipient);
+        } catch (ProcessException ex) {
+            return false;
+        }
+    }
+    
     public static boolean addInexistent(Client client, String recipient) throws ProcessException {
         if (client == null || !client.hasEmail()) {
             throw new ProcessException("CLIENT INVALID");
         } else if (!isValid(recipient)) {
             throw new ProcessException("RECIPIENT INVALID");
+        } else if (Trap.containsAnything(client, null, recipient)) {
+            return false;
         } else {
             long time = System.currentTimeMillis() + Core.getInexistentExpiresMillis();
             return putExact(client.getEmail() + ':' + recipient.toLowerCase(), time);
@@ -434,6 +464,19 @@ public class Trap {
         return dropped;
     }
     
+    public static boolean dropSafe(String client, String recipient) {
+        try {
+            if (client == null) {
+                return drop(recipient);
+            } else {
+                return drop(client, recipient);
+            }
+        } catch (ProcessException ex) {
+            Server.logError(ex);
+            return false;
+        }
+    }
+    
     public static boolean drop(String client, String recipient) throws ProcessException {
         if (client == null || !Domain.isValidEmail(client)) {
             throw new ProcessException("CLIENT INVALID");
@@ -552,6 +595,10 @@ public class Trap {
         } else if (client != null) {
             userEmail = client.getEmail();
         }
+        return containsInexistent(userEmail, recipient);
+    }
+    
+    public static boolean containsInexistent(String userEmail, String recipient) {
         if (userEmail == null) {
             return false;
         } else if (!isValid(recipient)) {
@@ -656,8 +703,14 @@ public class Trap {
     public static Long getTime(User user, String recipient) {
         if (user == null) {
             return null;
+        } else if (recipient == null) {
+            return null;
         } else {
-            return getTime(user.getEmail(), recipient);
+            Long time = getTime(user.getEmail(), recipient);
+            if (time == null && Boolean.FALSE.equals(user.containsRecipient(recipient))) {
+                time = Long.MAX_VALUE;
+            }
+            return time;
         }
     }
     

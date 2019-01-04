@@ -1,3 +1,18 @@
+### v2.10.0 ; release 01/03/2019:
+
+FIX) Fixed CPU high usage;
+
+UPDT) Memory allocation improvements;
+
+UPDT) Firewall improvements;
+
+UPDT) Abuse mitigation improvements;
+
+NEW) Register ANALISE results in MySQL;
+
+NEW) New SCORE service;
+
+
 ### v2.9.2 ; release 09/02/2018:
 
 NEW) Advertisement settings;

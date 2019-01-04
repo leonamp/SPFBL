@@ -63,7 +63,7 @@ public class Client implements Serializable, Comparable<Client> {
         NONE,
         DNSBL,
         SPFBL,
-        ALL // Obsoleto
+//        ALL // Obsoleto
     }
     
     public enum Personality {
@@ -144,6 +144,14 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
+    public boolean isPermission(Permission permission) {
+        if (permission == null) {
+            return false;
+        } else {
+            return this.permission == permission;
+        }
+    }
+    
     public boolean setPermission(String permission) throws ProcessException {
         try {
             if (permission == null) {
@@ -170,14 +178,14 @@ public class Client implements Serializable, Comparable<Client> {
     public boolean setPermission(Permission permission) throws ProcessException {
         if (permission == null) {
             throw new ProcessException("INVALID PERMISSION");
-        } else if (permission == Permission.ALL) {
-            if (this.administrator) {
-                return false;
-            } else {
-                this.permission = Permission.SPFBL;
-                this.administrator = true;
-                return CHANGED = true;
-            }
+//        } else if (permission == Permission.ALL) {
+//            if (this.administrator) {
+//                return false;
+//            } else {
+//                this.permission = Permission.SPFBL;
+//                this.administrator = true;
+//                return CHANGED = true;
+//            }
         } else if (this.permission == permission) {
             return false;
         } else {
@@ -421,8 +429,8 @@ public class Client implements Serializable, Comparable<Client> {
     public boolean hasPermission(Permission permission) {
         if (this.permission == Permission.NONE) {
             return permission == Permission.NONE;
-        } else if (this.permission == Permission.ALL) {
-            return permission != Permission.NONE;
+//        } else if (this.permission == Permission.ALL) {
+//            return permission != Permission.NONE;
         } else {
             return this.permission == permission;
         }
@@ -675,26 +683,31 @@ public class Client implements Serializable, Comparable<Client> {
                 ip = SubnetIPv6.getIPv4(address.getHostAddress());
                 if (ip == null) {
                     ip = SubnetIPv6.normalizeIPv6(address.getHostAddress());
-                    cidr = ip + "/64";
+                    cidr = ip + "/52";
                 } else {
                     cidr = ip + "/32";
                 }
             }
             if (ip != null && cidr != null) {
-                String hostame = Reverse.getHostname(ip);
-                String domain;
-                if (Generic.containsGeneric(hostame)) {
-                    domain = null;
-                } else {
-                    try {
-                        domain = Domain.extractDomain(hostame, false);
-                    } catch (ProcessException ex) {
+                client = Client.getByCIDR(cidr);
+                if (client == null) {
+                    String hostame = Reverse.getHostname(ip);
+                    String domain;
+                    if (Generic.containsGeneric(hostame)) {
                         domain = null;
+                    } else {
+                        try {
+                            domain = Domain.extractDomain(hostame, false);
+                        } catch (ProcessException ex) {
+                            domain = null;
+                        }
                     }
-                }
-                client = Client.create(cidr, domain, permissao, null);
-                if (client != null) {
-                    Server.logDebug("CLIENT ADDED " + client);
+                    client = Client.create(cidr, domain, permissao, null);
+                    if (client != null) {
+                        Server.logDebug("CLIENT ADDED " + client);
+                    }
+                } else {
+                    return client;
                 }
             }
         }
@@ -880,10 +893,7 @@ public class Client implements Serializable, Comparable<Client> {
             }
         }
         for (String key : removeSet) {
-            Client client = MAP.remove(key);
-            if (client != null) {
-                Server.logDebug("EXPIRED " + client);
-            }
+            MAP.remove(key);
         }
         return map;
     }
@@ -893,13 +903,13 @@ public class Client implements Serializable, Comparable<Client> {
             try {
                 long time = System.currentTimeMillis();
                 HashMap<String,Client> map = getCloneMap();
-                for (String key : map.keySet()) {
-                    Client value = map.get(key);
-                    if (value.administrator) {
-                        // Compatibilidade com versões anteriores.
-                        value.permission = Permission.ALL;
-                    }
-                }
+//                for (String key : map.keySet()) {
+//                    Client value = map.get(key);
+//                    if (value.administrator) {
+//                        // Compatibilidade com versões anteriores.
+//                        value.permission = Permission.ALL;
+//                    }
+//                }
                 File file = new File("./data/client.map");
                 try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
@@ -929,9 +939,9 @@ public class Client implements Serializable, Comparable<Client> {
                         if (client.permission == null) {
                             client.permission = Permission.NONE;
                             client.administrator = false;
-                        } else if (client.permission == Permission.ALL) {
-                            client.permission = Permission.SPFBL;
-                            client.administrator = true;
+//                        } else if (client.permission == Permission.ALL) {
+//                            client.permission = Permission.SPFBL;
+//                            client.administrator = true;
                         }
                         if (client.limit == 0) {
                             client.limit = 100;
@@ -975,6 +985,16 @@ public class Client implements Serializable, Comparable<Client> {
     
     public boolean isAbusing() {
         if (isDead()) {
+            return false;
+        } else {
+            return frequency.getMaximumInt() < limit;
+        }
+    }
+    
+    public boolean isAbusing(Permission permission) {
+        if (this.permission != permission) {
+            return false;
+        } else if (isDead()) {
             return false;
         } else {
             return frequency.getMaximumInt() < limit;
@@ -1045,7 +1065,8 @@ public class Client implements Serializable, Comparable<Client> {
         if (interval == null) {
             return false;
         } else if (frequency == null) {
-            frequency = new NormalDistribution(interval < 1000 ? 1000 : interval);
+            int startTime = 1000;
+            frequency = new NormalDistribution(interval < startTime ? startTime : interval);
             return true;
         } else {
             frequency.addElement(interval);

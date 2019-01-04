@@ -32,7 +32,6 @@ import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
-import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
@@ -41,11 +40,9 @@ import javax.mail.internet.InternetHeaders;
 import javax.mail.internet.MimeMessage;
 import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
-import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
 import net.spfbl.core.Client;
 import net.spfbl.core.Core;
-import net.spfbl.core.Peer;
 import net.spfbl.core.ProcessException;
 import net.spfbl.core.Reverse;
 import net.spfbl.core.Server;
@@ -156,6 +153,7 @@ public class Abuse {
         } else if (!Domain.isValidEmail(email = email.toLowerCase())) {
             throw new ProcessException("INVALID EMAIL");
         } else {
+            Server.logTrace("ABUSE ADDED " + address + " " + email);
             return putExact(address, email);
         }
     }
@@ -268,6 +266,10 @@ public class Abuse {
         } else {
             return null;
         }
+    }
+    
+    public static boolean containsEmail(String address) {
+        return getEmail(address) != null;
     }
     
     public static boolean dropEmail(String address, String email) {
@@ -467,6 +469,8 @@ public class Abuse {
                             }
                         } catch (CommunicationException ex) {
                             // Do nothing.
+                        } catch (NameNotFoundException ex) {
+                            dropEmail(sourceIP, abuseEmail);
                         } catch (ServiceUnavailableException ex) {
                             dropEmail(sourceIP, abuseEmail);
                         } catch (SMTPSendFailedException ex) {
@@ -578,7 +582,9 @@ public class Abuse {
         arfHeaders.addHeader("Feedback-Type", malware == null ? "abuse" : "virus");
         arfHeaders.addHeader("User-Agent", "SPFBL/" + Core.getSubVersion());
         arfHeaders.addHeader("Version", "1");
-        if (mailFrom != null) {
+        if (mailFrom == null) {
+            arfHeaders.addHeader("Original-Mail-From", "MAILER-DAEMON");
+        } else {
             arfHeaders.addHeader("Original-Mail-From", mailFrom);
         }
         if (recipient != null) {
@@ -650,6 +656,7 @@ public class Abuse {
                 "report-type=disposition-notification",
                 "report-type=feedback-report"
         );
+        message.setHeader("Content-Type", contentType);
         message.setHeader("Content-Type", contentType);
         return message;
     }

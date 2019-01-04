@@ -300,6 +300,13 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    private static final Pattern CONTAINS_DOMAIN_PATTERN = Pattern.compile("^"
+            + "([a-zA-Z0-9._%+=-]+@)?"
+            + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+            + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+            + "$"
+    );
+    
     /**
      * Verifica se o endereço contém um domínio.
      * @param address o endereço a ser verificado.
@@ -308,22 +315,25 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean containsDomain(String address) {
         if (address == null) {
             return false;
+        } else if (SubnetIPv4.isValidIPv4(address = address.trim())) {
+            return false;
         } else {
-            address = address.trim();
-            if (SubnetIPv4.isValidIPv4(address)) {
-                return false;
-            } else {
-                address = address.toLowerCase();
-                return Pattern.matches(
-                        "^([a-zA-Z0-9._%+=-]+@)?"
-                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-                        + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-                        + "$", address
-                        );
-
-            }
+            address = address.toLowerCase();
+//            return Pattern.matches(
+//                    "^([a-zA-Z0-9._%+=-]+@)?"
+//                    + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+//                    + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+//                    + "$", address
+//                    );
+            return CONTAINS_DOMAIN_PATTERN.matcher(address).matches();
         }
     }
+    
+    private static final Pattern HOSTNAME_PATTERN = Pattern.compile("^\\.?"
+            + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
+            + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+            + "\\.?$"
+    );
     
     /**
      * Verifica se o endereço contém um domínio.
@@ -333,20 +343,17 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean isHostname(String address) {
         if (address == null) {
             return false;
+        } else if (SubnetIPv4.isValidIPv4(address = address.trim())) {
+            return false;
         } else {
-            address = address.trim();
-            if (SubnetIPv4.isValidIPv4(address)) {
-                return false;
-            } else {
-                address = address.toLowerCase();
-                return Pattern.matches(
-                        "^\\.?"
-                        + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
-                        + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-                        + "\\.?$", address
-                        );
-
-            }
+            address = address.toLowerCase();
+//            return Pattern.matches(
+//                    "^\\.?"
+//                    + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
+//                    + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+//                    + "\\.?$", address
+//                    );
+            return HOSTNAME_PATTERN.matcher(address).matches();
         }
     }
     
@@ -386,6 +393,14 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    private static final Pattern MAIL_FROM_PATTERN = Pattern.compile("^"
+            + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
+            + "@"
+            + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+            + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+            + "$"
+    );
+    
     /**
      * Verifica se o endereço é um e-mail válido.
      * @param address o endereço a ser verificado.
@@ -394,21 +409,22 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean isMailFrom(String address) {
         if (address == null) {
             return false;
-        } else if (address.length() > 256) {
-            // RFC 5321: "The maximum total length of a 
-            // reverse-path or forward-path is 256 characters"
-            return false;
         } else {
             address = address.trim();
             address = address.toLowerCase();
-            if (Pattern.matches(
-                    "^"
-                    + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
-                    + "@"
-                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-                    + "$", address
-                    )) {
+            if (address.length() > 256) {
+                // RFC 5321: "The maximum total length of a 
+                // reverse-path or forward-path is 256 characters"
+                return false;
+//            } else if (Pattern.matches(
+//                    "^"
+//                    + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
+//                    + "@"
+//                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+//                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+//                    + "$", address
+//                    )) {
+            } else if (MAIL_FROM_PATTERN.matcher(address).matches()) {
                 int index = address.indexOf('@');
                 String domain = address.substring(index+1);
                 return Domain.isHostname(domain);
@@ -418,23 +434,32 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
+    private static final Pattern VALID_EMAIL_PATTERN = Pattern.compile("^"
+            + "[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
+            + "@"
+            + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+            + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+            + "$"
+    );
+    
     public static boolean isValidEmail(String address) {
         if (address == null) {
-            return false;
-        } else if (address.length() > 256) {
-            // RFC 5321: "The maximum total length of a 
-            // reverse-path or forward-path is 256 characters"
             return false;
         } else {
             address = address.trim();
             address = address.toLowerCase();
-            if (Pattern.matches(
-                    "^[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
-                    + "@"
-                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-                    + "$", address
-                    )) {
+            if (address.length() > 256) {
+                // RFC 5321: "The maximum total length of a 
+                // reverse-path or forward-path is 256 characters"
+                return false;
+//            } else if (Pattern.matches(
+//                    "^[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
+//                    + "@"
+//                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
+//                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
+//                    + "$", address
+//                    )) {
+            } else if (VALID_EMAIL_PATTERN.matcher(address).matches()) {
                 int index = address.indexOf('@');
                 String domain = address.substring(index+1);
                 return Domain.isHostname(domain);
@@ -443,6 +468,11 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
         }
     }
+    
+    private static final Pattern VALID_TLD_PATTERN = Pattern.compile("^"
+            + "(\\.([a-z0-9]|[a-z0-9][a-z0-9-]+[a-z0-9])+)+"
+            + "$"
+    );
     
     /**
      * Verifica se o endereço é um TLD válido.
@@ -452,9 +482,10 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean isValidTLD(String address) {
         address = address.trim();
         address = address.toLowerCase();
-        return Pattern.matches(
-                "^(\\.([a-z0-9]|[a-z0-9][a-z0-9-]+[a-z0-9])+)+$", address
-                );
+//        return Pattern.matches(
+//                "^(\\.([a-z0-9]|[a-z0-9][a-z0-9-]+[a-z0-9])+)+$", address
+//                );
+        return VALID_TLD_PATTERN.matcher(address).matches();
     }
     
     /**
@@ -1224,33 +1255,6 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     /**
-     * Verifica a existência de registros DNS do host.
-     * @param host o host que deve ser consultado.
-     * @throws QueryException se o host não tiver 
-     * registrado em DNS ou se houver falha de DNS.
-     */
-    private static void checkHost(String host) throws ProcessException {
-        long time = System.currentTimeMillis();
-        try {
-            // Verifica se o domínio tem algum registro de diretório válido.
-            Server.getAttributesDNS(host, null);
-        } catch (NameNotFoundException ex) {
-            throw new ProcessException("ERROR: DOMAIN NOT FOUND");
-        } catch (CommunicationException ex) {
-            Server.logCheckDNS(time, host, "TIMEOUT");
-        } catch (ServiceUnavailableException ex) {
-            Server.logCheckDNS(time, host, "SERVFAIL");
-        } catch (InvalidNameException ex) {
-            Server.logCheckDNS(time, host, "INVALID");
-        } catch (OperationNotSupportedException ex) {
-            Server.logCheckDNS(time, host, "REFUSED");
-        } catch (Exception ex) {
-            // Houve uma falha indefinida para encontrar os registros.
-            Server.logError(ex);
-        }
-    }
-    
-    /**
      * Retorna o sevidor WHOIS para um determinado host.
      * @param host o host cujo servior WHOIS tem as informações do domínio.
      * @return o sevidor WHOIS para um determinado host.
@@ -1384,9 +1388,6 @@ public class Domain implements Serializable, Comparable<Domain> {
             // Não encontrou o dominio em cache.
             // Selecionando servidor da pesquisa WHOIS.
             String server = getWhoisServer(host);
-            // Verifica o DNS do host antes de fazer a consulta no WHOIS.
-            // Evita consulta desnecessária no WHOIS.
-            checkHost(host);
             // Domínio existente.
             // Realizando a consulta no WHOIS.
             String result = Server.whois(host, server);
@@ -1548,9 +1549,6 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
         // Extrair o host se for e-mail.
         String host = extractHost(address, false);
-        // Verifica o DNS do host antes de fazer a consulta no WHOIS.
-        // Evita consulta desnecessária no WHOIS.
-        checkHost(host);
         return newDomain(host);
     }
     

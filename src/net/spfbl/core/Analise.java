@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException;
 import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import java.io.BufferedReader;
@@ -28,13 +29,21 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
+import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
@@ -435,9 +444,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     public static TreeSet<String> getIPv4Set(String hostname) {
         TreeSet<String> ipv4Set = new TreeSet<>();
         try {
-            Attributes attributesA = Server.getAttributesDNS(
-                    hostname, new String[]{"A"}
-            );
+            Attributes attributesA = Server.getAttributesDNS(hostname, "A");
             if (attributesA != null) {
                 Enumeration enumerationA = attributesA.getAll();
                 while (enumerationA.hasMoreElements()) {
@@ -463,9 +470,7 @@ public class Analise implements Serializable, Comparable<Analise> {
     public static TreeSet<String> getIPv6Set(String hostname) {
         TreeSet<String> ipv6Set = new TreeSet<>();
         try {
-            Attributes attributesAAAA = Server.getAttributesDNS(
-                    hostname, new String[]{"AAAA"}
-            );
+            Attributes attributesAAAA = Server.getAttributesDNS(hostname, "AAAA");
             if (attributesAAAA != null) {
                 Enumeration enumerationAAAA = attributesAAAA.getAll();
                 while (enumerationAAAA.hasMoreElements()) {
@@ -518,9 +523,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 String hostname = Domain.normalizeHostname(token, true);
                 TreeSet<String> ipLocalSet = Analise.getIPSet(hostname.substring(1));
                 if (ipLocalSet == null) {
-                    if (!Generic.containsGeneric(hostname) && Block.tryAdd(hostname)) {
-                        Server.logDebug("new BLOCK '" + hostname + "' added by 'NXDOMAIN'.");
-                    }
                     addResult(hostname, "NXDOMAIN");
                 } else if (ipLocalSet.isEmpty()) {
                     addResult(hostname, "NONE");
@@ -784,15 +786,23 @@ public class Analise implements Serializable, Comparable<Analise> {
             } else {
                 return false;
             }
-            for (Analise analise : Analise.getAnaliseSet()) {
-                if (analise.contains(token)) {
-                    return false;
+            if (DataBase.add(token)) {
+                if (SEMAPHORE.tryAcquire()) {
+                    Process process = new Process();
+                    process.start();
                 }
+                return true;
+            } else {
+                for (Analise analise : Analise.getAnaliseSet()) {
+                    if (analise.contains(token)) {
+                        return false;
+                    }
+                }
+                Date today = new Date();
+                String name = Core.SQL_FORMAT.format(today);
+                Analise analise = Analise.get(name, true);
+                return analise.add(token);
             }
-            Date today = new Date();
-            String name = Core.SQL_FORMAT.format(today);
-            Analise analise = Analise.get(name, true);
-            return analise.add(token);
         } else {
             return false;
         }
@@ -1104,10 +1114,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                 } else if (Subnet.isValidIP(tokenMX)) {
                     addBlock(tokenAddress, "NXDOMAIN");
                     statusAddress = Status.BLOCK;
-                    if (Block.tryAdd(tokenMX)) {
-                        Server.logDebug("new BLOCK '" + tokenMX + "' added by 'NXDOMAIN'.");
-                        Peer.sendBlockToAll(tokenMX);
-                    }
                 } else if (Domain.isOfficialTLD(tokenMX)) {
                     statusAddress = Status.RESERVED;
                 } else {
@@ -1119,10 +1125,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                         }
                     } catch (CommunicationException ex2) {
                         // Fazer nada.
+                    } catch (ServiceUnavailableException ex2) {
+                        // Fazer nada.
                     }
                     if (Block.addExact(domain)) {
                         Server.logDebug("new BLOCK '" + domain + "' added by 'NXDOMAIN'.");
-                        Peer.sendBlockToAll(domain);
                     }
                     statusAddress = Status.BLOCK;
                 }
@@ -1135,10 +1142,10 @@ public class Analise implements Serializable, Comparable<Analise> {
             builder.append(statusAddress);
             builder.append(' ');
             builder.append(tokenMX);
-            builder.append(' ');
+            builder.append(" NONE ");
             builder.append(statusMX);
             builder.append(' ');
-            builder.append(Core.DECIMAL_FORMAT.format(probability));
+            builder.append(probability);
             builder.append(' ');
             builder.append(frequency);
             builder.append(' ');
@@ -1228,20 +1235,21 @@ public class Analise implements Serializable, Comparable<Analise> {
                         statusName = Status.BLOCK;
                     } else if (Block.containsWHOIS(ptr)) {
                         statusName = Status.BLOCK;
-                    } else if (Generic.containsGeneric(ptr)) {
-                        statusName = Status.GENERIC;
                     } else {
                         try {
-                            if (Reverse.getAddressSet(ptr).contains(ip)) {
+                            boolean provider = Provider.containsDomain(ptr);
+                            if (!provider && Generic.containsGeneric(ptr)) {
+                                statusName = Status.GENERIC;
+                            } else if (Reverse.getAddressSet(ptr).contains(ip)) {
                                 Distribution distPTR;
                                 if (White.containsDomain(ptr)) {
                                     statusName = Status.WHITE;
                                     break;
-                                } else if (Provider.containsDomain(ptr)) {
-                                    statusName = Status.PROVIDER;
-                                    break;
                                 } else if (Ignore.contains(ptr)) {
                                     statusName = Status.IGNORE;
+                                    break;
+                                } else if (provider) {
+                                    statusName = Status.PROVIDER;
                                     break;
                                 } else if ((distPTR = SPF.getDistribution(ptr, false)) == null) {
                                     statusName = Status.GREEN;
@@ -1254,7 +1262,11 @@ public class Analise implements Serializable, Comparable<Analise> {
                                 statusName = Status.INVALID;
                             }
                         } catch (NamingException ex) {
-                           statusName = Status.NXDOMAIN;
+                            if (Generic.containsGeneric(ptr)) {
+                                statusName = Status.GENERIC;
+                            } else {
+                                statusName = Status.NXDOMAIN;
+                            }
                         }
                     }
                 }
@@ -1276,6 +1288,9 @@ public class Analise implements Serializable, Comparable<Analise> {
             } else if (abuseEmail == null && Reverse.isListedIP(ip, "dul.dnsbl.sorbs.net", "127.0.0.10")) {
                 statusIP = Status.DYNAMIC;
                 Server.logDebug("host " + ip + " is listed in 'dul.dnsbl.sorbs.net;127.0.0.10'.");
+            } else if (abuseEmail == null && Reverse.isListedIP(ip, "dyna.spamrats.com", "127.0.0.36")) {
+                statusIP = Status.DYNAMIC;
+                Server.logDebug("host " + ip + " is listed in 'dyna.spamrats.com;127.0.0.36'.");
             } else if (Block.containsDNSBL(ip)) {
                 statusIP = Status.DNSBL;
             } else if (statusName == Status.TIMEOUT && hasAccessSMTP(ip) && (response = getResponseSMTP(ip, 25, timeout)) instanceof Status) {
@@ -1320,24 +1335,24 @@ public class Analise implements Serializable, Comparable<Analise> {
                     tokenName = name;
                     statusName = Status.BLOCK;
                     break;
-                } else if (Generic.containsGeneric(name)) {
-                    tokenName = name;
-                    statusName = Status.GENERIC;
-                    break;
                 } else {
                     try {
-                        if (Reverse.getAddressSet(name).contains(ip)) {
+                        boolean provider = Provider.containsDomain(name);
+                        if (!provider && Generic.containsGeneric(name)) {
+                            tokenName = name;
+                            statusName = Status.GENERIC;
+                        } else if (Reverse.getAddressSet(name).contains(ip)) {
                             if (White.containsDomain(name)) {
                                 tokenName = name;
                                 statusName = Status.WHITE;
                                 break;
-                            } else if (Provider.containsDomain(name)) {
-                                tokenName = name;
-                                statusName = Status.PROVIDER;
-                                break;
                             } else if (Ignore.contains(name)) {
                                 tokenName = name;
                                 statusName = Status.IGNORE;
+                                break;
+                            } else if (provider) {
+                                tokenName = name;
+                                statusName = Status.PROVIDER;
                                 break;
                             } else {
                                 tokenName = name;
@@ -1351,21 +1366,60 @@ public class Analise implements Serializable, Comparable<Analise> {
                         }
                     } catch (NameNotFoundException ex) {
                         tokenName = name;
-                        statusName = Status.NXDOMAIN;
+                        if (Generic.containsGeneric(name)) {
+                            statusName = Status.GENERIC;
+                        } else {
+                            statusName = Status.NXDOMAIN;
+                        }
                     } catch (NamingException ex) {
                         // Fazer nada.
                     }
                 }
             }
+            String tokenMask = null;
+            if (statusName != Status.NONE
+                    && statusName != Status.RESERVED
+                    && statusName != Status.UNAVAILABLE
+                    && statusName != Status.TIMEOUT
+                    && (tokenMask = Generic.convertHostToMask(tokenName)) != null
+                    && statusIP == Status.DYNAMIC
+                    && statusName != Status.DYNAMIC
+                    && statusName != Status.PROVIDER
+                    && statusName != Status.IGNORE
+                    && statusName != Status.WHITE
+                    && !Generic.containsGenericExact(tokenMask)
+                    ) {
+                if (tokenMask.contains("static")) {
+                    int index = tokenMask.indexOf("static");
+                    index = tokenMask.lastIndexOf('.', index);
+                    tokenMask = tokenMask.substring(index);
+                    if (Generic.tryAdd(tokenMask)) {
+                        Server.logDebug("new GENERIC '" + tokenMask + "' added by '" + ip + ";DUL'.");
+                        statusName = Status.GENERIC;
+                        Block.clear(tokenName, "DNSDL");
+                    }
+                } else if (Generic.tryAdd(tokenMask)) {
+                    Server.logDebug("new DYNAMIC '" + tokenMask + "' added by '" + ip + ";DUL'.");
+                    statusName = Status.DYNAMIC;
+                    Block.clear(tokenName, "DNSDL");
+                }
+            }
             if (statusName == Status.INVALID || statusName == Status.NXDOMAIN) {
                 try {
                     String domain = Domain.extractDomain(tokenName, true);
-                    if (!Reverse.hasValidNameServers(domain)) {
-                        if (Block.addExact(domain)) {
-                            statusName = Status.BLOCK;
-                            Server.logDebug("new BLOCK '" + domain + "' added by 'NXDOMAIN'.");
-                            Peer.sendBlockToAll(domain);
+                    if (Reverse.hasValidNameServers(domain)) {
+                        if (statusName == Status.NXDOMAIN && !Generic.containsGenericExact(tokenMask) && Generic.tryAdd(tokenMask)) {
+                            Server.logDebug("new GENERIC '" + tokenMask + "' added by '" + statusName + "'.");
+                            statusName = Status.GENERIC;
                         }
+                    } else if ((tokenMask = Generic.convertDomainToMask(domain)) != null) {
+                        if (Generic.tryAdd(tokenMask)) {
+                            Server.logDebug("new GENERIC '" + tokenMask + "' added by '" + statusName + "'.");
+                            statusName = Status.GENERIC;
+                        }
+                    } else if (statusName == Status.NXDOMAIN && Block.addExact(domain)) {
+                        statusName = Status.BLOCK;
+                        Server.logDebug("new BLOCK '" + domain + "' added by 'NXDOMAIN'.");
                     }
                 } catch (NamingException ex) {
                     // Fazer nada.
@@ -1374,27 +1428,6 @@ public class Analise implements Serializable, Comparable<Analise> {
                         statusName = Status.RESERVED;
                     } else {
                         Server.logError(ex);
-                    }
-                }
-            }
-            if (statusIP == Status.DYNAMIC && statusName != Status.DYNAMIC && statusName != Status.NONE  && statusName != Status.BLOCK && statusName != Status.TIMEOUT && statusName != Status.UNAVAILABLE && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE && statusName != Status.RESERVED) {
-                String mask = Generic.convertHostToMask(tokenName);
-                if (mask != null && !Generic.containsGenericExact(mask)) {
-                    try {
-                        if (mask.contains("static")) {
-                            int index = mask.indexOf("static");
-                            index = mask.lastIndexOf('.', index);
-                            mask = mask.substring(index);
-                            if ((mask = Generic.addGeneric(mask)) != null) {
-                                Server.logDebug("new GENERIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
-                                statusName = Status.GENERIC;
-                            }
-                        } else if ((mask = Generic.addDynamic(mask)) != null) {
-                            Server.logDebug("new DYNAMIC '" + mask + "' added by '" + ip + ";dul.dnsbl.sorbs.net'.");
-                            statusName = Status.DYNAMIC;
-                        }
-                    } catch (ProcessException ex) {
-                        // Do nothing.
                     }
                 }
             }
@@ -1407,75 +1440,146 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
                 String token = ip + (ipv4 ? "/32" : "/64");
                 String cidr = Subnet.normalizeCIDR(token);
-                if (Block.tryOverlap(cidr)) {
-                    Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
-                } else if (Block.tryAdd(ip)) {
-                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
-                }
-                statusIP = Status.BLOCK;
-            } else if (statusIP != Status.BLOCK && statusName == Status.DYNAMIC) {
-                String token = ip + (ipv4 ? "/32" : "/48");
-                String cidr = Subnet.normalizeCIDR(token);
-                if (Block.tryOverlap(cidr)) {
-                    Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
-                } else if (Block.tryAdd(ip)) {
-                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
-                }
-//                boolean dynamic = true;
-                if (ipv4) {
-                    cidr = SubnetIPv4.normalizeCIDR(ip + "/24");
-                    String next = SubnetIPv4.getFirstIP(cidr);
-                    String rdns;
-                    for (int index = 0; index < 256; index++) {
-                        if ((rdns = getGeneric(next)) == null) {
-//                            dynamic = false;
-                        } else if (Block.tryAdd(next)) {
-                            if (rdns.equals("NXDOMAIN")) {
-                                Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";NONE'.");
-                            } else {
-                                Server.logDebug("new BLOCK '" + next + "' added by '" + rdns + ";DYNAMIC'.");
-                            }
-                        }
-                        next = SubnetIPv4.getNextIP(next);
-                    }
-                }
-//                if (dynamic) {
-                    String previous = Subnet.getFirstIP(cidr);
-                    previous = Subnet.getPreviousIP(previous);
-                    previous = Subnet.getPreviousIP(previous);
-                    Analise.processToday(previous);
-                    String next = Subnet.getLastIP(cidr);
-                    next = Subnet.getNextIP(next);
-                    next = Subnet.getNextIP(next);
-                    Analise.processToday(next);
-                    statusIP = Status.BLOCK;
-//                }
-            } else if (statusIP != Status.BLOCK && statusName == Status.NONE) {
-                String token = ip + (ipv4 ? "/32" : "/64");
-                String cidr = Subnet.normalizeCIDR(token);
-                if (Block.tryOverlap(cidr)) {
-                    Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
-                } else if (Block.tryAdd(ip)) {
-                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
-                }
                 if (ipv4) {
                     cidr = Subnet.normalizeCIDR(ip + "/24");
-                    String next = Subnet.getFirstIP(cidr);
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
                     for (int index = 0; index < 256; index++) {
-                        if (!hasReverse(next) && Block.tryAdd(next)) {
-                            Server.logDebug("new BLOCK '" + next + "' added by '" + next + ";NONE'.");
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
                         }
                         next = Subnet.getNextIP(next);
                     }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(cidr)) {
+                    Server.logDebug("new BLOCK '" + token + "' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                statusIP = Status.BLOCK;
+            } else if (
+                    (statusIP == Status.DYNAMIC && statusName == Status.GENERIC) ||
+                    (statusIP != Status.BLOCK && statusName == Status.DYNAMIC)
+                    ) {
+                String token = ip + (ipv4 ? "/32" : "/48");
+                String cidr = Subnet.normalizeCIDR(token);
+                if (ipv4) {
+                    cidr = SubnetIPv4.normalizeCIDR(ip + "/24");
+                    String next = SubnetIPv4.getFirstIP(cidr);
+                    boolean hasAbuse = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Abuse.containsEmail(next)) {
+                            hasAbuse = true;
+                            break;
+                        }
+                        next = SubnetIPv4.getNextIP(next);
+                    }
+                    if (!hasAbuse) {
+                        if (Block.tryOverlap(cidr)) {
+                            Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                        } else if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    }
+                } else if (Block.tryOverlap(cidr)) {
+                    Server.logDebug("new BLOCK '" + cidr + "' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                }
+                String previous = Subnet.getFirstIP(cidr);
+                previous = Subnet.getPreviousIP(previous);
+                previous = Subnet.getPreviousIP(previous);
+                Analise.processToday(previous);
+                String next = Subnet.getLastIP(cidr);
+                next = Subnet.getNextIP(next);
+                next = Subnet.getNextIP(next);
+                Analise.processToday(next);
+                statusIP = Status.BLOCK;
+            } else if (statusIP != Status.BLOCK && statusName == Status.NONE) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by 'NONE'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by 'NONE'.");
+                        Analise.processToday(Subnet.getPreviousIP(first));
+                        Analise.processToday(next);
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by 'NONE'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by 'NONE'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && statusName == Status.BLOCK) {
-                if (Block.tryAdd(ip)) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && abuseEmail == null && (statusName == Status.RESERVED || statusName == Status.NXDOMAIN)) {
-                if (Block.tryAdd(ip)) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
@@ -1489,27 +1593,132 @@ public class Analise implements Serializable, Comparable<Analise> {
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP == Status.DNSBL && abuseEmail == null && (statusName != Status.GREEN && statusName != Status.PROVIDER && statusName != Status.IGNORE && statusName != Status.WHITE)) {
-                if (Block.tryAdd(ip)) {
-                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP == Status.CLOSED && statusName == Status.RED) {
-                if (Block.tryAdd(ip)) {
-                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusIP + "'.");
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
+                    Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusIP != Status.BLOCK && statusName == Status.INVALID && Generic.containsGenericDomain(tokenName)) {
-                if (Block.tryAdd(ip)) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusName == Status.INVALID && (statusIP == Status.CLOSED || statusIP == Status.RED || statusIP == Status.YELLOW)) {
-                if (Block.tryAdd(ip)) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
             } else if (statusName == Status.GENERIC && (statusIP == Status.RED || statusIP == Status.YELLOW)) {
-                if (Block.tryAdd(ip)) {
+                if (ipv4) {
+                    String cidr = Subnet.normalizeCIDR(ip + "/24");
+                    String first = Subnet.getFirstIP(cidr);
+                    String next = first;
+                    boolean hasQualifiedIP = false;
+                    for (int index = 0; index < 256; index++) {
+                        if (Generic.isQualifiedIP(next)) {
+                            hasQualifiedIP = true;
+                            break;
+                        }
+                        next = Subnet.getNextIP(next);
+                    }
+                    if (hasQualifiedIP) {
+                        if (Block.tryAdd(ip)) {
+                            Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
+                        }
+                    } else if (Block.addSafe(cidr) != null) {
+                        Server.logDebug("new BLOCK '" + ip + "/24' added by '" + tokenName + ";" + statusName + "'.");
+                    }
+                } else if (Block.tryOverlap(ip + "/64")) {
+                    Server.logDebug("new BLOCK '" + ip + "/64' added by '" + tokenName + ";" + statusName + "'.");
+                } else if (Block.tryAdd(ip)) {
                     Server.logDebug("new BLOCK '" + ip + "' added by '" + tokenName + ";" + statusName + "'.");
                 }
                 statusIP = Status.BLOCK;
@@ -1587,10 +1796,16 @@ public class Analise implements Serializable, Comparable<Analise> {
             builder.append(statusIP);
             builder.append(' ');
             builder.append(tokenName);
+            if (tokenMask == null) {
+                builder.append(" NONE");
+            } else {
+                builder.append(' ');
+                builder.append(tokenMask);
+            }
             builder.append(' ');
             builder.append(statusName);
             builder.append(' ');
-            builder.append(Core.DECIMAL_FORMAT.format(probability));
+            builder.append(probability);
             builder.append(' ');
             builder.append(dist == null ? "UNDEFINED" : dist.getFrequencyLiteral());
             builder.append(' ');
@@ -1720,11 +1935,13 @@ public class Analise implements Serializable, Comparable<Analise> {
     }
 
     private static class Process extends Thread {
+        
         private Process() {
             super("ANALISEPS");
             super.setPriority(MIN_PRIORITY);
-            Server.logTrace(getName() + " thread allocation.");
+//            Server.logTrace(getName() + " thread allocation.");
         }
+        
         @Override
         public void run() {
             try {
@@ -1732,9 +1949,10 @@ public class Analise implements Serializable, Comparable<Analise> {
                 while (run && (analise = getNextWait()) != null) {
                     analise.process();
                 }
+                DataBase.process();
             } finally {
                 SEMAPHORE.release();
-                Server.logTrace(getName() + " thread released.");
+//                Server.logTrace(getName() + " thread released.");
             }
         }
     }
@@ -1782,6 +2000,214 @@ public class Analise implements Serializable, Comparable<Analise> {
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
+            }
+        }
+    }
+    
+    public static void main(String[] args) {
+        Core.loadConfiguration();
+        Domain.loadTLD();
+//        Block.tryAdd(".dsl.plns.epix.net");
+        Analise.processToday(".axtel.net");
+//        StringBuilder builder = new StringBuilder();
+//        Analise.process(".axtel.net", builder, 20000);
+//        String result = builder.toString();
+//        System.out.println(result);
+    }
+        
+    
+    public static class DataBase {
+    
+        private static final TreeMap<String,Boolean> ipMap = new TreeMap<>(); // Lista dos IPs a serem analisados.
+        private static boolean isCompatible = true;
+
+        private static synchronized boolean putNew(String token) {
+            if (token == null) {
+                return false;
+            } else {
+                return ipMap.putIfAbsent(token, Boolean.FALSE) == null;
+            }
+        }
+
+        private static synchronized boolean remove(String token) {
+            if (token == null) {
+                return false;
+            } else {
+                return ipMap.remove(token);
+            }
+        }
+
+        private static synchronized boolean setProcessing(String token) {
+            if (token == null) {
+                return false;
+            } else {
+                return ipMap.put(token, Boolean.TRUE) == Boolean.FALSE;
+            }
+        }
+
+        private static synchronized Map.Entry<String,Boolean> nextEntry(String token) {
+            if (token == null) {
+                return ipMap.firstEntry();
+            } else {
+                return ipMap.higherEntry(token);
+            }
+        }
+
+        private static boolean add(String token) {
+            if (token == null) {
+                return false;
+            } else if (!isCompatible) {
+                return false;
+            } else if (!Core.hasMySQL()) {
+                return false;
+            } else if (!token.startsWith(".") && Core.isExecutableSignature(token)) {
+                return true;
+            } else if (token.startsWith(".") && Core.isExecutableSignature(token.substring(1))) {
+                return true;
+            } else if (!token.startsWith(".") && Core.isSignatureURL(token)) {
+                return true;
+            } else if (token.startsWith(".") && Core.isSignatureURL(token.substring(1))) {
+                return true;
+            } else if (Subnet.isReservedIP(token)) {
+                return true;
+            } else if (Subnet.isValidIP(token)) {
+                token = Subnet.normalizeIP(token);
+                putNew(SubnetIPv6.tryTransformToIPv4(token));
+                return true;
+            } else if (!token.startsWith("@") && Domain.isDomain(token)) {
+                putNew("@" + Domain.normalizeHostname(token, false));
+                return true;
+            } else if (Domain.isHostname(token)) {
+                putNew(Domain.normalizeHostname(token, true));
+                return true;
+            } else if (token.startsWith("@") && Domain.isHostname(token.substring(1))) {
+                putNew("@" + Domain.normalizeHostname(token.substring(1), false));
+                return true;
+            } else {
+                return true;
+            }
+        }
+
+
+        private static String next(String token) {
+            Map.Entry<String,Boolean> entry;
+            while (run && (entry = nextEntry(token)) != null) {
+                if (setProcessing(token = entry.getKey())) {
+                    return token;
+                }
+            }
+            return null;
+        }
+        
+        private static void process() {
+            String token = null;
+            while (run && (token = next(token)) != null) {
+                Connection connection = Core.aquireConnectionMySQL();
+                if (connection == null) {
+                    break;
+                } else {
+                    try {
+                        long time = System.currentTimeMillis();
+                        String command = "SELECT * FROM analise\n"
+                                + "WHERE token = '" + token + "'";
+                        try (Statement statement = connection.createStatement(
+                                ResultSet.TYPE_SCROLL_SENSITIVE,
+                                ResultSet.CONCUR_UPDATABLE
+                        )) {
+                            statement.setQueryTimeout(3);
+                            ResultSet rs = statement.executeQuery(command);
+                            if (rs.next()) {
+                                Timestamp date = rs.getTimestamp("date");
+                                long interval = System.currentTimeMillis() - date.getTime();
+                                if (interval < Analise.ANALISE_EXPIRES * Server.DAY_TIME) {
+                                    remove(token);
+                                    continue;
+                                }
+                            } else {
+                                rs.moveToInsertRow();
+                                rs.updateString("token", token);
+                                rs.updateString("tokenStatus", "PROCESSING");
+                                rs.insertRow();
+                                connection.commit();
+                            }
+                        } catch (MySQLSyntaxErrorException ex) {
+                            isCompatible = false;
+                            Server.logMySQL(time, command, ex);
+                        } catch (SQLException ex) {
+                            Server.logMySQL(time, command, ex);
+                        }
+                    } finally {
+                        Core.releaseConnectionMySQL();
+                    }
+                    String tokenStatus;
+                    String name = null;
+                    String nameMask = null;
+                    String nameStatus = null;
+                    float reputation = 0.0f;
+                    if (Domain.isOfficialTLD(token)) {
+                        tokenStatus = "RESERVED";
+                    } else if (Generic.containsDynamic(token)) {
+                        tokenStatus = "DYNAMIC";
+                    } else if (Domain.isHostname(token)) {
+                        String hostname = Domain.normalizeHostname(token, true);
+                        TreeSet<String> ipLocalSet = Analise.getIPSet(hostname.substring(1));
+                        if (ipLocalSet == null) {
+                            tokenStatus = "NXDOMAIN";
+                        } else if (ipLocalSet.isEmpty()) {
+                            tokenStatus = "NONE";
+                        } else {
+                            for (String ip : ipLocalSet) {
+                                putNew(ip);
+                            }
+                            tokenStatus = "RESOLVED";
+                        }
+                    } else {
+                        StringBuilder builder = new StringBuilder();
+                        Analise.process(token, builder, 20000);
+                        String result = builder.toString();
+                        StringTokenizer tokenizer = new StringTokenizer(result, " ");
+                        tokenStatus = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                        name = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                        nameMask = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : "NONE";
+                        nameMask = nameMask.equals("NONE") ? null : nameMask;
+                        nameStatus = tokenizer.hasMoreTokens() ? tokenizer.nextToken() : null;
+                        reputation = tokenizer.hasMoreTokens() ? Float.parseFloat(tokenizer.nextToken()) : 0.0f;
+                    }
+                    String command = "UPDATE analise\n"
+                            + "SET tokenStatus = ?, name = ?, "
+                            + "nameMask = ?, nameStatus = ?, "
+                            + "reputation = ?, date = CURRENT_TIMESTAMP\n"
+                            + "WHERE token = ?";
+                    connection = Core.aquireConnectionMySQL();
+                    if (connection == null) {
+                        remove(token);
+                        break;
+                    } else {
+                        try {
+                            long time = System.currentTimeMillis();
+                            try (PreparedStatement statement = connection.prepareStatement(command)) {
+                                statement.setQueryTimeout(3);
+                                statement.setString(1, tokenStatus);
+                                statement.setString(2, name);
+                                statement.setString(3, nameMask);
+                                statement.setString(4, nameStatus);
+                                statement.setFloat(5, reputation);
+                                statement.setString(6, token);
+                                if (statement.executeUpdate() == 1) {
+                                    connection.commit();
+                                }
+                            } catch (MySQLSyntaxErrorException ex) {
+                                isCompatible = false;
+                                Server.logMySQL(time, command, ex);
+                            } catch (SQLException ex) {
+                                Server.logMySQL(time, command, ex);
+                            }
+                        } finally {
+                            Core.releaseConnectionMySQL();
+                            remove(token);
+                        }
+                    }
+                }
             }
         }
     }

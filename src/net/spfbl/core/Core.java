@@ -110,6 +110,8 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import net.spfbl.data.Block;
 import net.spfbl.data.NoReply;
+import net.spfbl.data.Provider;
+import net.spfbl.data.Trap;
 import net.spfbl.dns.QueryDNS;
 import net.spfbl.http.ServerHTTP;
 import net.spfbl.spf.SPF;
@@ -137,8 +139,8 @@ import org.shredzone.acme4j.util.KeyPairUtils;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 9;
-    private static final byte RELEASE = 2;
+    private static final byte SUBVERSION = 10;
+    private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
     public static String getAplication() {
@@ -153,11 +155,17 @@ public class Core {
         return VERSION + "." + SUBVERSION;
     }
     
+    private static final Pattern VERSION_PATTERN = Pattern.compile("^"
+            + "[0-9]+\\.[0-9]+(\\.[0-9]+)?"
+            + "$"
+    );
+    
     public static boolean isValidVersion(String version) {
         if (version == null) {
             return false;
         } else {
-            return Pattern.matches("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$", version);
+//            return Pattern.matches("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$", version);
+            return VERSION_PATTERN.matcher(version).matches();
         }
     }
     
@@ -272,6 +280,8 @@ public class Core {
             return query;
         } else if (query.startsWith("white ")) {
             return query;
+        } else if (query.startsWith("delist ")) {
+            return query;
         } else {
             return Core.HUFFMAN.decode(byteArray, deslocamento);
         }
@@ -343,17 +353,23 @@ public class Core {
             String hostname,
             String recipient
             ) throws ProcessException {
-        // Definição do e-mail do usuário.
-        String userEmail = null;
-        if (user != null) {
-            userEmail = user.getEmail();
-        } else if (client != null) {
-            userEmail = client.getEmail();
+        if (recipient == null) {
+            return null;
+        } else if (Trap.containsInexistent(client, user, recipient)) {
+            return null;
+        } else {
+            // Definição do e-mail do usuário.
+            String userEmail = null;
+            if (user != null) {
+                userEmail = user.getEmail();
+            } else if (client != null) {
+                userEmail = client.getEmail();
+            }
+            return getUnblockURL(
+                    userEmail,
+                    ip, sender, hostname, recipient
+            );
         }
-        return getUnblockURL(
-                userEmail,
-                ip, sender, hostname, recipient
-        );
     }
     
     public static String getUnblockURL(
@@ -411,7 +427,7 @@ public class Core {
         }
     }
     
-    public static String getUnblockURL(
+    public static String getDelistURL(
             Locale locale,
             String client,
             String ip
@@ -430,7 +446,7 @@ public class Core {
                 return null;
             } else {
                 long time = System.currentTimeMillis();
-                String ticket = "unblock";
+                String ticket = "delist";
                 ticket += ' ' + client;
                 ticket += ' ' + ip;
                 try {
@@ -577,6 +593,42 @@ public class Core {
         }
     }
     
+    public static String getUnholdURL(
+            long time,
+            String user
+    ) throws ProcessException {
+        if (user == null) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Locale locale = Core.getDefaultLocale(user);
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = "unhold";
+                    ticket += ' ' + user;
+                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    throw new ProcessException("FATAL", ex);
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
     public static String getListUnsubscribeURL(
             Locale locale,
             InternetAddress recipient
@@ -631,6 +683,43 @@ public class Core {
                 try {
                     String ticket = "block";
                     ticket += ' ' + user.getEmail();
+                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
+                    byteArray[0] = (byte) (time & 0xFF);
+                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+                    return url + Server.encryptURLSafe(byteArray);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getBlockURL(
+            long time,
+            String user
+    ) {
+        if (user == null) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Locale locale = Core.getDefaultLocale(user);
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    String ticket = "block";
+                    ticket += ' ' + user;
                     byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
                     byteArray[0] = (byte) (time & 0xFF);
                     byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
@@ -1177,7 +1266,7 @@ public class Core {
     private static String ADMIN_EMAIL = null;
     private static String ABUSE_EMAIL = null;
     private static short PORT_ADMIN = 9875;
-    private static short PORT_ADMINS = 9876;
+    private static short PORT_ADMINS = 0;
     private static short PORT_WHOIS = 0;
     private static short PORT_SPFBL = 9877;
     private static short PORT_SPFBLS = 0;
@@ -1325,12 +1414,10 @@ public class Core {
     
     private static boolean isRouteable(String hostame) {
         try {
-            Attributes attributesA = Server.getAttributesDNS(
-                    hostame, new String[]{"A"});
+            Attributes attributesA = Server.getAttributesDNS(hostame, "A");
             Attribute attributeA = attributesA.get("A");
             if (attributeA == null) {
-                Attributes attributesAAAA = Server.getAttributesDNS(
-                        hostame, new String[]{"AAAA"});
+                Attributes attributesAAAA = Server.getAttributesDNS(hostame, "AAAA");
                 Attribute attributeAAAA = attributesAAAA.get("AAAA");
                 if (attributeAAAA != null) {
                     for (int i = 0; i < attributeAAAA.size(); i++) {
@@ -1818,7 +1905,7 @@ public class Core {
         }
     }
     
-    private static byte DEFER_TIME_FLOOD = 1;
+    private static byte DEFER_TIME_FLOOD = 0;
     
     public static byte getDeferTimeFLOOD() {
         return DEFER_TIME_FLOOD;
@@ -2120,7 +2207,7 @@ public class Core {
         }
     }
     
-    private static final short REPUTATION_LIMIT = 1024;
+    private static final short REPUTATION_LIMIT = 512;
     
     public static short getReputationLimit() {
         return REPUTATION_LIMIT;
@@ -2145,27 +2232,32 @@ public class Core {
     /**
      * Constante para formatar datas com hora no padrão de e-mail.
      */
-    private static final SimpleDateFormat DATE_EMAIL_FULL_FORMAT = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US);
-    private static final SimpleDateFormat DATE_EMAIL_SHORT_FORMAT = new SimpleDateFormat("dd MMM yyyy HH:mm:ss Z", Locale.US);
+    private static final SimpleDateFormat DATE_EMAIL_FULL_FORMATTER = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US);
     
     public static synchronized String getEmailDate() {
-        return DATE_EMAIL_FULL_FORMAT.format(new Date());
+        return DATE_EMAIL_FULL_FORMATTER.format(new Date());
     }
     
     public static synchronized String getEmailDate(Date date) {
         if (date == null) {
             return null;
         } else {
-            return DATE_EMAIL_FULL_FORMAT.format(date);
+            return DATE_EMAIL_FULL_FORMATTER.format(date);
         }
     }
     
+    /**
+     * Constante para formatar datas com hora no padrão de e-mail.
+     */
+    private static final SimpleDateFormat DATE_EMAIL_FULL_PARSER = new SimpleDateFormat("EEE, dd MMM yy HH:mm:ss Z", Locale.US);
+    private static final SimpleDateFormat DATE_EMAIL_SHORT_PARSER = new SimpleDateFormat("dd MMM yy HH:mm:ss Z", Locale.US);
+    
     public static synchronized Date parseEmailDate(String date) throws ParseException {
-        return DATE_EMAIL_FULL_FORMAT.parse(date);
+        return DATE_EMAIL_FULL_PARSER.parse(date);
     }
     
     public static synchronized Date parseEmailShortDate(String date) throws ParseException {
-        return DATE_EMAIL_SHORT_FORMAT.parse(date);
+        return DATE_EMAIL_SHORT_PARSER.parse(date);
     }
     
     public static Date parseEmailDateSafe(String date) throws ParseException {
@@ -2540,9 +2632,15 @@ public class Core {
      * Timer que controla os processos em background.
      */
     private static final Timer TIMER = new Timer("BCKGROUND");
+    private static boolean running = true;
 
     public static void cancelTimer() {
+        running = false;
         TIMER.cancel();
+    }
+    
+    public static boolean isRunning() {
+        return running;
     }
     
     private static class TimerInterruptTimeout extends TimerTask {
@@ -2724,8 +2822,8 @@ public class Core {
                 Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
                 // Apagar todas as distribuições e consultas vencidas.
                 User.dropAllExpiredQuery();
-                SPF.dropExpiredDistribution();
-                Block.dropExpired();
+//                SPF.dropExpiredDistribution();
+//                Block.dropExpired();
                 Server.logTrace("TimerDropExpiredDistribution finished.");
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -3598,7 +3696,7 @@ public class Core {
                     X509Certificate X509cert = (X509Certificate) cert;
                     try {
                         GregorianCalendar calendar = new GregorianCalendar();
-                        calendar.add(Calendar.DAY_OF_YEAR, 7);
+                        calendar.add(Calendar.DAY_OF_YEAR, 30);
                         X509cert.checkValidity(calendar.getTime());
                         Server.logDebug(hostname + " certificate is valid.");
                         removeExpiring(hostname);
@@ -3695,19 +3793,32 @@ public class Core {
         return decompress(BASE64.decode(data));
     }
     
+    private static final Pattern EXECUTABLE_SIGNATURE_PATTERN = Pattern.compile("^"
+            + "[0-9a-f]{32}\\.[0-9]+\\."
+            + "(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)"
+            + "$"
+    );
+    
     public static boolean isExecutableSignature(String token) {
         if (token == null) {
             return false;
         } else {
-            return Pattern.matches("^[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token);
+//            return Pattern.matches("^[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token);
+            return EXECUTABLE_SIGNATURE_PATTERN.matcher(token).matches();
         }
     }
+    
+    private static final Pattern URL_SIGNATURE_PATTERN = Pattern.compile("^"
+            + "[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?"
+            + "$"
+    );
     
     public static boolean isSignatureURL(String token) {
         if (token == null) {
             return false;
         } else {
-            return Pattern.matches("^[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?$", token);
+//            return Pattern.matches("^[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?$", token);
+            return URL_SIGNATURE_PATTERN.matcher(token).matches();
         }
     }
     
@@ -3765,6 +3876,27 @@ public class Core {
                     port = ":" + port;
                 }
                 return protocol + "://" + host + port + "/";
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static String getSignatureHostnameURL(String token) {
+        if (token == null) {
+            return null;
+        } else {
+            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.([0-9]+)\\.(https?))$");
+            Matcher matcher = pattern.matcher(token);
+            if (matcher.find()) {
+                String host = matcher.group(2).substring(1);
+                if (SubnetIPv4.isValidIPv4(host)) {
+                    host = SubnetIPv4.reverseToIPv4(host);
+                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                    host = SubnetIPv6.reverseToIPv6(host);
+                    host = SubnetIPv6.tryTransformToIPv4(host);
+                }
+                return host;
             } else {
                 return null;
             }

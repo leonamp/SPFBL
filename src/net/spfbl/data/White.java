@@ -20,6 +20,8 @@ package net.spfbl.data;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -428,467 +430,565 @@ public class White {
     /**
      * Representa o conjunto de blocos IP liberados.
      */
+//    private static class CIDR {
+//        
+//        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
+//        
+//        public static synchronized boolean isEmpty() {
+//            return MAP.isEmpty();
+//        }
+//        
+//        public static synchronized TreeSet<String> clear() {
+//            TreeSet<String> set = getAll();
+//            MAP.clear();
+//            return set;
+//        }
+//        
+//        public static synchronized ArrayList<String> getKeySet() {
+//            ArrayList<String> resultSet = new ArrayList<>();
+//            resultSet.addAll(MAP.keySet());
+//            return resultSet;
+//        }
+//        
+//        public static synchronized TreeSet<String> getClientSet(String client) {
+//            return MAP.get(client);
+//        }
+//        
+//        public static synchronized Object[] getClientArray(String client) {
+//            TreeSet<String> clientSet = MAP.get(client);
+//            if (clientSet == null) {
+//                return null;
+//            } else {
+//                return clientSet.toArray();
+//            }
+//        }
+//        
+//        public static synchronized TreeSet<String> getExtended() {
+//            TreeSet<String> returnSet = new TreeSet<>();
+//            TreeSet<String> cidrSet = MAP.get(null);
+//            if (cidrSet != null) {
+//                returnSet.addAll(cidrSet);
+//            }
+//            return returnSet;
+//        }
+//        
+//        public static TreeSet<String> get(User user) {
+//            if (user == null) {
+//                return get((String) null);
+//            } else {
+//                return get(user.getEmail());
+//            }
+//        }
+//        
+//        public static synchronized TreeSet<String> get(String user) {
+//            TreeSet<String> resultSet = new TreeSet<>();
+//            TreeSet<String> cidrSet = MAP.get(user);
+//            if (cidrSet != null) {
+//                for (String cidr : cidrSet) {
+//                    if (cidr.contains(":")) {
+//                        cidr = SubnetIPv6.normalizeCIDRv6(cidr);
+//                    } else {
+//                        cidr = SubnetIPv4.normalizeCIDRv4(cidr);
+//                    }
+//                    resultSet.add("CIDR=" + cidr);
+//                }
+//            }
+//            return resultSet;
+//        }
+//        
+//        public static int getAll(OutputStream outputStream) throws Exception {
+//            int count = 0;
+//            for (String client : getKeySet()) {
+//                Object[] clientSet = getClientArray(client);
+//                if (clientSet != null) {
+//                    for (Object cidrObj : clientSet) {
+//                        String cidr = (String) cidrObj;
+//                        if (cidr.contains(":")) {
+//                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
+//                        } else {
+//                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
+//                        }
+//                        if (client != null) {
+//                            outputStream.write(client.getBytes("UTF-8"));
+//                            outputStream.write(':');
+//                        }
+//                        outputStream.write("CIDR=".getBytes("UTF-8"));
+//                        outputStream.write(cidr.getBytes("UTF-8"));
+//                        outputStream.write('\n');
+//                        count++;
+//                    }
+//                }
+//            }
+//            return count;
+//        }
+//        
+//        public static TreeSet<String> getAll() {
+//            TreeSet<String> set = new TreeSet<>();
+//            for (String client : getKeySet()) {
+//                Object[] clientArray = getClientArray(client);
+//                if (clientArray != null) {
+//                    for (Object element : clientArray) {
+//                        String cidr = (String) element;
+//                        if (cidr.contains(":")) {
+//                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
+//                        } else {
+//                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
+//                        }
+//                        if (client == null) {
+//                            set.add("CIDR=" + cidr);
+//                        } else {
+//                            set.add(client + ":CIDR=" + cidr);
+//                        }
+//                    }
+//                }
+//            }
+//            return set;
+//        }
+//        
+//        private static boolean split(String cidr) {
+//            if (CIDR.dropExact(cidr)) {
+//                cidr = cidr.substring(5);
+//                short mask = Subnet.getMask(cidr);
+//                String first = Subnet.getFirstIP(cidr);
+//                String last = Subnet.getLastIP(cidr);
+//                int max = SubnetIPv4.isValidIPv4(first) ? 32 : 128;
+//                if (mask < max) {
+//                    mask++;
+//                    String cidr1 = first + "/" + mask;
+//                    String cidr2 = last + "/" + mask;
+//                    cidr1 = "CIDR=" + Subnet.normalizeCIDR(cidr1);
+//                    cidr2 = "CIDR=" + Subnet.normalizeCIDR(cidr2);
+//                    boolean splited = true;
+//                    try {
+//                        if (!CIDR.addExact(cidr1, false)) {
+//                            splited = false;
+//                        }
+//                    } catch (ProcessException ex) {
+//                        splited = false;
+//                    }
+//                    try {
+//                        if (!CIDR.addExact(cidr2, false)) {
+//                            splited = false;
+//                        }
+//                    } catch (ProcessException ex) {
+//                        splited = false;
+//                    }
+//                    return splited;
+//                } else {
+//                    return false;
+//                }
+//            } else {
+//                return false;
+//            }
+//        }
+//        
+//        private static synchronized boolean dropExact(String token) {
+//            if (token == null) {
+//                return false;
+//            } else {
+//                int index = token.indexOf('=');
+//                String cidr = token.substring(index+1);
+//                index = token.lastIndexOf(':', index);
+//                String client;
+//                if (index == -1) {
+//                    client = null;
+//                } else {
+//                    client = token.substring(0, index);
+//                }
+//                TreeSet<String> set = MAP.get(client);
+//                if (set == null) {
+//                    return false;
+//                } else {
+//                    String key = Subnet.expandCIDR(cidr);
+//                    boolean removed = set.remove(key);
+//                    if (set.isEmpty()) {
+//                        MAP.remove(client);
+//                    }
+//                    return removed;
+//                }
+//            }
+//        }
+//        
+//        public static void simplify() {
+//            try {
+//                TreeSet<String> cidrSet = getClientSet(null);
+//                if (cidrSet != null && !cidrSet.isEmpty()) {
+//                    String cidrExtended = cidrSet.first();
+//                    do {
+//                        if (SubnetIPv4.isValidCIDRv4(cidrExtended)) {
+//                            String cidrSmaller = SubnetIPv4.normalizeCIDRv4(cidrExtended);
+//                            short mask = Subnet.getMask(cidrSmaller);
+//                            if (mask > 8) {
+//                                String ipFirst = SubnetIPv4.getFirstIPv4(cidrSmaller);
+//                                String cidrBigger = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + (mask - 1));
+//                                ipFirst = SubnetIPv4.getFirstIPv4(cidrBigger);
+//                                String ipLast = SubnetIPv4.getLastIPv4(cidrBigger);
+//                                String cidr1 = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + mask);
+//                                if (CIDR.contains((String) null, cidr1)) {
+//                                    String cidr2 = SubnetIPv4.normalizeCIDRv4(ipLast + "/" + mask);
+//                                    if (CIDR.contains((String) null, cidr2)) {
+//                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr1));
+//                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr2));
+//                                        CIDR.addExact(null, cidrBigger);
+//                                    }
+//                                }
+//                            }
+//                        } else if (SubnetIPv6.isValidCIDRv6(cidrExtended)) {
+//                            String cidrSmaller = SubnetIPv6.normalizeCIDRv6(cidrExtended);
+//                            short mask = Subnet.getMask(cidrSmaller);
+//                            if (mask > 16) {
+//                                String ipFirst = SubnetIPv6.getFirstIPv6(cidrSmaller);
+//                                String cidrBigger = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + (mask - 1));
+//                                ipFirst = SubnetIPv6.getFirstIPv6(cidrBigger);
+//                                String ipLast = SubnetIPv6.getLastIPv6(cidrBigger);
+//                                String cidr1 = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + mask);
+//                                if (CIDR.contains((String) null, cidr1)) {
+//                                    String cidr2 = SubnetIPv6.normalizeCIDRv6(ipLast + "/" + mask);
+//                                    if (CIDR.contains((String) null, cidr2)) {
+//                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr1));
+//                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr2));
+//                                        CIDR.addExact(null, cidrBigger);
+//                                    }
+//                                }
+//                            }
+//                        }
+//                    } while ((cidrExtended = cidrSet.higher(cidrExtended)) != null);
+//                }
+//            } catch (Exception ex) {
+//                Server.logError(ex);
+//            }
+//        }
+//        
+//        private static synchronized boolean addExact(
+//                String client, String token
+//        ) {
+//            int index = token.indexOf('=');
+//            String cidr = token.substring(index+1);
+//            TreeSet<String> set = MAP.get(client);
+//            if (set == null) {
+//                set = new TreeSet<>();
+//                MAP.put(client, set);
+//            }
+//            String key = Subnet.expandCIDR(cidr);
+//            return set.add(key);
+//        }
+//        
+//        private static synchronized boolean addExact(String token) throws ProcessException {
+//            int index = token.indexOf('=');
+//            String cidr = token.substring(index+1);
+//            index = token.lastIndexOf(':', index);
+//            String client;
+//            if (index == -1) {
+//                client = null;
+//            } else {
+//                client = token.substring(0, index);
+//            }
+//            TreeSet<String> set = MAP.get(client);
+//            if (set == null) {
+//                set = new TreeSet<>();
+//                MAP.put(client, set);
+//            }
+//            String key = Subnet.expandCIDR(cidr);
+//            String first = Subnet.getFirstIP(cidr);
+//            String last = Subnet.getLastIP(cidr);
+//            String floorLower = set.lower(key);
+//            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
+//            if (floorLower == null) {
+//                floorLower = null;
+//            } else if (floorLower.contains(".")) {
+//                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
+//            } else if (floorLower.contains(":")) {
+//                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
+//            } else {
+//                floorLower = null;
+//            }
+//            if (floorLast == null) {
+//                floorLast = null;
+//            } else if (floorLast.contains(".")) {
+//                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
+//            } else if (floorLast.contains(":")) {
+//                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
+//            } else {
+//                floorLast = null;
+//            }
+//            if (cidr.equals(floorLast)) {
+//                return false;
+//            } else if (Subnet.containsIP(floorLast, first)) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(floorLast, last)) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(floorLower, first)) {
+//                throw new ProcessException("INTERSECTS " + floorLower);
+//            } else if (Subnet.containsIP(floorLower, last)) {
+//                throw new ProcessException("INTERSECTS " + floorLower);
+//            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
+//                throw new ProcessException("INTERSECTS " + floorLast);
+//            } else {
+//                return set.add(key);
+//            }
+//        }
+//        
+//        private static synchronized boolean addExact(
+//                String token, boolean overlap
+//        ) throws ProcessException {
+//            int index = token.indexOf('=');
+//            String cidr = token.substring(index+1);            
+//            index = token.lastIndexOf(':', index);
+//            String client;
+//            if (index == -1) {
+//                client = null;
+//            } else {
+//                client = token.substring(0, index);
+//            }
+//            TreeSet<String> set = MAP.get(client);
+//            if (set == null) {
+//                set = new TreeSet<>();
+//                MAP.put(client, set);
+//            }
+//            String key = Subnet.expandCIDR(cidr);
+//            if (set.contains(key)) {
+//                return false;
+//            } else {
+//                String firstCIDR = Subnet.getFirstIP(cidr);
+//                String lastCIDR = Subnet.getLastIP(cidr);
+//                String firstExpanded = Subnet.expandIP(firstCIDR) + "/00";
+//                String lastExpanded = Subnet.expandIP(lastCIDR) + "/99";
+//                String floorExpanded = set.floor(firstExpanded);
+//                String floor = Subnet.normalizeCIDR(floorExpanded);
+//                TreeSet<String> intersectsSet = new TreeSet<>();
+//                intersectsSet.addAll(set.subSet(firstExpanded, lastExpanded));
+//                if (Subnet.containsIP(floor, firstCIDR)) {
+//                    intersectsSet.add(floorExpanded);
+//                }
+//                TreeSet<String> overlapSet = new TreeSet<>();
+//                StringBuilder errorBuilder = new StringBuilder();
+//                for (String elementExpanded : intersectsSet) {
+//                    String element = Subnet.normalizeCIDR(elementExpanded);
+//                    String elementFirst = Subnet.getFirstIP(element);
+//                    String elementLast = Subnet.getLastIP(element);
+//                    if (!Subnet.containsIP(cidr, elementFirst)) {
+//                        errorBuilder.append("INTERSECTS ");
+//                        errorBuilder.append(element);
+//                        errorBuilder.append('\n');
+//                    } else if (!Subnet.containsIP(cidr, elementLast)) {
+//                        errorBuilder.append("INTERSECTS ");
+//                        errorBuilder.append(element);
+//                        errorBuilder.append('\n');
+//                    } else if (overlap) {
+//                        overlapSet.add(elementExpanded);
+//                    } else {
+//                        errorBuilder.append("CONTAINS ");
+//                        errorBuilder.append(element);
+//                        errorBuilder.append('\n');
+//                    }
+//                }
+//                String error = errorBuilder.toString();
+//                if (error.length() == 0) {
+//                    set.removeAll(overlapSet);
+//                    if (set.add(key)) {
+//                        try { // Join algorithm.
+//                            short mask;
+//                            while ((mask = Subnet.getMask(cidr)) > 8) {
+//                                String ipFirst = Subnet.getFirstIP(cidr);
+//                                cidr = Subnet.normalizeCIDR(ipFirst + "/" + (mask - 1));
+//                                ipFirst = Subnet.getFirstIP(cidr);
+//                                String ipLast = Subnet.getLastIP(cidr);
+//                                String cidr1 = Subnet.normalizeCIDR(ipFirst + "/" + mask);
+//                                String cidrExpanded1 = Subnet.expandCIDR(cidr1);
+//                                if (set.contains(cidrExpanded1)) {
+//                                    String cidr2 = Subnet.normalizeCIDR(ipLast + "/" + mask);
+//                                    String cidrExpanded2 = Subnet.expandCIDR(cidr2);
+//                                    if (set.contains(cidrExpanded2)) {
+//                                        String cidrBiggerExpanded = Subnet.expandCIDR(cidr);
+//                                        set.remove(cidrExpanded1);
+//                                        set.remove(cidrExpanded2);
+//                                        set.add(cidrBiggerExpanded);
+//                                    } else {
+//                                        break;
+//                                    }
+//                                } else {
+//                                    break;
+//                                }
+//                            }
+//                        } catch (Exception ex) {
+//                            Server.logError(ex);
+//                        }
+//                        return true;
+//                    } else {
+//                        return false;
+//                    }
+//                } else {
+//                    throw new ProcessException(error);
+//                }
+//            }
+//        }
+//        
+//        public static boolean contains(Client client, String cidr) {
+//            if (client == null) {
+//                return contains((String) null, cidr);
+//            } else {
+//                return contains(client.getEmail(), cidr);
+//            }
+//        }
+//        
+//        public static boolean contains(String client, String cidr) {
+//            if (cidr == null) {
+//                return false;
+//            } else {
+//                String key = Subnet.expandCIDR(cidr);
+//                TreeSet<String> cidrSet = getClientSet(client);
+//                if (cidrSet == null) {
+//                    return false;
+//                } else {
+//                    return cidrSet.contains(key);
+//                }
+//            }
+//        }
+//        
+//        private static String getFloor(String client, String ip) {
+//            TreeSet<String> cidrSet = getClientSet(client);
+//            if (cidrSet == null || cidrSet.isEmpty()) {
+//                return null;
+//            } else if (SubnetIPv4.isValidIPv4(ip)) {
+//                String key = SubnetIPv4.expandIPv4(ip);
+//                String cidr = cidrSet.floor(key + "/9");
+//                if (cidr == null) {
+//                    return null;
+//                } else if (cidr.contains(".")) {
+//                    return SubnetIPv4.normalizeCIDRv4(cidr);
+//                } else {
+//                    return null;
+//                }
+//            } else if (SubnetIPv6.isValidIPv6(ip)) {
+//                String key = SubnetIPv6.expandIPv6(ip);
+//                String cidr = cidrSet.floor(key + "/9");
+//                if (cidr == null) {
+//                    return null;
+//                } else if (cidr.contains(":")) {
+//                    return SubnetIPv6.normalizeCIDRv6(cidr);
+//                } else {
+//                    return null;
+//                }
+//            } else {
+//                return null;
+//            }
+//        }
+//
+//        public static String get(String client, String ip) {
+//            String result;
+//            String cidr = getFloor(null, ip);
+//            if (Subnet.containsIP(cidr, ip)) {
+//                result = "CIDR=" + cidr;
+//            } else if (client == null) {
+//                result = null;
+//            } else if ((cidr = getFloor(client, ip)) == null) {
+//                result = null;
+//            } else if (Subnet.containsIP(cidr, ip)) {
+//                result = client + ":CIDR=" + cidr;
+//            } else {
+//                result = null;
+//            }
+//            return result;
+//        }
+//    }
+    
+    /**
+     * Representa o conjunto de blocos IP liberados.
+     */
     private static class CIDR {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
+        private static final AddressSet SET = new AddressSet(7);
         
-        public static synchronized boolean isEmpty() {
-            return MAP.isEmpty();
-        }
-        
-        public static synchronized TreeSet<String> clear() {
-            TreeSet<String> set = getAll();
-            MAP.clear();
-            return set;
-        }
-        
-        public static synchronized ArrayList<String> getKeySet() {
-            ArrayList<String> resultSet = new ArrayList<>();
-            resultSet.addAll(MAP.keySet());
-            return resultSet;
-        }
-        
-        public static synchronized TreeSet<String> getClientSet(String client) {
-            return MAP.get(client);
-        }
-        
-        public static synchronized Object[] getClientArray(String client) {
-            TreeSet<String> clientSet = MAP.get(client);
-            if (clientSet == null) {
-                return null;
-            } else {
-                return clientSet.toArray();
-            }
-        }
-        
-        public static synchronized TreeSet<String> getExtended() {
-            TreeSet<String> returnSet = new TreeSet<>();
-            TreeSet<String> cidrSet = MAP.get(null);
-            if (cidrSet != null) {
-                returnSet.addAll(cidrSet);
-            }
-            return returnSet;
-        }
-        
-        public static TreeSet<String> get(User user) {
-            if (user == null) {
-                return get((String) null);
-            } else {
-                return get(user.getEmail());
-            }
-        }
-        
-        public static synchronized TreeSet<String> get(String user) {
-            TreeSet<String> resultSet = new TreeSet<>();
-            TreeSet<String> cidrSet = MAP.get(user);
-            if (cidrSet != null) {
-                for (String cidr : cidrSet) {
-                    if (cidr.contains(":")) {
-                        cidr = SubnetIPv6.normalizeCIDRv6(cidr);
-                    } else {
-                        cidr = SubnetIPv4.normalizeCIDRv4(cidr);
-                    }
-                    resultSet.add("CIDR=" + cidr);
-                }
-            }
-            return resultSet;
-        }
-        
-        public static int getAll(OutputStream outputStream) throws Exception {
-            int count = 0;
-            for (String client : getKeySet()) {
-                Object[] clientSet = getClientArray(client);
-                if (clientSet != null) {
-                    for (Object cidrObj : clientSet) {
-                        String cidr = (String) cidrObj;
-                        if (cidr.contains(":")) {
-                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
-                        } else {
-                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
-                        }
-                        if (client != null) {
-                            outputStream.write(client.getBytes("UTF-8"));
-                            outputStream.write(':');
-                        }
-                        outputStream.write("CIDR=".getBytes("UTF-8"));
-                        outputStream.write(cidr.getBytes("UTF-8"));
-                        outputStream.write('\n');
-                        count++;
-                    }
-                }
-            }
-            return count;
-        }
-        
-        public static TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<>();
-            for (String client : getKeySet()) {
-                Object[] clientArray = getClientArray(client);
-                if (clientArray != null) {
-                    for (Object element : clientArray) {
-                        String cidr = (String) element;
-                        if (cidr.contains(":")) {
-                            cidr = SubnetIPv6.normalizeCIDRv6(cidr);
-                        } else {
-                            cidr = SubnetIPv4.normalizeCIDRv4(cidr);
-                        }
-                        if (client == null) {
-                            set.add("CIDR=" + cidr);
-                        } else {
-                            set.add(client + ":CIDR=" + cidr);
-                        }
-                    }
-                }
-            }
-            return set;
-        }
-        
-        private static boolean split(String cidr) {
-            if (CIDR.dropExact(cidr)) {
-                cidr = cidr.substring(5);
-                short mask = Subnet.getMask(cidr);
-                String first = Subnet.getFirstIP(cidr);
-                String last = Subnet.getLastIP(cidr);
-                int max = SubnetIPv4.isValidIPv4(first) ? 32 : 128;
-                if (mask < max) {
-                    mask++;
-                    String cidr1 = first + "/" + mask;
-                    String cidr2 = last + "/" + mask;
-                    cidr1 = "CIDR=" + Subnet.normalizeCIDR(cidr1);
-                    cidr2 = "CIDR=" + Subnet.normalizeCIDR(cidr2);
-                    boolean splited = true;
-                    try {
-                        if (!CIDR.addExact(cidr1, false)) {
-                            splited = false;
-                        }
-                    } catch (ProcessException ex) {
-                        splited = false;
-                    }
-                    try {
-                        if (!CIDR.addExact(cidr2, false)) {
-                            splited = false;
-                        }
-                    } catch (ProcessException ex) {
-                        splited = false;
-                    }
-                    return splited;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        
-        private static synchronized boolean dropExact(String token) {
-            if (token == null) {
-                return false;
-            } else {
-                int index = token.indexOf('=');
-                String cidr = token.substring(index+1);
-                index = token.lastIndexOf(':', index);
-                String client;
-                if (index == -1) {
-                    client = null;
-                } else {
-                    client = token.substring(0, index);
-                }
-                TreeSet<String> set = MAP.get(client);
-                if (set == null) {
-                    return false;
-                } else {
-                    String key = Subnet.expandCIDR(cidr);
-                    boolean removed = set.remove(key);
-                    if (set.isEmpty()) {
-                        MAP.remove(client);
-                    }
-                    return removed;
-                }
-            }
-        }
-        
-        public static void simplify() {
+        public static void load() {
             try {
-                TreeSet<String> cidrSet = getClientSet(null);
-                if (cidrSet != null && !cidrSet.isEmpty()) {
-                    String cidrExtended = cidrSet.first();
-                    do {
-                        if (SubnetIPv4.isValidCIDRv4(cidrExtended)) {
-                            String cidrSmaller = SubnetIPv4.normalizeCIDRv4(cidrExtended);
-                            short mask = Subnet.getMask(cidrSmaller);
-                            if (mask > 8) {
-                                String ipFirst = SubnetIPv4.getFirstIPv4(cidrSmaller);
-                                String cidrBigger = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + (mask - 1));
-                                ipFirst = SubnetIPv4.getFirstIPv4(cidrBigger);
-                                String ipLast = SubnetIPv4.getLastIPv4(cidrBigger);
-                                String cidr1 = SubnetIPv4.normalizeCIDRv4(ipFirst + "/" + mask);
-                                if (CIDR.contains((String) null, cidr1)) {
-                                    String cidr2 = SubnetIPv4.normalizeCIDRv4(ipLast + "/" + mask);
-                                    if (CIDR.contains((String) null, cidr2)) {
-                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr1));
-                                        CIDR.dropExact(SubnetIPv4.expandCIDRv4(cidr2));
-                                        CIDR.addExact(null, cidrBigger);
-                                    }
-                                }
-                            }
-                        } else if (SubnetIPv6.isValidCIDRv6(cidrExtended)) {
-                            String cidrSmaller = SubnetIPv6.normalizeCIDRv6(cidrExtended);
-                            short mask = Subnet.getMask(cidrSmaller);
-                            if (mask > 16) {
-                                String ipFirst = SubnetIPv6.getFirstIPv6(cidrSmaller);
-                                String cidrBigger = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + (mask - 1));
-                                ipFirst = SubnetIPv6.getFirstIPv6(cidrBigger);
-                                String ipLast = SubnetIPv6.getLastIPv6(cidrBigger);
-                                String cidr1 = SubnetIPv6.normalizeCIDRv6(ipFirst + "/" + mask);
-                                if (CIDR.contains((String) null, cidr1)) {
-                                    String cidr2 = SubnetIPv6.normalizeCIDRv6(ipLast + "/" + mask);
-                                    if (CIDR.contains((String) null, cidr2)) {
-                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr1));
-                                        CIDR.dropExact(SubnetIPv6.expandCIDRv6(cidr2));
-                                        CIDR.addExact(null, cidrBigger);
-                                    }
-                                }
-                            }
-                        }
-                    } while ((cidrExtended = cidrSet.higher(cidrExtended)) != null);
+                File file = new File("./data/white.cidr.txt");
+                if (file.exists()) {
+                    SET.start(file);
                 }
-            } catch (Exception ex) {
+            } catch (IOException ex) {
                 Server.logError(ex);
             }
         }
         
-        private static synchronized boolean addExact(
-                String client, String token
-        ) {
-            int index = token.indexOf('=');
-            String cidr = token.substring(index+1);
-            TreeSet<String> set = MAP.get(client);
-            if (set == null) {
-                set = new TreeSet<>();
-                MAP.put(client, set);
-            }
-            String key = Subnet.expandCIDR(cidr);
-            return set.add(key);
+        public static boolean store() {
+            return SET.store();
         }
         
-        private static synchronized boolean addExact(String token) throws ProcessException {
-            int index = token.indexOf('=');
-            String cidr = token.substring(index+1);
-            index = token.lastIndexOf(':', index);
-            String client;
-            if (index == -1) {
-                client = null;
-            } else {
-                client = token.substring(0, index);
-            }
-            TreeSet<String> set = MAP.get(client);
-            if (set == null) {
-                set = new TreeSet<>();
-                MAP.put(client, set);
-            }
-            String key = Subnet.expandCIDR(cidr);
-            String first = Subnet.getFirstIP(cidr);
-            String last = Subnet.getLastIP(cidr);
-            String floorLower = set.lower(key);
-            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
-            if (floorLower == null) {
-                floorLower = null;
-            } else if (floorLower.contains(".")) {
-                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
-            } else if (floorLower.contains(":")) {
-                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
-            } else {
-                floorLower = null;
-            }
-            if (floorLast == null) {
-                floorLast = null;
-            } else if (floorLast.contains(".")) {
-                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
-            } else if (floorLast.contains(":")) {
-                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
-            } else {
-                floorLast = null;
-            }
-            if (cidr.equals(floorLast)) {
+        private static boolean addExact(String token) {
+            if (token == null) {
                 return false;
-            } else if (Subnet.containsIP(floorLast, first)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLast, last)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLower, first)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(floorLower, last)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
+            } else if (token.startsWith("CIDR=")) {
+                return SET.add(token.substring(5));
+            } else if (Subnet.isValidCIDR(token)) {
+                return SET.add(token);
             } else {
-                return set.add(key);
-            }
-        }
-        
-        private static synchronized boolean addExact(
-                String token, boolean overlap
-        ) throws ProcessException {
-            int index = token.indexOf('=');
-            String cidr = token.substring(index+1);            
-            index = token.lastIndexOf(':', index);
-            String client;
-            if (index == -1) {
-                client = null;
-            } else {
-                client = token.substring(0, index);
-            }
-            TreeSet<String> set = MAP.get(client);
-            if (set == null) {
-                set = new TreeSet<>();
-                MAP.put(client, set);
-            }
-            String key = Subnet.expandCIDR(cidr);
-            if (set.contains(key)) {
                 return false;
-            } else {
-                String firstCIDR = Subnet.getFirstIP(cidr);
-                String lastCIDR = Subnet.getLastIP(cidr);
-                String firstExpanded = Subnet.expandIP(firstCIDR) + "/00";
-                String lastExpanded = Subnet.expandIP(lastCIDR) + "/99";
-                String floorExpanded = set.floor(firstExpanded);
-                String floor = Subnet.normalizeCIDR(floorExpanded);
-                TreeSet<String> intersectsSet = new TreeSet<>();
-                intersectsSet.addAll(set.subSet(firstExpanded, lastExpanded));
-                if (Subnet.containsIP(floor, firstCIDR)) {
-                    intersectsSet.add(floorExpanded);
-                }
-                TreeSet<String> overlapSet = new TreeSet<>();
-                StringBuilder errorBuilder = new StringBuilder();
-                for (String elementExpanded : intersectsSet) {
-                    String element = Subnet.normalizeCIDR(elementExpanded);
-                    String elementFirst = Subnet.getFirstIP(element);
-                    String elementLast = Subnet.getLastIP(element);
-                    if (!Subnet.containsIP(cidr, elementFirst)) {
-                        errorBuilder.append("INTERSECTS ");
-                        errorBuilder.append(element);
-                        errorBuilder.append('\n');
-                    } else if (!Subnet.containsIP(cidr, elementLast)) {
-                        errorBuilder.append("INTERSECTS ");
-                        errorBuilder.append(element);
-                        errorBuilder.append('\n');
-                    } else if (overlap) {
-                        overlapSet.add(elementExpanded);
-                    } else {
-                        errorBuilder.append("CONTAINS ");
-                        errorBuilder.append(element);
-                        errorBuilder.append('\n');
-                    }
-                }
-                String error = errorBuilder.toString();
-                if (error.length() == 0) {
-                    set.removeAll(overlapSet);
-                    if (set.add(key)) {
-                        try { // Join algorithm.
-                            short mask;
-                            while ((mask = Subnet.getMask(cidr)) > 8) {
-                                String ipFirst = Subnet.getFirstIP(cidr);
-                                cidr = Subnet.normalizeCIDR(ipFirst + "/" + (mask - 1));
-                                ipFirst = Subnet.getFirstIP(cidr);
-                                String ipLast = Subnet.getLastIP(cidr);
-                                String cidr1 = Subnet.normalizeCIDR(ipFirst + "/" + mask);
-                                String cidrExpanded1 = Subnet.expandCIDR(cidr1);
-                                if (set.contains(cidrExpanded1)) {
-                                    String cidr2 = Subnet.normalizeCIDR(ipLast + "/" + mask);
-                                    String cidrExpanded2 = Subnet.expandCIDR(cidr2);
-                                    if (set.contains(cidrExpanded2)) {
-                                        String cidrBiggerExpanded = Subnet.expandCIDR(cidr);
-                                        set.remove(cidrExpanded1);
-                                        set.remove(cidrExpanded2);
-                                        set.add(cidrBiggerExpanded);
-                                    } else {
-                                        break;
-                                    }
-                                } else {
-                                    break;
-                                }
-                            }
-                        } catch (Exception ex) {
-                            Server.logError(ex);
-                        }
-                        return true;
-                    } else {
-                        return false;
-                    }
-                } else {
-                    throw new ProcessException(error);
-                }
             }
         }
         
-        public static boolean contains(Client client, String cidr) {
-            if (client == null) {
-                return contains((String) null, cidr);
+        private static boolean addExact(String token, boolean overlap) {
+            if (token == null) {
+                return false;
+            } else if (token.startsWith("CIDR=")) {
+                return SET.add(token.substring(5));
             } else {
-                return contains(client.getEmail(), cidr);
+                return SET.add(token);
             }
         }
+        
+        private static boolean dropExact(String token) {
+            if (token == null) {
+                return false;
+            } else if (token.startsWith("CIDR=")) {
+                return SET.remove(token.substring(5));
+            } else {
+                return SET.remove(token);
+            }
+        }
+        
+        public static void clear() {
+            SET.clear();
+        }
+        
+        public static boolean split(String user) {
+            return false;
+        }
+        
+        public static TreeSet<String> get(String user) {
+            if (user == null) {
+                return SET.getAllLegacy();
+            } else {
+                return new TreeSet<>();
+            }
+        }
+        
+        public static void writeAll(FileWriter writer) throws IOException {
+            if (!SET.store()) {
+                SET.writeLegacy(writer);
+            }
+        }
+        
+        public static TreeSet<String> getAll() {
+            return SET.getAllLegacy();
+        }
+            
         
         public static boolean contains(String client, String cidr) {
-            if (cidr == null) {
-                return false;
+            if (client == null) {
+                return SET.contains(cidr);
             } else {
-                String key = Subnet.expandCIDR(cidr);
-                TreeSet<String> cidrSet = getClientSet(client);
-                if (cidrSet == null) {
-                    return false;
-                } else {
-                    return cidrSet.contains(key);
-                }
+                return false;
             }
         }
         
-        private static String getFloor(String client, String ip) {
-            TreeSet<String> cidrSet = getClientSet(client);
-            if (cidrSet == null || cidrSet.isEmpty()) {
-                return null;
-            } else if (SubnetIPv4.isValidIPv4(ip)) {
-                String key = SubnetIPv4.expandIPv4(ip);
-                String cidr = cidrSet.floor(key + "/9");
-                if (cidr == null) {
-                    return null;
-                } else if (cidr.contains(".")) {
-                    return SubnetIPv4.normalizeCIDRv4(cidr);
-                } else {
-                    return null;
-                }
-            } else if (SubnetIPv6.isValidIPv6(ip)) {
-                String key = SubnetIPv6.expandIPv6(ip);
-                String cidr = cidrSet.floor(key + "/9");
-                if (cidr == null) {
-                    return null;
-                } else if (cidr.contains(":")) {
-                    return SubnetIPv6.normalizeCIDRv6(cidr);
-                } else {
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        }
-
         public static String get(String client, String ip) {
-            String result;
-            String cidr = getFloor(null, ip);
-            if (Subnet.containsIP(cidr, ip)) {
-                result = "CIDR=" + cidr;
-            } else if (client == null) {
-                result = null;
-            } else if ((cidr = getFloor(client, ip)) == null) {
-                result = null;
-            } else if (Subnet.containsIP(cidr, ip)) {
-                result = client + ":CIDR=" + cidr;
+            if (client == null) {
+                return SET.getLegacy(ip);
             } else {
-                result = null;
+                return null;
             }
-            return result;
         }
     }
     
@@ -924,13 +1024,12 @@ public class White {
         }
     }
 
-    public static synchronized TreeSet<String> dropAll() {
-        TreeSet<String> set = SET.clear();
-        set.addAll(CIDR.clear());
-        set.addAll(REGEX.clear());
-        set.addAll(WHOIS.clear());
+    public static boolean dropAll() {
+        CIDR.clear();
+        REGEX.clear();
+        WHOIS.clear();
         CHANGED = true;
-        return set;
+        return true;
     }
 
     public static String byTicket(
@@ -996,6 +1095,26 @@ public class White {
         }
     }
     
+    public static boolean addExact(User user, String token) {
+        if (token == null) {
+            return false;
+        } else if (user == null) {
+            return SET.addExact(token);
+        } else {
+            return SET.addExact(user.getEmail() + ":" + token);
+        }
+    }
+    
+    public static boolean addExact(String user, String token) {
+        if (token == null) {
+            return false;
+        } else if (user == null) {
+            return SET.addExact(token);
+        } else {
+            return SET.addExact(user + ":" + token);
+        }
+    }
+    
     public static boolean addExact(String token) throws ProcessException {
         if (token == null) {
             return false;
@@ -1006,7 +1125,8 @@ public class White {
             } else {
                 return false;
             }
-        } else if (token.contains("CIDR=")) {
+//        } else if (token.contains("CIDR=")) {
+        } else if (token.startsWith("CIDR=")) {
             if (CIDR.addExact(token)) {
                 CHANGED = true;
                 return true;
@@ -1118,20 +1238,32 @@ public class White {
         }
     }
     
-    private static boolean matches(String regex, String token) {
-        try {
-            return Pattern.matches(regex, token);
-        } catch (Exception ex) {
-            return false;
-        }
-    }
+//    private static boolean matches(String regex, String token) {
+//        try {
+//            return Pattern.matches(regex, token);
+//        } catch (Exception ex) {
+//            return false;
+//        }
+//    }
+    
+    private static final Pattern WHOIS_PATTERN = Pattern.compile("^"
+            + "WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))"
+            + "$"
+    );
     
     private static boolean isWHOIS(String token) {
-        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))$", token);
+//        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))$", token);
+        return WHOIS_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern REGEX_PATTERN = Pattern.compile("^"
+            + "REGEX=[^ ]+"
+            + "$"
+    );
 
     private static boolean isREGEX(String token) {
-        return matches("^REGEX=[^ ]+$", token);
+//        return matches("^REGEX=[^ ]+$", token);
+        return REGEX_PATTERN.matcher(token).matches();
     }
     
     private static boolean isDNSBL(String token) {
@@ -1145,25 +1277,45 @@ public class White {
             return false;
         }
     }
+    
+    private static final Pattern CIDR_PATTERN = Pattern.compile("^"
+            + "CIDR=("
+            + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+            + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
+            + "|"
+            + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,7}:|"
+            + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+            + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+            + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+            + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+            + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+            + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+            + "/[0-9]{1,3})"
+            + "$"
+    );
 
     private static boolean isCIDR(String token) {
-        return matches("^CIDR=("
-                + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
-                + "|"
-                + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
-                + "/[0-9]{1,3})$",
-                token
-        );
+//        return matches("^CIDR=("
+//                + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+//                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
+//                + "|"
+//                + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,7}:|"
+//                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+//                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+//                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+//                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+//                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+//                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+//                + "/[0-9]{1,3})$",
+//                token
+//        );
+        return CIDR_PATTERN.matcher(token).matches();
     }
     
     public static String normalizeTokenWhite(String token) throws ProcessException {
@@ -1280,10 +1432,22 @@ public class White {
     }
     
     public static boolean containsExtact(User user, String token) {
-        if (user == null || token == null) {
+        if (token == null) {
             return false;
+        } else if (user == null) {
+            return SET.contains(token);
         } else {
             return SET.contains(user.getEmail() + ":" + token);
+        }
+    }
+    
+    public static boolean containsExtact(String user, String token) {
+        if (token == null) {
+            return false;
+        } else if (user == null) {
+            return SET.contains(token);
+        } else {
+            return SET.contains(user + ":" + token);
         }
     }
 
@@ -1591,7 +1755,11 @@ public class White {
             if (ip != null) {
                 ip = Subnet.normalizeIP(ip);
                 String cidr;
-                if (SET.contains(ip + ';' + qualifier)) {
+                if (userEmail != null && ip.contains(":") && SET.contains(userEmail + ":CIDR=" + ip + "/32")) {
+                    return ip;
+                } else if (userEmail != null && !ip.contains(":") && SET.contains(userEmail + ":CIDR=" + ip + "/128")) {
+                    return ip;
+                } else if (SET.contains(ip + ';' + qualifier)) {
                     return ip + ';' + qualifier;
                 } else if (recipient != null && SET.contains(ip + ';' + qualifier + '>' + recipient)) {
                     return ip + ';' + qualifier + '>' + recipient;
@@ -1601,15 +1769,14 @@ public class White {
                     return "mailer-daemon@;" + ip;
                 } else if (userEmail != null && sender == null & SET.contains(userEmail + ":mailer-daemon@;" + ip)) {
                     return userEmail + ":mailer-daemon@;" + ip;
-    //            } else if (userEmail != null && SET.contains(userEmail + ":@;" + ip)) {
-    //                return userEmail + ":@;" + ip;
                 } else if (userEmail != null && SET.contains(userEmail + ':' + ip + ';' + qualifier)) {
                     return userEmail + ':' + ip + ';' + qualifier;
                 } else if (userEmail != null && recipient != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipient)) {
                     return userEmail + ':' + ip + ';' + qualifier + '>' + recipient;
                 } else if (userEmail != null && recipientDomain != null && SET.contains(userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain)) {
                     return userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain;
-                } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
+//                } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
+                } else if ((cidr = CIDR.get(null, ip)) != null) {
                     return cidr;
                 }
                 regexSet.add(ip);
@@ -1911,10 +2078,10 @@ public class White {
     public static void store(boolean simplify) {
         if (CHANGED) {
             try {
-                if (simplify) {
-                    Server.logTrace("simplifing white.set");
-                    CIDR.simplify();
-                }
+//                if (simplify) {
+//                    Server.logTrace("simplifing white.set");
+//                    CIDR.simplify();
+//                }
 //                Server.logTrace("storing white.set");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/white.set");
@@ -1928,6 +2095,7 @@ public class White {
                 Server.logError(ex);
             }
         }
+        CIDR.store();
     }
 
     public static void load() {
@@ -1953,19 +2121,10 @@ public class White {
                         client = null;
                         identifier = token;
                     }
-//                    if (Subnet.isValidCIDR(identifier)) {
-//                        identifier = "CIDR=" + Subnet.normalizeCIDR(identifier);
-//                    } else if (Owner.isOwnerID(identifier)) {
-//                        identifier = "WHOIS/ownerid=" + identifier;
-//                    } else {
-//                        identifier = normalizeTokenWhite(identifier);
-//                    }
-//                    if (identifier != null) {
                     if ((identifier = normalizeTokenWhite(identifier)) != null) {
                         try {
                             if (client == null) {
                                 addExact(identifier);
-//                            } else if (Domain.isValidEmail(client)) {
                             } else {
                                 addExact(client + ':' + identifier);
                             }
@@ -1980,5 +2139,6 @@ public class White {
                 Server.logError(ex);
             }
         }
+        CIDR.load();
     }
 }

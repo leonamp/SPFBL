@@ -109,9 +109,27 @@ public class Block {
             return count;
         }
         
+//        public static synchronized TreeMap<String,Long> getMap() {
+//            TreeMap<String,Long> map = new TreeMap<>();
+//            map.putAll(MAP);
+//            return map;
+//        }
+        
         public static synchronized TreeMap<String,Long> getMap() {
+            long min = TIME - 0x100000000L;
+            TreeSet<String> removeSet = new TreeSet<>();
             TreeMap<String,Long> map = new TreeMap<>();
-            map.putAll(MAP);
+            for (String token : MAP.keySet()) {
+                Long time = MAP.get(token);
+                if (time == null || time < min) {
+                    removeSet.add(token);
+                } else {
+                    map.put(token, time);
+                }
+            }
+            for (String token : removeSet) {
+                MAP.remove(token);
+            }
             return map;
         }
                 
@@ -126,7 +144,7 @@ public class Block {
         }
         
         private static synchronized boolean addExact(String token) {
-            return MAP.put(token, System.currentTimeMillis()) == null;
+            return MAP.put(token, TIME) == null;
         }
         
         private static synchronized boolean dropExact(String token) {
@@ -135,10 +153,100 @@ public class Block {
         
         public static synchronized boolean contains(String token) {
             if (MAP.containsKey(token)) {
-                MAP.put(token, System.currentTimeMillis());
+                MAP.put(token, TIME);
                 return CHANGED = true;
             } else {
                 return false;
+            }
+        }
+        
+        private static Long TIME = System.currentTimeMillis() & 0xFFFFFFFF00000000L;
+
+        private static void refreshTime() {
+            long time = System.currentTimeMillis() & 0xFFFFFFFF00000000L;
+            if (TIME < time) {
+                TIME = time;
+            }
+        }
+        
+        private static void load() {
+            long time = System.currentTimeMillis();
+            File file = new File("./data/block.map");
+            if (file.exists()) {
+                try {
+                    Map<String,Long> map;
+                    try (FileInputStream fileInputStream = new FileInputStream(file)) {
+                        map = SerializationUtils.deserialize(fileInputStream);
+                    }
+                    TreeMap<Long,Long> timeMap = new TreeMap<>();
+                    timeMap.put(TIME, TIME);
+                    TreeMap<String,TreeMap<String,Long>> maskMap = new TreeMap<>(); // Temp.
+                    for (String token : map.keySet()) {
+                        Long last = map.get(token);
+                        if (last != null) {
+                            last &= 0xFFFFFFFF00000000L;
+                            if (timeMap.containsKey(last)) {
+                                last = timeMap.get(last);
+                            } else {
+                                timeMap.put(last, last);
+                            }
+                            if (Core.isSignatureURL(token.substring(1))) {
+                                SET.putExact(token.substring(1), last);
+                            } else if (Core.isExecutableSignature(token.substring(1))) {
+                                SET.putExact(token.substring(1), last);
+                            } else if (Core.isSignatureURL(token)) {
+                                SET.putExact(token, last);
+                            } else if (Core.isExecutableSignature(token)) {
+                                SET.putExact(token, last);
+                            } else if (Domain.isHostname(token)) {
+                                token = Domain.normalizeHostname(token, true);
+                                String mask = Generic.convertHostOrDomainToMask(token);
+                                if (mask == null) {
+                                    SET.putExact(token, last);
+                                } else if (maskMap.containsKey(mask)) {
+                                    maskMap.get(mask).put(token, last);
+                                } else {
+                                    TreeMap<String,Long> tokenMap = new TreeMap<>();
+                                    tokenMap.put(token, last);
+                                    maskMap.put(mask, tokenMap);
+                                }
+                            } else if ((token = Block.normalizeTokenBlock(token)) != null) {
+                                SET.putExact(token, last);
+                            }
+                        }
+                    }
+                    for (String mask : maskMap.keySet()) {
+                        TreeMap<String,Long> tokenMap = maskMap.get(mask);
+                        if (tokenMap.size() > 256) {
+                            Generic.addGeneric(mask);
+                        } else if (!Generic.containsGenericExact(mask)) {
+                            for (String token : tokenMap.keySet()) {
+                                Long last = tokenMap.get(token);
+                                SET.putExact(token, last);
+                            }
+                        }
+                    }
+                    CHANGED = false;
+                    Server.logLoad(time, file);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+        }
+        
+        public static void store() {
+            long time = System.currentTimeMillis();
+            File file = new File("./data/block.map");
+            try {
+                TreeMap<String,Long> tokenMap = SET.getMap();
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
+                    SerializationUtils.serialize(tokenMap, outputStream);
+                }
+                Server.logStore(time, file);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            } finally {
+                refreshTime();
             }
         }
     }
@@ -567,6 +675,10 @@ public class Block {
         
         private static String get(String client, String ip) {
             if (ip == null) {
+                return null;
+            } else if (Provider.containsCIDR(ip)) {
+                return null;
+            } else if (Ignore.containsCIDR(ip)) {
                 return null;
             } else {
                 TreeMap<String,TreeSet<String>> dnsblMap = new TreeMap<>();
@@ -1441,18 +1553,18 @@ public class Block {
     }
     
     
-    public static void dropExpired() {
-        long max = System.currentTimeMillis() - Server.DAY_TIME * 365L;
-        TreeMap<String,Long> map = SET.getMap();
-        for (String token : map.keySet()) {
-            Long time = map.get(token);
-            if (time == null || time < max) {
-                if (SET.dropExact(token)) {
-                    Server.logDebug("expired BLOCK '" + token + "'.");
-                }
-            }
-        }
-    }
+//    public static void dropExpired() {
+//        long max = System.currentTimeMillis() - Server.DAY_TIME * 50L;
+//        TreeMap<String,Long> map = SET.getMap();
+//        for (String token : map.keySet()) {
+//            Long time = map.get(token);
+//            if (time == null || time < max) {
+//                if (SET.dropExact(token)) {
+//                    Server.logDebug("expired BLOCK '" + token + "'.");
+//                }
+//            }
+//        }
+//    }
 
     public static boolean dropExact(String token) {
         if (token == null) {
@@ -1499,10 +1611,22 @@ public class Block {
     }
     
     public static boolean addExact(User user, String token) {
-        if (user == null || token == null) {
+        if (token == null) {
             return false;
+        } else if (user == null) {
+            return SET.addExact(token);
         } else {
             return SET.addExact(user.getEmail() + ":" + token);
+        }
+    }
+    
+    public static boolean addExact(String user, String token) {
+        if (token == null) {
+            return false;
+        } else if (user == null) {
+            return SET.addExact(token);
+        } else {
+            return SET.addExact(user + ":" + token);
         }
     }
 
@@ -2096,7 +2220,7 @@ public class Block {
             return false;
         } else {
             String block;
-            int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 64;
+            int mask = SubnetIPv4.isValidIPv4(ip) ? 32 : 128;
             if ((block = Block.clearCIDR(ip, mask)) != null) {
                 Server.logInfo("false positive BLOCK '" + block + "' detected by '" + admin + "'.");
                 for (String token : Reverse.getPointerSetSafe(ip)) {
@@ -2568,6 +2692,29 @@ public class Block {
     public static String keySMTP(
             String userEmail,
             String ip,
+            String hostname,
+            String recipient
+            ) {
+        if (userEmail == null) {
+            userEmail = "";
+        } else {
+            userEmail += ":";
+        }
+        if (recipient == null) {
+            recipient = "";
+        } else {
+            recipient = ">" + recipient;
+        }
+        if (hostname == null) {
+            return userEmail + "@;" + ip + recipient;
+        } else {
+            return userEmail + "@;" + hostname + recipient;
+        }
+    }
+    
+    public static String keySMTP(
+            String userEmail,
+            String ip,
             String sender,
             String hostname,
             String qualifier,
@@ -2698,7 +2845,9 @@ public class Block {
             recipientDomain = null;
         }
         String found;
-        if ((found = findSender(userEmail, sender, qualifier,
+        if ((found = Block.findCIDR(ip)) != null) {
+            return found;
+        } else if ((found = findSender(userEmail, sender, qualifier,
                 recipient, recipientDomain, whoisSet, regexSet)) != null) {
             return found;
         } else if (!qualifier.equals("NONE") && !qualifier.equals("PASS")
@@ -2757,7 +2906,7 @@ public class Block {
                 return userEmail + ':' + ip + ';' + qualifier + '>' + recipientDomain;
             } else if ((cidr = CIDR.get(userEmail, ip)) != null) {
                 return cidr;
-            } else if (findDNSBL && (dnsbl = DNSBL.get(userEmail, ip)) != null) {
+            } else if (findDNSBL && !Provider.contains(hostname) && !Ignore.contains(hostname) && (dnsbl = DNSBL.get(userEmail, ip)) != null) {
                 return dnsbl;
             }
             Reverse reverse = Reverse.get(ip);
@@ -3081,6 +3230,14 @@ public class Block {
         }
     }
     
+    public static String findCIDR(String ip) {
+        if ((ip = Subnet.normalizeIP(ip)) == null) {
+            return null;
+        } else {
+            return CIDR.get(null, ip);
+        }
+    }
+    
     public static boolean containsDNSBL(String ip) {
         if ((ip = Subnet.normalizeIP(ip)) == null) {
             return false;
@@ -3251,44 +3408,20 @@ public class Block {
         }
     }
 
-    public static void store(boolean simplify) {
+    public static void store() {
         if (CHANGED) {
+            SET.store();
             long time = System.currentTimeMillis();
-            File file = new File("./data/block.map");
-            try {
-                TreeMap<String,Long> tokenMap = SET.getMap();
-                try (FileOutputStream outputStream = new FileOutputStream(file)) {
-                    SerializationUtils.serialize(tokenMap, outputStream);
-                    CHANGED = false;
-                }
-                Server.logStore(time, file);
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-            time = System.currentTimeMillis();
-            file = new File("./data/block.txt");
+            File file = new File("./data/block.txt");
             try (FileWriter writer = new FileWriter(file)) {
                 writeAll(writer);
-                CHANGED = false;
                 Server.logStore(time, file);
                 file = new File("./data/block.set");
                 file.delete();
             } catch (Exception ex) {
                 Server.logError(ex);
             }
-//            try {
-//                System.gc();
-//                long time = System.currentTimeMillis();
-//                File file = new File("./data/block.set");
-//                TreeSet<String> tokenSet = getAll();
-//                try (FileOutputStream outputStream = new FileOutputStream(file)) {
-//                    SerializationUtils.serialize(tokenSet, outputStream);
-//                    CHANGED = false;
-//                }
-//                Server.logStore(time, file);
-//            } catch (Exception ex) {
-//                Server.logError(ex);
-//            }
+            CHANGED = false;
         }
     }
 
@@ -3300,31 +3433,35 @@ public class Block {
             String token;
             try (BufferedReader reader = new BufferedReader(new FileReader(file1))) {
                 while ((token = reader.readLine()) != null) {
-                    String client;
-                    String identifier;
-                    if (token.contains(":")) {
-                        int index = token.indexOf(':');
-                        client = token.substring(0, index);
-                        if (Domain.isValidEmail(client)) {
-                            identifier = token.substring(index + 1);
+                    try {
+                        String client;
+                        String identifier;
+                        if (token.contains(":")) {
+                            int index = token.indexOf(':');
+                            client = token.substring(0, index);
+                            if (Domain.isValidEmail(client)) {
+                                identifier = token.substring(index + 1);
+                            } else {
+                                client = null;
+                                identifier = token;
+                            }
                         } else {
                             client = null;
                             identifier = token;
                         }
-                    } else {
-                        client = null;
-                        identifier = token;
-                    }
-                    if (identifier.startsWith("CIDR=")) {
-                        CIDR.addExact(client, identifier);
-                    } else if (identifier.startsWith("WHOIS/")) {
-                        WHOIS.addExact(client, identifier);
-                    } else if (identifier.startsWith("DNSBL=")) {
-                        DNSBL.addExact(client, identifier);
-                    } else if (identifier.startsWith("REGEX=")) {
-                        REGEX.addExact(client, identifier);
-                    } else {
-                        SET.addExact(token);
+                        if (identifier.startsWith("CIDR=")) {
+                            CIDR.addExact(client, identifier);
+                        } else if (identifier.startsWith("WHOIS/")) {
+                            WHOIS.addExact(client, identifier);
+                        } else if (identifier.startsWith("DNSBL=")) {
+                            DNSBL.addExact(client, identifier);
+                        } else if (identifier.startsWith("REGEX=")) {
+                            REGEX.addExact(client, identifier);
+                        } else {
+                            SET.addExact(token);
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(ex);
                     }
                 }
                 CHANGED = false;
@@ -3339,31 +3476,35 @@ public class Block {
                     set = SerializationUtils.deserialize(fileInputStream);
                 }
                 for (String token : set) {
-                    String client;
-                    String identifier;
-                    if (token.contains(":")) {
-                        int index = token.indexOf(':');
-                        client = token.substring(0, index);
-                        if (Domain.isValidEmail(client)) {
-                            identifier = token.substring(index + 1);
+                    try {
+                        String client;
+                        String identifier;
+                        if (token.contains(":")) {
+                            int index = token.indexOf(':');
+                            client = token.substring(0, index);
+                            if (Domain.isValidEmail(client)) {
+                                identifier = token.substring(index + 1);
+                            } else {
+                                client = null;
+                                identifier = token;
+                            }
                         } else {
                             client = null;
                             identifier = token;
                         }
-                    } else {
-                        client = null;
-                        identifier = token;
-                    }
-                    if (identifier.startsWith("CIDR=")) {
-                        CIDR.addExact(client, identifier);
-                    } else if (identifier.startsWith("WHOIS/")) {
-                        WHOIS.addExact(client, identifier);
-                    } else if (identifier.startsWith("DNSBL=")) {
-                        DNSBL.addExact(client, identifier);
-                    } else if (identifier.startsWith("REGEX=")) {
-                        REGEX.addExact(client, identifier);
-                    } else {
-                        SET.addExact(token);
+                        if (identifier.startsWith("CIDR=")) {
+                            CIDR.addExact(client, identifier);
+                        } else if (identifier.startsWith("WHOIS/")) {
+                            WHOIS.addExact(client, identifier);
+                        } else if (identifier.startsWith("DNSBL=")) {
+                            DNSBL.addExact(client, identifier);
+                        } else if (identifier.startsWith("REGEX=")) {
+                            REGEX.addExact(client, identifier);
+                        } else {
+                            SET.addExact(token);
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(ex);
                     }
                 }
                 CHANGED = false;
@@ -3372,30 +3513,7 @@ public class Block {
                 Server.logError(ex);
             }
         }
-        loadMap();
+        SET.load();
         CIDR.load();
-    }
-    
-    public static void loadMap() {
-        long time = System.currentTimeMillis();
-        File file = new File("./data/block.map");
-        if (file.exists()) {
-            try {
-                Map<String,Long> map;
-                try (FileInputStream fileInputStream = new FileInputStream(file)) {
-                    map = SerializationUtils.deserialize(fileInputStream);
-                }
-                for (String token : map.keySet()) {
-                    Long last = map.get(token);
-                    if (last != null) {
-                        SET.putExact(token, last);
-                    }
-                }
-                CHANGED = false;
-                Server.logLoad(time, file);
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
     }
 }

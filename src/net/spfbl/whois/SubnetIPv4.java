@@ -217,6 +217,29 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
+    public static String[] getRangeArrayCIDRv4(String cidr) {
+        if (isValidCIDRv4(cidr)) {
+            String ip = getFirstIP(cidr);
+            String[] rangeList = new String[33 - getMask(cidr)];
+            byte[] address = split(ip);
+            for (int index = 0; index < rangeList.length; index++) {
+                int maskInt = 32 - index;
+                byte[] mask = getMaskIPv4(maskInt);
+                for (int i = 0; i < 4; i++) {
+                    address[i] &= mask[i];
+                }
+                int octet1 = address[0] & 0xFF;
+                int octet2 = address[1] & 0xFF;
+                int octet3 = address[2] & 0xFF;
+                int octet4 = address[3] & 0xFF;
+                rangeList[index] = octet1 + "." + octet2 + "." + octet3 + "." + octet4 + "/" + maskInt;
+            }
+            return rangeList;
+        } else {
+            return null;
+        }
+    }
+    
     /**
      * Retorna o endereço IP em inteiro de 32 bits da notação CIDR.
      * @param inetnum endereço de bloco em notação CIDR.
@@ -405,6 +428,12 @@ public final class SubnetIPv4 extends Subnet {
         }
     }
     
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^"
+                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+                    + "$"
+    );
+    
     /**
      * Verifica se um IP é válido na notação de IP.
      * @param ip o IP a ser verificado.
@@ -414,11 +443,12 @@ public final class SubnetIPv4 extends Subnet {
         if (ip == null) {
             return false;
         } else {
-            return Pattern.matches("^"
-                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-                    + "$", ip
-                    );
+//            return Pattern.matches("^"
+//                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+//                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+//                    + "$", ip
+//                    );
+            return IPV4_PATTERN.matcher(ip).matches();
         }
     }
     
@@ -473,6 +503,12 @@ public final class SubnetIPv4 extends Subnet {
         return SubnetIPv4.normalizeIPv4(ip);
     }
     
+    private static final Pattern CIDRV4_PATTERN = Pattern.compile("^"
+                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
+                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
+                    + "$"
+    );
+    
     /**
      * Verifica se um CIDR é válido na notação de IPv4.
      * @param cidr o CIDR a ser verificado.
@@ -483,11 +519,12 @@ public final class SubnetIPv4 extends Subnet {
             return false;
         } else {
             cidr = cidr.trim();
-            return Pattern.matches("^"
-                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
-                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
-                    + "$", cidr
-                    );
+//            return Pattern.matches("^"
+//                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
+//                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
+//                    + "$", cidr
+//                    );
+            return CIDRV4_PATTERN.matcher(cidr).matches();
         }
     }
     

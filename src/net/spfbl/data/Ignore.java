@@ -433,15 +433,19 @@ public class Ignore {
     }
 
     public static boolean containsHost(String host) {
-        do {
-            int index = host.indexOf('.') + 1;
-            host = host.substring(index);
-            String token = '.' + host;
-            if (containsExact(token)) {
-                return true;
-            }
-        } while (host.contains("."));
-        return false;
+        if (host == null) {
+            return false;
+        } else {
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token = '.' + host;
+                if (containsExact(token)) {
+                    return true;
+                }
+            } while (host.contains("."));
+            return false;
+        }
     }
 
     public static void store() {

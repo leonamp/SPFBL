@@ -1054,30 +1054,6 @@ public final class Peer implements Serializable, Comparable<Peer> {
         }
     }
     
-    public String processAbuse(String domain, String email) {
-        try {
-            if (isReceiveReject()) {
-                return "REJECTED";
-            } else if (isReceiveDrop()) {
-                return "DROPPED";
-            } else if (Abuse.put(domain, email)) {
-                return "ADDED";
-            } else {
-                return "EXISTS";
-            }
-        } catch (ProcessException ex) {
-            if (ex.isErrorMessage("INVALID ADDRESS")) {
-                return "INVALID";
-            } else {
-                Server.logError(ex);
-                return ex.getMessage();
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-            return ex.getMessage();
-        }
-    }
-    
     public static void store() {
         if (CHANGED) {
             try {

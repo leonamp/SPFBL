@@ -312,7 +312,7 @@ Se houver interesse um utilizar este serviço sem implementá-lo em servidor pr�
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
 PayPal em Real:<br>
-[![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=NLBW6XZ3EGQLN)
+[![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=SCWP29C7CCNWN)
 
 PayPal em Dólar:<br>
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=LJM9UCLMKFRP6)

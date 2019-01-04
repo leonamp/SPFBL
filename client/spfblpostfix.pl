@@ -102,6 +102,11 @@ while ( my $line = <STDIN> ) {
             "action=PREPEND X-Spam-Flag: YES\n\n"
         );
     }
+    elsif ( $result =~ /^HOLD / ) {
+        STDOUT->print(
+            "action=PREPEND Received-SPFBL: $result\naction=HOLD\n\n"
+        );
+    }
     elsif ( $result =~ /^HOLD/ ) {
         STDOUT->print(
             "action=HOLD\n\n"

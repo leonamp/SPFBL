@@ -409,6 +409,20 @@ public final class SubnetIPv6 extends Subnet {
         return 0xFFFFFFFFFFFFFFFFL << 64 - mask;
     }
     
+    private static final Pattern IPV6_PATTERN = Pattern.compile("^"
+                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
+                    + "$"
+    );
+    
     /**
      * Verifica se um IP é válido na notação de IP.
      * @param ip o IP a ser verificado.
@@ -420,19 +434,20 @@ public final class SubnetIPv6 extends Subnet {
         } else {
             ip = ip.trim();
             ip = ip.toLowerCase();
-            return Pattern.matches("^"
-                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
-                    + "$", ip
-                    );
+//            return Pattern.matches("^"
+//                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+//                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+//                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+//                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+//                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
+//                    + "$", ip
+//                    );
+            return IPV6_PATTERN.matcher(ip).matches();
         }
     }
     
@@ -572,6 +587,20 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
+    private static final Pattern CIDRV6_PATTERN = Pattern.compile("^"
+                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+                    + "/[0-9]{1,3}$"
+    );
+    
     /**
      * Verifica se um CIDR é válido na notação de IPv6.
      * @param cidr o CIDR a ser verificado.
@@ -583,29 +612,37 @@ public final class SubnetIPv6 extends Subnet {
         } else {
             cidr = cidr.trim();
             cidr = cidr.toLowerCase();
-            return Pattern.matches("^"
-                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
-                    + "/[0-9]{1,3}$", cidr
-                    );
+//            return Pattern.matches("^"
+//                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
+//                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+//                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+//                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+//                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+//                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+//                    + "/[0-9]{1,3}$", cidr
+//                    );
+            return CIDRV6_PATTERN.matcher(cidr).matches();
         }
     }
+    
+    private static final Pattern REVERSEV6_PATTERN = Pattern.compile("^"
+                + "(\\.?[a-f0-9]{1,4})"
+                + "(\\.[a-f0-9]{1,4}){31}"
+                + "$\\.?"
+    );
     
     public static boolean isReverseIPv6(String reverse) {
         reverse = reverse.trim();
         reverse = reverse.toLowerCase();
-        return Pattern.matches("^"
-                + "(\\.?[a-f0-9]{1,4})"
-                + "(\\.[a-f0-9]{1,4}){31}"
-                + "$\\.?", reverse);
+//        return Pattern.matches("^"
+//                + "(\\.?[a-f0-9]{1,4})"
+//                + "(\\.[a-f0-9]{1,4}){31}"
+//                + "$\\.?", reverse);
+        return REVERSEV6_PATTERN.matcher(reverse).matches();
     }
     
     public static String reverseToIPv6(String reverse) {
@@ -856,6 +893,41 @@ public final class SubnetIPv6 extends Subnet {
                 int p7 = address[6] & 0xFFFF;
                 int p8 = address[7] & 0xFFFF;
                 rangeList[maskInt] =
+                        Integer.toHexString(p1) + ":" +
+                        Integer.toHexString(p2) + ":" +
+                        Integer.toHexString(p3) + ":" +
+                        Integer.toHexString(p4) + ":" +
+                        Integer.toHexString(p5) + ":" +
+                        Integer.toHexString(p6) + ":" +
+                        Integer.toHexString(p7) + ":" +
+                        Integer.toHexString(p8) + "/" + maskInt;
+            }
+            return rangeList;
+        } else {
+            return null;
+        }
+    }
+    
+    public static String[] getRangeArrayCIDRv6(String cidr) {
+        if (isValidCIDRv6(cidr)) {
+           String ip = getFirstIP(cidr);
+            String[] rangeList = new String[129 - getMask(cidr)];
+            short[] address = split(ip);
+            for (int index = 0; index < rangeList.length; index++) {
+                int maskInt = 128 - index;
+                short[] mask = getMaskIPv6(maskInt);
+                for (int i = 0; i < 8; i++) {
+                    address[i] &= mask[i];
+                }
+                int p1 = address[0] & 0xFFFF;
+                int p2 = address[1] & 0xFFFF;
+                int p3 = address[2] & 0xFFFF;
+                int p4 = address[3] & 0xFFFF;
+                int p5 = address[4] & 0xFFFF;
+                int p6 = address[5] & 0xFFFF;
+                int p7 = address[6] & 0xFFFF;
+                int p8 = address[7] & 0xFFFF;
+                rangeList[index] =
                         Integer.toHexString(p1) + ":" +
                         Integer.toHexString(p2) + ":" +
                         Integer.toHexString(p3) + ":" +

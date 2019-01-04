@@ -158,8 +158,7 @@ public final class SPF implements Serializable {
         LinkedList<String> registryList = new LinkedList<>();
         try {
             try {
-                Attributes attributes = Server.getAttributesDNS(
-                        hostname, new String[]{"SPF"});
+                Attributes attributes = Server.getAttributesDNS(hostname, "SPF");
                 Attribute attribute = attributes.get("SPF");
                 if (attribute != null) {
                     for (int index = 0; index < attribute.size(); index++) {
@@ -177,8 +176,7 @@ public final class SPF implements Serializable {
             }
             if (registryList.isEmpty()) {
                 try {
-                    Attributes attributes = Server.getAttributesDNS(
-                            hostname, new String[]{"TXT"});
+                    Attributes attributes = Server.getAttributesDNS(hostname, "TXT");
                     Attribute attribute = attributes.get("TXT");
                     if (attribute != null) {
                         for (int index = 0; index < attribute.size(); index++) {
@@ -389,7 +387,8 @@ public final class SPF implements Serializable {
             boolean bgWhenUnavailable) throws ProcessException {
         long time = System.currentTimeMillis();
         LinkedList<String> registryList = getRegistrySPF(
-                hostname, bgWhenUnavailable);
+                hostname, bgWhenUnavailable
+        );
         if (registryList == null) {
             // Domínimo não encontrado.
             this.mechanismList = null;
@@ -518,6 +517,11 @@ public final class SPF implements Serializable {
             Server.logLookupSPF(time, hostname, result);
         }
     }
+    
+    private static final Pattern MECANISM_ALL_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?all"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo all válido.
@@ -526,9 +530,19 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo all válido.
      */
     private static boolean isMechanismAll(String token) {
-        return Pattern.matches(
-                "^(\\+|-|~|\\?)?all$", token.toLowerCase());
+        token = token.toLowerCase();
+//        return Pattern.matches(
+//                "^(\\+|-|~|\\?)?all$", token);
+        return MECANISM_ALL_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_IPV4_PATTERN = Pattern.compile("^"
+            + "((\\+|-|~|\\?)?ipv?4?:)?"
+            + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+            + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+            + "(/[0-9]{1,2})?"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo ip4 válido.
@@ -537,12 +551,14 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo ip4 válido.
      */
     private static boolean isMechanismIPv4(String token) {
-        return Pattern.matches(
-                "^((\\+|-|~|\\?)?ipv?4?:)?"
-                + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-                + "(/[0-9]{1,2})?"
-                + "$", token.toLowerCase());
+        token = token.toLowerCase();
+//        return Pattern.matches(
+//                "^((\\+|-|~|\\?)?ipv?4?:)?"
+//                + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
+//                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+//                + "(/[0-9]{1,2})?"
+//                + "$", token);
+        return MECANISM_IPV4_PATTERN.matcher(token).matches();
     }
 
     /**
@@ -563,6 +579,34 @@ public final class SPF implements Serializable {
             return null;
         }
     }
+    
+    private static final Pattern MECANISM_IPV6_PATTERN = Pattern.compile("^"
+            + "((\\+|-|~|\\?)?ipv?6?:)?"
+            + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
+            + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
+            + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
+            + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
+            + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
+            + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+            + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
+            + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+            + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
+            + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+            + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
+            + "(%.+)?(\\/[0-9]{1,3})?"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo ip6 válido.
@@ -571,32 +615,33 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo ip6 válido.
      */
     private static boolean isMechanismIPv6(String token) {
-        return Pattern.matches(
-                "^((\\+|-|~|\\?)?ipv?6?:)?"
-                + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
-                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
-                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
-                + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
-                + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
-                + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
-                + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
-                + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
-                + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
-                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
-                + "(%.+)?(\\/[0-9]{1,3})?"
-                + "$", token);
+//        return Pattern.matches(
+//                "^((\\+|-|~|\\?)?ipv?6?:)?"
+//                + "((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|"
+//                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:"
+//                + "((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|"
+//                + "((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|"
+//                + "((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|"
+//                + "((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+//                + "(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|"
+//                + "((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|"
+//                + "(:(((:[0-9A-Fa-f]{1,4}){1,7})|"
+//                + "((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)"
+//                + "(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))"
+//                + "(%.+)?(\\/[0-9]{1,3})?"
+//                + "$", token);
+        return MECANISM_IPV6_PATTERN.matcher(token).matches();
     }
 
     /**
@@ -654,6 +699,13 @@ public final class SPF implements Serializable {
         hostname = hostname.replace("%{ir}", Subnet.reverse(ip));
         return hostname;
     }
+    
+    private static final Pattern MECANISM_A_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?a"
+            + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+            + "(/[0-9]{1,2})?(//[0-9]{1,3})?"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo a válido.
@@ -662,14 +714,22 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo a válido.
      */
     private static boolean isMechanismA(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^"
-                + "(\\+|-|~|\\?)?a"
-                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "(/[0-9]{1,2})?(//[0-9]{1,3})?"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^"
+//                + "(\\+|-|~|\\?)?a"
+//                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+//                + "(/[0-9]{1,2})?(//[0-9]{1,3})?"
+//                + "$", token);
+        return MECANISM_A_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_MX_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?mx"
+            + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+            + "(\\.|/[0-9]{1,2})?(//[0-9]{1,3})?"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo mx válido.
@@ -678,13 +738,20 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo mx válido.
      */
     private static boolean isMechanismMX(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^(\\+|-|~|\\?)?mx"
-                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "(\\.|/[0-9]{1,2})?(//[0-9]{1,3})?"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^(\\+|-|~|\\?)?mx"
+//                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+//                + "(\\.|/[0-9]{1,2})?(//[0-9]{1,3})?"
+//                + "$", token);
+        return MECANISM_MX_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_PTR_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?ptr"
+            + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo ptr válido.
@@ -693,12 +760,19 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo ptr válido.
      */
     private static boolean isMechanismPTR(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^(\\+|-|~|\\?)?ptr"
-                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^(\\+|-|~|\\?)?ptr"
+//                + "(:(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)?"
+//                + "$", token);
+        return MECANISM_PTR_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_EXISTIS_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?exists:"
+            + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo existis válido.
@@ -707,12 +781,19 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo existis válido.
      */
     private static boolean isMechanismExistis(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^(\\+|-|~|\\?)?exists:"
-                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^(\\+|-|~|\\?)?exists:"
+//                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+//                + "$", token);
+        return MECANISM_EXISTIS_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_INCLUDE_PATTERN = Pattern.compile("^"
+            + "(\\+|-|~|\\?)?include:"
+            + "(\\.?(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um mecanismo include válido.
@@ -721,12 +802,19 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um mecanismo include válido.
      */
     private static boolean isMechanismInclude(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^(\\+|-|~|\\?)?include:"
-                + "(\\.?(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^(\\+|-|~|\\?)?include:"
+//                + "(\\.?(?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+//                + "$", token);
+        return MECANISM_INCLUDE_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MECANISM_REDIRECT_PATTERN = Pattern.compile("^"
+            + "redirect="
+            + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um modificador redirect válido.
@@ -735,12 +823,19 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um modificador redirect válido.
      */
     private static boolean isModifierRedirect(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^redirect="
-                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^redirect="
+//                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+//                + "$", token);
+        return MECANISM_REDIRECT_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern MODIFIER_EXPLANATION_PATTERN = Pattern.compile("^"
+            + "exp="
+            + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+            + "$"
+    );
 
     /**
      * Verifica se o whois é um modificador explanation válido.
@@ -749,11 +844,12 @@ public final class SPF implements Serializable {
      * @return verdadeiro se o whois é um modificador explanation válido.
      */
     private static boolean isModifierExplanation(String token) {
-        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld");
-        return Pattern.matches(
-                "^exp="
-                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
-                + "$", token.toLowerCase());
+        token = expand(token, "127.0.0.1", "sender@domain.tld", "host.domain.tld").toLowerCase();
+//        return Pattern.matches(
+//                "^exp="
+//                + "((?=.{1,255}$)[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?(?:\\.[0-9A-Za-z_](?:(?:[0-9A-Za-z_]|-){0,61}[0-9A-Za-z_])?)*\\.?)"
+//                + "$", token);
+        return MODIFIER_EXPLANATION_PATTERN.matcher(token).matches();
     }
 
     /**
@@ -865,7 +961,7 @@ public final class SPF implements Serializable {
         } else if (System.currentTimeMillis() - time > 5000) {
             return Qualifier.SOFTFAIL; // Evita excesso de latência da resposta.
         } else {
-            boolean hostNotFound = false;
+            boolean includeError = false;
             hostVisitedSet.add(getHostname());
             for (Mechanism mechanism : mechanismList) {
                 if (mechanism instanceof MechanismInclude) {
@@ -882,12 +978,17 @@ public final class SPF implements Serializable {
                             return qualifier;
                         }
                     } catch (ProcessException ex) {
-                        if (ex.getMessage().equals("HOST NOT FOUND")) {
+                        if (ex.isErrorMessage("EMPTY")) {
+                            // Registro SPF vazio no include.
+                            // Continuar a verificação dos demais 
+                            // mecanismos antes de efetivar o erro.
+                            includeError = true;
+                        } else if (ex.isErrorMessage("HOST NOT FOUND")) {
                             // Não foi possível fazer o include.
                             // O hostname mencionado não existe.
                             // Continuar a verificação dos demais 
                             // mecanismos antes de efetivar o erro.
-                            hostNotFound = true;
+                            includeError = true;
                         } else {
                             throw ex;
                         }
@@ -923,7 +1024,7 @@ public final class SPF implements Serializable {
                     logRedirect(redirect, qualifier, logList);
                     return qualifier;
                 }
-            } else if (error || hostNotFound) {
+            } else if (error || includeError) {
                 // Nova interpretação SPF para erro de sintaxe.
                 // Em caso de erro, retornar SOFTFAIL.
                 logError(Qualifier.SOFTFAIL, logList);
@@ -1240,8 +1341,7 @@ public final class SPF implements Serializable {
                 }
                 TreeSet<String> resultSet = new TreeSet<>();
                 try {
-                    Attributes attributes = Server.getAttributesDNS(
-                            hostname, new String[]{"A"});
+                    Attributes attributes = Server.getAttributesDNS(hostname, "A");
                     Attribute attributeA = attributes.get("A");
                     if (attributeA != null) {
                         NamingEnumeration enumeration = attributeA.getAll();
@@ -1277,8 +1377,7 @@ public final class SPF implements Serializable {
                     Server.logMecanismA(time, "A " + expression, "ERROR " + ex.getClass() + " " + ex.getMessage());
                 }
                 try {
-                    Attributes attributes = Server.getAttributesDNS(
-                            hostname, new String[]{"AAAA"});
+                    Attributes attributes = Server.getAttributesDNS(hostname, "AAAA");
                     Attribute attributeAAAA = attributes.get("AAAA");
                     if (attributeAAAA != null) {
                         NamingEnumeration enumeration = attributeAAAA.getAll();
@@ -1388,12 +1487,10 @@ public final class SPF implements Serializable {
                 }
                 try {
                     TreeSet<String> resultSet = new TreeSet<>();
-                    Attributes attributesMX = Server.getAttributesDNS(
-                            hostname, new String[]{"MX"});
+                    Attributes attributesMX = Server.getAttributesDNS(hostname, "MX");
                     Attribute attributeMX = attributesMX.get("MX");
                     if (attributeMX == null) {
-                        Attributes attributesA = Server.getAttributesDNS(
-                                hostname, new String[]{"A"});
+                        Attributes attributesA = Server.getAttributesDNS(hostname, "A");
                         Attribute attributeA = attributesA.get("A");
                         if (attributeA != null) {
                             for (int i = 0; i < attributeA.size(); i++) {
@@ -1407,8 +1504,7 @@ public final class SPF implements Serializable {
                                 }
                             }
                         }
-                        Attributes attributesAAAA = Server.getAttributesDNS(
-                                hostname, new String[]{"AAAA"});
+                        Attributes attributesAAAA = Server.getAttributesDNS(hostname, "AAAA");
                         Attribute attributeAAAA = attributesAAAA.get("AAAA");
                         if (attributeAAAA != null) {
                             for (int i = 0; i < attributeAAAA.size(); i++) {
@@ -1442,8 +1538,7 @@ public final class SPF implements Serializable {
                                 resultSet.add(hostAddress);
                             } else {
                                 try {
-                                    Attributes attributesA = Server.getAttributesDNS(
-                                            hostAddress, new String[]{"A"});
+                                    Attributes attributesA = Server.getAttributesDNS(hostAddress, "A");
                                     Attribute attributeA = attributesA.get("A");
                                     if (attributeA != null) {
                                         for (int i = 0; i < attributeA.size(); i++) {
@@ -1461,8 +1556,7 @@ public final class SPF implements Serializable {
                                     // Endereço não encontrado.
                                 }
                                 try {
-                                    Attributes attributesAAAA = Server.getAttributesDNS(
-                                            hostAddress, new String[]{"AAAA"});
+                                    Attributes attributesAAAA = Server.getAttributesDNS(hostAddress, "AAAA");
                                     Attribute attributeAAAA = attributesAAAA.get("AAAA");
                                     if (attributeAAAA != null) {
                                         for (int i = 0; i < attributeAAAA.size(); i++) {
@@ -1586,7 +1680,7 @@ public final class SPF implements Serializable {
             long time = System.currentTimeMillis();
             String hostname = getHostname(ip, sender, helo);
             try {
-                Server.getAttributesDNS(hostname, new String[]{"A"});
+                Server.getAttributesDNS(hostname, "A");
                 Server.logMecanismA(time, hostname, "EXISTS");
                 return true;
             } catch (CommunicationException ex) {
@@ -1638,6 +1732,8 @@ public final class SPF implements Serializable {
             SPF spf = CacheSPF.get(hostname);
             if (spf == null) {
                 return null;
+            } else if (spf.isEmpty()) {
+                throw new ProcessException("EMPTY");
             } else {
                 return spf.getQualifier(
                         time,
@@ -1651,6 +1747,14 @@ public final class SPF implements Serializable {
         @Override
         public boolean match(String ip, String sender, String helo) throws ProcessException {
             throw new ProcessException("ERROR: FATAL ERROR"); // Não pode fazer o match direto.
+        }
+    }
+    
+    private boolean isEmpty() {
+        if (mechanismList == null) {
+            return true;
+        } else {
+            return mechanismList.isEmpty();
         }
     }
 
@@ -2038,14 +2142,22 @@ public final class SPF implements Serializable {
             query.clearWhite();
             query.setResult("BLOCK");
             return "REMOVE";
+        } else if (query.isWhiteKeyByAdmin()) {
+            query.whiteKey(time);
+            query.setResult("WHITE");
+            return "WHITE";
+        } else if (query.isBlockKeyByAdmin()) {
+            query.blockKey(time);
+            query.setResult("BLOCK");
+            return "REMOVE";
         } else if (query.isInexistent(client)) {
             query.blockKey(time);
             query.setResult("BLOCK");
-            return "BLOCK";
+            return "REMOVE";
         } else if (query.hasDynamicIP()) {
             query.blockKey(time);
             query.setResult("BLOCK");
-            return "BLOCK";
+            return "REMOVE";
         } else if (User.isExpiredHOLD(time)) {
             Server.logTrace("query expired.");
             if (query.isRecipientAdvised()) {
@@ -2091,7 +2203,7 @@ public final class SPF implements Serializable {
                 query.setResult("BLOCK");
                 return "REMOVE";
             }
-        } else if (query.isInvalidDate(time) || query.hasMiscellaneousSymbols() || query.hasExecutableNotIgnored() || query.hasTokenRed() || query.isAnyLinkSuspect() || query.isSubjectSuspect() || query.isBlock()) {
+        } else if (query.isInvalidDate(time) || query.hasMiscellaneousSymbols() || query.hasSuspectReplyTo() || query.hasExecutableNotIgnored() || query.hasTokenRed() || query.isAnyLinkSuspect() || query.isSubjectSuspect() || query.isBlock()) {
             Action action = client == null ? Action.FLAG : client.getActionRED();
             if (action == Action.FLAG) {
                 query.setResult("FLAG");
@@ -2504,14 +2616,28 @@ public final class SPF implements Serializable {
             for (String key : keySet()) {
                 Distribution distribution = get(key);
                 if (distribution != null) {
-                    map.put(key, distribution.replicate());
+                    if (distribution.hasLastQuery() && distribution.isExpired14()) {
+                        long time = System.currentTimeMillis();
+                        distribution = drop(key);
+                        if (distribution != null) {
+                            Server.log(time, Core.Level.DEBUG, "REPTN", key, "EXPIRED");
+                        }
+                    } else if (distribution.dropExpiredQuery()) {
+                        distribution.getStatus(key);
+                        Peer.sendToAll(key, distribution);
+                        map.put(key, distribution.replicate());
+                    } else {
+                        distribution.hairCut();
+                        map.put(key, distribution.replicate());
+                    }
                 }
             }
             return map;
         }
         
         private static synchronized NavigableMap<String,Distribution> getInclusiveSubMap(
-                String fromKey, String toKey) {
+                String fromKey, String toKey
+        ) {
             return MAP.subMap(fromKey, true, toKey, true);
         }
         
@@ -2564,30 +2690,38 @@ public final class SPF implements Serializable {
                         map = SerializationUtils.deserialize(fileInputStream);
                     }
                     for (String key : map.keySet()) {
-                        Object value = map.get(key);
+                        Object value = null;
+                        if (!Domain.isHostname(key)) {
+                            value = map.get(key);
+                        } else if (!Generic.containsGenericSoft(key)) {
+                            value = map.get(key);
+                        }
                         if (value instanceof Distribution) {
                             Distribution distribution = (Distribution) value;
-                            if (distribution.hamSet == null) {
-                                distribution.hamSet = new TreeSet<>();
+                            if (!distribution.isExpired7()) {
+                                if (distribution.hamSet == null) {
+                                    distribution.hamSet = new TreeSet<>();
+                                }
+                                if (distribution.spamSet == null) {
+                                    distribution.spamSet = new TreeSet<>();
+                                }
+                                if (distribution.status == Status.WHITE) {
+                                    distribution.status = Status.GREEN;
+                                }
+                                if (distribution.status == Status.GRAY) {
+                                    distribution.status = Status.YELLOW;
+                                }
+                                if (distribution.status == Status.BLACK) {
+                                    distribution.status = Status.RED;
+                                }
+                                if (distribution.frequency != null) {
+                                    distribution.hairCut();
+                                    putExact(key.toLowerCase(), distribution);
+                                }
                             }
-                            if (distribution.spamSet == null) {
-                                distribution.spamSet = new TreeSet<>();
-                            }
-                            if (distribution.status == Status.WHITE) {
-                                distribution.status = Status.GREEN;
-                            }
-                            if (distribution.status == Status.GRAY) {
-                                distribution.status = Status.YELLOW;
-                            }
-                            if (distribution.status == Status.BLACK) {
-                                distribution.status = Status.RED;
-                            }
-                            if (distribution.frequency != null) {
-                                putExact(key.toLowerCase(), distribution);
-                            }
-                            distribution.hairCut();
                         }
                     }
+                    MAP.isEmpty();
                     setLoaded();
                     Server.logLoad(time, file);
                 } catch (Exception ex) {
@@ -2596,27 +2730,27 @@ public final class SPF implements Serializable {
             }
         }
 
-        private static void dropExpired() {
-            TreeSet<String> distributionKeySet = new TreeSet<>();
-            distributionKeySet.addAll(keySet());
-            for (String token : distributionKeySet) {
-                Distribution distribution = getExact(token);
-                if (distribution != null) {
-                    if (distribution.hasLastQuery() && distribution.isExpired14()) {
-                        long time = System.currentTimeMillis();
-                        distribution = drop(token);
-                        if (distribution != null) {
-                            Server.log(time, Core.Level.DEBUG, "REPTN", token, "EXPIRED");
-                        }
-                    } else if (distribution.dropExpiredQuery()) {
-                        distribution.getStatus(token);
-                        Peer.sendToAll(token, distribution);
-                    } else {
-                        distribution.hairCut();
-                    }
-                }
-            }
-        }
+//        private static void dropExpired() {
+//            TreeSet<String> distributionKeySet = new TreeSet<>();
+//            distributionKeySet.addAll(keySet());
+//            for (String token : distributionKeySet) {
+//                Distribution distribution = getExact(token);
+//                if (distribution != null) {
+//                    if (distribution.hasLastQuery() && distribution.isExpired14()) {
+//                        long time = System.currentTimeMillis();
+//                        distribution = drop(token);
+//                        if (distribution != null) {
+//                            Server.log(time, Core.Level.DEBUG, "REPTN", token, "EXPIRED");
+//                        }
+//                    } else if (distribution.dropExpiredQuery()) {
+//                        distribution.getStatus(token);
+//                        Peer.sendToAll(token, distribution);
+//                    } else {
+//                        distribution.hairCut();
+//                    }
+//                }
+//            }
+//        }
 
         private static Distribution drop(String key) {
             Distribution distribution = dropExact(key);
@@ -2680,18 +2814,22 @@ public final class SPF implements Serializable {
          * @return uma distribuição binomial do whois informado.
          */
         private static Distribution get(String key, boolean create) {
-            Distribution distribution = getExact(key);
-            if (distribution != null) {
-                if (distribution.isExpired7()) {
-                    distribution.reset();
-                }
-            } else if (create) {
-                distribution = new Distribution();
-                putExact(key, distribution);
+            if (key == null) {
+                return null;
             } else {
-                distribution = null;
+                Distribution distribution = getExact(key);
+                if (distribution != null) {
+                    if (distribution.isExpired7()) {
+                        distribution.reset();
+                    }
+                } else if (create) {
+                    distribution = new Distribution();
+                    putExact(key, distribution);
+                } else {
+                    distribution = null;
+                }
+                return distribution;
             }
-            return distribution;
         }
 
         private static TreeMap<String,Distribution> getTreeMap() {
@@ -2774,9 +2912,9 @@ public final class SPF implements Serializable {
         }
     }
     
-    public static void dropExpiredDistribution() {
-        CacheDistribution.dropExpired();
-    }
+//    public static void dropExpiredDistribution() {
+//        CacheDistribution.dropExpired();
+//    }
     
 
     public static TreeMap<String,Distribution> getDistributionMap() {
@@ -2792,8 +2930,16 @@ public final class SPF implements Serializable {
     }
     
     public static float getSpamProbability(String token) {
-        Distribution distribution = CacheDistribution.get(token, true);
-        return distribution.getSpamProbability(token);
+        if (token == null) {
+            return 0.0f;
+        } else {
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                return 0.0f;
+            } else {
+                return distribution.getSpamProbability(token);
+            }
+        }
     }
     
     public static TreeMap<String,Distribution> getDistributionMapIPv4() {
@@ -2812,20 +2958,32 @@ public final class SPF implements Serializable {
         CacheDistribution.drop(token);
     }
 
-    private static boolean matches(String regex, String token) {
-        try {
-            return Pattern.matches(regex, token);
-        } catch (Exception ex) {
-            return false;
-        }
-    }
+//    private static boolean matches(String regex, String token) {
+//        try {
+//            return Pattern.matches(regex, token);
+//        } catch (Exception ex) {
+//            return false;
+//        }
+//    }
+    
+    private static final Pattern WHOIS_PATTERN = Pattern.compile("^"
+            + "WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))"
+            + "$"
+    );
 
     private static boolean isWHOIS(String token) {
-        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))$", token);
+//        return matches("^WHOIS(/[a-z-]+)+((=[a-zA-Z0-9@/.-]+)|((<|>)[0-9]+))$", token);
+        return WHOIS_PATTERN.matcher(token).matches();
     }
+    
+    private static final Pattern REGEX_PATTERN = Pattern.compile("^"
+            + "REGEX=[^ ]+"
+            + "$"
+    );
 
     public static boolean isREGEX(String token) {
-        return matches("^REGEX=[^ ]+$", token);
+//        return matches("^REGEX=[^ ]+$", token);
+        return REGEX_PATTERN.matcher(token).matches();
     }
     
     private static boolean isDNSBL(String token) {
@@ -2839,24 +2997,45 @@ public final class SPF implements Serializable {
             return false;
         }
     }
+    
+    private static final Pattern CIDR_PATTERN = Pattern.compile("^"
+            + "CIDR=("
+            + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
+            + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
+            + "|"
+            + "((([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,7}:|"
+            + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+            + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+            + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+            + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+            + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+            + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+            + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+            + "/[0-9]{1,3})"
+            + ")"
+            + "$"
+    );
 
     private static boolean isCIDR(String token) {
-        return matches("^CIDR=("
-                + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
-                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
-                + "|"
-                + "((([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
-                + "/[0-9]{1,3})"
-                + ")$", token);
+//        return matches("^CIDR=("
+//                + "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
+//                + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2})"
+//                + "|"
+//                + "((([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,7}:|"
+//                + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+//                + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+//                + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+//                + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+//                + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+//                + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
+//                + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
+//                + "/[0-9]{1,3})"
+//                + ")$", token);
+        return CIDR_PATTERN.matcher(token).matches();
     }
 
     private static String normalizeCIDR(String token) {
@@ -3244,6 +3423,10 @@ public final class SPF implements Serializable {
         CacheHELO.load();
     }
     
+    public static void loadHELO() {
+        CacheHELO.load();
+    }
+    
     public static String getUniqueIP(String helo) {
         String IPv4 = CacheHELO.getUniqueIPv4(helo);
         String IPv6 = CacheHELO.getUniqueIPv6(helo);
@@ -3357,9 +3540,7 @@ public final class SPF implements Serializable {
                 try {
                     TreeSet<String> ipv4Set = new TreeSet<>();
                     try {
-                        Attributes attributesA = Server.getAttributesDNS(
-                                hostname, new String[]{"A"}
-                        );
+                        Attributes attributesA = Server.getAttributesDNS(hostname, "A");
                         if (attributesA != null) {
                             Enumeration enumerationA = attributesA.getAll();
                             while (enumerationA.hasMoreElements()) {
@@ -3381,8 +3562,7 @@ public final class SPF implements Serializable {
                     }
                     TreeSet<String> ipv6Set = new TreeSet<>();
                     try {
-                        Attributes attributesAAAA = Server.getAttributesDNS(
-                                hostname, new String[]{"AAAA"});
+                        Attributes attributesAAAA = Server.getAttributesDNS(hostname, "AAAA");
                         if (attributesAAAA != null) {
                             Enumeration enumerationAAAA = attributesAAAA.getAll();
                             while (enumerationAAAA.hasMoreElements()) {
@@ -3733,9 +3913,11 @@ public final class SPF implements Serializable {
                     }
                 }
                 if (Generic.containsGenericSoft(hostname)) {
-                    // Quando o reverso for 
-                    // genérico, não considerá-lo.
-                    hostname = null;
+                    // Quando o reverso for genérico
+                    // de não provedor, não considerá-lo.
+                    if (!Provider.containsDomain(hostname)) {
+                        hostname = null;
+                    }
                 } else if (hostname != null) {
                     tokenSet.add(hostname);
                 }
@@ -3883,8 +4065,13 @@ public final class SPF implements Serializable {
                             if (queryLocal != null && queryLocal.needHeader()) {
                                 action = client == null ? Action.FLAG : client.getActionRED();
                                 if (action == Action.HOLD) {
+                                    String url = Core.getURL(user);
+                                    String ticket = SPF.createTicket(time, tokenSet);
                                     queryLocal.setResult("HOLD");
-                                    return "action=HOLD blocked.\n\n";
+                                    return "action=PREPEND "
+                                            + "Received-SPFBL: " + result + " "
+                                            + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n"
+                                            + "action=HOLD blocked.\n\n";
                                 } else {
                                     queryLocal.setResult("FLAG");
                                     return "action=PREPEND X-Spam-Flag: YES\n\n";
@@ -3916,11 +4103,15 @@ public final class SPF implements Serializable {
                             );
                             return "action=PREPEND X-Spam-Flag: YES\n\n";
                         } else if (action == Action.HOLD) {
-                            SPF.addQuery(
+                            String url = Core.getURL(user);
+                            String ticket = SPF.getTicket(
                                     client, user, ip, helo, hostname, sender,
                                     result, recipient, tokenSet, "HOLD"
                             );
-                            return "action=HOLD blocked.\n\n";
+                            return "action=PREPEND "
+                                + "Received-SPFBL: " + result + " "
+                                + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n"
+                                + "action=HOLD blocked.\n\n";
                         } else {
                             return "action=WARN undefined action.\n\n";
                         }
@@ -3931,7 +4122,7 @@ public final class SPF implements Serializable {
                         );
                         long time = resultSet == null ? Server.getNewUniqueTime() : (Long) resultSet[0];
                         User.Query queryLocal = resultSet == null ? null : (User.Query) resultSet[1];
-                        if (queryLocal != null && !queryLocal.needHeader() && queryLocal.blockKey(time)) {
+                        if (queryLocal != null && !queryLocal.needHeader() && queryLocal.hasTokenRed() && queryLocal.blockKey(time)) {
                             Server.logDebug("new BLOCK '" + queryLocal.getUserEmail() + ":" + queryLocal.getBlockKey() + "' added by '" + recipient + ";INEXISTENT'.");
                         }
                         String url = Core.getUnblockURL(
@@ -4211,11 +4402,15 @@ public final class SPF implements Serializable {
                             );
                             return "action=PREPEND X-Spam-Flag: YES\n\n";
                         } else if (action == Action.HOLD) {
-                            SPF.addQuery(
+                            String url = Core.getURL(user);
+                            String ticket = SPF.getTicket(
                                     client, user, ip, helo, hostname, sender,
                                     result, recipient, tokenSet, "HOLD"
                             );
-                            return "action=HOLD very bad reputation.\n\n";
+                            return "action=PREPEND "
+                                + "Received-SPFBL: " + result + " "
+                                + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n"
+                                + "action=HOLD very bad reputation.\n\n";
                         } else {
                             SPF.addQuery(
                                     client, user, ip, helo, hostname, sender,
@@ -4265,11 +4460,15 @@ public final class SPF implements Serializable {
                             return "action=PREPEND X-Spam-Flag: YES\n\n";
                         }
                     } else if (action == Action.HOLD) {
-                        SPF.addQuery(
+                        String url = Core.getURL(user);
+                        String ticket = SPF.getTicket(
                                 client, user, ip, helo, hostname, sender,
                                 result, recipient, tokenSet, "HOLD"
                         );
-                        return "action=HOLD domain in grace time.\n\n";
+                        return "action=PREPEND "
+                                + "Received-SPFBL: " + result + " "
+                                + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n"
+                                + "action=HOLD domain in grace time.\n\n";
                     } else {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
@@ -4301,11 +4500,15 @@ public final class SPF implements Serializable {
                         return "action=451 4.7.1 SPFBL you are greylisted. "
                                 + "See http://spfbl.net/en/feedback\n\n";
                     } else if (defer && action == Action.HOLD) {
-                        SPF.addQuery(
+                        String url = Core.getURL(user);
+                        String ticket = SPF.getTicket(
                                 client, user, ip, helo, hostname, sender,
                                 result, recipient, tokenSet, "HOLD"
                         );
-                        return "action=HOLD bad reputation.\n\n";
+                        return "action=PREPEND "
+                                + "Received-SPFBL: " + result + " "
+                                + (url == null ? ticket : url + URLEncoder.encode(ticket, "UTF-8")) + "\n"
+                                + "action=HOLD bad reputation.\n\n";
                     } else {
                         SPF.addQuery(
                                 client, user, ip, helo, hostname, sender,
@@ -4945,6 +5148,7 @@ public final class SPF implements Serializable {
                     String unsubscribe = null;
                     String subject = null;
                     String date = null;
+                    TreeSet<String> linkSet = new TreeSet<>();
                     while (tokenizer.hasMoreTokens()) {
                         String token = tokenizer.nextToken();
                         if (token.startsWith("From:")) {
@@ -4972,12 +5176,13 @@ public final class SPF implements Serializable {
                             int index = token.indexOf(':');
                             date = token.substring(index+1);
                         } else if (key == null) {
-                            from = null;
-                            replyto = null;
-                            unsubscribe = null;
-                            subject = null;
-                            date = null;
-                            break;
+//                            from = null;
+//                            replyto = null;
+//                            unsubscribe = null;
+//                            subject = null;
+//                            date = null;
+//                            break;
+                            linkSet.add(token);
                         } else if (key.equals("From")) {
                             from += ' ' + token;
                         } else if (key.equals("Reply-To")) {
@@ -5032,6 +5237,7 @@ public final class SPF implements Serializable {
                                     Action actionGRACE = client == null ? Action.FLAG : client.getActionGRACE();
                                     Action actionRED = client == null ? Action.FLAG : client.getActionRED();
                                     Action actionBLOCK = client == null ? Action.REJECT : client.getActionBLOCK();
+                                    queryTicket.setLinkSet(linkSet);
                                     String resultLocal = queryTicket.setHeader(
                                             dateTicket, client, from, replyto,
                                             subject, messageID,
@@ -5289,9 +5495,11 @@ public final class SPF implements Serializable {
                                 }
                             }
                             if (Generic.containsGenericSoft(hostname)) {
-                                // Quando o reverso for 
-                                // genérico, não considerá-lo.
-                                hostname = null;
+                                // Quando o reverso for genérico
+                                // de não provedor, não considerá-lo.
+                                if (!Provider.containsDomain(hostname)) {
+                                    hostname = null;
+                                }
                             } else if (hostname != null) {
                                 tokenSet.add(hostname);
                             }
@@ -5557,7 +5765,7 @@ public final class SPF implements Serializable {
                                     );
                                     long time = resultSet == null ? Server.getNewUniqueTime() : (Long) resultSet[0];
                                     User.Query queryLocal = resultSet == null ? null : (User.Query) resultSet[1];
-                                    if (queryLocal != null && !queryLocal.needHeader() && queryLocal.blockKey(time)) {
+                                    if (queryLocal != null && !queryLocal.needHeader() && queryLocal.hasTokenRed() && queryLocal.blockKey(time)) {
                                         Server.logDebug("new BLOCK '" + queryLocal.getUserEmail() + ":" + queryLocal.getBlockKey() + "' added by '" + recipient + ";INEXISTENT'.");
                                     }
                                     String url = Core.getUnblockURL(
@@ -6101,7 +6309,9 @@ public final class SPF implements Serializable {
                 if (expandDomain) {
                     try {
                         String dominio = Domain.extractDomain(token, true);
-                        expandedSet.add(dominio);
+                        if (!Provider.contains(dominio) && !Ignore.contains(dominio)) {
+                            expandedSet.add(dominio);
+                        }
                     } catch (ProcessException ex) {
                         if (!ex.isErrorMessage("RESERVED")) {
                             Server.logError(ex);
@@ -6297,22 +6507,30 @@ public final class SPF implements Serializable {
     }
     
     public static Status getStatus(String token, boolean refresh) {
-        Distribution distribution = CacheDistribution.get(token, false);
-        if (distribution == null) {
-            return Status.GREEN;
-        } else if (refresh) {
-            return distribution.getStatus(token);
+        if (token == null) {
+            return null;
         } else {
-            return distribution.getStatus();
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                return Status.GREEN;
+            } else if (refresh) {
+                return distribution.getStatus(token);
+            } else {
+                return distribution.getStatus();
+            }
         }
     }
     
     public static boolean isGood(String token) {
-        Distribution distribution = CacheDistribution.get(token, false);
-        if (distribution == null) {
+        if (token == null) {
             return false;
         } else {
-            return distribution.isGood();
+            Distribution distribution = CacheDistribution.get(token, false);
+            if (distribution == null) {
+                return false;
+            } else {
+                return distribution.isGood();
+            }
         }
     }
     
@@ -6449,12 +6667,16 @@ public final class SPF implements Serializable {
     private static boolean isFlood(
             TreeSet<String> tokenSet
             ) throws ProcessException {
-        for (String token : expandTokenSet(tokenSet)) {
-            if (isFlood(token) && !Ignore.contains(token)) {
-                return true;
+        if (Core.getDeferTimeFLOOD() == 0) {
+            return false;
+        } else {
+            for (String token : expandTokenSet(tokenSet)) {
+                if (isFlood(token) && !Ignore.contains(token)) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
     }
 
     /**

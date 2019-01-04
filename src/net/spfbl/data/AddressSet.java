@@ -55,12 +55,18 @@ public class AddressSet {
     
     public AddressSet() {
         STORE = null;
+        expirationTime = 1;
+    }
+    
+    public AddressSet(int expiration) {
+        STORE = null;
+        expirationTime = expiration;
     }
     
     public AddressSet(File file) throws IOException {
         load(file);
         STORE = new FileStore(file);
-        
+        expirationTime = 1;
     }
     
     public void start(File file) throws IOException {
@@ -619,42 +625,6 @@ public class AddressSet {
         }
     }
     
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String[] args) {
-        try {
-//            AddressSet addressSet = new AddressSet();
-//            addressSet.add("2001:0db8:85a3:08d2::/24");
-//            System.out.println(addressSet.getLegacy("2001:0db8:85a3:08d2::3"));
-////            addressSet.add("192.168.0.0/16");
-////            System.out.println(addressSet.get("192.168.1.1"));
-//            
-////            Node root4 = addressSet.getRoot4();
-////            System.out.println();
-            
-            Runtime runtime = Runtime.getRuntime();
-            System.out.println(runtime.totalMemory() - runtime.freeMemory());
-            File file = new File("C:\\Users\\leandro\\Desktop\\block.cidr.txt");
-            AddressSet addressSet = new AddressSet(file);
-            addressSet.start();
-            System.out.println(runtime.totalMemory() - runtime.freeMemory());
-//            for (int count1 = 0; count1 < 256; count1++) {
-//                for (int count2 = 0; count2 < 256; count2++) {
-//                    addressSet.remove("192.168." + count1 + "." + count2);
-//                }
-//                addressSet.add("192.168." + count1 + ".0/24");
-//            }
-//            addressSet.store();
-//            addressSet.write4(new PrintWriter(System.out));
-            Thread.sleep(1000);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        } finally {
-            System.exit(0);
-        }
-    }
-    
     private void load(File file) {
         long time = System.currentTimeMillis();
         if (file != null && file.exists()) {
@@ -829,10 +799,12 @@ public class AddressSet {
         );
     }
     
+    private final int expirationTime;
+    
     private void write4(Writer writer) throws IOException {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot4());
-        Integer time = getIntegerTime() - 1;
+        Integer time = getIntegerTime() - expirationTime;
         byte mask = 0;
         int address = 0;
         Node actual;
@@ -931,7 +903,7 @@ public class AddressSet {
     private void write6(Writer writer) throws IOException {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot6());
-        int time = getIntegerTime() - 1;
+        int time = getIntegerTime() - expirationTime;
         short mask = 0;
         BigInteger address = BigInteger.valueOf(0);
         Node actual;
@@ -1035,7 +1007,7 @@ public class AddressSet {
     private void writeLegacy4(Writer writer) throws IOException {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot4());
-        int time = getIntegerTime() - 1;
+        int time = getIntegerTime() - expirationTime;
         byte mask = 0;
         int address = 0;
         Node actual;
@@ -1126,7 +1098,7 @@ public class AddressSet {
     private void writeLegacy6(Writer writer) throws IOException {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot6());
-        int time = getIntegerTime() - 1;
+        int time = getIntegerTime() - expirationTime;
         short mask = 0;
         BigInteger address = BigInteger.valueOf(0);
         Node actual;
@@ -1224,7 +1196,7 @@ public class AddressSet {
     private void getAllLegacy4(TreeSet<String> addressSet) {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot4());
-        int time = getIntegerTime() - 1;
+        int time = getIntegerTime() - expirationTime;
         byte mask = 0;
         int address = 0;
         Node actual;
@@ -1303,7 +1275,7 @@ public class AddressSet {
     private void getAllLegacy6(TreeSet<String> addressSet) {
         LinkedList<Node> stack = new LinkedList();
         stack.push(getRoot6());
-        int time = getIntegerTime() - 1;
+        int time = getIntegerTime() - expirationTime;
         short mask = 0;
         BigInteger address = BigInteger.valueOf(0);
         Node actual;

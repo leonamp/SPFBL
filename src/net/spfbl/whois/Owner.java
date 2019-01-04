@@ -80,17 +80,29 @@ public class Owner implements Serializable, Comparable<Owner> {
         return expiredTime > REFRESH_TIME;
     }
     
+    private static final Pattern OWNER_ID_PATTERN = Pattern.compile("^"
+            + "([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
+            + "|([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})"
+            + "$"
+    );
+    
     /**
      * Verifica se a expressão é um CPNJ ou CPF.
      * @param id a identificação a ser verificada.
      * @return verdadeiro se a expressão é um CPNJ ou CPF.
      */
     public static boolean isOwnerID(String id) {
-        return Pattern.matches(
-                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
-                + "|([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
-                );
+//        return Pattern.matches(
+//                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
+//                + "|([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
+//                );
+        return OWNER_ID_PATTERN.matcher(id).matches();
     }
+    
+    private static final Pattern OWNER_CNPJ_PATTERN = Pattern.compile("^"
+            + "([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})"
+            + "$"
+    );
     
     /**
      * Verifica se a expressão é um CPNJ.
@@ -98,10 +110,16 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se a expressão é um CPNJ.
      */
     public static boolean isOwnerCNPJ(String id) {
-        return Pattern.matches(
-                "^([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
-                );
+//        return Pattern.matches(
+//                "^([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
+//                );
+        return OWNER_CNPJ_PATTERN.matcher(id).matches();
     }
+    
+    private static final Pattern OWNER_CPF_PATTERN = Pattern.compile("^"
+            + "([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
+            + "$"
+    );
     
     /**
      * Verifica se a expressão é um CPF.
@@ -109,9 +127,10 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se a expressão é um CPF.
      */
     public static boolean isOwnerCPF(String id) {
-        return Pattern.matches(
-                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})$", id
-                );
+//        return Pattern.matches(
+//                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})$", id
+//                );
+        return OWNER_CPF_PATTERN.matcher(id).matches();
     }
     
     /**
@@ -124,16 +143,23 @@ public class Owner implements Serializable, Comparable<Owner> {
         this.refresh();
     }
     
+    private static final Pattern OWNER_ID1_PATTERN = Pattern.compile("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$");
+    private static final Pattern OWNER_ID2_PATTERN = Pattern.compile("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
+    private static final Pattern OWNER_ID3_PATTERN = Pattern.compile("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
+    
     public static String normalizeID(String id) {
         if (id == null) {
             return null;
         } else if (id.length() == 0) {
             return null;
-        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
+//        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
+        } else if (OWNER_ID1_PATTERN.matcher(id).matches()) {
             return id;
-        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
+//        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
+        } else if (OWNER_ID2_PATTERN.matcher(id).matches()) {
             return id;
-        } else if (Pattern.matches("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
+//        } else if (Pattern.matches("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
+        } else if (OWNER_ID3_PATTERN.matcher(id).matches()) {
             return "0" + id;
         } else {
             return null;
