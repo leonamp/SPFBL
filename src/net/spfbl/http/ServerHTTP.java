@@ -8118,7 +8118,7 @@ public final class ServerHTTP extends Server {
                     TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
                     tmf.init(keyStore);
                     TrustManager[] tm = tmf.getTrustManagers();
-                    SSLContext sslContext = SSLContext.getInstance("TLS");
+                    SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
                     sslContext.init(km, tm, null);
                     try {
                         Server.logDebug("binding HTTPS socket on port " + PORTS + "...");
@@ -8138,10 +8138,22 @@ public final class ServerHTTP extends Server {
                                     params.setWantClientAuth(clientAuth);
 
                                     SSLContext c = SSLContext.getDefault();
-                                    SSLEngine engine = c.createSSLEngine();
-                                    params.setCipherSuites(engine.getEnabledCipherSuites());
-                                    params.setProtocols(engine.getEnabledProtocols());
-
+                                    SSLEngine engine = c.createSSLEngine();                                    
+                                    params.setProtocols(new String[]{"TLSv1.2"});
+                                    params.setCipherSuites(new String[]{
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+                                    });
                                     SSLParameters sslParameters = c.getDefaultSSLParameters();
                                     sslParameters.setServerNames(serverNames);
                                     sslParameters.setNeedClientAuth(clientAuth);
