@@ -8137,12 +8137,7 @@ public final class ServerHTTP extends Server {
                                     params.setNeedClientAuth(false);
                                     params.setWantClientAuth(clientAuth);
 
-<<<<<<< HEAD
-                                    SSLContext c = SSLContext.getDefault();                               
-=======
                                     SSLContext c = SSLContext.getDefault();
-                                    SSLEngine engine = c.createSSLEngine();                                    
->>>>>>> 64ac707b9061e45f1c44e26d3c55e98d54564c1d
                                     params.setProtocols(new String[]{"TLSv1.2"});
                                     params.setCipherSuites(new String[]{
                                         "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
