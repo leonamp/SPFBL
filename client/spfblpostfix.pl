@@ -36,7 +36,7 @@
 #	check_policy_service unix:private/policy-spfbl,
 #	permit
 #
-# Última alteração: 26/11/2016 16:45
+# Última alteração: 15/03/2019 12:35
 
 use strict;
 use warnings;
@@ -49,7 +49,7 @@ $| = 1;
 # configs
 my $CONFIG = {
     socket => {
-        PeerHost => 'matrix.spfbl.net', # change to your hostname
+        PeerHost => 'matrix.spfbl.net', # change to your SPFBL instance.
         PeerPort => 9877,
         Proto    => 'tcp',
         Timeout  => 10,
@@ -71,7 +71,7 @@ while ( my $line = <STDIN> ) {
 
     # connecting
     my $socket = IO::Socket::INET->new( %{ $CONFIG->{socket} } )
-       or die "action=WARN SPFBL NO CONNECTION\n\n";
+       or die "action=WARN no SPFBL connection\n\n";
 
     # build and send query
     my $query = "SPF '$params->{client_address}' '$params->{sender}' '$params->{helo_name}' '$params->{recipient}'\n";
@@ -99,17 +99,12 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FLAG/ ) {
         STDOUT->print(
-            "action=PREPEND X-Spam-Flag: YES\n\n"
-        );
-    }
-    elsif ( $result =~ /^HOLD / ) {
-        STDOUT->print(
-            "action=PREPEND Received-SPFBL: $result\naction=HOLD\n\n"
+             "action=PREPEND Received-SPFBL: $result\n\n"
         );
     }
     elsif ( $result =~ /^HOLD/ ) {
         STDOUT->print(
-            "action=HOLD\n\n"
+            "action=$result\n\n"
         );
     }
     elsif ( $result =~ /^NXDOMAIN/ ) {

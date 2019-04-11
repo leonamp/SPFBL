@@ -1217,7 +1217,7 @@ public class Analise implements Serializable, Comparable<Analise> {
             Distribution dist = SPF.getDistribution(ip, false);
             float probability = dist == null ? 0.0f : dist.getSpamProbability(ip);
             boolean ipv4 = SubnetIPv4.isValidIPv4(ip);
-            String abuseEmail = Abuse.getEmail(ip);
+            String abuseEmail = Abuse.getEmail(ip, false);
             Object response = null;
             Status statusIP;
             String tokenName;

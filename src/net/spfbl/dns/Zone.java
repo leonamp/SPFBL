@@ -120,7 +120,7 @@ public class Zone implements Serializable, Comparable<Zone> {
                 return url;
             }
         } else if (type == Type.DNSAL) {
-            String email = Abuse.getEmail(token);
+            String email = Abuse.getEmail(token, false);
             if (email != null) {
                 return email;
             } else {

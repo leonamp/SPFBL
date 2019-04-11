@@ -18,7 +18,7 @@ CREATE TABLE `user_query` (
   `subject` text CHARACTER SET utf8mb4,
   `messageID` varchar(512) CHARACTER SET utf8mb4 DEFAULT NULL,
   `date` timestamp NULL DEFAULT NULL,
-  `unsubscribe` varchar(128) DEFAULT NULL,
+  `unsubscribe` text,
   `linkMap` text,
   `executableSet` text,
   `malware` varchar(128) CHARACTER SET utf8mb4 DEFAULT NULL,
@@ -39,10 +39,25 @@ CREATE TABLE `user_query` (
   KEY `id_user_query_ip` (`ip`) USING BTREE,
   KEY `id_user_query_sender` (`sender`(255)) USING BTREE,
   KEY `id_user_query_mailFrom` (`mailFrom`(255)) USING BTREE,
-  KEY `id_user_query_replyto` (`replyto`) USING BTREE,
+  KEY `id_user_query_replyto` (`replyto`(255)) USING BTREE,
   KEY `id_user_query_recipient` (`recipient`) USING BTREE,
   KEY `id_user_query_whiteKey` (`whiteKey`) USING BTREE,
   KEY `id_user_query_blockKey` (`blockKey`) USING BTREE,
   KEY `id_user_query_helo` (`helo`) USING BTREE,
   KEY `id_user_query_hostname` (`hostname`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=ascii;
+
+CREATE TABLE `analise` (
+  `token` varchar(128) NOT NULL,
+  `tokenStatus` enum('PROCESSING','RESOLVED','NONE','NXDOMAIN','BLOCK','DNSBL','DYNAMIC','GENERIC','GREEN','YELLOW','RED','PROVIDER','IGNORE','WHITE','FQDN','UNAVAILABLE','TIMEOUT') NOT NULL COMMENT 'Mudar para enumeration',
+  `name` varchar(128) DEFAULT NULL,
+  `nameMask` varchar(128) DEFAULT NULL,
+  `nameStatus` enum('NONE','NXDOMAIN','RESERVED','BLOCK','DYNAMIC','GENERIC','INVALID','GREEN','YELLOW','RED','PROVIDER','IGNORE','WHITE','UNAVAILABLE','TIMEOUT','FQDN') DEFAULT NULL,
+  `reputation` float NOT NULL DEFAULT '0',
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`token`),
+  KEY `id_tokenStatus` (`tokenStatus`) USING BTREE,
+  KEY `id_nameStatus` (`nameStatus`),
+  KEY `id_nameMask` (`nameMask`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=ascii;
+

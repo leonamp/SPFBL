@@ -5205,11 +5205,11 @@ public final class ServerHTTP extends Server {
                             if (!NoReply.contains(email, true)) {
                                 emailSet.add(email);
                             }
-                            String abuseDomain = Abuse.getEmail(hostname);
+                            String abuseDomain = Abuse.getEmail(hostname, false);
                             if (abuseDomain != null && !NoReply.contains(abuseDomain, true)) {
                                 emailSet.add(abuseDomain);
                             }
-                            String abuseSource = Abuse.getEmail(ip);
+                            String abuseSource = Abuse.getEmail(ip, false);
                             if (abuseSource != null && !NoReply.contains(abuseSource, true)) {
                                 emailSet.add(abuseSource);
                             }
@@ -5435,12 +5435,12 @@ public final class ServerHTTP extends Server {
                     String paypalJPY = Core.getPayPalPriceDelistJPY();
                     String paypalBRL = Core.getPayPalPriceDelistBRL();
                     String userEmail = user == null ? null : user.getEmail();
-                    String abuseSource = Abuse.getEmail(ip);
+                    String abuseSource = Abuse.getEmail(ip, false);
                     builder.append("        <ul>\n");
                     String hostname = reverseSet.pollFirst();
                     do {
                         hostname = Domain.normalizeHostname(hostname, false);
-                        String abuseDomain = Abuse.getEmail(hostname);
+                        String abuseDomain = Abuse.getEmail(hostname, false);
                         String domain;
                         try {
                             domain = Domain.extractDomain(hostname, false);
@@ -5776,7 +5776,7 @@ public final class ServerHTTP extends Server {
                                 }
                             }
                         }
-                        String abuseEmail = Abuse.getEmail(ip);
+                        String abuseEmail = Abuse.getEmail(ip, false);
                         boolean permittedChecked = false;
                         Entry<String, Boolean> entry = emailMap.pollFirstEntry();
                         do {
@@ -5930,7 +5930,7 @@ public final class ServerHTTP extends Server {
                     } else {
                         buildText(builder, "No registry was found for this IP.");
                     }
-                    String abuseEmail = Abuse.getEmail(ip);
+                    String abuseEmail = Abuse.getEmail(ip, false);
                     if (abuseEmail != null) {
                         if (locale.getLanguage().toLowerCase().equals("pt")) {
                             buildText(builder, "E-mail para denúncia de abusos deste IP:");
@@ -6102,7 +6102,7 @@ public final class ServerHTTP extends Server {
                 } else {
                     buildText(builder, "No registry was found for this domain.");
                 }
-                String abuseEmail = Abuse.getEmail(domain);
+                String abuseEmail = Abuse.getEmail(domain, false);
                 if (abuseEmail != null) {
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
                         buildText(builder, "E-mail para denúncia de abusos deste domínio:");
@@ -8118,7 +8118,7 @@ public final class ServerHTTP extends Server {
                     TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
                     tmf.init(keyStore);
                     TrustManager[] tm = tmf.getTrustManagers();
-                    SSLContext sslContext = SSLContext.getInstance("TLS");
+                    SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
                     sslContext.init(km, tm, null);
                     try {
                         Server.logDebug("binding HTTPS socket on port " + PORTS + "...");
@@ -8137,11 +8137,22 @@ public final class ServerHTTP extends Server {
                                     params.setNeedClientAuth(false);
                                     params.setWantClientAuth(clientAuth);
 
-                                    SSLContext c = SSLContext.getDefault();
-                                    SSLEngine engine = c.createSSLEngine();
-                                    params.setCipherSuites(engine.getEnabledCipherSuites());
-                                    params.setProtocols(engine.getEnabledProtocols());
-
+                                    SSLContext c = SSLContext.getDefault();                               
+                                    params.setProtocols(new String[]{"TLSv1.2"});
+                                    params.setCipherSuites(new String[]{
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+                                        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+                                        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+                                        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+                                    });
                                     SSLParameters sslParameters = c.getDefaultSSLParameters();
                                     sslParameters.setServerNames(serverNames);
                                     sslParameters.setNeedClientAuth(clientAuth);

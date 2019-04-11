@@ -182,11 +182,11 @@ public class Abuse {
         return DNSAL != null;
     }
     
-    public static String getEmail(String address) {
+    public static String getEmail(String address, boolean external) {
         String zone;
         if (address == null) {
             return null;
-        } else if ((zone = getExternalDNSAL()) != null) {
+        } else if (external && (zone = getExternalDNSAL()) != null) {
             String host = null;
             if (Subnet.isValidIP(address)) {
                 host = Reverse.getHostReverse(address, zone);
@@ -269,7 +269,7 @@ public class Abuse {
     }
     
     public static boolean containsEmail(String address) {
-        return getEmail(address) != null;
+        return getEmail(address, false) != null;
     }
     
     public static boolean dropEmail(String address, String email) {
@@ -528,7 +528,7 @@ public class Abuse {
             String ip,
             String unblockURL
     ) throws Exception {
-        String abuseEmail = Abuse.getEmail(ip);
+        String abuseEmail = Abuse.getEmail(ip, true);
         if (abuseEmail == null) {
             return false;
         } else if (!Core.hasAdminEmail()) {

@@ -396,31 +396,29 @@ public final class QuerySPF extends Server {
                                     } else if (line.equals("BLOCK SHOW ALL")) {
                                         query = line.substring(6).trim();
                                         type = "BLOCK";
-                                        result = "DISABLED\n";
-//                                        // Mecanismo de visualização de bloqueios de remetentes.
-//                                        StringBuilder builder = new StringBuilder();
-//                                        for (String sender : Block.getAll(client, user)) {
-//                                            builder.append(sender);
-//                                            builder.append('\n');
-//                                        }
-//                                        result = builder.toString();
-//                                        if (result.length() == 0) {
-//                                            result = "EMPTY\n";
-//                                        }
+                                        // Mecanismo de visualização de bloqueios de remetentes.
+                                        StringBuilder builder = new StringBuilder();
+                                        for (String sender : Block.getAll(client, user)) {
+                                            builder.append(sender);
+                                            builder.append('\n');
+                                        }
+                                        result = builder.toString();
+                                        if (result.length() == 0) {
+                                            result = "EMPTY\n";
+                                        }
                                     } else if (line.equals("BLOCK SHOW")) {
                                         query = line.substring(6).trim();
                                         type = "BLOCK";
-                                        result = "DISABLED\n";
-//                                        // Mecanismo de visualização de bloqueios de remetentes.
-//                                        StringBuilder builder = new StringBuilder();
-//                                        for (String sender : Block.get(client, user)) {
-//                                            builder.append(sender);
-//                                            builder.append('\n');
-//                                        }
-//                                        result = builder.toString();
-//                                        if (result.length() == 0) {
-//                                            result = "EMPTY\n";
-//                                        }
+                                        // Mecanismo de visualização de bloqueios de remetentes.
+                                        StringBuilder builder = new StringBuilder();
+                                        for (String sender : Block.get(client, user)) {
+                                            builder.append(sender);
+                                            builder.append('\n');
+                                        }
+                                        result = builder.toString();
+                                        if (result.length() == 0) {
+                                            result = "EMPTY\n";
+                                        }
                                     } else if (line.startsWith("BLOCK FIND ")) {
                                         query = line.substring(6).trim();
                                         type = "BLOCK";
@@ -780,31 +778,29 @@ public final class QuerySPF extends Server {
                                     } else if (line.equals("WHITE SHOW ALL")) {
                                         query = line.substring(6).trim();
                                         type = "WHITE";
-                                        result = "DISABLED\n";
-////                                        // Mecanismo de visualização de bloqueios de remetentes.
-//                                        StringBuilder builder = new StringBuilder();
-//                                        for (String recipient : White.getAll(client, null)) {
-//                                            builder.append(recipient);
-//                                            builder.append('\n');
-//                                        }
-//                                        result = builder.toString();
-//                                        if (result.length() == 0) {
-//                                            result = "EMPTY\n";
-//                                        }
+                                        // Mecanismo de visualização de bloqueios de remetentes.
+                                        StringBuilder builder = new StringBuilder();
+                                        for (String recipient : White.getAll(client, null)) {
+                                            builder.append(recipient);
+                                            builder.append('\n');
+                                        }
+                                        result = builder.toString();
+                                        if (result.length() == 0) {
+                                            result = "EMPTY\n";
+                                        }
                                     } else if (line.equals("WHITE SHOW")) {
                                         query = line.substring(6).trim();
                                         type = "WHITE";
-                                        result = "DISABLED\n";
-////                                        // Mecanismo de visualização de bloqueios de remetentes.
-//                                        StringBuilder builder = new StringBuilder();
-//                                        for (String recipient : White.get(client, null)) {
-//                                            builder.append(recipient);
-//                                            builder.append('\n');
-//                                        }
-//                                        result = builder.toString();
-//                                        if (result.length() == 0) {
-//                                            result = "EMPTY\n";
-//                                        }
+                                        // Mecanismo de visualização de bloqueios de remetentes.
+                                        StringBuilder builder = new StringBuilder();
+                                        for (String recipient : White.get(client, null)) {
+                                            builder.append(recipient);
+                                            builder.append('\n');
+                                        }
+                                        result = builder.toString();
+                                        if (result.length() == 0) {
+                                            result = "EMPTY\n";
+                                        }
                                     } else {
                                         query = line.trim();
                                         LinkedList<User> userResult = new LinkedList<>();

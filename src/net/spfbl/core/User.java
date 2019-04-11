@@ -6696,7 +6696,7 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
-            } else if ((abuseEmail = Abuse.getEmail(getIP())) == null) {
+            } else if ((abuseEmail = Abuse.getEmail(getIP(), true)) == null) {
                 return false;
             } else if (NoReply.contains(abuseEmail, true)) {
                 Abuse.dropEmail(getIP(), abuseEmail);

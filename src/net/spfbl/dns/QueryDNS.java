@@ -1010,7 +1010,7 @@ public final class QueryDNS extends Server {
                                                         ttl = 86400; // Um dia.
                                                     }
                                                 } else if (zone.isDNSAL()) {
-                                                    String email = Abuse.getEmail(clientQuery);
+                                                    String email = Abuse.getEmail(clientQuery, false);
                                                     if (email != null) {
                                                         result = "127.0.0.2";
                                                     } else {
@@ -1113,7 +1113,7 @@ public final class QueryDNS extends Server {
                                                         ttl = 86400; // Um dia.
                                                     }
                                                 } else if (zone.isDNSAL()) {
-                                                    String email = Abuse.getEmail(clientQuery);
+                                                    String email = Abuse.getEmail(clientQuery, false);
                                                     if (email != null) {
                                                         result = "127.0.0.2";
                                                     } else {
@@ -1225,7 +1225,7 @@ public final class QueryDNS extends Server {
                                                         ttl = 86400; // Um dia.
                                                     }
                                                 } else if (zone.isDNSAL()) {
-                                                    String email = Abuse.getEmail(clientQuery);
+                                                    String email = Abuse.getEmail(clientQuery, false);
                                                     if (email != null) {
                                                         result = "127.0.0.2";
                                                     } else {

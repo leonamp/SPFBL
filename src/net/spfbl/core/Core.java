@@ -139,7 +139,7 @@ import org.shredzone.acme4j.util.KeyPairUtils;
 public class Core {
     
     private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 10;
+    private static final byte SUBVERSION = 11;
     private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
