@@ -292,39 +292,17 @@ https://github.com/leonamp/SPFBL/wiki/Primeiros-Passos---Comando:-peer
 
 https://github.com/leonamp/SPFBL/wiki/peer---administrando-listas-de-reten%C3%A7%C3%A3o
 
-
-### Pools conhecidos em funcionamento
-
-Aqui vemos alguns pools em funcionamento para que novos membros possam se cadastrar para consulta, quando aberto, ou para cadastrar conexão P2P.
-
-Abertos:
-* MatrixDefense: matrix.spfbl.net <leandro@spfbl.net>
-* Spamlet: spamlet-01-clusternet.lhost.net.br <noc@lhost.net.br>
-* SimaoBuhler: servidor1.simaoebuhler.com.br <postmaster@simaoebuhler.com.br>
-
-Para se conectar, basta entrar em contato com cada administrador pelo endereço de e-mail e fazer a solicitação.
-
-
 ### O desenvolvedor
 
 Se houver interesse um utilizar este serviço sem implementá-lo em servidor próprio, podemos ceder nosso próprio servidor. Para isto, basta enviar para um e-mail para leandro@spfbl.net com a lista de blocos de IP utilizados, o volume diário de recebimento e o MTA utilizado pelos seus terminais MX para liberação do firewall.
 
 Se este projeto for útil para sua empresa, faça uma doação de qualquer valor para ajudar a mantê-lo:
 
-PayPal em Real:<br>
-[![](https://www.paypalobjects.com/pt_BR/BR/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=SCWP29C7CCNWN)
-
-PayPal em Dólar:<br>
+PayPal:<br>
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=LJM9UCLMKFRP6)
 
 Bitcoin:<br>
 [![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/bitcoin.png "1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy")](1HVe5J3dziyEQ1BCDQamNWas6ruVHTyESy)
-
-Litecoin:<br>
-[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/litecoin.png "LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr")](LPHGfLRhZbYQZBR7ddPFnUQ7MtKRJMH9Yr)
-
-Nano:<br>
-[![Donate](https://raw.githubusercontent.com/leonamp/SPFBL/master/doc/nano.png "xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89")](xrb_3t4qgazsup3bq18f9mu7jdi4kup8ed4d7j45snboem88czm9h441i6tihd89)
 
 Página oficial:<br>
 <a href="http://spfbl.net">SPFBL oficial website</a>
