@@ -274,6 +274,21 @@ if (!$good) {
             }
         };
     }
+    if (!$bad && !$suspicious) {
+        eval {
+            $packet = $resolver->query($email . '.dnsbl.spfbl.net', 'A');
+            if ($packet) {
+                foreach my $rr ($packet->answer) {
+                    my $code = $rr->rdstring;
+                    if ($code eq '127.0.0.2') {
+                        $bad = 1;
+                    } elsif ($code eq '127.0.0.3') {
+                        $suspicious = 1;
+                    }
+                }
+            }
+        };
+    }
 }
 
 my $information;
