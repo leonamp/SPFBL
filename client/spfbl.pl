@@ -24,6 +24,13 @@
 #    8 - reject: reject the message because it's a special situation.
 #    9 - undefined result code.
 #
+# The output must be included as Received-SPF header. Example:
+#
+#    Received-SPF: pass (matrix.spfbl.net: domain of postmaster@spfbl.net
+#                  designates 54.233.253.229 as permitted sender)
+#                  identity=mailfrom; client-ip=54.233.253.229;
+#                  envelope-from="postmaster@spfbl.net";
+#
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -40,7 +47,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.0
+# Version: 1.1
 
 use Net::IP qw(ip_expand_address ip_reverse);
 use Net::DNS;
@@ -143,7 +150,7 @@ my $bounce = 0;
 
 if (!$sender) {
     $bounce = 1;
-} elsif ($sender =~ m/^([a-zA-Z0-9._-]+)((\+|=)[a-zA-Z0-9._=-]+)?(@(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]+)\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/i) {
+} elsif ($sender =~ m/^([a-zA-Z0-9._-]+)((\+|=)[a-zA-Z0-9._\+=-]+)?(@(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]+)\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/i) {
     $sender = "$1$4";
     $email = lc($4);
     $freemail = freemail($email);
@@ -156,6 +163,7 @@ if (!$sender) {
     $invalid = 1;
 }
 
+my $explanation;
 if ($sender) {
     eval {
         my $spf = Mail::SPF::Server->new();
@@ -166,12 +174,28 @@ if ($sender) {
             ip_address      => "$ip",
             helo_identity   => "$helo"
         );
-        $result = $spf->process($request)->code;
+        my $qualifier = $spf->process($request);
+        $result = $qualifier->code;
+        $explanation = $qualifier->local_explanation;
+        if ($result eq 'permerror') {
+            if ($explanation =~ m/ Redundant applicable /) {
+                $result = 'none';
+                $explanation = 'redundant SPF registry';
+            }
+        } elsif ($result eq 'temperror') {
+            # Do nothing.
+        } elsif ($result eq 'pass') {
+            $explanation = "domain of $sender designates $ip as permitted sender";
+        } else {
+            $explanation = "domain of $sender does not designate $ip as permitted sender";
+        }
     } or do {
         $result = 'temperror';
+        $explanation = 'could not process SPF query';
     };
 } else {
     $result = 'none';
+    $explanation = 'bounce message';
 }
 
 my $focused = $freemail && $result eq 'pass';
@@ -236,6 +260,7 @@ my $bad = 0;
 my $suspicious = 0;
 my $notserver = 0;
 my $residential = 0;
+my $generic = 0;
 
 if (!$good) {
     if (!$focused) {
@@ -274,21 +299,21 @@ if (!$good) {
             }
         };
     }
-    if (!$bad && !$suspicious) {
-        eval {
-            $packet = $resolver->query($email . '.dnsbl.spfbl.net', 'A');
-            if ($packet) {
-                foreach my $rr ($packet->answer) {
-                    my $code = $rr->rdstring;
-                    if ($code eq '127.0.0.2') {
-                        $bad = 1;
-                    } elsif ($code eq '127.0.0.3') {
-                        $suspicious = 1;
-                    }
+    eval {
+        $packet = $resolver->query($email . '.dnsbl.spfbl.net', 'A');
+        if ($packet) {
+            foreach my $rr ($packet->answer) {
+                my $code = $rr->rdstring;
+                if ($code eq '127.0.0.2') {
+                    $bad = 1;
+                } elsif ($code eq '127.0.0.3') {
+                    $suspicious = 1;
+                } elsif ($code eq '127.0.0.4') {
+                    $generic = 1;
                 }
             }
-        };
-    }
+        }
+    };
 }
 
 my $information;
@@ -298,6 +323,9 @@ if ($bad) {
 } elsif ($invalid) {
     $result = 'reject';
     $information = 'invalid sender';
+} elsif ($notserver && $generic) {
+    $result = 'reject';
+    $information = 'generic sender';
 } elsif ($bounce && $bulk) {
     $result = 'accept';
     $information = 'bounce from bulk provider';
@@ -313,10 +341,16 @@ if ($bad) {
 } elsif ($bulk && $result ne 'pass') {
     $result = 'accept';
     $information = 'bulk email provider';
+} elsif ($bulk && $result eq 'fail') {
+    $result = 'softfail';
+    $information = 'bulk email provider';
 } elsif ($residential && $result ne 'fail') {
     $result = 'reject';
     $information = 'residential IP';
 } elsif (!$fqdn && $result eq 'softfail') {
+    $result = 'reject';
+    $information = 'invalid FQDN';
+} elsif (!$fqdn && $result eq 'none') {
     $result = 'reject';
     $information = 'invalid FQDN';
 } elsif ($suspicious && $result eq 'softfail') {
@@ -325,14 +359,8 @@ if ($bad) {
 } elsif ($notserver && $result eq 'softfail') {
     $result = 'reject';
     $information = 'not appear to be an email server';
-} elsif ($result eq 'permerror') {
-    $information = 'permanent error';
-} elsif ($result eq 'temperror') {
-    $information = 'temporary error';
-} elsif ($result eq 'pass') {
-    $information = "domain of $sender designates $ip as permitted sender";
 } else {
-    $information = "domain of $sender does not designate $ip as permitted sender";
+    $information = $explanation;
 }
 
 if ($debug) {
@@ -356,6 +384,7 @@ if ($debug) {
    print("SUSPICIOUS: $suspicious\n");
    print("NOTSERVER: $notserver\n");
    print("RESIDENTIAL: $residential\n");
+   print("GENERIC: $generic\n");
    print("\n");
    print("RESULT: $result \($hostname: $information\) identity=mailfrom; client-ip=$ip; envelope-from=\"$sender\"\;");
    print("\n");
