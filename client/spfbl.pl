@@ -22,7 +22,8 @@
 #    6 - none: accept the message because the sender don't have a SPF record.
 #    7 - accept: accept the message because it's a special situation.
 #    8 - reject: reject the message because it's a special situation.
-#    9 - undefined result code.
+#    9 - junk: move the message to junk because it's probably spam.
+#    10 - undefined result code.
 #
 # The output must be included as Received-SPF header. Example:
 #
@@ -47,7 +48,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.1
+# Version: 1.2
 
 use Net::IP qw(ip_expand_address ip_reverse);
 use Net::DNS;
@@ -200,7 +201,7 @@ if ($sender) {
 
 my $focused = $freemail && $result eq 'pass';
 my $good = 0;
-my $public = 0;
+my $essential = 0;
 my $transactional = 0;
 my $bulk = 0;
 
@@ -213,7 +214,7 @@ if (!$focused) {
                 if ($code eq '127.0.0.2') {
                     $good = 1;
                 } elsif ($code eq '127.0.0.3') {
-                    $public = 1;
+                    $essential = 1;
                 } elsif ($code eq '127.0.0.4') {
                     $transactional = 1;
                 } elsif ($code eq '127.0.0.5') {
@@ -231,7 +232,7 @@ if (!$focused) {
                     if ($code eq '127.0.0.2') {
                         $good = 1;
                      } elsif ($code eq '127.0.0.3') {
-                        $public = 1;
+                        $essential = 1;
                     } elsif ($code eq '127.0.0.4') {
                         $transactional = 1;
                     } elsif ($code eq '127.0.0.5') {
@@ -317,24 +318,15 @@ if (!$good) {
 }
 
 my $information;
-if ($bad) {
-    $result = 'reject';
-    $information = 'bad reputation';
-} elsif ($invalid) {
-    $result = 'reject';
-    $information = 'invalid sender';
-} elsif ($notserver && $generic) {
-    $result = 'reject';
-    $information = 'generic sender';
-} elsif ($bounce && $bulk) {
+if ($bounce && $bulk) {
     $result = 'accept';
     $information = 'bounce from bulk provider';
 } elsif ($good && $result ne 'pass') {
     $result = 'accept';
     $information = 'good reputation';
-} elsif ($public && $result ne 'pass') {
+} elsif ($essential && $result ne 'pass') {
     $result = 'accept';
-    $information = 'public organization email server';
+    $information = 'essential organization';
 } elsif ($transactional && $result ne 'pass') {
     $result = 'accept';
     $information = 'transactional email server';
@@ -353,11 +345,20 @@ if ($bad) {
 } elsif (!$fqdn && $result eq 'none') {
     $result = 'reject';
     $information = 'invalid FQDN';
+} elsif ($invalid) {
+    $result = 'reject';
+    $information = 'invalid sender';
+} elsif ($bad) {
+    $result = 'junk';
+    $information = 'bad reputation';
 } elsif ($suspicious && $result eq 'softfail') {
-    $result = 'reject';
+    $result = 'junk';
     $information = 'suspicious origin';
+} elsif ($notserver && $generic) {
+    $result = 'junk';
+    $information = 'generic sender';
 } elsif ($notserver && $result eq 'softfail') {
-    $result = 'reject';
+    $result = 'junk';
     $information = 'not appear to be an email server';
 } else {
     $information = $explanation;
@@ -376,7 +377,7 @@ if ($debug) {
    print("FREEMAIL: $freemail\n");
    print("FOCUSED: $focused\n");
    print("GOOD: $good\n");
-   print("PUBLIC: $public\n");
+   print("ESSENTIAL: $essential\n");
    print("TRANSACTIONAL: $transactional\n");
    print("BULK: $bulk\n");
    print("\n");
@@ -411,8 +412,10 @@ if ($result eq 'pass') {
     exit 7;
 } elsif ($result eq 'reject') {
     exit 8;
-} else {
+} elsif ($result eq 'junk') {
     exit 9;
+} else {
+    exit 10;
 }
 
 sub freemail {
