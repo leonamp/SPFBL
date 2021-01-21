@@ -21,9 +21,8 @@
 #    5 - temperror: defer the message because it is a temporary error.
 #    6 - none: accept the message because the sender don't have a SPF record.
 #    7 - accept: accept the message because it's a special situation.
-#    8 - reject: reject the message because it's a special situation.
-#    9 - junk: move the message to junk because it's probably spam.
-#    10 - undefined result code.
+#    8 - junk: move the message to junk because it's probably spam.
+#    9 - reject: reject the message because it's a special situation.
 #
 # The output must be included as Received-SPF header. Example:
 #
@@ -32,6 +31,38 @@
 #                  identity=mailfrom; client-ip=54.233.253.229;
 #                  envelope-from="postmaster@spfbl.net";
 #
+# These libraries must be installed:
+#
+#    sudo cpan -i -f Net::IP Net::DNS Mail::SPF
+#
+# For Exim configuration, add this in the acl_check_mail ACL section:
+#
+#      warn
+#        condition = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
+#                          '$sender_helo_name' '$sender_address'}}
+#      deny
+#        message = 5.7.1 [SPF] $sender_host_address is not allowed to send mail from \
+#                  ${if def:sender_address_domain {$sender_address_domain}{$sender_helo_name}}. \
+#                  Please see http://www.openspf.org/Why?scope=${if def:sender_address_domain \
+#                  {mfrom}{helo}};identity=${if def:sender_address_domain \
+#                  {$sender_address}{$sender_helo_name}};ip=$sender_host_address
+#        condition = ${if eq {$runrc}{1}{true}{false}}
+#      deny
+#        message = 5.7.0 Permanent DNS error while checking SPF record.
+#        condition = ${if eq {$runrc}{4}{true}{false}}
+#      defer
+#        message = 4.5.1 Temporary DNS error while checking SPF record. Try again later.
+#        condition = ${if eq {$runrc}{5}{true}{false}}
+#      warn
+#        condition = ${if eq {$runrc}{8}{true}{false}}
+#        add_header = X-Spam-Flag: YES
+#      deny
+#        message = 5.7.1 You have an invalid identification.
+#        condition = ${if eq {$runrc}{9}{true}{false}}
+#      warn
+#        add_header = Received-SPF: $value
+#    
+#    
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -48,13 +79,15 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.2
+# Version: 1.3
 
 use Net::IP qw(ip_expand_address ip_reverse);
 use Net::DNS;
 use Mail::SPF;
 
-my $resolver = Net::DNS::Resolver->new();
+my $resolver = Net::DNS::Resolver->new(
+    nameservers => [ '8.8.8.8', '208.67.222.222' ]
+);
 
 my $ip = $ARGV[0];
 my $helo = $ARGV[1];
@@ -65,10 +98,20 @@ my $reverse = ip_reverse($ip);
 my $hostname = $helo;
 my $fqdn;
 my $email;
+my $domain;
 my $result;
 
+# Fix IPv4 ip_reverse function result.
+if ($reverse =~ m/^(([0-9]{1,3}\.){1})in-addr\.arpa\.$/i) {
+   $reverse = "0.0.0.$reverse";
+} elsif ($reverse =~ m/^(([0-9]{1,3}\.){2})in-addr\.arpa\.$/i) {
+   $reverse = "0.0.$reverse";
+} elsif ($reverse =~ m/^(([0-9]{1,3}\.){3})in-addr\.arpa\.$/i) {
+   $reverse = "0.$reverse";
+}
+
 if (!$reverse) {
-    die('invalid IP');
+    print("permerror ($ip: invalid IP)");
     exit 4;
 } elsif ($reverse =~ m/^(([0-9a-f]\.){32})ip6\.arpa\.$/i) {
     my $expanded = ip_expand_address($ip, 6);
@@ -137,7 +180,7 @@ if (!$reverse) {
     }
     $reverse = $1;
 } else {
-    die('undefined IP vesion');
+    print("permerror ($reverse: undefined reverse version)");
     exit 4;
 }
 
@@ -153,12 +196,12 @@ if (!$sender) {
     $bounce = 1;
 } elsif ($sender =~ m/^([a-zA-Z0-9._-]+)((\+|=)[a-zA-Z0-9._\+=-]+)?(@(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]+)\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/i) {
     $sender = "$1$4";
-    $email = lc($4);
-    $freemail = freemail($email);
+    $domain = lc($4);
+    $freemail = freemail($domain);
     if ($freemail) {
-        $email = lc($1) . '\\' . $email;
+        $email = lc($1) . '\\' . $domain;
     } else {
-        $email = '\\' . $email;
+        $email = '\\' . $domain;
     }
 } else {
     $invalid = 1;
@@ -178,18 +221,6 @@ if ($sender) {
         my $qualifier = $spf->process($request);
         $result = $qualifier->code;
         $explanation = $qualifier->local_explanation;
-        if ($result eq 'permerror') {
-            if ($explanation =~ m/ Redundant applicable /) {
-                $result = 'none';
-                $explanation = 'redundant SPF registry';
-            }
-        } elsif ($result eq 'temperror') {
-            # Do nothing.
-        } elsif ($result eq 'pass') {
-            $explanation = "domain of $sender designates $ip as permitted sender";
-        } else {
-            $explanation = "domain of $sender does not designate $ip as permitted sender";
-        }
     } or do {
         $result = 'temperror';
         $explanation = 'could not process SPF query';
@@ -320,48 +351,61 @@ if (!$good) {
 my $information;
 if ($bounce && $bulk) {
     $result = 'accept';
-    $information = 'bounce from bulk provider';
-} elsif ($good && $result ne 'pass') {
+    $information = "$hostname: bounce from bulk provider";
+} elsif ($good) {
     $result = 'accept';
-    $information = 'good reputation';
-} elsif ($essential && $result ne 'pass') {
-    $result = 'accept';
-    $information = 'essential organization';
-} elsif ($transactional && $result ne 'pass') {
-    $result = 'accept';
-    $information = 'transactional email server';
-} elsif ($bulk && $result ne 'pass') {
-    $result = 'accept';
-    $information = 'bulk email provider';
-} elsif ($bulk && $result eq 'fail') {
-    $result = 'softfail';
-    $information = 'bulk email provider';
-} elsif ($residential && $result ne 'fail') {
+    $information = "$hostname: good reputation";
+} elsif ($residential) {
     $result = 'reject';
-    $information = 'residential IP';
-} elsif (!$fqdn && $result eq 'softfail') {
+    $information = "$hostname: residential IP";
+} elsif (!$fqdn && $result ne 'pass') {
     $result = 'reject';
-    $information = 'invalid FQDN';
-} elsif (!$fqdn && $result eq 'none') {
-    $result = 'reject';
-    $information = 'invalid FQDN';
+    $information = "$helo: invalid FQDN";
 } elsif ($invalid) {
     $result = 'reject';
-    $information = 'invalid sender';
+    $information = "$sender: invalid sender";
 } elsif ($bad) {
     $result = 'junk';
-    $information = 'bad reputation';
+    $information = "$hostname: bad reputation";
+} elsif ($essential && $result ne 'pass') {
+    $result = 'accept';
+    $information = "$hostname: essential organization";
+} elsif ($transactional && $result ne 'pass') {
+    $result = 'accept';
+    $information = "$hostname: transactional email server";
+} elsif ($bulk && $result ne 'pass') {
+    $result = 'accept';
+    $information = "$hostname: bulk email provider";
+} elsif ($bulk && $result eq 'fail') {
+    $result = 'softfail';
+    $information = "$hostname: bulk email provider";
 } elsif ($suspicious && $result eq 'softfail') {
     $result = 'junk';
-    $information = 'suspicious origin';
+    $information = "$hostname: suspicious origin";
 } elsif ($notserver && $generic) {
     $result = 'junk';
-    $information = 'generic sender';
+    $information = "$hostname: generic sender";
 } elsif ($notserver && $result eq 'softfail') {
     $result = 'junk';
-    $information = 'not appear to be an email server';
+    $information = "$hostname: non email server";
+} elsif ($result eq 'permerror' && $explanation =~ m/ Redundant applicable /) {
+    $information = "$domain: redundant SPF registry";
+} elsif ($result eq 'permerror' && $explanation =~ m/ Maximum DNS-interactive terms limit /) {
+    $information = "$domain: maximum DNS look-ups exceeded";
+} elsif ($result eq 'permerror' && $explanation =~ m/ Maximum void DNS look-ups limit /) {
+    $information = "$domain: maximum void DNS look-ups exceeded";
+} elsif ($result eq 'permerror' && $explanation =~ m/ Junk encountered in /) {
+    $information = "$domain: SPF syntax error";
+} elsif ($result eq 'permerror') {
+    $information = "$domain: could not process SPF query";
+} elsif ($result eq 'temperror' && $explanation =~ m/ 'SERVFAIL' /) {
+    $information = "$domain: DNS service failed";
+} elsif ($result eq 'temperror') {
+    $information = "$domain: could not process SPF query";
+} elsif ($result eq 'pass') {
+    $information = "$domain: designates $ip as permitted sender";
 } else {
-    $information = $explanation;
+    $information = "$domain: does not designate $ip as permitted sender";
 }
 
 if ($debug) {
@@ -387,11 +431,11 @@ if ($debug) {
    print("RESIDENTIAL: $residential\n");
    print("GENERIC: $generic\n");
    print("\n");
-   print("RESULT: $result \($hostname: $information\) identity=mailfrom; client-ip=$ip; envelope-from=\"$sender\"\;");
-   print("\n");
+   print("EXPLANATION: $explanation\n");
+   print("RESULT: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=\"$sender\"\;\n");
    print("\n");
 } else {
-   print("$result \($hostname: $information\) identity=mailfrom; client-ip=$ip; envelope-from=\"$sender\"\;");
+   print("$result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=\"$sender\"\;");
 }
 
 if ($result eq 'pass') {
@@ -410,12 +454,13 @@ if ($result eq 'pass') {
     exit 6;
 } elsif ($result eq 'accept') {
     exit 7;
-} elsif ($result eq 'reject') {
-    exit 8;
 } elsif ($result eq 'junk') {
+    exit 8;
+} elsif ($result eq 'reject') {
     exit 9;
 } else {
-    exit 10;
+    # Undefined result.
+    exit 4;
 }
 
 sub freemail {
