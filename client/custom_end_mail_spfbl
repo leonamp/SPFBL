@@ -1,5 +1,5 @@
 warn
-  condition = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
+  logwrite = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
                     '$sender_helo_name' '$sender_address'}}
 deny
   message = 5.7.1 [SPF] $sender_host_address is not allowed to send mail from \
