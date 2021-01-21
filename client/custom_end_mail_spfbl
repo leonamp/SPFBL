@@ -1,0 +1,24 @@
+warn
+  condition = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
+                    '$sender_helo_name' '$sender_address'}}
+deny
+  message = 5.7.1 [SPF] $sender_host_address is not allowed to send mail from \
+            ${if def:sender_address_domain {$sender_address_domain}{$sender_helo_name}}. \
+            Please see http://www.openspf.org/Why?scope=${if def:sender_address_domain \
+            {mfrom}{helo}};identity=${if def:sender_address_domain \
+      {$sender_address}{$sender_helo_name}};ip=$sender_host_address
+  condition = ${if eq {$runrc}{1}{true}{false}}
+deny
+  message = 5.7.0 Permanent DNS error while checking SPF record.
+  condition = ${if eq {$runrc}{4}{true}{false}}
+defer
+  message = 4.5.1 Temporary DNS error while checking SPF record. Try again later.
+  condition = ${if eq {$runrc}{5}{true}{false}}
+warn
+  condition = ${if eq {$runrc}{8}{true}{false}}
+  add_header = X-Spam-Flag: YES
+deny
+  message = 5.7.1 You have an invalid identification.
+  condition = ${if eq {$runrc}{9}{true}{false}}
+warn
+  add_header = Received-SPF: $value
