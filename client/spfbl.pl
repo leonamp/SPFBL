@@ -79,7 +79,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.3
+# Version: 1.4
 
 use Net::IP qw(ip_expand_address ip_reverse);
 use Net::DNS;
@@ -382,20 +382,36 @@ if ($bounce && $bulk) {
 } elsif ($suspicious && $result eq 'softfail') {
     $result = 'junk';
     $information = "$hostname: suspicious origin";
+} elsif ($suspicious && $result eq 'permerror') {
+    $result = 'junk';
+    $information = "$hostname: suspicious origin";
 } elsif ($notserver && $generic) {
     $result = 'junk';
     $information = "$hostname: generic sender";
 } elsif ($notserver && $result eq 'softfail') {
     $result = 'junk';
     $information = "$hostname: non email server";
+} elsif ($notserver && $result eq 'permerror') {
+    $result = 'junk';
+    $information = "$hostname: non email server";
+} elsif ($generic && $result eq 'permerror') {
+    $result = 'junk';
+    $information = "$hostname: generic sender";
 } elsif ($result eq 'permerror' && $explanation =~ m/ Redundant applicable /) {
-    $information = "$domain: redundant SPF registry";
+    $result = 'accept';
+    $information = "$hostname: redundant SPF registry";
 } elsif ($result eq 'permerror' && $explanation =~ m/ Maximum DNS-interactive terms limit /) {
+    $result = 'accept';
     $information = "$domain: maximum DNS look-ups exceeded";
 } elsif ($result eq 'permerror' && $explanation =~ m/ Maximum void DNS look-ups limit /) {
+    $result = 'accept';
     $information = "$domain: maximum void DNS look-ups exceeded";
 } elsif ($result eq 'permerror' && $explanation =~ m/ Junk encountered in /) {
+    $result = 'accept';
     $information = "$domain: SPF syntax error";
+} elsif ($result eq 'permerror' && $explanation =~ m/ has no applicable sender policy$/) {
+    $result = 'accept';
+    $information = "$domain: no applicable sender policy for include";
 } elsif ($result eq 'permerror') {
     $information = "$domain: could not process SPF query";
 } elsif ($result eq 'temperror' && $explanation =~ m/ 'SERVFAIL' /) {
@@ -432,10 +448,10 @@ if ($debug) {
    print("GENERIC: $generic\n");
    print("\n");
    print("EXPLANATION: $explanation\n");
-   print("RESULT: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=\"$sender\"\;\n");
+   print("RESULT: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;\n");
    print("\n");
 } else {
-   print("$result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=\"$sender\"\;");
+   print("$result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;");
 }
 
 if ($result eq 'pass') {
