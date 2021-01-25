@@ -31,14 +31,32 @@
 #                  identity=mailfrom; client-ip=54.233.253.229;
 #                  envelope-from="postmaster@spfbl.net";
 #
-# These libraries must be installed:
+# These libraries must be installed before use it:
 #
 #    sudo cpan -i -f Net::IP Net::DNS Mail::SPF
 #
-# For Exim configuration, add this in the acl_check_mail ACL section:
+# For cPanel configuration, run this installation script:
+#
+#    Install:
+#
+#       sudo cpan -i -f Net::IP Net::DNS Mail::SPF
+#       cd /usr/local/bin/
+#       wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl
+#       sudo chmod +x spfbl.pl
+#       cd /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK
+#       wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl
+#       service exim restart
+#
+#    Uninstall:
+#
+#       rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl
+#       service exim restart
+#
+#
+# For Exim configuration, add this in the acl_check_mail ACL section and restart it:
 #
 #      warn
-#        condition = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
+#        logwrite = ${run{/usr/local/bin/spfbl.pl '$sender_host_address' \
 #                          '$sender_helo_name' '$sender_address'}}
 #      deny
 #        message = 5.7.1 [SPF] $sender_host_address is not allowed to send mail from \
@@ -61,8 +79,23 @@
 #        condition = ${if eq {$runrc}{9}{true}{false}}
 #      warn
 #        add_header = Received-SPF: $value
-#    
-#    
+#
+#
+# For Postfix configuration, follow this procedure and restart it:
+#
+#     Add this line in master.cf file:
+#
+#         policy-spfbl  unix  -       n       n       -       -       spawn user=nobody argv=/usr/local/bin/spfbl.pl
+#
+#     Add this line in section "smtpd_recipient_restrictions" in main.cf file:
+#
+#         check_policy_service unix:private/policy-spfbl
+#
+#     Keep this line comented at file main.cf:
+#
+#         # soft_bounce=yes
+#
+#
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -79,7 +112,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.4
+# Version: 1.5
 
 use Net::IP qw(ip_expand_address ip_reverse);
 use Net::DNS;
@@ -89,10 +122,38 @@ my $resolver = Net::DNS::Resolver->new(
     nameservers => [ '8.8.8.8', '208.67.222.222' ]
 );
 
-my $ip = $ARGV[0];
-my $helo = $ARGV[1];
-my $sender = $ARGV[2];
-my $debug = $ARGV[3];
+my $ip;
+my $helo;
+my $sender;
+my $output;
+
+if ($#ARGV == -1) {
+    my $params = {};
+    while ( my $line = <STDIN> ) {
+        chomp $line;
+        if ( $line =~ /=/ ) {
+            my ( $key, $value ) = split /=/, $line, 2;
+            $params->{ $key } = $value;
+            next;
+        } else {
+            last;
+        }
+    }
+    $ip = $params->{client_address};
+    $helo = $params->{helo_name};
+    $sender = $params->{sender};
+    $output = 'postfix';
+} elsif ($ARGV[3]) {
+    $ip = $ARGV[0];
+    $helo = $ARGV[1];
+    $sender = $ARGV[2];
+    $output = 'debug';
+} else {
+    $ip = $ARGV[0];
+    $helo = $ARGV[1];
+    $sender = $ARGV[2];
+    $output = 'header';
+}
 
 my $reverse = ip_reverse($ip);
 my $hostname = $helo;
@@ -302,11 +363,11 @@ if (!$good) {
                 foreach my $rr ($packet->answer) {
                     my $code = $rr->rdstring;
                     if ($code eq '127.0.0.2') {
-                        $bad = 1;
+                        $bad++;
                     } elsif ($code eq '127.0.0.3') {
-                        $suspicious = 1;
+                        $suspicious++;
                     } elsif ($code eq '127.0.0.4') {
-                        $notserver = 1;
+                        $notserver++;
                     }
                }
             }
@@ -321,9 +382,9 @@ if (!$good) {
                 foreach my $rr ($packet->answer) {
                     my $code = $rr->rdstring;
                     if ($code eq '127.0.0.2') {
-                        $bad = 1;
+                        $bad++;
                     } elsif ($code eq '127.0.0.3') {
-                        $suspicious = 1;
+                        $suspicious++;
                     } elsif ($code eq '127.0.0.4') {
                         $residential = 1;
                     }
@@ -337,15 +398,58 @@ if (!$good) {
             foreach my $rr ($packet->answer) {
                 my $code = $rr->rdstring;
                 if ($code eq '127.0.0.2') {
-                    $bad = 1;
+                    $bad++;
                 } elsif ($code eq '127.0.0.3') {
-                    $suspicious = 1;
+                    $suspicious++;
                 } elsif ($code eq '127.0.0.4') {
                     $generic = 1;
                 }
             }
         }
     };
+}
+
+my $score = '';
+if ($bad) {
+    eval {
+        $packet = $resolver->query($email . '.score.spfbl.net', 'A');
+        if ($packet) {
+            foreach my $rr ($packet->answer) {
+                my $code = $rr->rdstring;
+                if ($code =~ m/^127\.0\.1\.([0-9]{1,3})$/i) {
+                    $score = $1;
+                }
+            }
+        }
+    };
+    if ($score eq '') {
+        if ($fqdn) {
+            eval {
+                $packet = $resolver->query($fqdn . '.score.spfbl.net', 'A');
+                if ($packet) {
+                    foreach my $rr ($packet->answer) {
+                        my $code = $rr->rdstring;
+                        if ($code =~ m/^127\.0\.1\.([0-9]{1,3})$/i) {
+                            $score = $1;
+                        }
+                    }
+                }
+            };
+        }
+        if ($score eq '') {
+            eval {
+                my $packet = $resolver->query($reverse . 'score.spfbl.net', 'A');
+                if ($packet) {
+                    foreach my $rr ($packet->answer) {
+                        my $code = $rr->rdstring;
+                        if ($code =~ m/^127\.0\.1\.([0-9]{1,3})$/i) {
+                            $score = $1;
+                        }
+                    }
+                }
+            };
+        }
+    }
 }
 
 my $information;
@@ -364,6 +468,9 @@ if ($bounce && $bulk) {
 } elsif ($invalid) {
     $result = 'reject';
     $information = "$sender: invalid sender";
+} elsif ($score ne '' && $bad ge $score) {
+    $result = 'reject';
+    $information = "$hostname: very bad reputation";
 } elsif ($bad) {
     $result = 'junk';
     $information = "$hostname: bad reputation";
@@ -418,40 +525,60 @@ if ($bounce && $bulk) {
     $information = "$domain: DNS service failed";
 } elsif ($result eq 'temperror') {
     $information = "$domain: could not process SPF query";
+} elsif ($bounce) {
+    $information = "$hostname: bounce message";
 } elsif ($result eq 'pass') {
     $information = "$domain: designates $ip as permitted sender";
 } else {
     $information = "$domain: does not designate $ip as permitted sender";
 }
 
-if ($debug) {
-   print("IP: $ip\n");
-   print("HELO: $helo\n");
-   print("SENDER: $sender\n");
-   print("\n");
-   print("FQDN: $fqdn\n");
-   print("HOSTNAME: $hostname\n");
-   print("REVERSE: $reverse\n");
-   print("EMAIL: $email\n");
-   print("\n");
-   print("FREEMAIL: $freemail\n");
-   print("FOCUSED: $focused\n");
-   print("GOOD: $good\n");
-   print("ESSENTIAL: $essential\n");
-   print("TRANSACTIONAL: $transactional\n");
-   print("BULK: $bulk\n");
-   print("\n");
-   print("BAD: $bad\n");
-   print("SUSPICIOUS: $suspicious\n");
-   print("NOTSERVER: $notserver\n");
-   print("RESIDENTIAL: $residential\n");
-   print("GENERIC: $generic\n");
-   print("\n");
-   print("EXPLANATION: $explanation\n");
-   print("RESULT: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;\n");
-   print("\n");
+if ($output eq 'header') {
+    print("$result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;"); 
+} elsif ($output eq 'postfix') {
+    STDOUT->autoflush(1);
+    if ($result eq 'fail') {
+        STDOUT->print("action=550 5.7.1 $information.\n\n");
+    } elsif ($result eq 'permerror') {
+        STDOUT->print("action=550 5.7.1 $information.\n\n");
+    } elsif ($result eq 'temperror') {
+        STDOUT->print("action=451 4.4.3 $information.\n\n");
+    } elsif ($result eq 'junk') {
+        STDOUT->print("action=PREPEND X-Spam-Flag: YES;\n\n");
+    } elsif ($result eq 'reject') {
+        STDOUT->print("action=550 5.7.1 $information.\n\n");
+    } else {
+        STDOUT->print("action=PREPEND Received-SPF: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;\n\n");
+    }
+    STDOUT->flush();
+    exit 0;
 } else {
-   print("$result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;");
+    print("IP: $ip\n");
+    print("HELO: $helo\n");
+    print("SENDER: $sender\n");
+    print("\n");
+    print("FQDN: $fqdn\n");
+    print("HOSTNAME: $hostname\n");
+    print("REVERSE: $reverse\n");
+    print("EMAIL: $email\n");
+    print("\n");
+    print("FREEMAIL: $freemail\n");
+    print("FOCUSED: $focused\n");
+    print("GOOD: $good\n");
+    print("ESSENTIAL: $essential\n");
+    print("TRANSACTIONAL: $transactional\n");
+    print("BULK: $bulk\n");
+    print("\n");
+    print("BAD: $bad\n");
+    print("SUSPICIOUS: $suspicious\n");
+    print("NOTSERVER: $notserver\n");
+    print("RESIDENTIAL: $residential\n");
+    print("GENERIC: $generic\n");
+    print("SCORE: $score\n");
+    print("\n");
+    print("EXPLANATION: $explanation\n");
+    print("RESULT: $result \($information\) identity=mailfrom; client-ip=$ip; helo=$helo; envelope-from=$sender\;\n");
+    print("\n");
 }
 
 if ($result eq 'pass') {
@@ -475,7 +602,6 @@ if ($result eq 'pass') {
 } elsif ($result eq 'reject') {
     exit 9;
 } else {
-    # Undefined result.
     exit 4;
 }
 
