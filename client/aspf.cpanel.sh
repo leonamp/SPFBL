@@ -21,10 +21,11 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.0
+# Version: 1.1
 
 install() {
-    sudo cpan -i -f Net::IP Net::DNS Mail::SPF
+    sudo cpan -i -f Config::Std Net::IP Net::DNS Mail::SPF URI::Encode
+    sudo cpan -i -f LWP::UserAgent HTTP::Request HTTP::Cookies JSON::XS
     cd /usr/local/bin/
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl
     sudo chmod +x spfbl.pl
