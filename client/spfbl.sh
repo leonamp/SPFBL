@@ -4358,8 +4358,8 @@ case $1 in
 	}
 
 	criaLogTemp(){
-		egrep " SPFTCP[0-9]+ SPFBL " $LOGFILE > $LOGTEMP
-		egrep " DNSUDP[0-9]+ DNSBL " $LOGFILE > $LOGTEMPDNS
+		egrep -a " SPFTCP[0-9]+ SPFBL " $LOGFILE > $LOGTEMP
+		egrep -a " DNSUDP[0-9]+ DNSBL " $LOGFILE > $LOGTEMPDNS
 	}
 
 	executaStats(){
