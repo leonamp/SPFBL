@@ -335,8 +335,10 @@ Lojas:<br>
 <a href="http://computerworld.com.br/provedores-preparam-blacklist-colaborativa-para-reduzir-taxa-de-spam-no-brasil">05/04/2018 ComputerWorld: Provedores preparam "blacklist colaborativa" para reduzir taxa de spam no Brasil.</a></br>
 
 
-### Forum de discussão SPFBL
-
-Todas as discussões e dúvidas sobre o SPFBL estão sendo tratadas através do forum:
+### Forum de discussão no Google Groups
 
 <https://groups.google.com/d/forum/spfbl>
+
+### Grupo de discussão no Telegram
+
+<https://t.me/joinchat/OVmFzhCawB5iYjk5>
