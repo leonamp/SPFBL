@@ -276,6 +276,10 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
+##### Tutorial: SPFBL local com Zimbra
+
+http://www.anahuac.eu/spfbl-local-com-zimbra-parte-i/
+
 ##### Integração com Exim
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Exim-SPFBL
@@ -327,8 +331,6 @@ Lojas:<br>
 <a href="http://multirbl.valli.org/lookup/">14/09/2016 Valli.org: O SPFBL.net entra na lista MultiRBL da valli.org.</a></br>
 
 <a href="http://nic.br/semanainfrabr/">09/12/2016 Nic.Br: VI Semana de Infraestrutura da Internet no Brasil.</a></br>
-
-<a href="http://www.dnsbl.info/">20/08/2017 DNSBL.info: O SPFBL.net entra na lista MultiRBL da dnsbl.info.</a></br>
 
 <a href="http://computerworld.com.br/provedores-preparam-blacklist-colaborativa-para-reduzir-taxa-de-spam-no-brasil">05/04/2018 ComputerWorld: Provedores preparam "blacklist colaborativa" para reduzir taxa de spam no Brasil.</a></br>
 
