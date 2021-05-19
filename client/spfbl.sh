@@ -25,7 +25,7 @@
 #
 # Atenção! Para utilizar este script é necessário ter o nmap instalado:
 #
-#   sudo apt-get install nmap
+#   sudo apt-get install nmap ncat
 #
 # Caso esteja usando o freebsb, instale o nmap por este método:
 #
