@@ -190,7 +190,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
-             "action=554 5.7.1 SPFBL message rejected due to receiver policy for SPF fail. Please see http://www.openspf.net/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address}\n\n"
+             "action=554 5.7.1 SPFBL message rejected due to receiver policy for SPF fail. Please see http://www.open-spf.org/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address}\n\n"
         );
     }
     elsif ( $result =~ /^SOFTFAIL / ) {
