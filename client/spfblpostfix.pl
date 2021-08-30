@@ -36,7 +36,7 @@
 #	check_policy_service unix:private/policy-spfbl,
 #	permit
 #
-# Última alteração: 15/03/2019 12:35
+# Última alteração: 30/08/2021
 
 use strict;
 use warnings;
@@ -99,7 +99,7 @@ while ( my $line = <STDIN> ) {
     }
     elsif ( $result =~ /^FLAG/ ) {
         STDOUT->print(
-             "action=PREPEND Received-SPFBL: $result\n\n"
+             "action=PREPEND X-Spam-Flag: YES\n\n"
         );
     }
     elsif ( $result =~ /^HOLD/ ) {
