@@ -25,7 +25,7 @@
 #
 # Atenção! Para utilizar este script é necessário ter o nmap instalado:
 #
-#   sudo apt-get install nmap ncat
+#   sudo apt-get install nmap
 #
 # Caso esteja usando o freebsb, instale o nmap por este método:
 #
@@ -44,7 +44,7 @@ MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.14"
+version="2.18"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -864,8 +864,10 @@ case $1 in
 						exit 3
 					elif [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					else
+					elif [[ $response == "NONE" ]]; then
 						exit 0
+					else
+						exit 1
 					fi
 				fi
 			;;
@@ -3198,16 +3200,18 @@ case $1 in
 
 		if [ $# -lt "3" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Date:[<date>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]'\n"
+			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Message-ID:[<messageid>]' 'In-Reply-To:[<inreplyto>]' 'Date:[<date>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]' 'Queue-ID:[<queueid>]'\n"
 		else
 			ticket=$2
 			from=$3
 			replyto=$4
-			date=$5
-			subject=$6
-			unsubscribe=$7
+			messageID=$5
+			date=$6
+			subject=$7
+			unsubscribe=$8
+			queueID=$9
 
-			response=$(echo "HEADER $ticket $from $replyto $date $subject $unsubscribe" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				$(incrementTimeout)
@@ -3238,6 +3242,60 @@ case $1 in
 				exit 7
 			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
+			else
+				exit 3
+			fi
+		fi
+	;;
+	'message')
+		# Códigos de saída:
+		#
+		#    0: gravado com sucesso.
+		#    1: registro de consulta não encontrado.
+		#    2: arquivo grande demais.
+		#    3: erro desconhecido.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 message <queueid>\n"
+		else
+			QUEUEID=$2
+			MESSAGE=$(exim -Mvc $QUEUEID)
+			
+			if [ $? -eq 0 ]; then
+			
+                                ENCODED=$(echo "$MESSAGE" | gzip --no-name --quiet --to-stdout | base64 --wrap=0)
+                                LENGTH=${#ENCODED}
+
+				if [ "$LENGTH" -gt "65535" ]; then
+					response="TOO BIG"
+				else
+					response=$(echo "MESSAGE $QUEUEID $ENCODED" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+				fi
+			else
+				response="NOT FOUND"
+			fi
+
+
+			if [[ $response == "" ]]; then
+				$(incrementTimeout)
+				if [ "$?" -le "$MAX_TIMEOUT" ]; then
+					response="TIMEOUT"
+				else
+					response="OUT OF SERVICE"
+				fi
+			else
+				$(resetTimeout)
+			fi
+
+			echo "$response"
+
+			if [[ $response == "STORED" ]]; then
+				exit 0
+			elif [[ $response == "NOT FOUND" ]]; then
+				exit 1
+			elif [[ $response == "TOO BIG" ]]; then
+				exit 2
 			else
 				exit 3
 			fi
@@ -3276,7 +3334,7 @@ case $1 in
 					response="TOO BIG"
 				else
 					ENCODED=$(base64 --wrap=0 $FILE.gz)
-					response=$(echo "BODY $TICKET $ENCODED" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "BODY $TICKET $ENCODED $CHARSET" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 				fi
 			else
 				response="NOT A FILE"
@@ -3310,78 +3368,138 @@ case $1 in
 		fi
 	;;
 	'holding')
-            run=0;
-            if [ -f "/var/tmp/SPFBL_HOLDING" ]; then
-                elapsed=$(($(date +%s) - $(date +%s -r /var/tmp/SPFBL_HOLDING)))
-                if [ $elapsed -gt 3600 ]; then
-                    run=1;
-                fi
-            else
-                run=1;
-            fi
-            if [ $run -eq 1 ]; then
-
-                touch /var/tmp/SPFBL_HOLDING
-		which exigrep > /dev/null
-
-		if [ $? -eq 0 ]; then
-
-			list=$(exiqgrep -z | egrep -o "([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}")
-
+	     if [ $# -eq 1 ]; then
+	     
+	            run=0;
+	            if [ -f "/var/tmp/SPFBL_HOLDING" ]; then
+	                elapsed=$(($(date +%s) - $(date +%s -r /var/tmp/SPFBL_HOLDING)))
+	                if [ $elapsed -gt 3600 ]; then
+	                    run=1;
+	                fi
+	            else
+	                run=1;
+	            fi
+	            if [ $run -eq 1 ]; then
+	
+	                touch /var/tmp/SPFBL_HOLDING
+			which exigrep > /dev/null
+	
 			if [ $? -eq 0 ]; then
+	
+				list=$(exiqgrep -z | egrep -o "([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}")
+	
+				if [ $? -eq 0 ]; then
+	
+					while read -r message; do
+	
+						ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD|FLAG) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+	
+						if [ $? -eq 0 ]; then
+	
+							response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
-				while read -r message; do
+							if [[ $response == "" ]]; then
 
-					ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD|FLAG) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+								# Manter a mensagem congelada.
+								echo "Message $message keep frozen."
 
-					if [ $? -eq 0 ]; then
+							elif [[ $response == "WHITE" ]]; then
 
-						response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+								# Liberar a mensagem congelada 
+								# e entregar imedatamente.
+								exim -Mt $message
+								exim -M $message &
 
-						if [[ $response == "" ]]; then
+							elif [[ $response == "ACCEPT" ]]; then
 
-							# Manter a mensagem congelada.
-							echo "Message $message keep frozen."
+								# Liberar a mensagem congelada.
+								exim -Mt $message
 
-						elif [[ $response == "WHITE" ]]; then
+							elif [[ $response == "ERROR" ]]; then
 
-							# Liberar a mensagem congelada 
-							# e entregar imedatamente.
-							exim -Mt $message
-							exim -M $message
+								# Manter a mensagem congelada.
+								echo "Message $message keep frozen."
 
-						elif [[ $response == "ACCEPT" ]]; then
+							elif [[ $response == "HOLD" ]]; then
 
-							# Liberar a mensagem congelada.
-							exim -Mt $message
+								# Manter a mensagem congelada.
+								echo "Message $message keep frozen."
 
-						elif [[ $response == "ERROR" ]]; then
+							elif [[ $response == "FLAG" ]]; then
 
-							# Manter a mensagem congelada.
-							echo "Message $message keep frozen."
+								# Liberar a mensagem congelada.
+								exim -Mt $message
 
-						elif [[ $response == "HOLD" ]]; then
+							else
 
-							# Manter a mensagem congelada.
-							echo "Message $message keep frozen."
+								# Remover a mensagem congelada.
+								exim -Mrm $message
 
-						elif [[ $response == "FLAG" ]]; then
-
-							# Liberar a mensagem congelada.
-							exim -Mt $message
-
-						else
-
-							# Remover a mensagem congelada.
-							exim -Mrm $message
-
+							fi
 						fi
-					fi
-				done <<< "$list"
+					done <<< "$list"
+				fi
 			fi
-		fi
-                rm /var/tmp/SPFBL_HOLDING
-            fi
+	                rm /var/tmp/SPFBL_HOLDING
+	          fi
+	          
+	     elif [ $# -eq 2 ]; then
+	     
+	          if [[ $2 =~ ^([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}$ ]]; then
+	          
+	          	message=$2
+	          	ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD|FLAG) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
+	
+			if [ $? -eq 0 ]; then
+	
+				response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+
+				if [[ $response == "" ]]; then
+
+					# Manter a mensagem congelada.
+					echo "Message $message keep frozen."
+
+				elif [[ $response == "WHITE" ]]; then
+
+					# Liberar a mensagem congelada 
+					# e entregar imedatamente.
+					exim -Mt $message &
+					exim -M $message &
+
+				elif [[ $response == "ACCEPT" ]]; then
+
+					# Liberar a mensagem congelada.
+					exim -Mt $message &
+
+				elif [[ $response == "ERROR" ]]; then
+
+					# Manter a mensagem congelada.
+					echo "Message $message keep frozen."
+
+				elif [[ $response == "HOLD" ]]; then
+
+					# Manter a mensagem congelada.
+					echo "Message $message keep frozen."
+
+				elif [[ $response == "FLAG" ]]; then
+
+					# Liberar a mensagem congelada.
+					exim -Mt $message &
+
+				else
+
+					# Remover a mensagem congelada.
+					exim -Mrm $message &
+
+				fi
+				
+				exit 0;
+		  	else
+		  		echo "Message $message not found."
+		  		exit 1;
+			fi
+	          fi
+             fi
 	;;
 	'ham')
 		# Este comando procura e extrai o ticket de consulta SPFBL de uma mensagem de e-mail se o parâmetro for um arquivo.
@@ -3520,6 +3638,7 @@ case $1 in
 		#    INVALID: o endereço do remetente é inválido.
 		#    WHITE: aceitar imediatamente a mensagem.
 		#    HOLD: congelar a entrega da mensagem.
+		#    BANNED: rejeitar a mensagem e derrubar a conexão.
 		#
 		# Códigos de saída:
 		#
@@ -3545,6 +3664,7 @@ case $1 in
 		#    19: inexistente.
 		#    20: out of service.
 		#    21: remetente inexistente.
+		#    22: remetente banido.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -3578,6 +3698,8 @@ case $1 in
 				exit 13
 			elif [[ $qualifier == "NXSENDER" ]]; then
 				exit 21
+			elif [[ $qualifier == "BANNED" ]]; then
+				exit 22
 			elif [[ $qualifier == "GREYLIST" ]]; then
 				exit 12
 			elif [[ $qualifier == "INVALID" ]]; then
@@ -4358,8 +4480,8 @@ case $1 in
 	}
 
 	criaLogTemp(){
-		egrep -a " SPFTCP[0-9]+ SPFBL " $LOGFILE > $LOGTEMP
-		egrep -a " DNSUDP[0-9]+ DNSBL " $LOGFILE > $LOGTEMPDNS
+		egrep " SPFTCP[0-9]+ SPFBL " $LOGFILE > $LOGTEMP
+		egrep " DNSUDP[0-9]+ DNSBL " $LOGFILE > $LOGTEMPDNS
 	}
 
 	executaStats(){
