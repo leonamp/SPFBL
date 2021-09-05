@@ -27,10 +27,10 @@ install() {
     sudo cpan -i -f Config::Std Net::IP Net::DNS Mail::SPF URI::Encode
     sudo cpan -i -f LWP::UserAgent HTTP::Request HTTP::Cookies JSON::XS
     cd /usr/local/bin/
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl -O spfbl.pl
     sudo chmod +x spfbl.pl
     cd /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl -O custom_end_mail_spfbl
     service exim restart
 }
 
