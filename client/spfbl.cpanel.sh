@@ -31,14 +31,10 @@ install() {
     else
       exit 1
     fi
-    cd /usr/local/bin/
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     sudo chmod +x spfbl.sh
-    mv spfbl.sh spfbl
-    cd /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl
-    cd /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl
     service exim restart
 }
 
