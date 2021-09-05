@@ -1,0 +1,52 @@
+  accept
+    authenticated = *
+  accept
+    condition = ${if def:acl_c_spfblticketset {false}{true}}
+  accept
+    condition = ${if eq {$acl_c_spfreceived}{15}{true}{false}}
+  warn
+    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
+    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
+    log_message = ${run{/usr/local/bin/spfbl holding "$h_Subject:"}{$value}{$value}}
+  discard
+    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
+    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
+    condition = ${if eq {$runrc}{0}{true}{false}}
+  deny
+    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
+    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
+    condition = ${if eq {$runrc}{1}{true}{false}}
+  warn
+    condition = ${if eq {${run{/usr/local/bin/spfbl header \
+                               '$acl_c_spfblticketset $acl_c_hreflists' \
+                               'From:${tr{$h_From:}{;'\r\n\t}{:´   }}' \
+                               'Reply-To:${address:$h_Reply-To:}' \
+                               'Message-ID:$h_Message-ID: In-Reply-To:$h_In-Reply-To:' \
+                               'Queue-ID:$message_exim_id' \
+                               'Date:$h_Date:' \
+                               'List-Unsubscribe:${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}'\
+                               'Subject:${tr{$h_Subject:}{'\r\n\t}{´   }}' \
+                          }{$runrc}{$runrc}}}{1}{true}{false}}
+  deny
+    condition = ${if eq {$runrc}{1}{true}{false}}
+    condition = ${if match {$value}{^BLOCKED https?://}{true}{false}}
+    message = 5.7.1 SPFBL $value
+    log_message = SPFBL check blocked.
+  deny
+    condition = ${if eq {$runrc}{1}{true}{false}}
+    message = 5.7.1 SPFBL blocked by unwanted content. See http://spfbl.net/en/feedback
+    log_message = SPFBL check blocked.
+  deny
+    condition = ${if eq {$runrc}{5}{true}{false}}
+    message = 5.7.1 SPFBL rejected by suspect content. See http://spfbl.net/en/feedback
+    log_message = SPFBL check reject.
+  accept
+    condition = ${if eq {$runrc}{6}{true}{false}}
+    add_header = X-Spam-Flag: YES
+  accept
+    condition = ${if eq {$runrc}{7}{true}{false}}
+    add_header = X-Spam-Flag: NO
+    control = freeze/no_tell
+  accept
+    condition = ${if eq {$runrc}{17}{true}{false}}
+    add_header = X-Spam-Flag: NO
