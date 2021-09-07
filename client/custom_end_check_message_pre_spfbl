@@ -5,18 +5,6 @@
   accept
     condition = ${if eq {$acl_c_spfreceived}{15}{true}{false}}
   warn
-    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
-    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
-    log_message = ${run{/usr/local/bin/spfbl holding "$h_Subject:"}{$value}{$value}}
-  discard
-    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
-    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
-    condition = ${if eq {$runrc}{0}{true}{false}}
-  deny
-    condition = ${if eq {${address:$h_From:}}{admin@spfbl.net}{true}{false}}
-    condition = ${if eq {$acl_c_local_part}{mailer-daemon}{true}{false}}
-    condition = ${if eq {$runrc}{1}{true}{false}}
-  warn
     condition = ${if eq {${run{/usr/local/bin/spfbl header \
                                '$acl_c_spfblticketset $acl_c_hreflists' \
                                'From:${tr{$h_From:}{;'\r\n\t}{:´   }}' \
