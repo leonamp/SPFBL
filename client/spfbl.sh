@@ -44,7 +44,7 @@ MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.18"
+version="2.19"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -3639,6 +3639,8 @@ case $1 in
 		#    WHITE: aceitar imediatamente a mensagem.
 		#    HOLD: congelar a entrega da mensagem.
 		#    BANNED: rejeitar a mensagem e derrubar a conexão.
+		#    RELEASE: liberar mensagem congelada na fila.
+		#    REMOVE: remover mensagem congelada na fila.
 		#
 		# Códigos de saída:
 		#
@@ -3665,6 +3667,9 @@ case $1 in
 		#    20: out of service.
 		#    21: remetente inexistente.
 		#    22: remetente banido.
+		#    23: mensagem liberada.
+		#    24: mensagem removida.
+		#    25: mensagem não encontrada.
 
 		if [ $# -lt "5" ]; then
 			head
@@ -3743,6 +3748,27 @@ case $1 in
 				exit 4
 			elif [[ $qualifier == "NEUTRAL "* ]]; then
 				exit 1
+			elif [[ $qualifier =~ ^RELEASE[[:space:]](.+)$ ]]; then
+				queueid="${BASH_REMATCH[1]}"
+				which exim > /dev/null
+			        if [ $? -eq 0 ]; then
+			            exim -Mt $queueid > /dev/null
+			            if [ $? -eq 0 ]; then
+			                exim -M $queueid > /dev/null &
+			                exit 23
+			            fi
+			        fi
+				exit 25
+			elif [[ $qualifier =~ ^REMOVE[[:space:]](.+)$ ]]; then
+				queueid="${BASH_REMATCH[1]}"
+				which exim > /dev/null	
+			        if [ $? -eq 0 ]; then
+			            exim -Mrm $queueid > /dev/null
+			            if [ $? -eq 0 ]; then
+			                exit 24
+			            fi
+			        fi
+				exit 25
 			else
 				exit 0
 			fi
