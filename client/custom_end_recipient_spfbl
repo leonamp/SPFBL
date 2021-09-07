@@ -58,6 +58,16 @@
   discard
     condition = ${if eq {$runrc}{11}{true}{false}}
     log_message = SPFBL check spamtrap.
+  discard
+    condition = ${if eq {$runrc}{23}{true}{false}}
+    log_message = SPFBL message released.
+  discard
+    condition = ${if eq {$runrc}{24}{true}{false}}
+    log_message = SPFBL message removed.
+  deny
+    condition = ${if eq {$runrc}{25}{true}{false}}
+    message = 5.6.6 Message not found in the queued
+    log_message = SPFBL message not found.
   defer
     condition = ${if eq {$runrc}{12}{true}{false}}
     message = 4.7.1 SPFBL greylisted message. See http://spfbl.net/en/feedback
