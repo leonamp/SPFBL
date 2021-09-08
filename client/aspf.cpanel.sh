@@ -29,12 +29,12 @@ install() {
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl -O /usr/local/bin/spfbl.pl
     sudo chmod +x spfbl.pl
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl
-    service exim restart
+    /usr/local/cpanel/scripts/restartsrv_exim
 }
 
 uninstall() {
     rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl
-    service exim restart
+    /usr/local/cpanel/scripts/restartsrv_exim
 }
 
 case "$1" in
