@@ -42,8 +42,9 @@ install() {
         /usr/local/cpanel/scripts/restartsrv_exim
     else
         myIP=$(curl -s http://checkip.amazonaws.com/)
+        myHOST=$(hostname)
         echo "Your cPanel doesn't have permission to access matrix.spfbl.net server yet."
-        echo "Please contact us to get your permission for IP [$myIP]."
+        echo "Please contact us to get your permission for the host $myHOST [$myIP]."
         echo "https://spfbl.net/en/contact"
     fi
 }
