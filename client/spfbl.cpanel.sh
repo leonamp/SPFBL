@@ -43,7 +43,7 @@ install() {
     else
         myIP=$(curl -s http://checkip.amazonaws.com/)
         echo "Your cPanel doesn't have permission to access matrix.spfbl.net server yet."
-        echo "Please contact us to get your permission for IP $myIP."
+        echo "Please contact us to get your permission for IP [$myIP]."
         echo "https://spfbl.net/en/contact"
     fi
 }
