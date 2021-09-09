@@ -2,7 +2,7 @@
 #
 # An advanced SPF cheker installer for cPanel.
 #
-# Usage:
+# Usage as root:
 #    ./aspf.cpanel.sh [install|uninstall] 
 #    
 # SPFBL is free software: you can redistribute it and/or modify
@@ -24,10 +24,10 @@
 # Version: 1.1
 
 install() {
-    sudo cpan -i -f Config::Std Net::IP Net::DNS Mail::SPF URI::Encode
-    sudo cpan -i -f LWP::UserAgent HTTP::Request HTTP::Cookies JSON::XS
+    cpan -i -f Config::Std Net::IP Net::DNS Mail::SPF URI::Encode
+    cpan -i -f LWP::UserAgent HTTP::Request HTTP::Cookies JSON::XS
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl -O /usr/local/bin/spfbl.pl
-    sudo chmod +x spfbl.pl
+    chmod +x /usr/local/bin/spfbl.pl
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
