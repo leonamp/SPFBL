@@ -33,11 +33,19 @@ install() {
     fi
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_begin_smtp_dkim_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl
-    /usr/local/cpanel/scripts/buildeximconf
-    /usr/local/cpanel/scripts/restartsrv_exim
+    /usr/local/bin/spfbl version
+    if [ $? -eq 0 ]; then
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_begin_smtp_dkim_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl
+        /usr/local/cpanel/scripts/buildeximconf
+        /usr/local/cpanel/scripts/restartsrv_exim
+    else
+        myIP=$(curl -s http://checkip.amazonaws.com/)
+        echo "Your cPanel doesn't have permission to access matrix.spfbl.net server yet."
+        echo "Please contact us to get your permission for IP $myIP."
+        echo "https://spfbl.net/en/contact"
+    fi
 }
 
 uninstall() {
