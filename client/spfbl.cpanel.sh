@@ -2,7 +2,7 @@
 #
 # An SPFBL Cheker installer for cPanel.
 #
-# Usage:
+# Usage as root:
 #    ./spfbl.cpanel.sh [install|uninstall] 
 #    
 # SPFBL is free software: you can redistribute it and/or modify
@@ -25,14 +25,14 @@
 
 install() {
     if command -v apt-get >/dev/null; then
-      sudo apt-get install nmap ncat
+      apt-get install nmap ncat
     elif command -v yum >/dev/null; then
       yum install -y nmap nc
     else
       exit 1
     fi
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
-    sudo chmod +x /usr/local/bin/spfbl
+    chmod +x /usr/local/bin/spfbl
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_begin_smtp_dkim_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl
