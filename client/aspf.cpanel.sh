@@ -34,7 +34,7 @@ install() {
 }
 
 uninstall() {
-    rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl
+    rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl 2> /dev/null
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
 }
