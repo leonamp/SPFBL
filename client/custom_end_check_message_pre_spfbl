@@ -6,7 +6,7 @@
     condition = ${if eq {$acl_c_spfreceived}{15}{true}{false}}
   warn
     condition = ${if eq {${run{/usr/local/bin/spfbl header \
-                               '$acl_c_spfblticketset' \
+                               '$acl_c_spfblticketset DKIM:$acl_c_dkim_domain_set' \
                                'From:${tr{$h_From:}{;'\r\n\t}{:´   }}' \
                                'Reply-To:${address:$h_Reply-To:}' \
                                'Message-ID:$h_Message-ID: In-Reply-To:$h_In-Reply-To:' \
