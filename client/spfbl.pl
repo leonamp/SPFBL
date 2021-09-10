@@ -95,7 +95,7 @@
 #
 #     Add this line in section "smtpd_recipient_restrictions" in main.cf file:
 #
-#         check_policy_service unix:private/policy-spfbl
+#         check_policy_service = unix:private/policy-spfbl
 #
 #     Keep this line comented at file main.cf:
 #
