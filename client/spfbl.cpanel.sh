@@ -36,7 +36,7 @@ install() {
     /usr/local/bin/spfbl version
     if [ $? -eq 0 ]; then
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_recipient_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl
-#        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_begin_smtp_dkim_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_begin_smtp_dkim_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_check_message_pre_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
