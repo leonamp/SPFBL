@@ -69,7 +69,6 @@ my $SHORTENERS = '^https?\:\/\/(1link\.in|1url\.com|2big\.at|2pl\.us|2tu\.us|2ya
 my $USERAGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:59.0) Gecko/20100101 Firefox/59.0';
 my $VALIDATOR = Data::Validate::URI->new();
 my $CLAMAV = ClamAV::Client->new(socket_name => '/var/run/clamav/clamd.ctl'); # Set the ClamaAV socket.
-#my $GSBKEY = 'AIzaSyCGteGhB7YI9JBeW6zIkuxx7svLwLgeKbA'; # Google SafeBrowsing API key.
 my $GSBKEY = ''; # Google SafeBrowsing API key.
 my $AGRESSIVE = 1; # Will visit all URL contents if 1 or only shorteners if 0.
 
