@@ -41,6 +41,7 @@ use HTML::Entities qw(decode_entities);
 use Email::Valid;
 use Set::Scalar;
 use WWW::Mechanize;
+use WWW::Mechanize::Firefox;
 use WWW::Scripter;
 use HTTP::Request;
 use Data::Validate::URI;
@@ -56,17 +57,19 @@ use File::Slurper qw(read_text write_text read_lines);
 use JSON::Parse qw(parse_json);
 use Image::ExifTool qw(:Public);
 use DateTime;
+use DateTime::Format::Strptime;
 use MIME::Lite;
 use IO::Handle;
 
-my $FINAL = '(/unsubscribe\.php?|(//|\.)facebook\.com/|(//|\.)instagram\.com/|(//|\.)twitter\.com/|(//|\.)linkedin\.com/|(//|\.)strava\.com/|(//|\.)youtube\.com/|(//|\.)myspace\.com/|(//|\.)support\.icewarp\.com/|(//|\.)google-analytics\.com/)'; # REGEX of all URLs that must be considered final. Do not access it!
+my $FINAL = '(/unsubscribe\.php?|(//|\.)facebook\.com/|(//|\.)instagram\.com/|(//|\.)twitter\.com/|(//|\.)linkedin\.com/|(//|\.)strava\.com/|(//|\.)youtube\.com/|(//|\.)myspace\.com/|(//|\.)support\.icewarp\.com/|(//|\.)google-analytics\.com/|(//|\.)hubspotemail\.net/|(//|\.)pinterest\.com/|(//|\.)list-manage\.com/|(//|\.)avast\.com/|(//|\.)sendgrid\.net/|(//|\.)rdstation\.com\.br/|(//|\.)rdstation\.email/|\.gov\.br/)'; # REGEX of all URLs that must be considered final. Do not access it!
 my $IGNORE = '((//|\.)avg\.com(/|$)|\.avast\.com(/|$)|//tinyurl\.com/nospam\.php?)'; # REGEX of all URLs that must be ignored.
-my $NOREDIR = '((//|\.)netflix\.com(/|$)|(//|\.)netflix\.com\.br(/|$))'; # REGEX to demilit redirecions. Do not redirect to it!
-my $SHORTENERS = '^https?\:\/\/(1link\.in|1url\.com|2big\.at|2pl\.us|2tu\.us|2ya\.com|4url\.cc|6url\.com|a\.gg|a\.nf|a2a\.me|abbrr\.com|adf\.ly|adjix\.com|alturl\.com|atu\.ca|b23\.ru|bacn\.me|bc\.vc|bit\.do|bit\.ly|bitly\.com|bkite\.com|bloat\.me|budurl\.com|buk\.me|burnurl\.com|buzurl\.com|c-o\.in|chilp\.it|clck\.ru|cli\.gs|clickmeter\.com|cort\.as|cur\.lv|cutt\.us|cuturl\.com|db\.tt|decenturl\.com|dfl8\.me|digbig\.com|digg\.com|doiop\.com|dwarfurl\.com|dy\.fi|easyuri\.com|easyurl\.net|eepurl\.com|esyurl\.com|ewerl\.com|fa\.b|ff\.im|fff\.to|fhurl\.com|filoops\.info|fire\.to|firsturl\.de|flic\.kr|fly2\.ws|fon\.gs|fwd4\.me|gl\.am|go\.9nl\.com|go2\.me|go2cut\.com|goo\.gl|goshrink\.com|gowat\.ch|gri\.ms|gurl\.es|hellotxt\.com|hex\.io|hover\.com|href\.in|htxt\.it|hugeurl\.com|hurl\.it|hurl\.me|hurl\.ws|icanhaz\.com|idek\.net|inreply\.to|is\.gd|iscool\.net|iterasi\.net|ity\.im|j\.mp|jijr\.com|jmp2\.net|just\.as|kissa\.be|kl\.am|klck\.me|korta\.nu|krunchd\.com|liip\.to|liltext\.com|lin\.cr|link\.zip\.net|linkbee\.com|linkbun\.ch|liurl\.cn|ln-s\.net|ln-s\.ru|lnk\.gd|lnk\.in|lnkd\.in|loopt\.us|lru\.jp|lt\.tl|lurl\.no|metamark\.net|migre\.me|minilien\.com|miniurl\.com|minurl\.fr|moourl\.com|myurl\.in|ne1\.net|njx\.me|nn\.nf|notlong\.com|nsfw\.in|o-x\.fr|om\.ly|ow\.ly|pd\.am|pic\.gd|ping\.fm|piurl\.com|pnt\.me|po\.st|poprl\.com|post\.ly|posted\.at|prettylinkpro\.com|profile\.to|q\.gs|qicute\.com|qlnk\.net|qr\.ae|qr\.net|quip-art\.com|rb6\.me|redirx\.com|ri\.ms|rickroll\.it|riz\.gd|rsmonkey\.com|ru\.ly|rubyurl\.com|s7y\.us|safe\.mn|scrnch\.me|sharein\.com|sharetabs\.com|shorl\.com|short\.ie|short\.to|shortlinks\.co\.uk|shortna\.me|shorturl\.com|shoturl\.us|shrinkify\.com|shrinkster\.com|shrt\.st|shrten\.com|shrunkin\.com|shw\.me|simurl\.com|sn\.im|snipr\.com|snipurl\.com|snurl\.com|sp2\.ro|spedr\.com|sqrl\.it|starturl\.com|sturly\.com|su\.pr|t\.co|tcrn\.ch|thrdl\.es|tighturl\.com|tiny\.cc|tiny\.pl|tiny123\.com|tinyarro\.ws|tinyarrows\.com|tinytw\.it|tinyuri\.ca|tinyurl\.com|tinyvid\.io|tnij\.org|to\.ly|togoto\.us|tr\.im|tr\.my|traceurl\.com|turo\.us|tweetburner\.com|tweez\.me|twirl\.at|twit\.ac|twitterpan\.com|twitthis\.com|twiturl\.de|twurl\.cc|twurl\.nl|u\.bb|u\.mavrev\.com|u\.nu|u\.to|u6e\.de|ub0\.cc|updating\.me|ur1\.ca|url\.co\.uk|url\.ie|url4\.eu|urlao\.com|urlbrief\.com|urlcover\.com|urlcut\.com|urlenco\.de|urlhawk\.com|urlkiss\.com|urlot\.com|urlpire\.com|urlx\.ie|urlx\.org|urlzen\.com|v\.gd|virl\.com|vl\.am|vzturl\.com|w3t\.org|wapurl\.co\.uk|wipi\.es|wp\.me|x\.co|x\.se|xaddr\.com|xeeurl\.com|xr\.com|xrl\.in|xrl\.us|xurl\.jp|xzb\.cc|yep\.it|yfrog\.com|yourls\.org|yweb\.com|zi\.ma|zi\.pe|zipmyurl\.com|zz\.gd|back\.ly|ouo\.io)\/'; # List of all know shorteners.
+my $NOREDIR = '((//|\.)netflix\.com(/|$)|(//|\.)netflix\.com\.br(/|$)|(//|\.)bgp\.net\.br(/|$))'; # REGEX to demilit redirecions. Do not redirect to it!
+my $SHORTENERS = '^https?\:\/\/(1link\.in|1url\.com|2big\.at|2pl\.us|2tu\.us|2ya\.com|4url\.cc|6url\.com|a\.gg|a\.nf|a2a\.me|abbrr\.com|adf\.ly|adjix\.com|alturl\.com|atu\.ca|b23\.ru|back\.ly|bacn\.me|bc\.vc|bit\.do|bit\.ly|bitly\.com|bkite\.com|bloat\.me|budurl\.com|buk\.me|burnurl\.com|buzurl\.com|c-o\.in|chilp\.it|clck\.ru|cli\.gs|clickmeter\.com|cort\.as|cur\.lv|cutt\.us|cuturl\.com|db\.tt|decenturl\.com|dfl8\.me|digbig\.com|digg\.com|doiop\.com|dwarfurl\.com|dy\.fi|easyuri\.com|easyurl\.net|eepurl\.com|esyurl\.com|ewerl\.com|fa\.b|ff\.im|fff\.to|fhurl\.com|filoops\.info|fire\.to|firsturl\.de|flic\.kr|fly2\.ws|fon\.gs|fwd4\.me|gl\.am|go\.9nl\.com|go2\.me|go2cut\.com|goo\.gl|goshrink\.com|gowat\.ch|gri\.ms|gurl\.es|hellotxt\.com|hex\.io|hover\.com|href\.in|htxt\.it|hugeurl\.com|hurl\.it|hurl\.me|hurl\.ws|icanhaz\.com|idek\.net|inreply\.to|inx\.lv|is\.gd|iscool\.net|iterasi\.net|ity\.im|j\.mp|jijr\.com|jmp2\.net|just\.as|kissa\.be|kl\.am|klck\.me|korta\.nu|krunchd\.com|liip\.to|liltext\.com|lin\.cr|link\.zip\.net|linkbee\.com|linkbun\.ch|liurl\.cn|ln-s\.net|ln-s\.ru|lnk\.gd|lnk\.in|lnkd\.in|loopt\.us|lru\.jp|lt\.tl|lurl\.no|metamark\.net|migre\.me|minilien\.com|miniurl\.com|minurl\.fr|moourl\.com|myurl\.in|ne1\.net|njx\.me|nn\.nf|notlong\.com|nsfw\.in|o-x\.fr|om\.ly|ouo\.io|ow\.ly|pd\.am|pic\.gd|ping\.fm|piurl\.com|pnt\.me|po\.st|poprl\.com|post\.ly|posted\.at|prettylinkpro\.com|profile\.to|q\.gs|qicute\.com|qlnk\.net|qr\.ae|qr\.net|quip-art\.com|rb6\.me|redirx\.com|ri\.ms|rickroll\.it|riz\.gd|rsmonkey\.com|ru\.ly|rubyurl\.com|s7y\.us|safe\.mn|scrnch\.me|sharein\.com|sharetabs\.com|shorl\.com|short\.ie|short\.to|shortlinks\.co\.uk|shortna\.me|shorturl\.com|shoturl\.us|shrinkify\.com|shrinkster\.com|shrt\.st|shrten\.com|shrunkin\.com|shw\.me|simurl\.com|sn\.im|snipr\.com|snipurl\.com|snurl\.com|sp2\.ro|spedr\.com|sqrl\.it|starturl\.com|sturly\.com|su\.pr|t\.co|tcrn\.ch|thrdl\.es|tighturl\.com|tiny\.cc|tiny\.pl|tiny123\.com|tinyarro\.ws|tinyarrows\.com|tinytw\.it|tinyuri\.ca|tinyurl\.com|tinyvid\.io|tnij\.org|to\.ly|togoto\.us|tr\.im|tr\.my|traceurl\.com|turo\.us|tweetburner\.com|tweez\.me|twirl\.at|twit\.ac|twitterpan\.com|twitthis\.com|twiturl\.de|twurl\.cc|twurl\.nl|u\.bb|u\.mavrev\.com|u\.nu|u\.to|u6e\.de|ub0\.cc|ulvis\.net|updating\.me|ur1\.ca|url\.co\.uk|url\.ie|url4\.eu|urlao\.com|urlbrief\.com|urlcover\.com|urlcut\.com|urlenco\.de|urlhawk\.com|urlkiss\.com|urlot\.com|urlpire\.com|urlx\.ie|urlx\.org|urlzen\.com|v\.gd|virl\.com|vl\.am|vzturl\.com|w3t\.org|wapurl\.co\.uk|we\.tl|wipi\.es|wp\.me|x\.co|x\.se|xaddr\.com|xeeurl\.com|xr\.com|xrl\.in|xrl\.us|xurl\.es|xurl\.jp|xzb\.cc|yep\.it|yfrog\.com|yourls\.org|yweb\.com|zi\.ma|zi\.pe|zipmyurl\.com|zz\.gd|ujeb\.se|soo\.gd|gee\.su|gmy\.su|v\.ht|tini\.to)\/'; # List of all know shorteners.
 
 my $USERAGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:59.0) Gecko/20100101 Firefox/59.0';
 my $VALIDATOR = Data::Validate::URI->new();
 my $CLAMAV = ClamAV::Client->new(socket_name => '/var/run/clamav/clamd.ctl'); # Set the ClamaAV socket.
+#my $GSBKEY = 'AIzaSyCGteGhB7YI9JBeW6zIkuxx7svLwLgeKbA'; # Google SafeBrowsing API key.
 my $GSBKEY = ''; # Google SafeBrowsing API key.
 my $AGRESSIVE = 1; # Will visit all URL contents if 1 or only shorteners if 0.
 
@@ -97,7 +100,7 @@ sub redirectionHTML {
 # Search JavaScript redirection.
 sub redirectionJavascript {
     eval {
-        my ($tree, $uri) = @_;
+        my ($addressset, $tree, $uri) = @_;
         my $head = $tree->look_down(_tag => q{head});
         for my $script ($head->look_down(_tag => 'script')) {
             my $type = $script->attr('type');
@@ -173,6 +176,13 @@ sub redirectionJavascript {
                     }
                 }
             }
+            for my $script ($tree->look_down(_tag => 'script')) {
+                my @content = $script->content_list();
+                my $content = @content[0];
+                if ($content =~ m/\blocation\.pathname = document\.getElementById\('[^']+'\)\.getAttribute\('[^']+'\);/gi) {
+                    $addressset->insert("MALWARE=SPFBL.HTML.Redirect.Evasion");
+                }
+            }
         }
         return;
     };
@@ -197,11 +207,11 @@ sub redirectionBitly {
 
 # Search for any redirection.
 sub redirection {
-    my ($tree, $uri) = @_;
+    my ($addressset, $tree, $uri) = @_;
     my $redir;
     if ($redir = redirectionHTML($tree)) {
         return $redir;
-    } elsif ($redir = redirectionJavascript($tree, $uri)) {
+    } elsif ($redir = redirectionJavascript($addressset, $tree, $uri)) {
         return $redir;
     } elsif (($uri =~ m/https?\:\/\/bit\.ly\//i) && ($redir = redirectionBitly($tree))) {
         return $redir;
@@ -228,9 +238,7 @@ sub logWrite {
     eval {
         Exim::log_write($text);
     };
-#    if ($@) {
-#        print("$text\n");
-#    }
+#    print("$text\n");
 }
 
 # Calculate MD5 hex sum of a file.
@@ -266,6 +274,8 @@ sub processExecutable {
     if ($result) {
         $addressset->insert("MALWARE=$result");
         logWrite("MLWR $result");
+    } elsif ($extension =~ m/^(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|shs|js|hta|msi)$/i) {
+        $addressset->insert("MALWARE=SPFBL.Executable.$extension");
     }
     return $name;
 }
@@ -296,6 +306,7 @@ sub checkFile {
             my $info = ImageInfo($filename);
             my $target = $info->{TargetFileDOSName};
             if ($target eq 'msiexec.exe') {
+                $addressset->insert("MALWARE=SPFBL.Script.msiexec.exe");
                 my $arguments = $info->{CommandLineArguments};
                 if ($arguments =~ m/\/i +(https?\:\/\/[A-Za-z0-9\-\._~!\$&\(\)\*+,;=:\/?@]+)\b/i) {
                     $uriset->insert(uri_decode($1));
@@ -311,6 +322,7 @@ sub checkFile {
             $executable = processExecutable($filename, $extension, $addressset);
         } else {
             my $type = `file --brief --mime-type "$filename"`;
+            print("$type\n");
             $type =~ s/\n//g;
             if ($content_type ne '') {
                 if ($type eq 'text/plain') {
@@ -329,7 +341,20 @@ sub checkFile {
                     $type = 'application/x-msmetafile';
                 }
             }
-            if ($type eq 'application/x-dosexec') {
+            if ($type eq 'application/msword' || $filename =~ m/\.doc$/i) {
+                logWrite("FILE $content_type $filename");
+                my $code = system("egrep --binary --ignore-case '\\b(AutoOpen|Document_Open|word/vbaProject\\.bin)\\b' '$filename' > /dev/null");
+                if ($code == 0) {
+                    $executable = processExecutable($filename, 'doc', $addressset);
+                    $addressset->insert("MALWARE=SPFBL.Document.AutoOpen.doc");
+                } else {
+                    my $result = clamavScan($filename);
+		    if ($result) {
+		        $addressset->insert("MALWARE=$result");
+		        logWrite("MLWR $result");
+                    }
+                }
+            } elsif ($type eq 'application/x-dosexec') {
                 $executable = processExecutable($filename, 'exe', $addressset);
             } elsif ($type eq 'text/x-msdos-batch') {
                 $executable = processExecutable($filename, 'cmd', $addressset);
@@ -356,8 +381,11 @@ sub checkFile {
                     my $list = `unzip -Z -1 '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/i) {
+                        if ($line =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/i) {
                             $executable = processExecutable($filename, 'zip', $addressset);
+                            if ($line =~ m/\.doc$/i) {
+                                $addressset->insert("MALWARE=SPFBL.Encrypted.doc");
+                            }
                             last;
                         }
                     }
@@ -397,7 +425,7 @@ sub checkFile {
                     my $list = `7z l -bd '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/i) {
+                        if ($line =~ m/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/i) {
                             $executable = processExecutable($filename, '7z', $addressset);
                             last;
                         }
@@ -418,7 +446,7 @@ sub checkFile {
                     my $list = `unrar l '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/..[rwx-]{9} +[0-9]+  [0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}  .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)/i) {
+                        if ($line =~ m/..[rwx-]{9} +[0-9]+  [0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}  .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)/i) {
                             $executable = processExecutable($filename, 'rar', $addressset);
                             last;
                         }
@@ -461,7 +489,7 @@ sub signature {
             return "$signature.$host.$port.$protocol";
         } elsif ($key =~ m/^[0-9a-f]{32}(\.[a-z0-9_-]+)+\.[0-9]+\.https?$/) {
             return $key;
-        } elsif ($key =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/) {
+        } elsif ($key =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
             return $key;
         } elsif ($key =~ m/^MALWARE=/) {
             return $key;
@@ -558,6 +586,33 @@ sub appendCache {
     };
 }
 
+sub storeParameter {
+    eval {
+        my ($folder, $name, $value) = @_;
+        if (-d $folder && $value) {
+           my $file = "$folder/$name";
+           write_text($file, $value);
+           chmod 0664, $file;
+        }
+    };
+}
+
+sub loadParameter {
+    eval {
+        my ($folder, $name, $standard) = @_;
+        if (-d $folder) {
+            my $file = "$folder/$name";
+            if (-e $file) {
+                my $value = read_text($file);
+                if ($value) {
+                    return $value;
+                }
+            }
+        }
+        return $standard;
+    };
+}
+
 sub repath {
     my ($uri, $location) = @_;
     if ($location =~ m/^mailto:([^?]*)/) {
@@ -598,12 +653,11 @@ sub repath {
 sub processURI {
     my ($uriset, $addressset, $dir, $getall, $suspect) = @_;
     if ($uriset) {
-        my $start = DateTime->now();
         my $ua = WWW::Mechanize->new(keep_alive => 0, timeout => 5, autocheck => 0);
-#        my $ua = WWW::Scripter->new(keep_alive => 0, timeout => 5, autocheck => 0, show_progress => 0);
-#        $ua->use_plugin('JavaScript');
         $ua->agent($USERAGENT);
         $ua->requests_redirectable(['HEAD']);
+        # Redirect check.
+        my $start = DateTime->now();
         my $redircount = 0;
         my $visitedset = new Set::Scalar->new;
         my $errorset = new Set::Scalar->new;
@@ -611,12 +665,23 @@ sub processURI {
         while ($uriset) {
             my $uri = @$uriset[0];
             $uriset->delete($uri);
+            if (startsWith($uri, 'https://www.google.com/url?q=http')) {
+                # Decode Google redirection.
+                my $length = length($uri);
+                $uri = substr($uri, 29, $length);
+                $uri = uri_decode($uri);
+            } elsif (startsWith($uri, 'http://www.google.com/url?q=http')) {
+                # Decode Google redirection.
+                my $length = length($uri);
+                $uri = substr($uri, 28, $length);
+                $uri = uri_decode($uri);
+            }
             if (!$visitedset->contains($uri)) {
                 $visitedset->insert($uri);
                 if ($uri !~ m/$FINAL/gi) {
                     my $cache = loadCache('/var/spfbl', $uri, 1);
-                    if ($cache eq '200') {
-                    	# Do nothing.
+                    if ($cache eq '201') {
+                    	$successset->insert($uri);
                     } elsif ($cache eq '404') {
                         $errorset->insert($uri);
                     	next;
@@ -630,8 +695,11 @@ sub processURI {
                     	next;
                     } elsif ($cache =~ m/^MALWARE=/) {
                         $addressset->insert($cache);
+                        $successset->insert($uri);
                         next;
-                    } elsif ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/) {
+                    } elsif ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+                        my $signature = signature($uri);
+                        $addressset->insert($signature);
                         $addressset->insert($cache);
                         my $filename = "/var/spfbl/$cache";
                         if (-e $filename) {
@@ -656,10 +724,9 @@ sub processURI {
                             my $filename = $response->filename;
                             my $type = $response->header('Content-Type');
                             (my $mime) = $type =~ m/^[a-z]+\/[a-z0-9+.-]+\b/g;
-                            
                             if ($mime eq 'text/html') {
                                 my $tree = HTML::TreeBuilder->new_from_content($response->decoded_content);
-                                my $redir = redirection($tree, $uri);
+                                my $redir = redirection($addressset, $tree, $uri);
                                 if ($redir =~ m/^https?\:\/\//i) {
                                     if ($redircount++ < 32) {
                                         $uriset->insert(uri_decode($redir));
@@ -673,11 +740,74 @@ sub processURI {
                                 } else {
                                     storeCache('/var/spfbl', $uri, '200');
                                 }
-                            } elsif ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|zip|gz|tar|rar|7z)$/i) {
+                            } elsif ($mime eq 'application/msword') {
+                                my $headers = $response->headers;
+                                my $length = $headers->content_length;
+                                if ($length < 1048576) {
+                                    logWrite("WGET $mime $uri");
+                                    eval {
+                                        my $folder = $dir."download";
+                                        system("mkdir '$folder'");
+                                        $filename = "$folder/$filename";
+                                        open FILE, ">", $filename;
+                                        binmode FILE;
+                                        print FILE $response->decoded_content;
+                                        close FILE;
+                                        logWrite("FILE $mime $filename");
+                                        my $code = system("egrep --binary --ignore-case '\\b(AutoOpen|Document_Open|word/vbaProject\\.bin)\\b' '$filename' > /dev/null");
+                                        if ($code == 0) {
+                                            processExecutable($filename, 'doc', $addressset);
+                                            $addressset->insert("MALWARE=SPFBL.Document.AutoOpen.doc");
+                                        } else {
+                                            my $result = clamavScan($filename);
+                                            if ($result) {
+                                                $addressset->insert("MALWARE=$result");
+                                                logWrite("MLWR $result");
+                                            }
+                                        }
+                                        system("rm -R '$folder'");
+                                    };
+                                }
+                            } elsif ($mime eq 'application/pdf') {
+                                my $headers = $response->headers;
+                                my $length = $headers->content_length;
+                                if ($length < 1048576) {
+                                    logWrite("WGET $mime $uri");
+                                    eval {
+                                        my $folder = $dir."download";
+                                        system("mkdir '$folder'");
+                                        $filename = "$folder/$filename";
+                                        my $name;
+                                        if (-e $filename) {
+                                            my $result = clamavScan($filename);
+                                            if ($result) {
+                                                $addressset->insert("MALWARE=$result");
+                                                logWrite("MLWR $result");
+                                                storeCache('/var/spfbl', $uri, "MALWARE=$result");
+                                            }
+                                        } else {
+                                            open FILE, ">", $filename;
+                                            binmode FILE;
+                                            print FILE $response->decoded_content;
+                                            close FILE;
+                                            my $result = clamavScan($filename);
+                                            if ($result) {
+                                                $addressset->insert("MALWARE=$result");
+                                                logWrite("MLWR $result");
+                                                storeCache('/var/spfbl', $uri, "MALWARE=$result");
+                                            }
+                                            unlink($filename);
+                                        }
+                                        system("rm -R '$folder'");
+                                    };
+                                }
+                            } elsif ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip|gz|tar|rar|7z|z)$/i) {
                                 my $extension = lc($1);
                                 my $headers = $response->headers;
                                 my $length = $headers->content_length;
                                 if ($length < 1048576) {
+                                    my $signature = signature($uri);
+                                    $addressset->insert($signature);
                                     logWrite("WGET $mime $uri");
                                     eval {
                                         my $folder = $dir."download";
@@ -701,6 +831,7 @@ sub processURI {
                                     storeCache('/var/spfbl', $uri, '200');
                                 }
                             }
+                            $successset->insert($uri);
                         } elsif ($response->code == 404) {
                             $errorset->insert($uri);
                             storeCache('/var/spfbl', $uri, '404');
@@ -737,10 +868,14 @@ sub processURI {
                             } else {
                                 storeCache('/var/spfbl', $uri, '200');
                             }
+                            $successset->insert($uri);
+                        } else {
+                            $successset->insert($uri);
                         }
+                    } elsif ($cache eq '') {
+                        $successset->insert($uri);
                     }
                 }
-                $successset->insert($uri);
             }
         }
         my $processset;
@@ -754,177 +889,273 @@ sub processURI {
                 if ($uri =~ m/^https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?(\/|\?|#|$)/i) {
                     my $host = lc($1);
                     if (is_ipv4($host)) {
+                        my $signature = signature($uri);
                         $addressset->insert($host);
+                        $addressset->insert($signature);
                     } elsif ($host =~ /\[([a-f0-9\:]+)\]/ && is_ipv6($1)) {
+                        my $signature = signature($uri);
                         $addressset->insert(lc(ip_expand_address($1, 6)));
+                        $addressset->insert($signature);
                     } elsif (is_domain($host)) {
                         $addressset->insert($host);
                     }
                 }
             }
         }
-        if ($suspect && $GSBKEY && $visitedset) {
-            eval {
-                my $entrieset = new Set::Scalar->new;
-                for my $uri ($visitedset->elements) {
-                    if ($VALIDATOR->is_uri($uri) && $uri !~ m/$SHORTENERS/i) {
-                        if ($uri =~ m/^https?\:\/\/(([a-z0-9\_-]+\.)+[a-z0-9\_-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?(\/|\?|#|$)/i) {
-                            my @threats = linesCache('/var/spfbl/gsb', $uri);
-                            if (@threats > 0 && $threats[0] eq '200') {
-                                for (my $i=1; $i < @threats; $i++) {
-                                    my $threat = $threats[$i];
-                                    $addressset->insert("MALWARE=Google.SafeBrowsing.$threat");
-                                }
-                            } else {
-                                $entrieset->insert($uri);
-                                storeCache('/var/spfbl/gsb', $uri, "200\n");
-                            }
-                        }
-                    }
-                }
-                if ($entrieset) {
-                    my $request = '{';
-                    $request = join("\n", $request, '  "client": {');
-                    $request = join("\n", $request, '    "clientId":      "SPFBL",');
-                    $request = join("\n", $request, '    "clientVersion": "2.9.0"');
-                    $request = join("\n", $request, '  },');
-                    $request = join("\n", $request, '  "threatInfo": {');
-                    $request = join("\n", $request, '    "threatTypes":      ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],');
-                    $request = join("\n", $request, '    "platformTypes":    ["LINUX", "ANDROID", "OSX", "IOS", "WINDOWS"],');
-                    $request = join("\n", $request, '    "threatEntryTypes": ["URL"],');
-                    $request = join("\n", $request, '    "threatEntries": [');
-                    for my $uri ($entrieset->elements) {
-                        $request = join("\n", $request, "      {\"url\": \"$uri\"},");
-                    }
-                    $request = join("\n", $request, '    ]');
-                    $request = join("\n", $request, '  }');
-                    $request = join("\n", $request, '}');
-                    my $url = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=$GSBKEY";
-                    my $response = $ua->post($url, 'Content-Type' => 'application/json', Content => $request);
-                    if ($response->code == 200) {
-                        foreach my $match (@{parse_json($response->decoded_content)->{'matches'}}) {
-                            my $threat = $match->{'threatType'};
-                            $addressset->insert("MALWARE=Google.SafeBrowsing.$threat");
-                            my $url = $match->{'threat'}->{'url'};
-                            appendCache('/var/spfbl/gsb', $url, $threat);
-                        }
-                    } else {
-                        my $code = $response->code;
-                        my $content = $response->decoded_content;
-                        logWrite("ERROR $code $visitedset");
-                        for my $uri ($entrieset->elements) {
-                            storeCache('/var/spfbl/gsb', $uri, "$code\n");
-                        }
-                    }
-                }
-            };
+        if ($getall && $suspect && $GSBKEY && $successset) {
+            # Google Safe Browsing.
+            my $gsbTime = loadParameter('/var/tmp', 'GSB_BEGIN_TIME', '2001-01-01T00:00:00');
+            my $strp = DateTime::Format::Strptime->new( pattern => '%Y-%m-%dT%H:%M:%S' );
+            my $gsbDate = $strp->parse_datetime( $gsbTime );
+            my $now = DateTime->now();
+            if ($now > $gsbDate) {
+	        eval {
+		    my $entrieset = new Set::Scalar->new;
+		    for my $uri ($successset->elements) {
+		        if ($VALIDATOR->is_uri($uri) && $uri !~ m/$SHORTENERS/i) {
+			    if ($uri =~ m/^https?\:\/\/(([a-z0-9\_-]+\.)+[a-z0-9\_-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?(\/|\?|#|$)/i) {
+			        my @threats = linesCache('/var/spfbl/gsb', $uri);
+			        if (@threats > 0 && $threats[0] eq '200') {
+				    my $host = lc($1);
+				    if (is_ipv4($host)) {
+				        $addressset->insert("MALWARE=Google.SafeBrowsing.IP");
+				    } elsif ($host =~ /\[([a-f0-9\:]+)\]/ && is_ipv6($1)) {
+				        $addressset->insert("MALWARE=Google.SafeBrowsing.IP");
+				    } elsif (is_domain($host)) {
+				        $addressset->insert("MALWARE=Google.SafeBrowsing.$host");
+			            }
+			            my $signature = signature($uri);
+                        	    $addressset->insert($signature);
+			        } else {
+			            my $index = index($uri, '?');
+			            if ($index > 0) {
+			                $uri = substr($uri, 0, $index);
+			            }
+				    $entrieset->insert($uri);
+				    storeCache('/var/spfbl/gsb', $uri, "200\n");
+			        }
+			    }
+		        }
+		    }
+		    if ($entrieset) {
+		        my $request = '{';
+		        $request = join("\n", $request, '  "client": {');
+		        $request = join("\n", $request, '    "clientId":      "SPFBL",');
+		        $request = join("\n", $request, '    "clientVersion": "2.9.0"');
+		        $request = join("\n", $request, '  },');
+		        $request = join("\n", $request, '  "threatInfo": {');
+		        $request = join("\n", $request, '    "threatTypes":      ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],');
+		        $request = join("\n", $request, '    "platformTypes":    ["LINUX", "ANDROID", "OSX", "IOS", "WINDOWS"],');
+		        $request = join("\n", $request, '    "threatEntryTypes": ["URL"],');
+		        $request = join("\n", $request, '    "threatEntries": [');
+		        for my $uri ($entrieset->elements) {
+                            logWrite("GSBR $uri");
+			    $request = join("\n", $request, "      {\"url\": \"$uri\"},");
+		        }
+		        $request = join("\n", $request, '    ]');
+		        $request = join("\n", $request, '  }');
+		        $request = join("\n", $request, '}');
+		        my $url = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=$GSBKEY";
+		        my $response = $ua->post($url, 'Content-Type' => 'application/json', Content => $request);
+		        if ($response->code == 200) {
+			    foreach my $match (@{parse_json($response->decoded_content)->{'matches'}}) {
+			        my $threat = $match->{'threatType'};
+			        my $url = $match->{'threat'}->{'url'};
+			        appendCache('/var/spfbl/gsb', $url, $threat);
+			        if ($url =~ m/^https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?(\/|\?|#|$)/i) {
+			            my $host = lc($1);
+			            if (is_ipv4($host)) {
+			                $addressset->insert("MALWARE=Google.SafeBrowsing.IP");
+			            } elsif ($host =~ /\[([a-f0-9\:]+)\]/ && is_ipv6($1)) {
+			                $addressset->insert("MALWARE=Google.SafeBrowsing.IP");
+			            } elsif (is_domain($host)) {
+			                $addressset->insert("MALWARE=Google.SafeBrowsing.$host");
+			            }
+			            my $signature = signature($url);
+                        	    $addressset->insert($signature);
+			        }
+			    }
+		        } elsif ($response->code == 400) {
+		            my $content = $response->decoded_content;
+		            logWrite("WARN Google Safe Browsing received an invalid parameter: $content");
+		        } elsif ($response->code == 401) {
+		            $gsbDate = DateTime->now( time_zone => 'UTC' );
+		            $gsbDate->add( years => 1 );
+		            my $value = $gsbDate->stringify();
+		            storeParameter('/var/tmp', 'GSB_BEGIN_TIME', $value);
+		            logWrite('WARN Google Safe Browsing was disabled by invalid credentials.');
+		        } elsif ($response->code == 403) {
+		            $gsbDate = DateTime->now( time_zone => 'UTC' );
+		            $gsbDate->add( hours => 1 );
+		            my $value = $gsbDate->stringify();
+		            storeParameter('/var/tmp', 'GSB_BEGIN_TIME', $value);
+		            logWrite('WARN Google Safe Browsing paused for a while by quota exceeded.');
+		        } elsif ($response->code == 429) {
+		            $gsbDate = DateTime->now( time_zone => 'UTC' );
+		            $gsbDate->add( hours => 1 );
+		            my $value = $gsbDate->stringify();
+		            storeParameter('/var/tmp', 'GSB_BEGIN_TIME', $value);
+		            logWrite('WARN Google Safe Browsing paused for a while by resource exhausted.');
+		        } else {
+			    my $code = $response->code;
+			    my $content = $response->decoded_content;
+			    logWrite("ERROR $code $uriset");
+			    for my $uri ($entrieset->elements) {
+			        storeCache('/var/spfbl/gsb', $uri, "$code\n");
+			    }
+		        }
+		    }
+	        };
+	    }
         }
     }
 }
 
 # Exim function to get HREF address list.
 sub getListHREF {
-    my ($filename, $content_type, $getall, $suspect) = @_;
-    if (-e $filename) {
-        $filename = abs_path($filename);
-        my ($volume,$dir,$file) = File::Spec->splitpath($filename);
+    my ($filenames, $getall, $suspect, $recipient) = @_;
+#    logWrite("MIME $filenames");
+    my @fields = split(';' , $filenames);
+    my $n = scalar(@fields);
+    if ($n < 2) {
+        return '';
+    } else {
+        my $folder;
         my $uriset = new Set::Scalar->new;
         my $addressset = new Set::Scalar->new;
-        my $tree;
-        if ($content_type eq 'text/html') {
-            $tree = HTML::TreeBuilder->new_from_file($filename);
-        } elsif ($content_type eq 'text/plain') {
-            $tree = HTML::TreeBuilder->new_from_file($filename);
-        } elsif ($content_type eq 'application/pdf') {
-            system("pdftohtml -i -noframes '$filename' '$filename.html'");
-            if (-e "$filename.html") {
-                $tree = HTML::TreeBuilder->new_from_file("$filename.html");
-                system("rm '$filename.html'");
+        for (my $i=1; $i < $n; $i++) {
+            my $filename = @fields[$i-1];
+            if (-e $filename) {
+                $filename = abs_path($filename);
+                my $content_type = @fields[$i];
+                my ($volume,$dir,$file) = File::Spec->splitpath($filename);
+                my $size = -s $filename;
+                logWrite("MIME $file $content_type $size");
+                my $tree;
+                if ($content_type eq 'text/html') {
+                    $tree = HTML::TreeBuilder->new_from_file($filename);
+                } elsif ($content_type eq 'text/plain') {
+                    $tree = HTML::TreeBuilder->new_from_file($filename);
+                } elsif ($content_type eq 'application/pdf') {
+                    system("pdftohtml -i -noframes '$filename' '$filename.html'");
+                    if (-e "$filename.html") {
+                        $tree = HTML::TreeBuilder->new_from_file("$filename.html");
+                        system("rm '$filename.html'");
+                    }
+                } elsif ($content_type eq 'application/msword' || $filename =~ m/\.doc$/i) {
+                    checkFile($dir, $filename, $content_type, $uriset, $addressset);
+                } elsif ($suspect) {
+                    checkFile($dir, $filename, $content_type, $uriset, $addressset);
+                }
+                if ($tree) {
+                    $folder = $dir;
+                    my $redir = redirection($addressset, $tree);
+                    if ($redir =~ m/^https?\:\/\//i) {
+                        $uriset->insert(uri_decode($redir));
+                    } elsif ($redir =~ m/^MALWARE=/) {
+                        $addressset->insert($redir);
+                    } else {
+                        for my $element ($tree->look_down(_tag => 'a', href => qr/./)) {
+                            my $uri = $element->attr('href');
+                            if ($uri =~ m/^mailto:([^?]*)/) {
+                                if ($addressset->size < 8) {
+                                    my $email = $1;
+                                    if ($email =~ m/<(.+)>/) {
+                                        $email = $1;
+                                    }
+                                    if (Email::Valid->address($email)) {
+                                        $addressset->insert(lc($email));
+                                    }
+                                }
+                            } elsif ($uri =~ m/^https?\:\/\//i && $VALIDATOR->is_uri($uri)) {
+                                $uriset->insert(uri_decode($uri));
+                            }
+                        }
+                        for my $element ($tree->look_down(_tag => 'area', href => qr/./)) {
+                            my $uri = $element->attr('href');
+                            if ($uri =~ m/^mailto:([^?]*)/) {
+                                if ($addressset->size < 8) {
+                                    my $email = $1;
+                                    if ($email =~ m/<(.+)>/) {
+                                        $email = $1;
+                                    }
+                                    if (Email::Valid->address($email)) {
+                                        $addressset->insert(lc($email));
+                                    }
+                                }
+                            } elsif ($uri =~ m/^https?\:\/\//i && $VALIDATOR->is_uri($uri)) {
+                                $uriset->insert(uri_decode($uri));
+                            }
+                        }
+                    }
+                    my $body = $tree->look_down(_tag => q{body});
+                    
+                    ############################################################
+                    if ($body->as_text =~ /\b$recipient[^[:graph:]]+(https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?[a-z0-9\-\._~!\$&\(\)\*+,;\=:\/?@#]*)\b/gi) {
+                        my $url = $1;
+                        if ($url =~ m/$SHORTENERS/i) {
+                            $addressset->insert("MALWARE=SPFBL.Body.Scam");
+                        }
+                    }
+                    ############################################################
+                    
+                    my $text = $body->as_HTML();
+                    $text = decode_entities($text);
+                    while ($text =~ /\b([0-9a-z_+-][0-9a-z._+-]*@([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9])(\.([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9]))*\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw))\b/gi) {
+                        if ($addressset->size < 8) {
+                            my $email = $1;
+                            if (Email::Valid->address($email)) {
+                                $addressset->insert(lc($email));
+                            }
+                        }
+                    }
+                    if (!$uriset) {
+                        while ($text =~ /\b(https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?[a-z0-9\-\._~!\$&\(\)\*+,;\=:\/?@#]*)\b/gi) {
+                            my $url = $1;
+                            if ($VALIDATOR->is_uri($url)) {
+                                $uriset->insert(uri_decode($url));
+                            }
+                        }
+                        while ($text =~ /\b(www\.[a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*)?)\b/gi) {
+	                    my $url = "http://$1";
+	                    if ($VALIDATOR->is_uri($url)) {
+	                        $uriset->insert(uri_decode($url));
+	                    }
+                        }
+                        while ($text =~ /\b([a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*))\b/gi) {
+	                    my $url = "http://$1";
+	                    if ($VALIDATOR->is_uri($url)) {
+	                        $uriset->insert(uri_decode($url));
+	                    }
+                        }
+                        while ($text =~ /\b([a-z0-9\._-]+\.[a-z]{3,5}(\/[0-9a-z.-]+)+)\b/gi) {
+                            my $url = "http://$1";
+                            if ($VALIDATOR->is_uri($url)) {
+                                $uriset->insert(uri_decode($url));
+                            }
+                        }
+                    }
+                    for my $uri ($uriset->elements) {
+                        if ($uri =~ m/$SHORTENERS/i) {
+                            my $signature = signature($uri);
+                            $addressset->insert($signature);
+                        }
+                    }
+                    if ($getall eq '1' || $getall eq 'true' || $getall eq 'yes') {
+                        $getall = 1;
+                    } else {
+                        $getall = 0;
+                    }
+                    if ($suspect eq '1' || $suspect eq 'true' || $suspect eq 'yes') {
+                        $suspect = 1;
+                    } else {
+                        $suspect = 0;
+                    }
+                }
             }
-        } else {
-            checkFile($dir, $filename, $content_type, $uriset, $addressset);
         }
-        if ($tree) {
-            my $redir = redirection($tree);
-            if ($redir =~ m/^https?\:\/\//i) {
-                $uriset->insert(uri_decode($redir));
-            } elsif ($redir =~ m/^MALWARE=/) {
-                $addressset->insert($redir);
-            } else {
-                for my $element ($tree->look_down(_tag => 'a', href => qr/./)) {
-                    my $uri = $element->attr('href');
-                    if ($uri =~ m/^mailto:([^?]*)/) {
-                        my $email = $1;
-                        if ($email =~ m/<(.+)>/) {
-                            $email = $1;
-                        }
-                        if (Email::Valid->address($email)) {
-                            $addressset->insert(lc($email));
-                        }
-                    }
-                    elsif ($uri =~ m/^https?\:\/\//i && $VALIDATOR->is_uri($uri)) {
-                        $uriset->insert(uri_decode($uri));
-                    }
-                }
-                for my $element ($tree->look_down(_tag => 'area', href => qr/./)) {
-                    my $uri = $element->attr('href');
-                    if ($uri =~ m/^mailto:([^?]*)/) {
-                        my $email = $1;
-                        if ($email =~ m/<(.+)>/) {
-                            $email = $1;
-                        }
-                        if (Email::Valid->address($email)) {
-                            $addressset->insert(lc($email));
-                        }
-                    }
-                    elsif ($uri =~ m/^https?\:\/\//i && $VALIDATOR->is_uri($uri)) {
-                        $uriset->insert(uri_decode($uri));
-                    }
-                }
-            }
-            my $text = $tree->look_down(_tag => q{body})->as_HTML();
-            $text = decode_entities($text);
-            while ($text =~ /\b([0-9a-z_+-][0-9a-z._+-]*@([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9])(\.([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9]))*\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw))\b/gi) {
-                my $email = $1;
-                if (Email::Valid->address($email)) {
-                    $addressset->insert(lc($email));
-                }
-            }
-            while ($text =~ /\b(https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?[a-z0-9\-\._~!\$&\(\)\*+,;\=:\/?@#]*)\b/gi) {
-                my $url = $1;
-                if ($VALIDATOR->is_uri($url)) {
-                    $uriset->insert(uri_decode($url));
-                }
-            }
-            while ($text =~ /\b(www\.[a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*)?)\b/gi) {
-	        my $url = "http://$1";
-	        if ($VALIDATOR->is_uri($url)) {
-	            $uriset->insert(uri_decode($url));
-	        }
-            }
-            while ($text =~ /\b([a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*))\b/gi) {
-	        my $url = "http://$1";
-	        if ($VALIDATOR->is_uri($url)) {
-	            $uriset->insert(uri_decode($url));
-	        }
-            }
-            for my $uri ($uriset->elements) {
-                if ($uri =~ m/$SHORTENERS/i) {
-                    my $signature = signature($uri);
-                    $addressset->insert($signature);
-                }
-            }
-            if ($getall eq '1' || $getall eq 'true' || $getall eq 'yes') {
-                $getall = 1;
-            } else {
-                $getall = 0;
-            }
-            if ($suspect eq '1' || $suspect eq 'true' || $suspect eq 'yes') {
-                $suspect = 1;
-            } else {
-                $suspect = 0;
-            }
-            processURI($uriset, $addressset, $dir, $getall, $suspect);
+        if ($folder) {
+            processURI($uriset, $addressset, $folder, $getall, $suspect);
         }
         my $list = '';
         for my $address ($addressset->elements) {
@@ -933,13 +1164,11 @@ sub getListHREF {
             } else {
                 $list = "$list $address";
             }
-        }
-        if ($list ne '') {
-            logWrite("HREF $list");
-        }
+	}
+	if ($list ne '') {
+	    logWrite("HREF $list");
+	}
         return $list;
-    } else {
-        return '';
     }
 }
 
@@ -962,7 +1191,7 @@ sub main() {
                     if ("http://$host1/" =~ m/$SHORTENERS/i) {
                         if (!$uribl->check_rhsbl($file)) {
                             my $cache = loadLastCache('/var/spfbl', $file);
-                            if ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/) {
+                            if ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
                                 my $result = clamavScan("/var/spfbl/$cache");
                                 if ($result) {
                                     print("$file\n");
@@ -982,7 +1211,7 @@ sub main() {
                             }
                         }
                     }
-                } elsif ($file =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh)$/) {
+                } elsif ($file =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
                     my $path = "/var/spfbl/$file";
                     my $result = clamavScan($path);
                     my $listed = $uribl->check_rhsbl($file);
@@ -1030,7 +1259,7 @@ sub main() {
             my $type = `file --brief --mime-type "$filename"`;
             $type =~ s/\n//g;
             my $tree;
-            if ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|gz|tar|rar|7z)$/i) {
+            if ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip|sh|zip|gz|tar|rar|7z|z)$/i) {
                 checkFile($dir, $filename, $type, $uriset, $addressset);
             } elsif ($type eq 'text/html') {
                 $tree = HTML::TreeBuilder->new_from_file($filename);
@@ -1050,7 +1279,7 @@ sub main() {
                 checkFile($dir, $filename, $type, $uriset, $addressset);
             }
             if ($tree) {
-                my $redir = redirection($tree);
+                my $redir = redirection($addressset, $tree);
                 if ($redir =~ m/^https?\:\/\//i) {
                     $uriset->insert(uri_decode($redir));
                 } elsif ($redir =~ m/^MALWARE=/) {
@@ -1058,6 +1287,7 @@ sub main() {
                 } else {
                     for my $element ($tree->look_down(_tag => 'a', href => qr/./)) {
                         my $uri = $element->attr('href');
+                        
                         if ($uri =~ m/^mailto:([^?]*)/) {
                             my $email = $1;
                             if ($email =~ m/<(.+)>/) {
@@ -1085,7 +1315,8 @@ sub main() {
                         }
                     }
                 }
-                my $text = $tree->look_down(_tag => q{body})->as_HTML();
+                my $body = $tree->look_down(_tag => q{body});
+                my $text = $body->as_HTML();
                 $text = decode_entities($text);
                 while ($text =~ /\b([0-9a-z_+-][0-9a-z._+-]*@([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9])(\.([a-z0-9]|[a-z0-9][a-z0-9_-]{0,61}[a-z0-9]))*\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw))\b/gi) {
                     my $email = $1;
@@ -1093,22 +1324,30 @@ sub main() {
                         $addressset->insert(lc($email));
                     }
                 }
-                while ($text =~ /\b(https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?[a-z0-9\-\._~!\$&\(\)\*+,;\=:\/?@#]*)\b/gi) {
-                    my $url = $1;
-                    if ($VALIDATOR->is_uri($url)) {
-                        $uriset->insert(uri_decode($url));
+                if (!$uriset) {
+                    while ($text =~ /\b(https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?[a-z0-9\-\._~!\$&\(\)\*+,;\=:\/?@#]*)\b/gi) {
+                        my $url = $1;
+                        if ($VALIDATOR->is_uri($url)) {
+                            $uriset->insert(uri_decode($url));
+                        }
                     }
-                }
-                while ($text =~ /\b(www\.[a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*)?)\b/gi) {
-                    my $url = "http://$1";
-                    if ($VALIDATOR->is_uri($url)) {
-                        $uriset->insert(uri_decode($url));
+                    while ($text =~ /\b(www\.[a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*)?)\b/gi) {
+                        my $url = "http://$1";
+                        if ($VALIDATOR->is_uri($url)) {
+                            $uriset->insert(uri_decode($url));
+                        }
                     }
-                }
-                while ($text =~ /\b([a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*))\b/gi) {
-                    my $url = "http://$1";
-                    if ($VALIDATOR->is_uri($url)) {
-                        $uriset->insert(uri_decode($url));
+                    while ($text =~ /\b([a-z0-9\._-]+\.(com|org|net|int|edu|gov|mil|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bl|bm|bn|bo|bq|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cw|cx|cy|cz|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mf|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|za|zm|zw)(\/[a-z0-9\-\._~!\$&\(\)\*+,;=:\/?@#]*))\b/gi) {
+                        my $url = "http://$1";
+                        if ($VALIDATOR->is_uri($url)) {
+                            $uriset->insert(uri_decode($url));
+                        }
+                    }
+                    while ($text =~ /\b([a-z0-9\._-]+\.[a-z]{3,5}(\/[0-9a-z.-]+)+)\b/gi) {
+                        my $url = "http://$1";
+                        if ($VALIDATOR->is_uri($url)) {
+                            $uriset->insert(uri_decode($url));
+                        }
                     }
                 }
             }
@@ -1158,7 +1397,7 @@ sub main() {
         my $executable = "";
     
         for my $address ($addressset->elements) {
-            if ($address =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh)$/) {
+            if ($address =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
                 eval {
                     $addressset->delete($address);
                     $executable = $address;
