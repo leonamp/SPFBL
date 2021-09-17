@@ -122,6 +122,11 @@ while ( my $line = <STDIN> ) {
             "action=554 5.7.1 SPFBL you are permanently blocked in this server. See http://spfbl.net/en/feedback\n\n"
         );
     }
+    elsif ( $result =~ /^BANNED/ ) {
+        STDOUT->print(
+            "action=554 5.7.1 SPFBL you was banned in this server. See http://spfbl.net/en/feedback\n\n"
+        );
+    }
     elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL hostname and sender are both invalids. See http://spfbl.net/en/feedback\n\n"
