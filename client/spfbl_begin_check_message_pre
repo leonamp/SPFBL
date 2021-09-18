@@ -29,8 +29,10 @@
     condition = ${if eq {$runrc}{5}{true}{false}}
     message = 5.7.1 SPFBL rejected by suspect content. See http://spfbl.net/en/feedback
     log_message = SPFBL check reject.
-  deny
+  warn
     malware = *
+  deny
+    condition = ${if def:malware_name {true}{false}}
     condition = ${if eq {${run{/usr/local/bin/spfbl malware \
                                '$acl_c_spfblticketset' \
                                '$malware_name'\
