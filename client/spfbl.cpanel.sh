@@ -51,9 +51,9 @@ install() {
         if [ $DISTRO eq "centos-7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
-        elsif [ $DISTRO eq "centos-6" ]; then
+        elif [ $DISTRO eq "centos-6" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
-        elsif [ $DISTRO eq "ubuntu" ]; then
+        elif [ $DISTRO eq "ubuntu" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.ubuntu.conf" -O /etc/clamav-unofficial-sigs/os.conf
         else
             echo "Linux distro not identified."
