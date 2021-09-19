@@ -24,28 +24,56 @@
 # Version: 1.1
 
 install() {
+    # Install netcat
     if command -v apt-get >/dev/null; then
-      apt-get install nmap ncat
+        apt-get install nmap ncat
     elif command -v yum >/dev/null; then
-      yum install -y nmap nc
+        yum install -y nmap nc
     else
-      exit 1
+        echo "Linux installation tool not identified."
+        echo "Please contact us to update this installation script to it works for your distro."
+        echo "https://spfbl.net/en/contact"
+        exit 1
     fi
+    # Install SPFBL client script
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
     /usr/local/bin/spfbl version
     if [ $? -eq 0 ]; then
+        # Enable Clamav
         /usr/local/cpanel/scripts/update_local_rpm_versions --edit target_settings.clamav installed
         /usr/local/cpanel/scripts/check_cpanel_rpms --fix --targets=clamav
-        
+        # Install clamav-unofficial-sigs
+        mkdir -p /etc/clamav-unofficial-sigs/
+        wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
+        wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
+        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-7|centos-6|ubuntu)' | uniq)
+        if [ $DISTRO eq "centos-7" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
+        elsif [ $DISTRO eq "centos-6" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        elsif [ $DISTRO eq "ubuntu" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.ubuntu.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        else
+            echo "Linux distro not identified."
+            echo "Please contact us to update this installation script to it works for your distro."
+            echo "https://spfbl.net/en/contact"
+            exit 1;
+        fi
+        wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/clamav-unofficial-sigs.sh -O /usr/local/bin/clamav-unofficial-sigs.sh
+        chmod 755 /usr/local/bin/clamav-unofficial-sigs.sh
+        /usr/local/bin/clamav-unofficial-sigs.sh --force
+        /usr/local/bin/clamav-unofficial-sigs.sh --install-cron --install-logrotate
+        # Remove old SPFBL configuration files
         rm /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl 2> /dev/null
         rm /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl 2> /dev/null
         rm /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl 2> /dev/null
-
+        # Install SPFBL configuration files
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_end_recipient -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_smtp_dkim -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
-        
+        # Restart cPanel service
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
     else
@@ -55,6 +83,7 @@ install() {
         echo "Please contact us to get your permission for the host $myHOST [$myIP]."
         echo "https://spfbl.net/en/contact"
         echo "If this host has already it, open the outgoing port 9877 TCP in your firewall."
+        exit 1;
     fi
 }
 
