@@ -1,7 +1,16 @@
   accept
     authenticated = *
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' '$sender_address' '$sender_helo_name' '$local_part@$domain'}{ERROR: $value}{$value}}
+    set acl_c_existent = null
+  warn
+    domains = +local_domains
+    set acl_c_existent = false
+  warn
+    domains = +local_domains
+    verify = recipient
+    set acl_c_existent = true
+  warn
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' '$sender_address' '$sender_helo_name' '$local_part@$domain' $acl_c_existent}{ERROR: $value}{$value}}
     set acl_c_spfbl = ${sg{$acl_c_spfbl}{^(.+)\\n}{\$1}}
   accept
     condition = ${if eq {$runrc}{15}{true}{false}}
