@@ -21,7 +21,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.1
+# Version: 1.2
 
 install() {
     # Install netcat
