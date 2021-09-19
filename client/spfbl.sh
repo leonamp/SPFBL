@@ -3619,6 +3619,7 @@ case $1 in
 		#    2. email: o email do remetente (opcional).
 		#    3. HELO: o HELO passado pelo host de origem.
 		#    4. recipient: o destinátario da mensagem (opcional se não utilizar spamtrap).
+		#    5. exists: null se o destinatário não for local, true se existe ou false se não existe.
 		#
 		# Saídas com qualificadores e as ações:
 		#
@@ -3679,8 +3680,9 @@ case $1 in
 			email=$3
 			helo=$4
 			recipient=$5
+			exists=$6
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient'" | $NCAT -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $NCAT -w $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
