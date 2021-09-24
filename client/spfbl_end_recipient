@@ -103,7 +103,7 @@
   warn
     condition = ${if eq {$runrc}{17}{true}{false}}
     set acl_c_whitelisted = true
-  accept
+  warn
     set acl_c_spfblticketset = $acl_c_spfblticket;$acl_c_spfblticketset
     set acl_c_spfblticketmap = $acl_c_spfblticketmap $local_part@$domain="$acl_c_spfbl"
     set acl_c_rcptset = $acl_c_rcptset $local_part@$domain
