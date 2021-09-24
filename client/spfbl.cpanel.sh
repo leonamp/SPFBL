@@ -47,14 +47,17 @@ install() {
         mkdir -p /etc/clamav-unofficial-sigs/
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
-        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-7|centos-6|ubuntu)' | uniq)
-        if [ $DISTRO == "centos-7" ]; then
+        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-7|centos-6|ubuntu|cloudlinux 7)' | uniq)
+        if [ "$DISTRO" = "centos-7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
-        elif [ $DISTRO == "centos-6" ]; then
+        elif [ "$DISTRO" = "centos-6" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
-        elif [ $DISTRO == "ubuntu" ]; then
+        elif [ "$DISTRO" = "ubuntu" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.ubuntu.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        elif [ "$DISTRO" = "cloudlinux 7" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
         else
             echo "Linux distro not identified."
             echo "Please contact us to update this installation script to it works for your distro."
