@@ -47,8 +47,8 @@ export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.19"
 
 if [ ! -f "/var/tmp/SPFBL_TIMEOUT_COUNT" ]; then
-    touch /var/tmp/SPFBL_TIMEOUT_COUNT
-    chmod 777 /var/tmp/SPFBL_TIMEOUT_COUNT
+    touch /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
+    chmod 777 /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
 fi
 
 function head(){
@@ -64,7 +64,7 @@ function incrementTimeout() {
 		local COUNT=`cat /var/tmp/SPFBL_TIMEOUT_COUNT`
 	fi
 	local COUNT=`expr ${COUNT} + 1`
-	echo "${COUNT}" > /var/tmp/SPFBL_TIMEOUT_COUNT
+	echo "${COUNT}" > /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
 
 	return ${COUNT}
 
@@ -72,7 +72,7 @@ function incrementTimeout() {
 
 function resetTimeout() {
 
-	echo "0" > /var/tmp/SPFBL_TIMEOUT_COUNT
+	echo "0" > /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
 
 }
 
