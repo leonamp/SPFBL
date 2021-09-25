@@ -10,7 +10,11 @@
     verify = recipient
     set acl_c_existent = true
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' '$sender_address' '$sender_helo_name' '$local_part@$domain' $acl_c_existent}{ERROR: $value}{$value}}
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' \
+                                                       '$sender_address' \
+                                                       '$sender_helo_name' \
+                                                       '$local_part@$domain' $acl_c_existent \
+                            }{ERROR: $value}{$value}}
     set acl_c_spfbl = ${sg{$acl_c_spfbl}{^(.+)\\n}{\$1}}
     set acl_c_spfbl_result = $runrc
   accept
