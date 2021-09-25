@@ -46,9 +46,9 @@ LOGPATH=/var/log/spfbl/
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 version="2.19"
 
-if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
-    touch /tmp/SPFBL_TIMEOUT_COUNT
-    chmod 777 /tmp/SPFBL_TIMEOUT_COUNT
+if [ ! -f "/var/tmp/SPFBL_TIMEOUT_COUNT" ]; then
+    touch /var/tmp/SPFBL_TIMEOUT_COUNT
+    chmod 777 /var/tmp/SPFBL_TIMEOUT_COUNT
 fi
 
 function head(){
@@ -58,13 +58,13 @@ function head(){
 
 function incrementTimeout() {
 
-	if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ] ; then
+	if [ ! -f "/var/tmp/SPFBL_TIMEOUT_COUNT" ] ; then
 		local COUNT=0
 	else
-		local COUNT=`cat /tmp/SPFBL_TIMEOUT_COUNT`
+		local COUNT=`cat /var/tmp/SPFBL_TIMEOUT_COUNT`
 	fi
 	local COUNT=`expr ${COUNT} + 1`
-	echo "${COUNT}" > /tmp/SPFBL_TIMEOUT_COUNT
+	echo "${COUNT}" > /var/tmp/SPFBL_TIMEOUT_COUNT
 
 	return ${COUNT}
 
@@ -72,7 +72,7 @@ function incrementTimeout() {
 
 function resetTimeout() {
 
-	echo "0" > /tmp/SPFBL_TIMEOUT_COUNT
+	echo "0" > /var/tmp/SPFBL_TIMEOUT_COUNT
 
 }
 
