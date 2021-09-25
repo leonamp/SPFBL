@@ -12,97 +12,97 @@
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' '$sender_address' '$sender_helo_name' '$local_part@$domain' $acl_c_existent}{ERROR: $value}{$value}}
     set acl_c_spfbl = ${sg{$acl_c_spfbl}{^(.+)\\n}{\$1}}
+    set acl_c_spfreceived = $runrc
   accept
-    condition = ${if eq {$runrc}{15}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{15}{true}{false}}
   deny
-    condition = ${if eq {$runrc}{3}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{3}{true}{false}}
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address. See http://spfbl.net/en/feedback
     log_message = SPFBL check failed.
   defer
-    condition = ${if eq {$runrc}{6}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{6}{true}{false}}
     message = 4.7.1 SPFBL transient error occurred when checking SPF record. See http://spfbl.net/en/feedback
     log_message = SPFBL check error.
   deny
-    condition = ${if eq {$runrc}{7}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{7}{true}{false}}
     message = 5.7.1 SPFBL one or more SPF records from $sender_host_address could not be interpreted. See http://spfbl.net/en/feedback
     log_message = SPFBL check unknown.
   deny
-    condition = ${if eq {$runrc}{13}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{13}{true}{false}}
     message = 5.7.1 SPFBL sender has non-existent internet domain. See http://spfbl.net/en/feedback
     log_message = SPFBL check nxdomain.
   deny
-    condition = ${if eq {$runrc}{21}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{21}{true}{false}}
     message = 5.7.1 SPFBL non-existent sender. See http://spfbl.net/en/feedback
     log_message = SPFBL check nxsender.
   drop
-    condition = ${if eq {$runrc}{14}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{14}{true}{false}}
     message = 5.7.1 SPFBL invalid sender identification. See http://spfbl.net/en/feedback
     log_message = SPFBL check invalid.
   defer
-    condition = ${if eq {$runrc}{8}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     condition = ${if match {$acl_c_spfbl}{^LISTED https?://}{true}{false}}
     message = 4.7.2 SPFBL $acl_c_spfbl
     log_message = SPFBL check listed.
   defer
-    condition = ${if eq {$runrc}{8}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{8}{true}{false}}
     message = 4.7.2 SPFBL temporarily blocked on this server. See http://spfbl.net/en/feedback
     log_message = SPFBL check listed.
   deny
-    condition = ${if eq {$runrc}{10}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
     condition = ${if match {$acl_c_spfbl}{^BLOCKED https?://}{true}{false}}
     message = 5.7.1 SPFBL $acl_c_spfbl
     log_message = SPFBL check blocked.
   deny
-    condition = ${if eq {$runrc}{10}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{10}{true}{false}}
     message = 5.7.1 SPFBL permanently blocked. See http://spfbl.net/en/feedback
     log_message = SPFBL check blocked.
   drop
-    condition = ${if eq {$runrc}{22}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{22}{true}{false}}
     message = 5.7.1 SPFBL permanently banned. See http://spfbl.net/en/feedback
     log_message = SPFBL check banned.
   deny
-    condition = ${if eq {$runrc}{19}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{19}{true}{false}}
     message = 5.1.1 SPFBL the account that you tried to reach does not exist. See http://spfbl.net/en/feedback
     log_message = SPFBL check inexistent.
   discard
-    condition = ${if eq {$runrc}{11}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{11}{true}{false}}
     log_message = SPFBL check spamtrap.
   discard
-    condition = ${if eq {$runrc}{23}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{23}{true}{false}}
     log_message = SPFBL message released.
   discard
-    condition = ${if eq {$runrc}{24}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{24}{true}{false}}
     log_message = SPFBL message removed.
   deny
-    condition = ${if eq {$runrc}{25}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{25}{true}{false}}
     message = 5.6.6 Message not found in the queued
     log_message = SPFBL message not found.
   defer
-    condition = ${if eq {$runrc}{12}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{12}{true}{false}}
     message = 4.7.1 SPFBL greylisted message. See http://spfbl.net/en/feedback
     log_message = SPFBL check greylisting.
   defer
-    condition = ${if eq {$runrc}{9}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{9}{true}{false}}
     message = 4.3.1 SPFBL temporarily out of service. See http://spfbl.net/en/feedback
     log_message = SPFBL check timeout.
   warn
     condition = ${if match {$acl_c_spfbl}{^(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |FLAG |WHITE |HOLD )}{true}{false}}
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |FLAG |WHITE |HOLD )}{}}
+    set acl_c_spfblticketset = $acl_c_spfblticket;$acl_c_spfblticketset
   warn
-    condition = ${if eq {$runrc}{16}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{17}{true}{false}}
+    set acl_c_whitelisted = true
+  warn
+    condition = ${if eq {$acl_c_spfreceived}{16}{true}{false}}
     set acl_c_spamflag = true
   warn
-    condition = ${if eq {$runrc}{18}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{18}{true}{false}}
     set acl_c_freeze = true
   warn
-    condition = ${if eq {$runrc}{20}{true}{false}}
+    condition = ${if eq {$acl_c_spfreceived}{20}{true}{false}}
     log_message = SPFBL out of service.
   warn
-    condition = ${if eq {$runrc}{20}{false}{true}}
+    condition = ${if eq {$acl_c_spfreceived}{20}{false}{true}}
     set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{https?://.+/([0-9a-zA-Z_-]+)\$}{\$1}}
-  warn
-    condition = ${if eq {$runrc}{17}{true}{false}}
-    set acl_c_whitelisted = true
   accept
-    set acl_c_spfblticketset = $acl_c_spfblticket;$acl_c_spfblticketset
-    set acl_c_local_part = $local_part
