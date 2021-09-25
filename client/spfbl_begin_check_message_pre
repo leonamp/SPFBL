@@ -5,7 +5,7 @@
   accept
     condition = ${if eq {$acl_c_spfbl_result}{15}{true}{false}}
   warn
-    condition = ${if eq {${run{/usr/local/bin/spfbl header \
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl header \
                                '$acl_c_spfblticketset DKIM:$acl_c_dkim_domain_set' \
                                'From:${tr{$h_From:}{;'\r\n\t}{:´   }}' \
                                'Reply-To:${address:$h_Reply-To:}' \
@@ -14,7 +14,7 @@
                                'Date:$h_Date:' \
                                'List-Unsubscribe:${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}'\
                                'Subject:${rfc2047:${tr{$h_Subject:}{'\r\n\t}{´   }}}' \
-                          }{$runrc}{$runrc}}}{1}{true}{false}}
+                          }{$value}{$value}}
     set acl_c_spfbl_result = $runrc
   deny
     condition = ${if eq {$acl_c_spfbl_result}{1}{true}{false}}
