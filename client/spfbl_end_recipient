@@ -105,6 +105,4 @@
     set acl_c_whitelisted = true
   accept
     set acl_c_spfblticketset = $acl_c_spfblticket;$acl_c_spfblticketset
-    set acl_c_spfblticketmap = $acl_c_spfblticketmap $local_part@$domain="$acl_c_spfbl"
-    set acl_c_rcptset = $acl_c_rcptset $local_part@$domain
     set acl_c_local_part = $local_part
