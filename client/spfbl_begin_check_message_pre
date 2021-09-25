@@ -1,5 +1,3 @@
-  warn
-    logwrite = SPFBL header layer
   accept
     authenticated = *
   accept
