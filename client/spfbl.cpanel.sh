@@ -47,7 +47,7 @@ install() {
         mkdir -p /etc/clamav-unofficial-sigs/
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
-        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8)' | uniq)
+        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|almalinux-8)' | uniq)
         if [ "$DISTRO" = "centos-7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
@@ -62,6 +62,9 @@ install() {
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "cloudlinux 8" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
+        elif [ "$DISTRO" = "almalinux-8" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
         else
