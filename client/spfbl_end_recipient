@@ -7,7 +7,10 @@
     set acl_c_existent = false
   warn
     domains = +local_domains
-    verify = recipient/defer_ok
+    verify = recipient
+    set acl_c_existent = true
+  warn
+    condition = ${if eq {$address_data}{router=virtual_aliases_nostar redirect=""}{true}{false}}
     set acl_c_existent = true
   warn
     logwrite = RECIPIENT VERIFY $local_part@$domain $address_data
