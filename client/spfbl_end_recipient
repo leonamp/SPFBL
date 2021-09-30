@@ -4,11 +4,11 @@
     set acl_c_existent = null
   warn
     domains = +local_domains
-    set acl_c_existent = false
+    set acl_c_existent = true
   warn
     domains = +local_domains
-    verify = recipient
-    set acl_c_existent = true
+    !verify = recipient
+    set acl_c_existent = false
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' \
                                                        '$sender_address' \
