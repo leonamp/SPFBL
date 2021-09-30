@@ -10,7 +10,7 @@
     verify = recipient/defer_ok
     set acl_c_existent = true
   warn
-    logwrite = RECIPIENT VERIFY $address_data
+    logwrite = RECIPIENT VERIFY $local_part@$domain $address_data
   warn
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' \
                                                        '$sender_address' \
