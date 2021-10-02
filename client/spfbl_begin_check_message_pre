@@ -38,12 +38,15 @@
     message = 5.7.1 SPFBL this message was detected as possible malware. See http://spfbl.net/en/feedback
     log_message = SPFBL check malware.
   accept
+    condition = ${if eq {$acl_c_spfbl_result}{17}{true}{false}}
+    add_header = X-Spam-Flag: NO
+  accept
     condition = ${if eq {$acl_c_spfbl_result}{6}{true}{false}}
     add_header = X-Spam-Flag: YES
+  warn
+    condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
+    spam = $message_exim_id:true
   accept
     condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
     add_header = X-Spam-Flag: NO
     control = freeze/no_tell
-  accept
-    condition = ${if eq {$acl_c_spfbl_result}{17}{true}{false}}
-    add_header = X-Spam-Flag: NO
