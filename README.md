@@ -276,9 +276,11 @@ https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Postfix---SPFBL
 
 https://github.com/leonamp/SPFBL/wiki/Integra%C3%A7%C3%A3o-com-Zimbra---SPFBL
 
-##### Tutorial: SPFBL local com Zimbra
+##### Tutorial: SPFBL local com Zimbra usando o KyaFilter
 
 http://www.anahuac.eu/spfbl-local-com-zimbra-parte-i/
+
+https://www.anahuac.eu/spfbl-local-com-zimbra-parte-ii-kyafilter/
 
 ##### Integração com Exim
 
