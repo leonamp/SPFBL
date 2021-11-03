@@ -380,7 +380,7 @@ sub checkFile {
                     my $list = `unzip -Z -1 '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/i) {
+                        if ($line =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/i) {
                             $executable = processExecutable($filename, 'zip', $addressset);
                             if ($line =~ m/\.doc$/i) {
                                 $addressset->insert("MALWARE=SPFBL.Encrypted.doc");
@@ -424,7 +424,7 @@ sub checkFile {
                     my $list = `7z l -bd '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/i) {
+                        if ($line =~ m/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/i) {
                             $executable = processExecutable($filename, '7z', $addressset);
                             last;
                         }
@@ -445,7 +445,7 @@ sub checkFile {
                     my $list = `unrar l '$filename'`;
                     my @lines = split /\n/, $list;
                     foreach my $line (@lines) {
-                        if ($line =~ m/..[rwx-]{9} +[0-9]+  [0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}  .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)/i) {
+                        if ($line =~ m/..[rwx-]{9} +[0-9]+  [0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}  .+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)/i) {
                             $executable = processExecutable($filename, 'rar', $addressset);
                             last;
                         }
@@ -488,7 +488,7 @@ sub signature {
             return "$signature.$host.$port.$protocol";
         } elsif ($key =~ m/^[0-9a-f]{32}(\.[a-z0-9_-]+)+\.[0-9]+\.https?$/) {
             return $key;
-        } elsif ($key =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+        } elsif ($key =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/) {
             return $key;
         } elsif ($key =~ m/^MALWARE=/) {
             return $key;
@@ -677,6 +677,12 @@ sub processURI {
             }
             if (!$visitedset->contains($uri)) {
                 $visitedset->insert($uri);
+                ##############
+                if ($uri =~ m/^https?\:\/\/([a-z0-9\._-]+|\[[a-f0-9\:]+\])(:[0-9]{1,6})?(\/[a-z0-9\._-]+)+\.zip$/i) {
+                    my $signature = signature($uri);
+                    $addressset->insert($signature);
+                }
+                ##############
                 if ($uri !~ m/$FINAL/gi) {
                     my $cache = loadCache('/var/spfbl', $uri, 1);
                     if ($cache eq '201') {
@@ -696,7 +702,7 @@ sub processURI {
                         $addressset->insert($cache);
                         $successset->insert($uri);
                         next;
-                    } elsif ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+                    } elsif ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/) {
                         my $signature = signature($uri);
                         $addressset->insert($signature);
                         $addressset->insert($cache);
@@ -800,7 +806,7 @@ sub processURI {
                                         system("rm -R '$folder'");
                                     };
                                 }
-                            } elsif ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip|gz|tar|rar|7z|z)$/i) {
+                            } elsif ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip|gz|tar|rar|7z|z)$/i) {
                                 my $extension = lc($1);
                                 my $headers = $response->headers;
                                 my $length = $headers->content_length;
@@ -1190,7 +1196,7 @@ sub main() {
                     if ("http://$host1/" =~ m/$SHORTENERS/i) {
                         if (!$uribl->check_rhsbl($file)) {
                             my $cache = loadLastCache('/var/spfbl', $file);
-                            if ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+                            if ($cache =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/) {
                                 my $result = clamavScan("/var/spfbl/$cache");
                                 if ($result) {
                                     print("$file\n");
@@ -1210,7 +1216,7 @@ sub main() {
                             }
                         }
                     }
-                } elsif ($file =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+                } elsif ($file =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/) {
                     my $path = "/var/spfbl/$file";
                     my $result = clamavScan($path);
                     my $listed = $uribl->check_rhsbl($file);
@@ -1258,7 +1264,7 @@ sub main() {
             my $type = `file --brief --mime-type "$filename"`;
             $type =~ s/\n//g;
             my $tree;
-            if ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip|sh|zip|gz|tar|rar|7z|z)$/i) {
+            if ($filename =~ m/\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip|sh|zip|gz|tar|rar|7z|z)$/i) {
                 checkFile($dir, $filename, $type, $uriset, $addressset);
             } elsif ($type eq 'text/html') {
                 $tree = HTML::TreeBuilder->new_from_file($filename);
@@ -1396,7 +1402,7 @@ sub main() {
         my $executable = "";
     
         for my $address ($addressset->elements) {
-            if ($address =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|zip)$/) {
+            if ($address =~ m/^[0-9a-f]{32}\.[0-9]+\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|doc|xls|docx|docm|xlsx|xlsm|xlsb|zip)$/) {
                 eval {
                     $addressset->delete($address);
                     $executable = $address;
