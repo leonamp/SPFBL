@@ -1,5 +1,7 @@
   accept
     authenticated = *
+  accept
+    hosts = +recent_authed_mail_ips
   warn
     set acl_c_existent = null
   warn
