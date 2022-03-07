@@ -44,7 +44,7 @@ MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.19"
+version="2.20"
 
 if [ ! -f "/var/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
@@ -2985,6 +2985,8 @@ case $1 in
 				exit 5
 			elif [[ $response == "FLAG" ]]; then
 				exit 6
+			elif [[ $response == "REJECT" ]]; then
+				exit 1
 			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
 			else
