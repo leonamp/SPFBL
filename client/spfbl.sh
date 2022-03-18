@@ -44,7 +44,7 @@ MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.20"
+version="2.21"
 
 if [ ! -f "/var/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
@@ -75,6 +75,13 @@ function resetTimeout() {
 	echo "0" > /var/tmp/SPFBL_TIMEOUT_COUNT >/dev/null 2>&1
 
 }
+
+which ncat > /dev/null
+if [ $? -eq 1 ]; then
+	echo "Please install ncat command before call this script."
+	echo "sudo apt-get install nmap"
+	exit 100;
+fi
 
 if [[ $SECURED == "true" ]]; then
 	NCAT="ncat -w $QUERY_TIMEOUT --ssl-verify"
