@@ -96,7 +96,7 @@ install() {
         echo "Your cPanel doesn't have permission to access matrix.spfbl.net server yet."
         echo "Please contact us to get your permission for the host $myHOST [$myIP]."
         echo "https://spfbl.net/en/contact"
-        echo "If this host has already it, open the outgoing port 9877 TCP in your firewall."
+        echo "If this host has already it, open the port 9877 TCP OUT in your firewall."
         exit 1;
     fi
 }
