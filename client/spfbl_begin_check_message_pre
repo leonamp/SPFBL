@@ -41,10 +41,10 @@
     log_message = SPFBL check malware.
   accept
     condition = ${if eq {$acl_c_spfbl_result}{17}{true}{false}}
-    add_header = X-Spam-Flag: NO
+    add_header = X-Spam-Status: NO
   accept
     condition = ${if eq {$acl_c_spfbl_result}{6}{true}{false}}
-    add_header = X-Spam-Flag: YES
+    add_header = X-Spam-Status: YES
   warn
     condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
     spam = $message_exim_id:true
@@ -54,5 +54,5 @@
     log_message = SPFBL check malware.
   accept
     condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
-    add_header = X-Spam-Flag: NO
+    add_header = X-Spam-Status: NO
     control = freeze/no_tell
