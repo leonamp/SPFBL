@@ -36,7 +36,7 @@
 #	check_policy_service unix:private/policy-spfbl,
 #	permit
 #
-# Última alteração: 30/08/2021
+# Last update: 07/04/2021
 
 use strict;
 use warnings;
@@ -91,28 +91,23 @@ while ( my $line = <STDIN> ) {
         STDOUT->print(
             "action=451 4.7.2 SPFBL $result\n\n"
         );
-    }
-    elsif ( $result =~ /^LISTED/ ) {
+    } elsif ( $result =~ /^LISTED/ ) {
         STDOUT->print(
             "action=451 4.7.2 SPFBL you are temporarily blocked on this server. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^FLAG/ ) {
+    } elsif ( $result =~ /^FLAG/ ) {
         STDOUT->print(
              "action=PREPEND X-Spam-Flag: YES\n\n"
         );
-    }
-    elsif ( $result =~ /^HOLD/ ) {
+    } elsif ( $result =~ /^HOLD/ ) {
         STDOUT->print(
             "action=$result\n\n"
         );
-    }
-    elsif ( $result =~ /^NXDOMAIN/ ) {
+    } elsif ( $result =~ /^NXDOMAIN/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL sender has non-existent internet domain. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^BLOCKED / ) {
+    } elsif ( $result =~ /^BLOCKED / ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL $result\n\n"
         );
@@ -126,23 +121,19 @@ while ( my $line = <STDIN> ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL you was banned in this server. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^INVALID/ ) {
+    } elsif ( $result =~ /^INVALID/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL hostname and sender are both invalids. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^INVALID / ) {
+    } elsif ( $result =~ /^INVALID / ) {
         STDOUT->print(
             "action=WARN SPFBL $result\n\n"
         );
-    }
-    elsif ( $result =~ /^LAN/ ) {
+    } elsif ( $result =~ /^LAN/ ) {
         STDOUT->print(
             "action=DUNNO\n\n"
         );
-    }
-    elsif ( $result =~ /^GREYLIST/ ) {
+    } elsif ( $result =~ /^GREYLIST/ ) {
         STDOUT->print(
             "action=451 4.7.1 SPFBL you are greylisted on this server. See http://spfbl.net/en/feedback\n\n"
         );
@@ -151,74 +142,82 @@ while ( my $line = <STDIN> ) {
         STDOUT->print(
             "action=DISCARD SPFBL discarded by spamtrap.\n\n"
         );
-    }
-    elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
+    } elsif ( $result =~ /^ERROR: INVALID SENDER/ ) {
         STDOUT->print(
             "action=554 5.7.1 SPFBL $params->{sender} is not a valid e-mail address. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^TIMEOUT/ ) {
+    } elsif ( $result =~ /^TIMEOUT/ ) {
         STDOUT->print(
             "action=DEFER [SPF] A transient error occurred when checking SPF record. Try again later.\n\n"
         );
-    }
-    elsif ( $result =~ /^ERROR: QUERY/ ) {
+    } elsif ( $result =~ /^ERROR: QUERY/ ) {
         STDOUT->print(
             "action=WARN SPFBL INVALID QUERY\n\n"
         );
-    }
-    elsif ( $result =~ /^ERROR: / ) {
+    } elsif ( $result =~ /^ERROR: / ) {
         STDOUT->print(
              "action=WARN SPFBL $result\n\n"
         );
-    }
-    elsif ( $result =~ /^NONE / ) {
+    } elsif ( $result =~ /^NONE / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^PASS / ) {
+    } elsif ( $result =~ /^PASS / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^WHITE / ) {
+    } elsif ( $result =~ /^WHITE / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^FAIL / ) {
+    } elsif ( $result =~ /^FAIL / ) {
         # retornou FAIL com ticket.
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^FAIL/ ) {
+    } elsif ( $result =~ /^FAIL/ ) {
         STDOUT->print(
              "action=554 5.7.1 SPFBL message rejected due to receiver policy for SPF fail. Please see http://www.open-spf.org/Why?s=mfrom;id=$params->{sender};ip=$params->{client_address}\n\n"
         );
-    }
-    elsif ( $result =~ /^SOFTFAIL / ) {
+    } elsif ( $result =~ /^SOFTFAIL / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^NEUTRAL / ) {
+    } elsif ( $result =~ /^NEUTRAL / ) {
         STDOUT->print(
              "action=PREPEND Received-SPFBL: $result\n\n"
         );
-    }
-    elsif ( $result =~ /^INEXISTENT/ ) {
+    } elsif ( $result =~ /^INEXISTENT/ ) {
         STDOUT->print(
              "action=550 5.1.1 SPFBL unknown user in virtual mailbox table. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    elsif ( $result =~ /^INEXISTENT / ) {
+    } elsif ( $result =~ /^INEXISTENT / ) {
         STDOUT->print(
              "action=550 5.1.1 SPFBL unknown user in virtual mailbox table. See http://spfbl.net/en/feedback\n\n"
         );
-    }
-    else {
+    } elsif ( $result =~ /^RELEASE (.+)/ ) {
+        my $code = system("postsuper -H $1");
+        if ($code == 0) {
+            STDOUT->print(
+                "action=DISCARD SPFBL message $1 released.\n\n"
+            );
+        } else {
+            STDOUT->print(
+                "action=550 5.6.6 Message $1 not found in the queued\n\n"
+            );
+        }
+    } elsif ( $result =~ /^REMOVE (.+)/ ) {
+        my $code = system("postsuper -d $1");
+        if ($code == 0) {
+            STDOUT->print(
+                "action=DISCARD SPFBL message $1 removed.\n\n"
+            );
+        } else {
+            STDOUT->print(
+                "action=550 5.6.6 Message $1 not found in the queued\n\n"
+            );
+        }
+    } else {
         STDOUT->print(
             "action=WARN SPFBL UNKNOWN ERROR\n\n"
         );
