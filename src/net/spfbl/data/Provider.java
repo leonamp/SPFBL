@@ -19,10 +19,17 @@ package net.spfbl.data;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.TreeSet;
 import net.spfbl.core.ProcessException;
+import net.spfbl.core.Regex;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidEmail;
+import static net.spfbl.core.Regex.isValidIP;
 import net.spfbl.core.Server;
 import net.spfbl.spf.SPF;
 import net.spfbl.whois.Domain;
@@ -72,183 +79,63 @@ public class Provider {
             return SET.remove(token);
         }
         
-        public static synchronized boolean contains(String token) {
+        public static boolean contains(String token) {
             return SET.contains(token);
         }
     }
     
     /**
-     * Representa o conjunto de blocos IP bloqueados.
+     * Representa o conjunto de blocos IP de provedores.
      */
     private static class CIDR {
         
-        private static final HashMap<String,TreeSet<String>> MAP = new HashMap<>();
+        private static final AddressSet SET = new AddressSet();
         
-        public static synchronized boolean isEmpty() {
-            return MAP.isEmpty();
-        }
-        
-        public static synchronized void clear() {
-            MAP.clear();
-        }
-        
-        public static synchronized TreeSet<String> getAll() {
-            TreeSet<String> set = new TreeSet<>();
-            for (String client : MAP.keySet()) {
-                for (String cidr : MAP.get(client)) {
-                    if (cidr.contains(":")) {
-                        cidr = SubnetIPv6.normalizeCIDRv6(cidr);
-                    } else {
-                        cidr = SubnetIPv4.normalizeCIDRv4(cidr);
-                    }
-                    if (client == null) {
-                        set.add("CIDR=" + cidr);
-                    } else {
-                        set.add(client + ":CIDR=" + cidr);
-                    }
+        public static void load() {
+            try {
+                File file = new File("./data/provider.cidr.txt");
+                if (file.exists()) {
+                    SET.start(file);
                 }
+            } catch (IOException ex) {
+                Server.logError(ex);
             }
-            return set;
         }
         
-        private static synchronized boolean dropExact(String token) {
-            int index = token.indexOf('=');
-            String cidr = token.substring(index+1);
-            index = token.lastIndexOf(':', index);
-            String client;
-            if (index == -1) {
-                client = null;
-            } else {
-                client = token.substring(0, index);
-            }
-            TreeSet<String> set = MAP.get(client);
-            if (set == null) {
+        public static TreeSet<String> getAll() {
+            return SET.getAllLegacy();
+        }
+        
+        private static boolean dropExact(String token) {
+            if (token == null) {
                 return false;
+            } else if (token.startsWith("CIDR=")) {
+                return SET.remove(token.substring(5));
             } else {
-                String key = Subnet.expandCIDR(cidr);
-                boolean removed = set.remove(key);
-                if (set.isEmpty()) {
-                    MAP.remove(client);
-                }
-                return removed;
+                return SET.remove(token);
             }
         }
         
-        private static synchronized boolean addExact(String token) throws ProcessException {
-            int index = token.indexOf('=');
-            String cidr = token.substring(index+1);
-            index = token.lastIndexOf(':', index);
-            String client;
-            if (index == -1) {
-                client = null;
-            } else {
-                client = token.substring(0, index);
-            }
-            TreeSet<String> set = MAP.get(client);
-            if (set == null) {
-                set = new TreeSet<>();
-                MAP.put(client, set);
-            }
-            String key = Subnet.expandCIDR(cidr);
-            String first = Subnet.getFirstIP(cidr);
-            String last = Subnet.getLastIP(cidr);
-            String floorLower = set.lower(key);
-            String floorLast = set.floor(Subnet.expandIP(last) + "/9");
-            if (floorLower == null) {
-                floorLower = null;
-            } else if (floorLower.contains(".")) {
-                floorLower = SubnetIPv4.normalizeCIDRv4(floorLower);
-            } else if (floorLower.contains(":")) {
-                floorLower = SubnetIPv6.normalizeCIDRv6(floorLower);
-            } else {
-                floorLower = null;
-            }
-            if (floorLast == null) {
-                floorLast = null;
-            } else if (floorLast.contains(".")) {
-                floorLast = SubnetIPv4.normalizeCIDRv4(floorLast);
-            } else if (floorLast.contains(":")) {
-                floorLast = SubnetIPv6.normalizeCIDRv6(floorLast);
-            } else {
-                floorLast = null;
-            }
-            if (cidr.equals(floorLast)) {
+        private static boolean addExact(String token) {
+            if (token == null) {
                 return false;
-            } else if (Subnet.containsIP(floorLast, first)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLast, last)) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(floorLower, first)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(floorLower, last)) {
-                throw new ProcessException("INTERSECTS " + floorLower);
-            } else if (Subnet.containsIP(cidr, Subnet.getFirstIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
-            } else if (Subnet.containsIP(cidr, Subnet.getLastIP(floorLast))) {
-                throw new ProcessException("INTERSECTS " + floorLast);
+            } else if (token.startsWith("CIDR=")) {
+                return SET.add(token.substring(5));
             } else {
-                return set.add(key);
+                return SET.add(token);
             }
         }
         
-        private static synchronized TreeSet<String> getClientSet(String client) {
-            return MAP.get(client);
+        public static boolean contains(String cidr) {
+            return SET.contains(cidr);
         }
         
-        public static boolean contains(String client, String cidr) {
-            if (cidr == null) {
-                return false;
-            } else {
-                String key = Subnet.expandCIDR(cidr);
-                TreeSet<String> cidrSet = getClientSet(client);
-                return cidrSet.contains(key);
-            }
-        }
-        
-        private static String getFloor(String client, String ip) {
-            TreeSet<String> cidrSet = getClientSet(client);
-            if (cidrSet == null || cidrSet.isEmpty()) {
-                return null;
-            } else if (SubnetIPv4.isValidIPv4(ip)) {
-                String key = SubnetIPv4.expandIPv4(ip);
-                String cidr = cidrSet.floor(key + "/9");
-                if (cidr == null) {
-                    return null;
-                } else if (cidr.contains(".")) {
-                    return SubnetIPv4.normalizeCIDRv4(cidr);
-                } else {
-                    return null;
-                }
-            } else if (SubnetIPv6.isValidIPv6(ip)) {
-                String key = SubnetIPv6.expandIPv6(ip);
-                String cidr = cidrSet.floor(key + "/9");
-                if (cidr == null) {
-                    return null;
-                } else if (cidr.contains(":")) {
-                    return SubnetIPv6.normalizeCIDRv6(cidr);
-                } else {
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        }
-
         public static String get(String client, String ip) {
-            String result;
-            String cidr = getFloor(null, ip);
-            if (Subnet.containsIP(cidr, ip)) {
-                result = "CIDR=" + cidr;
-            } else if (client == null) {
-                result = null;
-            } else if ((cidr = getFloor(client, ip)) == null) {
-                result = null;
-            } else if (Subnet.containsIP(cidr, ip)) {
-                result = client + ":CIDR=" + cidr;
+            if (client == null) {
+                return SET.getLegacy(ip);
             } else {
-                result = null;
+                return null;
             }
-            return result;
         }
     }
     
@@ -303,7 +190,10 @@ public class Provider {
     }
     
     private static String normalizeProvider(String token) throws ProcessException {
-        return SPF.normalizeToken(token, false, false, true, false, false, false, false, false);
+        return SPF.normalizeToken(
+                token, false, false, true, false,
+                false, false, false, false, false
+        );
     }
 
     public static boolean add(String address) throws ProcessException {
@@ -339,10 +229,10 @@ public class Provider {
     public static boolean contains(String token) {
         if (token == null) {
             return false;
-        } else if (Subnet.isValidIP(token)) {
+        } else if (isValidIP(token)) {
             String ip = Subnet.normalizeIP(token);
-            return containsCIDR(ip);
-        } else if (Domain.isHostname(token)) {
+            return containsIPorFQDN(ip);
+        } else if (isHostname(token)) {
             String host = Domain.normalizeHostname(token, true);
             return containsDomain(host);
         } else {
@@ -351,13 +241,45 @@ public class Provider {
     }
     
     public static boolean containsCIDR(String ip) {
-        return CIDR.get(null, ip) != null;
+        if (ip == null) {
+            return false;
+        } else {
+            return CIDR.contains(ip);
+        }
     }
     
-    public static boolean containsMX(String sender) {
-        if (sender == null) {
+    public static boolean containsIPorFQDN(String ip) {
+        if (ip == null) {
             return false;
-        } else if (Domain.isMailFrom(sender)) {
+        } else if (CIDR.contains(ip)) {
+            return true;
+        } else {
+            String fqdn = FQDN.getFQDN(ip, false);
+            if (fqdn == null) {
+                return false;
+            } else if (SET.contains(fqdn)) {
+                return true;
+            } else {
+                int index;
+                while ((index = fqdn.indexOf('.', 1)) > 0) {
+                    fqdn = fqdn.substring(index);
+                    if (SET.contains(fqdn)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+    }
+    
+    private static final Regex EMAIL_OUTLOOK_GENERIC = new Regex("^outlook_[0-9a-f]{16}@outlook.com$");
+    
+    public static boolean isFreeMail(String sender) {
+        if ((sender = Domain.normalizeEmail(sender)) == null) {
+            return false;
+        } else if (EMAIL_OUTLOOK_GENERIC.matches(sender)) {
+            return false;
+        } else if (isValidEmail(sender)) {
             int index = sender.indexOf('@');
             return SET.contains(sender.substring(index));
         } else {
@@ -386,19 +308,52 @@ public class Provider {
             }
         }
     }
-
-    public static boolean containsHELO(String ip, String helo) {
-        if (SPF.matchHELO(ip, helo)) {
-            helo = Domain.extractHost(helo, true);
+    
+    public static boolean containsDomainEmail(String email) {
+        if (email == null) {
+            return false;
+        } else {
+            int index = email.indexOf('@') + 1;
+            String hostname = '.' + email.substring(index);
             do {
-                int index = helo.indexOf('.') + 1;
-                helo = helo.substring(index);
-                if (SET.contains('.' + helo)) {
+                index = hostname.indexOf('.') + 1;
+                hostname = hostname.substring(index);
+                if (SET.contains('.' + hostname)) {
                     return true;
                 }
-            } while (helo.contains("."));
+            } while (hostname.contains("."));
+            return false;
         }
-        return CIDR.get(null, ip) != null;
+    }
+    
+    public static String returnProviderPTR(Set<String> tokenSet) {
+        if (tokenSet == null) {
+            return null;
+        } else {
+            for (String token : tokenSet) {
+                if (containsFQDN(token)) {
+                    return token;
+                }
+            }
+            return null;
+        }
+    }
+    
+    public static boolean containsFQDN(String host) {
+        if ((host = Domain.extractHost(host, true)) == null) {
+            return false;
+        } else if (SET.contains(host)) {
+            return true;
+        } else {
+            int index;
+            while ((index = host.indexOf('.', 1)) > 0) {
+                host = host.substring(index);
+                if (SET.contains(host)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     public static void store() {
@@ -431,7 +386,7 @@ public class Provider {
                     try {
                         addExact(token);
                     } catch (ProcessException ex) {
-                        Server.logDebug("PROVIDER CIDR " + token + " " + ex.getErrorMessage());
+                        // Do nothing.
                     }
                 }
                 CHANGED = false;

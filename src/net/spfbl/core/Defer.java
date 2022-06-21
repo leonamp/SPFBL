@@ -51,7 +51,7 @@ public class Defer implements Serializable, Comparable<Defer> {
     /**
      * Mapa de atrasos programados.
      */
-    private static final HashMap<String,Defer> MAP = new HashMap<String,Defer>();
+    private static final HashMap<String,Defer> MAP = new HashMap<>();
     /**
      * Flag que indica se o cache foi modificado.
      */
@@ -74,23 +74,23 @@ public class Defer implements Serializable, Comparable<Defer> {
     }
 
     private static synchronized TreeSet<String> keySet() {
-        TreeSet<String> keySet = new TreeSet<String>();
+        TreeSet<String> keySet = new TreeSet<>();
         keySet.addAll(MAP.keySet());
         return keySet;
     }
 
     private static synchronized HashMap<String,Defer> getMap() {
-        HashMap<String,Defer> map = new HashMap<String,Defer>();
+        HashMap<String,Defer> map = new HashMap<>();
         map.putAll(MAP);
         return map;
     }
 
-    public static synchronized boolean containsExact(String key) {
-        return MAP.containsKey(key);
+    public static synchronized boolean containsExact(String id) {
+        return MAP.containsKey(id);
     }
 
-    private static Defer getExact(String host) {
-        return MAP.get(host);
+    private static Defer getExact(String id) {
+        return MAP.get(id);
     }
 
     private static synchronized boolean isChanged() {
@@ -105,7 +105,7 @@ public class Defer implements Serializable, Comparable<Defer> {
         CHANGED = false;
     }
     
-    public static void dropExpired() {
+    private static void dropExpired() {
         long expire = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000); // Expira em cinco dias
         for (String id : keySet()) {
             Defer defer = getExact(id);
@@ -165,6 +165,14 @@ public class Defer implements Serializable, Comparable<Defer> {
         } else {
             return defer;
         }
+    }
+    
+    public static boolean deferSOFTFAIL(String id) {
+        return defer(id, Core.getDeferTimeSOFTFAIL());
+    }
+    
+    public static boolean deferRED(String id) {
+        return defer(id, Core.getDeferTimeRED());
     }
 
     public static boolean defer(String id, int minutes) {
@@ -254,18 +262,15 @@ public class Defer implements Serializable, Comparable<Defer> {
     }
 
     public static void store() {
+        dropExpired();
         if (isChanged()) {
             try {
-//                Server.logTrace("storing defer.map");
                 long time = System.currentTimeMillis();
                 File file = new File("./data/defer.map");
                 HashMap<String,Defer> map = getMap();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
                     setStored();
-                } finally {
-                    outputStream.close();
                 }
                 Server.logStore(time, file);
             } catch (Exception ex) {

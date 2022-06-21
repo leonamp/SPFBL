@@ -25,7 +25,10 @@ import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
+import net.spfbl.core.Regex;
+import static net.spfbl.core.Regex.isValidCIDRv6;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -110,7 +113,7 @@ public final class SubnetIPv6 extends Subnet {
     private static long getAddressNet(String inetnum) {
         int index = inetnum.indexOf('/');
         String ip = inetnum.substring(0, index);
-        return getAddressIP(ip);
+        return getAddressLong(ip);
     }
     
     /**
@@ -165,7 +168,7 @@ public final class SubnetIPv6 extends Subnet {
         return mask;
     }
     
-    public static String reverse(String ip) {
+    public static String reverseIPv6(String ip) {
         String reverse = "";
         byte[] address = splitByte(ip);
         for (byte octeto : address) {
@@ -181,7 +184,7 @@ public final class SubnetIPv6 extends Subnet {
     }
     
     public static boolean isSLAAC(String ip) {
-        if (SubnetIPv6.isValidIPv6(ip)) {
+        if (isValidIPv6(ip)) {
             byte[] byteArray = splitByte(ip);
             return (byteArray[11] & 0xFF) == 0xFF && (byteArray[12] & 0xFF) == 0xFE;
         } else {
@@ -189,41 +192,21 @@ public final class SubnetIPv6 extends Subnet {
         }
     }
     
-    public static boolean is6to4(String ip) {
-        if (SubnetIPv6.isValidIPv6(ip)) {
-            short[] shortArray = SubnetIPv6.split(ip);
-            return shortArray[0] == 0x2002;
-        } else {
-            return false;
-        }
+    private static boolean is6to4(short[] shortArray) {
+        return shortArray[0] == 0x2002;
     }
     
-    public static boolean isTeredo(String ip) {
-        if (SubnetIPv6.isValidIPv6(ip)) {
-            short[] shortArray = SubnetIPv6.split(ip);
-            return shortArray[0] == 0x2001 && shortArray[1] == 0x0000;
-        } else {
-            return false;
-        }
+    private static boolean isTeredo(short[] shortArray) {
+        return shortArray[0] == 0x2001 && shortArray[1] == 0x0000;
     }
     
     public static String getIPv4(String ip) {
         if (ip == null) {
             return null;
-        } else if (is6to4(ip)) {
-            byte[] byteArray = splitByte(ip);
-            int octet1 = byteArray[2] & 0xFF;
-            int octet2 = byteArray[3] & 0xFF;
-            int octet3 = byteArray[4] & 0xFF;
-            int octet4 = byteArray[5] & 0xFF;
-            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
-        } else if (isTeredo(ip)) {
-            byte[] byteArray = splitByte(ip);
-            int octet1 = ~byteArray[12] & 0xFF;
-            int octet2 = ~byteArray[13] & 0xFF;
-            int octet3 = ~byteArray[14] & 0xFF;
-            int octet4 = ~byteArray[15] & 0xFF;
-            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else if (isValidIPv4(ip)) {
+            return ip;
+        } else if (isValidIPv6(ip)) {
+            return tryTransformFromIPv6ToIPv4(ip);
         } else {
             return null;
         }
@@ -232,22 +215,37 @@ public final class SubnetIPv6 extends Subnet {
     public static String tryTransformToIPv4(String ip) {
         if (ip == null) {
             return null;
-        } else if (is6to4(ip)) {
-            byte[] byteArray = splitByte(ip);
-            int octet1 = byteArray[2] & 0xFF;
-            int octet2 = byteArray[3] & 0xFF;
-            int octet3 = byteArray[4] & 0xFF;
-            int octet4 = byteArray[5] & 0xFF;
-            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
-        } else if (isTeredo(ip)) {
-            byte[] byteArray = splitByte(ip);
-            int octet1 = ~byteArray[12] & 0xFF;
-            int octet2 = ~byteArray[13] & 0xFF;
-            int octet3 = ~byteArray[14] & 0xFF;
-            int octet4 = ~byteArray[15] & 0xFF;
-            return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+        } else if (isValidIPv4(ip)) {
+            return ip;
+        } else if (isValidIPv6(ip)) {
+            return tryTransformFromIPv6ToIPv4(ip);
         } else {
             return ip;
+        }
+    }
+    
+    public static String tryTransformFromIPv6ToIPv4(String ipv6) {
+        if (ipv6 == null) {
+            return null;
+        } else {
+            short[] shortArray = SubnetIPv6.split(ipv6);
+            if (is6to4(shortArray)) {
+                byte[] byteArray = splitByte(ipv6);
+                int octet1 = byteArray[2] & 0xFF;
+                int octet2 = byteArray[3] & 0xFF;
+                int octet3 = byteArray[4] & 0xFF;
+                int octet4 = byteArray[5] & 0xFF;
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+            } else if (isTeredo(shortArray)) {
+                byte[] byteArray = splitByte(ipv6);
+                int octet1 = ~byteArray[12] & 0xFF;
+                int octet2 = ~byteArray[13] & 0xFF;
+                int octet3 = ~byteArray[14] & 0xFF;
+                int octet4 = ~byteArray[15] & 0xFF;
+                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+            } else {
+                return ipv6;
+            }
         }
     }
     
@@ -358,26 +356,55 @@ public final class SubnetIPv6 extends Subnet {
         return address;
     }
     
-    public static byte[] address(String ip) {
-        byte[] address = new byte[16];
-        short[] splitArray = split(ip);
-        address[0] = (byte) (splitArray[0] >>> 8 & 0xFFFF);
-        address[1] = (byte) (splitArray[0] & 0xFFFF);
-        address[2] = (byte) (splitArray[1] >>> 8 & 0xFFFF);
-        address[3] = (byte) (splitArray[1] & 0xFFFF);
-        address[4] = (byte) (splitArray[2] >>> 8 & 0xFFFF);
-        address[5] = (byte) (splitArray[2] & 0xFFFF);
-        address[6] = (byte) (splitArray[3] >>> 8 & 0xFFFF);
-        address[7] = (byte) (splitArray[3] & 0xFFFF);
-        address[8] = (byte) (splitArray[4] >>> 8 & 0xFFFF);
-        address[9] = (byte) (splitArray[4] & 0xFFFF);
-        address[10] = (byte) (splitArray[5] >>> 8 & 0xFFFF);
-        address[11] = (byte) (splitArray[5] & 0xFFFF);
-        address[12] = (byte) (splitArray[6] >>> 8 & 0xFFFF);
-        address[13] = (byte) (splitArray[6] & 0xFFFF);
-        address[14] = (byte) (splitArray[7] >>> 8 & 0xFFFF);
-        address[15] = (byte) (splitArray[7] & 0xFFFF);
-        return address;
+    public static String getAddressIP(byte[] address) {
+        if (address == null) {
+            return null;
+        } else if (address.length == 16) {
+            int p1 = (address[0] & 0xFF) << 8 | address[1] & 0xFF;
+            int p2 = (address[2] & 0xFF) << 8 | address[3] & 0xFF;
+            int p3 = (address[4] & 0xFF) << 8 | address[5] & 0xFF;
+            int p4 = (address[6] & 0xFF) << 8 | address[7] & 0xFF;
+            int p5 = (address[8] & 0xFF) << 8 | address[9] & 0xFF;
+            int p6 = (address[10] & 0xFF) << 8 | address[11] & 0xFF;
+            int p7 = (address[12] & 0xFF) << 8 | address[13] & 0xFF;
+            int p8 = (address[14] & 0xFF) << 8 | address[15] & 0xFF;
+            return Integer.toHexString(p1) + ":" +
+                    Integer.toHexString(p2) + ":" +
+                    Integer.toHexString(p3) + ":" +
+                    Integer.toHexString(p4) + ":" +
+                    Integer.toHexString(p5) + ":" +
+                    Integer.toHexString(p6) + ":" +
+                    Integer.toHexString(p7) + ":" +
+                    Integer.toHexString(p8);
+        } else {
+            return null;
+        }
+    }
+    
+    public static byte[] getAddressIP(String ip) {
+        if (ip == null) {
+            return null;
+        } else {
+            byte[] address = new byte[16];
+            short[] splitArray = split(ip);
+            address[0] = (byte) (splitArray[0] >>> 8 & 0xFFFF);
+            address[1] = (byte) (splitArray[0] & 0xFFFF);
+            address[2] = (byte) (splitArray[1] >>> 8 & 0xFFFF);
+            address[3] = (byte) (splitArray[1] & 0xFFFF);
+            address[4] = (byte) (splitArray[2] >>> 8 & 0xFFFF);
+            address[5] = (byte) (splitArray[2] & 0xFFFF);
+            address[6] = (byte) (splitArray[3] >>> 8 & 0xFFFF);
+            address[7] = (byte) (splitArray[3] & 0xFFFF);
+            address[8] = (byte) (splitArray[4] >>> 8 & 0xFFFF);
+            address[9] = (byte) (splitArray[4] & 0xFFFF);
+            address[10] = (byte) (splitArray[5] >>> 8 & 0xFFFF);
+            address[11] = (byte) (splitArray[5] & 0xFFFF);
+            address[12] = (byte) (splitArray[6] >>> 8 & 0xFFFF);
+            address[13] = (byte) (splitArray[6] & 0xFFFF);
+            address[14] = (byte) (splitArray[7] >>> 8 & 0xFFFF);
+            address[15] = (byte) (splitArray[7] & 0xFFFF);
+            return address;
+        }
     }
     
     /**
@@ -386,7 +413,7 @@ public final class SubnetIPv6 extends Subnet {
      * @param ip endereço de IP em notação IP.
      * @return o endereço IP em inteiro de 64 bits da notação IPv6.
      */
-    protected static long getAddressIP(String ip) {
+    public static long getAddressLong(String ip) {
         long address = 0;
         short[] splitedAddress = split(ip);
         for (int i = 0; i < 4; i++) {
@@ -409,98 +436,56 @@ public final class SubnetIPv6 extends Subnet {
         return 0xFFFFFFFFFFFFFFFFL << 64 - mask;
     }
     
-    private static final Pattern IPV6_PATTERN = Pattern.compile("^"
-                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
-                    + "$"
-    );
-    
-    /**
-     * Verifica se um IP é válido na notação de IP.
-     * @param ip o IP a ser verificado.
-     * @return verdadeiro se um IP é válido na notação de IPv6.
-     */
-    public static boolean isValidIPv6(String ip) {
-        if (ip == null) {
-            return false;
-        } else {
-            ip = ip.trim();
-            ip = ip.toLowerCase();
-//            return Pattern.matches("^"
-//                    + "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-//                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-//                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-//                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-//                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}"
-//                    + "$", ip
-//                    );
-            return IPV6_PATTERN.matcher(ip).matches();
-        }
-    }
-    
     public static boolean isReservedIPv6(String ip) {
         if (ip == null) {
             return false;
-        } else if (SubnetIPv6.containsIP("0000::/8", ip)) {
+        } else if (containsIPv6("0000::/8", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("0100::/8", ip)) {
+        } else if (containsIPv6("0100::/8", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("0200::/7", ip)) {
+        } else if (containsIPv6("0200::/7", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("0400::/6", ip)) {
+        } else if (containsIPv6("0400::/6", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("0800::/5", ip)) {
+        } else if (containsIPv6("0800::/5", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("1000::/4", ip)) {
+        } else if (containsIPv6("1000::/4", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("2001::/32", ip)) {
+        } else if (containsIPv6("2001::/32", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("2001:10::/28", ip)) {
+        } else if (containsIPv6("2001:10::/28", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("2001:20::/28", ip)) {
+        } else if (containsIPv6("2001:20::/28", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("2001:db8::/32", ip)) {
+        } else if (containsIPv6("2001:db8::/32", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("2002::/16", ip)) {
+        } else if (containsIPv6("2002::/16", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("4000::/3", ip)) {
+        } else if (containsIPv6("4000::/3", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("6000::/3", ip)) {
+        } else if (containsIPv6("6000::/3", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("8000::/3", ip)) {
+        } else if (containsIPv6("8000::/3", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("a000::/3", ip)) {
+        } else if (containsIPv6("a000::/3", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("c000::/3", ip)) {
+        } else if (containsIPv6("c000::/3", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("e000::/4", ip)) {
+        } else if (containsIPv6("e000::/4", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("f000::/5", ip)) {
+        } else if (containsIPv6("f000::/5", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("f800::/6", ip)) {
+        } else if (containsIPv6("f800::/6", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("fc00::/7", ip)) {
+        } else if (containsIPv6("fc00::/7", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("fe00::/9", ip)) {
+        } else if (containsIPv6("fe00::/9", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("fe80::/10", ip)) {
+        } else if (containsIPv6("fe80::/10", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("fec0::/10", ip)) {
+        } else if (containsIPv6("fec0::/10", ip)) {
             return true;
-        } else if (SubnetIPv6.containsIP("ff00::/8", ip)) {
+        } else if (containsIPv6("ff00::/8", ip)) {
             return true;
         } else {
             return false;
@@ -515,8 +500,8 @@ public final class SubnetIPv6 extends Subnet {
     public static String getNextIPv6(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            BigInteger address = new BigInteger(1, address(ip));
+        } else if (isValidIPv6(ip)) {
+            BigInteger address = new BigInteger(1, getAddressIP(ip));
             if (address.equals(ADDRESS_MAX)) {
                 return null;
             } else {
@@ -552,8 +537,8 @@ public final class SubnetIPv6 extends Subnet {
     public static String getPreviousIPv6(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            BigInteger address = new BigInteger(1, address(ip));
+        } else if (isValidIPv6(ip)) {
+            BigInteger address = new BigInteger(1, getAddressIP(ip));
             if (address.equals(ADDRESS_MIN)) {
                 return null;
             } else {
@@ -585,64 +570,6 @@ public final class SubnetIPv6 extends Subnet {
         } else {
             return null;
         }
-    }
-    
-    private static final Pattern CIDRV6_PATTERN = Pattern.compile("^"
-                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
-                    + "/[0-9]{1,3}$"
-    );
-    
-    /**
-     * Verifica se um CIDR é válido na notação de IPv6.
-     * @param cidr o CIDR a ser verificado.
-     * @return verdadeiro se um CIDR é válido na notação de IPv6.
-     */
-    public static boolean isValidCIDRv6(String cidr) {
-        if (cidr == null) {
-            return false;
-        } else {
-            cidr = cidr.trim();
-            cidr = cidr.toLowerCase();
-//            return Pattern.matches("^"
-//                    + "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,7}:|"
-//                    + "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-//                    + "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-//                    + "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-//                    + ":((:[0-9a-fA-F]{1,4}){1,7}|:)|"
-//                    + "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,})"
-//                    + "/[0-9]{1,3}$", cidr
-//                    );
-            return CIDRV6_PATTERN.matcher(cidr).matches();
-        }
-    }
-    
-    private static final Pattern REVERSEV6_PATTERN = Pattern.compile("^"
-                + "(\\.?[a-f0-9]{1,4})"
-                + "(\\.[a-f0-9]{1,4}){31}"
-                + "$\\.?"
-    );
-    
-    public static boolean isReverseIPv6(String reverse) {
-        reverse = reverse.trim();
-        reverse = reverse.toLowerCase();
-//        return Pattern.matches("^"
-//                + "(\\.?[a-f0-9]{1,4})"
-//                + "(\\.[a-f0-9]{1,4}){31}"
-//                + "$\\.?", reverse);
-        return REVERSEV6_PATTERN.matcher(reverse).matches();
     }
     
     public static String reverseToIPv6(String reverse) {
@@ -910,7 +837,7 @@ public final class SubnetIPv6 extends Subnet {
     
     public static String[] getRangeArrayCIDRv6(String cidr) {
         if (isValidCIDRv6(cidr)) {
-           String ip = getFirstIP(cidr);
+            String ip = getFirstIP(cidr);
             String[] rangeList = new String[129 - getMask(cidr)];
             short[] address = split(ip);
             for (int index = 0; index < rangeList.length; index++) {
@@ -1158,7 +1085,7 @@ public final class SubnetIPv6 extends Subnet {
      * @return verdadeiro se o endereço IP passado faz parte do bloco.
      */
     public boolean contains(String ip) {
-        return contains(getAddressIP(ip));
+        return contains(getAddressLong(ip));
     }
     
     /**

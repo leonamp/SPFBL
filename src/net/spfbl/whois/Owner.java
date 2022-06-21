@@ -30,7 +30,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
+import net.spfbl.core.Regex;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -80,7 +80,7 @@ public class Owner implements Serializable, Comparable<Owner> {
         return expiredTime > REFRESH_TIME;
     }
     
-    private static final Pattern OWNER_ID_PATTERN = Pattern.compile("^"
+    private static final Regex OWNER_ID_PATTERN = new Regex("^"
             + "([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
             + "|([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})"
             + "$"
@@ -92,14 +92,10 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se a expressão é um CPNJ ou CPF.
      */
     public static boolean isOwnerID(String id) {
-//        return Pattern.matches(
-//                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
-//                + "|([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
-//                );
-        return OWNER_ID_PATTERN.matcher(id).matches();
+        return OWNER_ID_PATTERN.matches(id);
     }
     
-    private static final Pattern OWNER_CNPJ_PATTERN = Pattern.compile("^"
+    private static final Regex OWNER_CNPJ_PATTERN = new Regex("^"
             + "([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})"
             + "$"
     );
@@ -110,13 +106,10 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se a expressão é um CPNJ.
      */
     public static boolean isOwnerCNPJ(String id) {
-//        return Pattern.matches(
-//                "^([0-9]{2,3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2})$", id
-//                );
-        return OWNER_CNPJ_PATTERN.matcher(id).matches();
+        return OWNER_CNPJ_PATTERN.matches(id);
     }
     
-    private static final Pattern OWNER_CPF_PATTERN = Pattern.compile("^"
+    private static final Regex OWNER_CPF_PATTERN = new Regex("^"
             + "([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})"
             + "$"
     );
@@ -127,10 +120,7 @@ public class Owner implements Serializable, Comparable<Owner> {
      * @return verdadeiro se a expressão é um CPF.
      */
     public static boolean isOwnerCPF(String id) {
-//        return Pattern.matches(
-//                "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2})$", id
-//                );
-        return OWNER_CPF_PATTERN.matcher(id).matches();
+        return OWNER_CPF_PATTERN.matches(id);
     }
     
     /**
@@ -143,23 +133,20 @@ public class Owner implements Serializable, Comparable<Owner> {
         this.refresh();
     }
     
-    private static final Pattern OWNER_ID1_PATTERN = Pattern.compile("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$");
-    private static final Pattern OWNER_ID2_PATTERN = Pattern.compile("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
-    private static final Pattern OWNER_ID3_PATTERN = Pattern.compile("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
+    private static final Regex OWNER_ID1_PATTERN = new Regex("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$");
+    private static final Regex OWNER_ID2_PATTERN = new Regex("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
+    private static final Regex OWNER_ID3_PATTERN = new Regex("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$");
     
     public static String normalizeID(String id) {
         if (id == null) {
             return null;
         } else if (id.length() == 0) {
             return null;
-//        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$", id)) {
-        } else if (OWNER_ID1_PATTERN.matcher(id).matches()) {
+        } else if (OWNER_ID1_PATTERN.matches(id)) {
             return id;
-//        } else if (Pattern.matches("^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
-        } else if (OWNER_ID2_PATTERN.matcher(id).matches()) {
+        } else if (OWNER_ID2_PATTERN.matches(id)) {
             return id;
-//        } else if (Pattern.matches("^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$", id)) {
-        } else if (OWNER_ID3_PATTERN.matcher(id).matches()) {
+        } else if (OWNER_ID3_PATTERN.matches(id)) {
             return "0" + id;
         } else {
             return null;
@@ -268,7 +255,7 @@ public class Owner implements Serializable, Comparable<Owner> {
                         Server.removeWhoisQueryDay();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
-                        Server.logError("Linha não reconhecida: " + line);
+                        Server.logError("Line not reconized: " + line);
                     }
                 }
             }

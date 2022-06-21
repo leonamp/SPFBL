@@ -23,8 +23,12 @@ import java.io.FileOutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
-import net.spfbl.core.Client;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidEmail;
 import net.spfbl.core.Server;
 import net.spfbl.whois.Domain;
 import org.apache.commons.lang3.SerializationUtils;
@@ -67,20 +71,20 @@ public class NoReply {
         }
     }
 
-    private static synchronized TreeSet<String> getAll() throws ProcessException {
+    private static synchronized TreeSet<String> getAll() {
         TreeSet<String> blockSet = new TreeSet<>();
         blockSet.addAll(SET);
         return blockSet;
     }
 
-    private static synchronized boolean containsExact(String address) {
+    public static boolean containsExact(String address) {
         return SET.contains(address);
     }
 
     private static String normalize(String recipient) {
         if (recipient == null) {
             return null;
-        } else if (Domain.isValidEmail(recipient)) {
+        } else if (isValidEmail(recipient)) {
             return recipient.toLowerCase();
         } else if (recipient.endsWith("@")) {
             return recipient.toLowerCase();
@@ -92,9 +96,36 @@ public class NoReply {
             return null;
         }
     }
+    
+    public static boolean addSafe(String address) {
+        try {
+            if ((address = normalize(address)) == null) {
+                return false;
+            } else if (Core.isAdminEmail(address)) {
+                return false;
+            } else if (Core.isAbuseEmail(address)) {
+                return false;
+            } else if (add(address)) {
+                if (isValidEmail(address)) {
+                    Server.logInfo("the email address '" + address + "' was unsubscribed.");
+                }
+                return true;
+            } else {
+                return false;
+            }
+        } catch (ProcessException ex) {
+            Server.logError(address);
+            Server.logError(ex);
+            return false;
+        }
+    }
 
     public static boolean add(String address) throws ProcessException {
         if ((address = normalize(address)) == null) {
+            throw new ProcessException("RECIPIENT INVALID");
+        } else if (Core.isAdminEmail(address)) {
+            throw new ProcessException("RECIPIENT INVALID");
+        } else if (Core.isAbuseEmail(address)) {
             throw new ProcessException("RECIPIENT INVALID");
         } else if (addExact(address)) {
             return true;
@@ -131,15 +162,99 @@ public class NoReply {
             return false;
         }
     }
+    
+    public static boolean resubscribe(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            return dropExact(address);
+        }
+    }
 
     public static TreeSet<String> getSet() throws ProcessException {
-        TreeSet<String> trapSet = new TreeSet<>();
+        TreeSet<String> resultSet = new TreeSet<>();
         for (String recipient : getAll()) {
             if (!recipient.contains(":")) {
-                trapSet.add(recipient);
+                resultSet.add(recipient);
             }
         }
-        return trapSet;
+        return resultSet;
+    }
+    
+    public static boolean containsTLD(String address) {
+        if (address == null) {
+            return false;
+        } else if (isHostname(address)) {
+            String tld = Domain.extractTLDSafe(address, true);
+            if (tld == null) {
+                return false;
+            } else {
+                return NoReply.containsExact(tld);
+            }
+        } else {
+            int index = address.indexOf('@') + 1;
+            if (index > 0) {
+                String domain = address.substring(index);
+                String tld = Domain.extractTLDSafe(domain, true);
+                if (tld == null) {
+                    return false;
+                } else {
+                    return NoReply.containsExact(tld);
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    public static boolean containsDomain(String address) {
+        if (address == null) {
+            return false;
+        } else if (isHostname(address)) {
+            String domain = Domain.extractDomainSafe(address, true);
+            if (domain == null) {
+                return false;
+            } else {
+                return NoReply.containsExact(domain);
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean containsFQDN(String host) {
+        if ((host = Domain.extractHost(host, true)) == null) {
+            return false;
+        } else if (NoReply.containsExact(host)) {
+            return true;
+        } else {
+            int index;
+            while ((index = host.indexOf('.', 1)) > 0) {
+                host = host.substring(index);
+                if (NoReply.containsExact(host)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    public static boolean isSubscribed(String address) {
+        if (address == null) {
+            return false;
+        } else if (containsExact(address)) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    
+    public static boolean isUnsubscribed(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            return containsExact(address);
+        }
     }
 
     public static boolean contains(String address, boolean inexistent) {
@@ -167,8 +282,8 @@ public class NoReply {
             return true;
         } else if (address.startsWith("msprvs1=")) {
             return true;
-        } else if (!Domain.isValidEmail(address)) {
-            return false;
+        } else if (!isValidEmail(address)) {
+            return true;
         } else if (containsExact(address)) {
             return true;
         } else if (inexistent && Trap.contaisAnything(address)) {

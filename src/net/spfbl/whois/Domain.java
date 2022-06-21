@@ -32,13 +32,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
-import javax.naming.CommunicationException;
-import javax.naming.InvalidNameException;
-import javax.naming.NameNotFoundException;
-import javax.naming.OperationNotSupportedException;
-import javax.naming.ServiceUnavailableException;
 import net.spfbl.core.Core;
+import net.spfbl.core.Regex;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidEmail;
+import static net.spfbl.core.Regex.isValidIPv4;
+import net.spfbl.data.NoReply;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -103,11 +102,11 @@ public class Domain implements Serializable, Comparable<Domain> {
      */
     public boolean isRegistryExpired() {
         long expiredTime = (System.currentTimeMillis() - lastRefresh) / Server.DAY_TIME;
-        if (isGraceTime()) {
-            return expiredTime > 0;
-        } else {
+//        if (isGraceTime()) {
+//            return expiredTime > 0;
+//        } else {
             return expiredTime > REFRESH_TIME;
-        }
+//        }
     }
     
     /**
@@ -136,7 +135,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                 index++;
             }
             return Core.removerAcentuacao(address.substring(index)).toLowerCase();
-        } else if (!Domain.isHostname(address)) {
+        } else if (!Regex.isHostname(address)) {
             return null;
         } else if (pontuacao && !address.startsWith(".")) {
             return "." + Core.removerAcentuacao(address).toLowerCase();
@@ -150,10 +149,22 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     public static boolean isOfficialTLD(String address) {
-        if (address.contains("@")) {
+        if (address == null) {
+            return false;
+        } else if (address.contains("@")) {
             int index = address.lastIndexOf('@') + 1;
             address = '.' + address.substring(index);
             return TLD_SET.contains(address);
+        } else {
+            return TLD_SET.contains(address);
+        }
+    }
+    
+    public static boolean containsTLD(String address) {
+        if (address == null) {
+            return false;
+        } else if (address.equals(".")) {
+            return true;
         } else {
             return TLD_SET.contains(address);
         }
@@ -173,7 +184,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public static boolean isDomain(String address) {
+    public static boolean isRootDomain(String address) {
         if ((address = extractHost(address, true)) == null) {
             return false;
         } else {
@@ -210,8 +221,10 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return o domínio pelos TLDs conhecidos.
      * @throws ProcessException se o endereço for um TLD.
      */
-    public static String extractDomain(String address,
-            boolean pontuacao) throws ProcessException {
+    public static String extractDomain(
+            String address,
+            boolean pontuacao
+    ) throws ProcessException {
         if ((address = extractHost(address, true)) == null) {
             return null;
         } else if (isOfficialTLD(address)) {
@@ -237,10 +250,13 @@ public class Domain implements Serializable, Comparable<Domain> {
             }
             beginIndex = address.lastIndexOf('.');
             int endIndex = address.length();
-            if (pontuacao) {
-                return "." + address.substring(beginIndex + 1, endIndex);
+            address = address.substring(beginIndex + 1, endIndex);
+            if (Core.hasOnlyDigits(address)) {
+                return null;
+            } else if (pontuacao) {
+                return "." + address;
             } else {
-                return address.substring(beginIndex + 1, endIndex);
+                return address;
             }
         }
     }
@@ -268,39 +284,45 @@ public class Domain implements Serializable, Comparable<Domain> {
      * @return o TLDs do endereço.
      * @throws ProcessException se houve faha na extração do domínio.
      */
-    public static String extractTLD(String address,
-            boolean ponto) throws ProcessException {
-        int lastIndex = address.length() - 1;
-        int beginIndex = 0;
-        while (beginIndex < lastIndex) {
-            int endIndex = address.indexOf('.', beginIndex);
-            if (endIndex == -1) {
-                break;
-            } else {
-                String tld = address.substring(endIndex);
-                if (TLD_SET.contains(tld)) {
-                    if (ponto) {
-                        return tld;
-                    } else {
-                        return tld.substring(1);
-                    }
-                }
-                beginIndex = endIndex + 1;
-            }
-        }
-        beginIndex = address.lastIndexOf('.');
-        if (beginIndex == -1) {
-            return (ponto ? "." : "") + address;
-        } else if (beginIndex == 0) {
-            return ponto ? address : address.substring(1);
-        } else if (ponto) {
-            return address.substring(beginIndex);
+    public static String extractTLD(
+            String address,
+            boolean ponto
+    ) throws ProcessException {
+        if (address == null) {
+            return null;
         } else {
-            return address.substring(beginIndex+1);
+            int lastIndex = address.length() - 1;
+            int beginIndex = 0;
+            while (beginIndex < lastIndex) {
+                int endIndex = address.indexOf('.', beginIndex);
+                if (endIndex == -1) {
+                    break;
+                } else {
+                    String tld = address.substring(endIndex);
+                    if (TLD_SET.contains(tld)) {
+                        if (ponto) {
+                            return tld;
+                        } else {
+                            return tld.substring(1);
+                        }
+                    }
+                    beginIndex = endIndex + 1;
+                }
+            }
+            beginIndex = address.lastIndexOf('.');
+            if (beginIndex == -1) {
+                return (ponto ? "." : "") + address;
+            } else if (beginIndex == 0) {
+                return ponto ? address : address.substring(1);
+            } else if (ponto) {
+                return address.substring(beginIndex);
+            } else {
+                return address.substring(beginIndex+1);
+            }
         }
     }
     
-    private static final Pattern CONTAINS_DOMAIN_PATTERN = Pattern.compile("^"
+    private static final Regex CONTAINS_DOMAIN_PATTERN = new Regex("^"
             + "([a-zA-Z0-9._%+=-]+@)?"
             + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
             + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
@@ -315,45 +337,11 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static boolean containsDomain(String address) {
         if (address == null) {
             return false;
-        } else if (SubnetIPv4.isValidIPv4(address = address.trim())) {
+        } else if (isValidIPv4(address = address.trim())) {
             return false;
         } else {
             address = address.toLowerCase();
-//            return Pattern.matches(
-//                    "^([a-zA-Z0-9._%+=-]+@)?"
-//                    + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-//                    + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-//                    + "$", address
-//                    );
-            return CONTAINS_DOMAIN_PATTERN.matcher(address).matches();
-        }
-    }
-    
-    private static final Pattern HOSTNAME_PATTERN = Pattern.compile("^\\.?"
-            + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
-            + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-            + "\\.?$"
-    );
-    
-    /**
-     * Verifica se o endereço contém um domínio.
-     * @param address o endereço a ser verificado.
-     * @return verdadeiro se o endereço contém um domínio.
-     */
-    public static boolean isHostname(String address) {
-        if (address == null) {
-            return false;
-        } else if (SubnetIPv4.isValidIPv4(address = address.trim())) {
-            return false;
-        } else {
-            address = address.toLowerCase();
-//            return Pattern.matches(
-//                    "^\\.?"
-//                    + "(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])"
-//                    + "(\\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-//                    + "\\.?$", address
-//                    );
-            return HOSTNAME_PATTERN.matcher(address).matches();
+            return CONTAINS_DOMAIN_PATTERN.matches(address);
         }
     }
     
@@ -393,8 +381,9 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    private static final Pattern MAIL_FROM_PATTERN = Pattern.compile("^"
-            + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
+    private static final Regex MAIL_FROM_PATTERN = new Regex("^"
+            + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%&/+=-]*"
+            + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý_]"
             + "@"
             + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
             + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
@@ -416,60 +405,49 @@ public class Domain implements Serializable, Comparable<Domain> {
                 // RFC 5321: "The maximum total length of a 
                 // reverse-path or forward-path is 256 characters"
                 return false;
-//            } else if (Pattern.matches(
-//                    "^"
-//                    + "[0-9a-zA-ZÀ-ÅÇ-ÏÑ-ÖÙ-Ýà-åç-ïñ-öù-ý._%/+=-]+"
-//                    + "@"
-//                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-//                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-//                    + "$", address
-//                    )) {
-            } else if (MAIL_FROM_PATTERN.matcher(address).matches()) {
+            } else if (MAIL_FROM_PATTERN.matches(address)) {
                 int index = address.indexOf('@');
                 String domain = address.substring(index+1);
-                return Domain.isHostname(domain);
+                return isHostname(domain);
             } else {
                 return false;
             }
         }
     }
     
-    private static final Pattern VALID_EMAIL_PATTERN = Pattern.compile("^"
-            + "[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
-            + "@"
-            + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-            + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-            + "$"
-    );
-    
-    public static boolean isValidEmail(String address) {
-        if (address == null) {
-            return false;
-        } else {
-            address = address.trim();
+    public static String normalizeEmail(String address) {
+        if (isMailFrom(address)) {
             address = address.toLowerCase();
-            if (address.length() > 256) {
-                // RFC 5321: "The maximum total length of a 
-                // reverse-path or forward-path is 256 characters"
-                return false;
-//            } else if (Pattern.matches(
-//                    "^[0-9a-zA-Z_+-][0-9a-zA-Z._+-]*"
-//                    + "@"
-//                    + "(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])"
-//                    + "(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]))*)"
-//                    + "$", address
-//                    )) {
-            } else if (VALID_EMAIL_PATTERN.matcher(address).matches()) {
-                int index = address.indexOf('@');
-                String domain = address.substring(index+1);
-                return Domain.isHostname(domain);
-            } else {
-                return false;
+            int index = address.indexOf('+');
+            if (index > 0) {
+                // Subaddress Extension.
+                // https://tools.ietf.org/html/rfc5233.html
+                String part = address.substring(0, index);
+                index = address.indexOf('@');
+                String domain = address.substring(index);
+                address = part + domain;
             }
+            if (isValidEmail(address)) {
+                if (address.endsWith("@gmail.com") || address.endsWith("@googlemail.com")) {
+                    // Normalizing Gmail address.
+                    // https://support.google.com/mail/answer/7436150
+                    index = address.indexOf('@');
+                    String part = address.substring(0, index);
+                    String domain = address.substring(index);
+                    address = part.replace(".", "") + domain;
+                }
+            }
+            index = address.indexOf('=');
+            if (index > 0) {
+                address = address.substring(index+1);
+            }
+            return address;
+        } else {
+            return null;
         }
     }
     
-    private static final Pattern VALID_TLD_PATTERN = Pattern.compile("^"
+    private static final Regex VALID_TLD_PATTERN = new Regex("^"
             + "(\\.([a-z0-9]|[a-z0-9][a-z0-9-]+[a-z0-9])+)+"
             + "$"
     );
@@ -485,7 +463,7 @@ public class Domain implements Serializable, Comparable<Domain> {
 //        return Pattern.matches(
 //                "^(\\.([a-z0-9]|[a-z0-9][a-z0-9-]+[a-z0-9])+)+$", address
 //                );
-        return VALID_TLD_PATTERN.matcher(address).matches();
+        return VALID_TLD_PATTERN.matches(address);
     }
     
     /**
@@ -738,7 +716,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                                     } else if (line.startsWith("country:")) {
                                         country2 = line.substring(index).trim();
                                     } else {
-                                        Server.logError("Linha não reconhecida: " + line);
+                                        Server.logError("Line not reconized: " + line);
                                     }
                                 }
                                 Handle handle = Handle.getHandle(nic_hdl_br);
@@ -763,8 +741,10 @@ public class Domain implements Serializable, Comparable<Domain> {
                         } else if (line.startsWith("% reserved:    CG")) {
                             throw new ProcessException("ERROR: RESERVED");
                         } else if (line.startsWith("% Permission denied.")) {
+                            Server.removeWhoisConnection();
                             throw new ProcessException("ERROR: WHOIS DENIED");
                         } else if (line.startsWith("% Permissão negada.")) {
+                            Server.removeWhoisConnection();
                             throw new ProcessException("ERROR: WHOIS DENIED");
                         } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                             throw new ProcessException("ERROR: WHOIS CONCURRENT");
@@ -777,7 +757,7 @@ public class Domain implements Serializable, Comparable<Domain> {
                             Server.removeWhoisQueryDay();
                             throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                         } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
-                            Server.logError("Linha não reconhecida: " + line);
+                            Server.logError("Line not reconized: " + line);
                         }
                     } catch (NumberFormatException ex) {
                         Server.logError(ex);
@@ -846,37 +826,37 @@ public class Domain implements Serializable, Comparable<Domain> {
         return Handle.getHandle(billing_c);
     }
     
-    public static boolean isGraceTime(String address) {
-        try {
-            if (address == null) {
-                return false;
-            } else if (address.endsWith(".br")) {
-                Domain domain = Domain.getDomain(address);
-                if (domain == null) {
-                    return false;
-                } else {
-                    return domain.isGraceTime();
-                }
-            } else {
-                return false;
-            }
-        } catch (ProcessException ex) {
-            if (ex.isErrorMessage("WAITING")) {
-                return true;
-            } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
-                return false;
-            } else if (ex.isErrorMessage("RESERVED")) {
-                return false;
-            } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
-                return false;
-            } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
-                return false;
-            } else {
-                Server.logError(ex);
-                return false;
-            }
-        }
-    }
+//    public static boolean isGraceTime(String address) {
+//        try {
+//            if (address == null) {
+//                return false;
+//            } else if (address.endsWith(".br")) {
+//                Domain domain = Domain.getDomain(address);
+//                if (domain == null) {
+//                    return false;
+//                } else {
+//                    return domain.isGraceTime();
+//                }
+//            } else {
+//                return false;
+//            }
+//        } catch (ProcessException ex) {
+//            if (ex.isErrorMessage("WAITING")) {
+//                return true;
+//            } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+//                return false;
+//            } else if (ex.isErrorMessage("RESERVED")) {
+//                return false;
+//            } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+//                return false;
+//            } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+//                return false;
+//            } else {
+//                Server.logError(ex);
+//                return false;
+//            }
+//        }
+//    }
     
     public int getLifeTime() {
         if (created == null) {
@@ -886,35 +866,35 @@ public class Domain implements Serializable, Comparable<Domain> {
         }
     }
     
-    public boolean isGraceTime() {
-        if (expires == null && getLifeTime() < 7) {
-            String domainLocal = getDomain();
-            int beginIndex = domainLocal.indexOf('.', 1);
-            int endIndex = domainLocal.length();
-            String tld = domainLocal.substring(beginIndex, endIndex);
-            if (tld.equals(".br")) {
-                return false;
-            } else if (tld.equals(".edu.br")) {
-                return false;
-            } else if (tld.equals(".mil.br")) {
-                return false;
-            } else if (tld.equals(".gov.br")) {
-                return false;
-            } else if (tld.equals(".leg.br")) {
-                return false;
-            } else if (tld.equals(".def.br")) {
-                return false;
-            } else if (tld.equals(".jus.br")) {
-                return false;
-            } else if (tld.equals(".mp.br")) {
-                return false;
-            } else {
-                return tld.endsWith(".br");
-            }
-        } else {
-            return false;
-        }
-    }
+//    public boolean isGraceTime() {
+//        if (expires == null && getLifeTime() < 7) {
+//            String domainLocal = getDomain();
+//            int beginIndex = domainLocal.indexOf('.', 1);
+//            int endIndex = domainLocal.length();
+//            String tld = domainLocal.substring(beginIndex, endIndex);
+//            if (tld.equals(".br")) {
+//                return false;
+//            } else if (tld.equals(".edu.br")) {
+//                return false;
+//            } else if (tld.equals(".mil.br")) {
+//                return false;
+//            } else if (tld.equals(".gov.br")) {
+//                return false;
+//            } else if (tld.equals(".leg.br")) {
+//                return false;
+//            } else if (tld.equals(".def.br")) {
+//                return false;
+//            } else if (tld.equals(".jus.br")) {
+//                return false;
+//            } else if (tld.equals(".mp.br")) {
+//                return false;
+//            } else {
+//                return tld.endsWith(".br");
+//            }
+//        } else {
+//            return false;
+//        }
+//    }
     
     /**
      * Retorna o valor de um campo do registro ou o valor de uma função.
@@ -1136,7 +1116,7 @@ public class Domain implements Serializable, Comparable<Domain> {
         return keySet;
     }
     
-    private static synchronized Domain getDomainObj(String key) {
+    private static Domain getDomainObj(String key) {
         return MAP.get(key);
     }
     
@@ -1312,53 +1292,53 @@ public class Domain implements Serializable, Comparable<Domain> {
         return domainSet;
     }
     
-    /**
-     * Atualiza em background todos os registros adicionados no conjunto.
-     */
-    public static boolean backgroundRefresh() {
-        Domain domainMax = null;
-        for (Domain domain : getDomainSet()) {
-            if (domain.isReduced() || domain.isRegistryExpired()) {
-                if (domain.queries > 3) {
-                    if (domainMax == null) {
-                        domainMax = domain;
-                    } else if (domainMax.queries < domain.queries) {
-                        domainMax = domain;
-                    } else if (domainMax.lastRefresh > domain.lastRefresh) {
-                        domainMax = domain;
-                    }
-                }
-            }
-        }
-        if (domainMax == null) {
-            return false;
-        } else {
-            try {
-                // Atualizando campos do registro.
-                return domainMax.refresh();
-            } catch (ProcessException ex) {
-                if (ex.isErrorMessage("WAITING")) {
-                    domainMax.drop();
-                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
-                    domainMax.drop();
-                } else if (ex.isErrorMessage("RESERVED")) {
-                    domainMax.drop();
-                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
-                    // Fazer nada.
-                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
-                    // Fazer nada.
-                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
-                    // Fazer nada.
-                } else {
-                    Server.logError(ex);
-                }
-                return false;
-            } catch (Exception ex) {
-                Server.logError(ex);
-                return false;
-            }
-        }
-    }
+//    /**
+//     * Atualiza em background todos os registros adicionados no conjunto.
+//     */
+//    public static boolean backgroundRefresh() {
+//        Domain domainMax = null;
+//        for (Domain domain : getDomainSet()) {
+//            if (domain.isReduced() || domain.isRegistryExpired()) {
+//                if (domain.queries > 3) {
+//                    if (domainMax == null) {
+//                        domainMax = domain;
+//                    } else if (domainMax.queries < domain.queries) {
+//                        domainMax = domain;
+//                    } else if (domainMax.lastRefresh > domain.lastRefresh) {
+//                        domainMax = domain;
+//                    }
+//                }
+//            }
+//        }
+//        if (domainMax == null) {
+//            return false;
+//        } else {
+//            try {
+//                // Atualizando campos do registro.
+//                return domainMax.refresh();
+//            } catch (ProcessException ex) {
+//                if (ex.isErrorMessage("WAITING")) {
+//                    domainMax.drop();
+//                } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+//                    domainMax.drop();
+//                } else if (ex.isErrorMessage("RESERVED")) {
+//                    domainMax.drop();
+//                } else if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
+//                    // Fazer nada.
+//                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
+//                    // Fazer nada.
+//                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
+//                    // Fazer nada.
+//                } else {
+//                    Server.logError(ex);
+//                }
+//                return false;
+//            } catch (Exception ex) {
+//                Server.logError(ex);
+//                return false;
+//            }
+//        }
+//    }
     
     /**
      * Atualiza o registro de domínio de um determinado host.
@@ -1385,28 +1365,32 @@ public class Domain implements Serializable, Comparable<Domain> {
         } else {
             // Extrair o host se for e-mail.
             String host = extractHost(address, false);
-            // Não encontrou o dominio em cache.
-            // Selecionando servidor da pesquisa WHOIS.
-            String server = getWhoisServer(host);
-            // Domínio existente.
-            // Realizando a consulta no WHOIS.
-            String result = Server.whois(host, server);
-            if (result != null) {
-                try {
-                    Domain domain = new Domain(result);
-                    domain.server = server; // Temporário até final de transição.
-                    // Adicinando registro em cache.
-                    MAP.put(domain.getDomain(), domain);
-                    DOMAIN_CHANGED = true;
-                } catch (ProcessException ex) {
-                    if (ex.isErrorMessage("RESERVED")) {
-                        // A chave de busca é um TLD.
-                        if (TLD_SET.add(host)) {
-                            // Atualiza flag de atualização.
-                            TLD_CHANGED = true;
+            if (!NoReply.containsDomain(host)) {
+                // Não encontrou o dominio em cache.
+                // Selecionando servidor da pesquisa WHOIS.
+                String server = getWhoisServer(host);
+                // Domínio existente.
+                // Realizando a consulta no WHOIS.
+                String result = Server.whois(host, server);
+                if (result != null) {
+                    try {
+                        Domain domain = new Domain(result);
+                        domain.server = server; // Temporário até final de transição.
+                        // Adicinando registro em cache.
+                        MAP.put(domain.getDomain(), domain);
+                        DOMAIN_CHANGED = true;
+                    } catch (ProcessException ex) {
+                        if (ex.isErrorMessage("RESERVED")) {
+                            // A chave de busca é um TLD.
+                            if (TLD_SET.add(host)) {
+                                // Atualiza flag de atualização.
+                                TLD_CHANGED = true;
+                            }
+                        } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+                            NoReply.addSafe('.' + host);
                         }
+                        throw ex;
                     }
-                    throw ex;
                 }
             }
         }
@@ -1477,6 +1461,8 @@ public class Domain implements Serializable, Comparable<Domain> {
     public static String revert(String hostname) {
         if (hostname == null) {
             return null;
+        } else if (hostname.equals(".")) {
+            return hostname;
         } else {
             StringTokenizer tokenizer = new StringTokenizer(hostname, ".");
             String result = tokenizer.nextToken();
@@ -1488,30 +1474,38 @@ public class Domain implements Serializable, Comparable<Domain> {
     }
     
     private static synchronized Domain newDomain(String host) throws ProcessException {
-        // Selecionando servidor da pesquisa WHOIS.
-        String server = getWhoisServer(host);
-        // Domínio existente.
-        // Realizando a consulta no WHOIS.
-        String result = Server.whois(host, server);
-        if (result == null) {
+        if ((host = Domain.normalizeHostname(host, false)) == null) {
+            return null;
+        } else if (NoReply.containsDomain(host)) {
             return null;
         } else {
-            try {
-                Domain domain = new Domain(result);
-                domain.server = server; // Temporário até final de transição.
-                // Adicinando registro em cache.
-                MAP.put(domain.getDomain(), domain);
-                DOMAIN_CHANGED = true;
-                return domain;
-            } catch (ProcessException ex) {
-                if (ex.isErrorMessage("RESERVED")) {
-                    // A chave de busca é um TLD.
-                    if (TLD_SET.add(host)) {
-                        // Atualiza flag de atualização.
-                        TLD_CHANGED = true;
+            // Selecionando servidor da pesquisa WHOIS.
+            String server = getWhoisServer(host);
+            // Domínio existente.
+            // Realizando a consulta no WHOIS.
+            String result = Server.whois(host, server);
+            if (result == null) {
+                return null;
+            } else {
+                try {
+                    Domain domain = new Domain(result);
+                    domain.server = server; // Temporário até final de transição.
+                    // Adicinando registro em cache.
+                    MAP.put(domain.getDomain(), domain);
+                    DOMAIN_CHANGED = true;
+                    return domain;
+                } catch (ProcessException ex) {
+                    if (ex.isErrorMessage("RESERVED")) {
+                        // A chave de busca é um TLD.
+                        if (TLD_SET.add(host)) {
+                            // Atualiza flag de atualização.
+                            TLD_CHANGED = true;
+                        }
+                    } else if (ex.isErrorMessage("DOMAIN NOT FOUND")) {
+                        NoReply.addSafe('.' + host);
                     }
+                    throw ex;
                 }
-                throw ex;
             }
         }
     }
@@ -1547,9 +1541,13 @@ public class Domain implements Serializable, Comparable<Domain> {
                 return domain;
             }
         }
-        // Extrair o host se for e-mail.
-        String host = extractHost(address, false);
-        return newDomain(host);
+        if (Server.WHOIS_BR == null) {
+            return null;
+        } else {
+            // Extrair o host se for e-mail.
+            String host = extractHost(address, false);
+            return newDomain(host);
+        }
     }
     
     /**

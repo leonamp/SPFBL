@@ -23,10 +23,20 @@ import java.io.Serializable;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidCIDR;
+import static net.spfbl.core.Regex.isValidEmail;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
+import net.spfbl.data.AddressSet;
+import net.spfbl.data.Block;
+import net.spfbl.data.FQDN;
 import net.spfbl.data.Generic;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
@@ -47,29 +57,197 @@ public class Client implements Serializable, Comparable<Client> {
     private String domain;
     private String email;
     private Permission permission = Permission.NONE;
-    private Personality personality = Personality.RATIONAL;
     private boolean administrator = false;
     private int limit = 100;
     
     private NormalDistribution frequency = null;
     private long last = 0;
     
+    private TreeMap<String,Long> banMap = null;
+    private long banLast = 0;
+    
+    public boolean isBanActive() {
+        return banMap != null;
+    }
+    
+    private synchronized String activeBan() {
+        if (banMap == null) {
+            banMap = new TreeMap<>();
+            return null;
+        } else if (banMap.isEmpty()) {
+            return null;
+        } else {
+            return banMap.firstKey();
+        }
+    }
+    
+    private synchronized void setBanLast() {
+        banLast = System.currentTimeMillis();
+    }
+    
+    private synchronized boolean desactiveBan() {
+        if (banMap == null) {
+            return false;
+        } else if (System.currentTimeMillis() > banLast + Server.WEEK_TIME) {
+            banMap = null;
+            banLast = 0;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    private synchronized String higherBanKey(String address) {
+        if (banMap == null) {
+            return null;
+        } else {
+            return banMap.higherKey(address);
+        }
+    }
+    
+    private synchronized Long getBanValue(String address) {
+        if (banMap == null) {
+            return null;
+        } else {
+            return banMap.get(address);
+        }
+    }
+    
+    private synchronized Long putBanValue(String address, Long time) {
+        if (banMap == null) {
+            return null;
+        } else {
+            return banMap.put(address, time);
+        }
+    }
+    
+    private synchronized Long removeBanKey(String address) {
+        if (banMap == null) {
+            return null;
+        } else {
+            return banMap.remove(address);
+        }
+    }
+    
+    public TreeMap<String,Byte> getBanMap() {
+        AddressSet abusingSet = new AddressSet();
+        AddressSet abusingRangeSet = new AddressSet();
+        String address = activeBan();
+        while (address != null) {
+            Long value = null;
+            if (Block.containsCIDR(address)) {
+                value = getBanValue(address);
+            }
+            if (value == null) {
+                removeBanKey(address);
+            } else if (System.currentTimeMillis() > value + Server.WEEK_TIME) {
+                removeBanKey(address);
+            } else if (address.contains("/")) {
+                abusingRangeSet.add(address);
+            } else if (address.contains(":") && Block.containsCIDR(address + "/52")) {
+                abusingSet.add(address + "/52");
+            } else if (address.contains(":")) {
+                abusingSet.add(address + "/64");
+            } else if (Block.containsCIDR(address + "/24")) {
+                abusingSet.add(address + "/24");
+            } else if (Block.containsCIDR(address + "/20")) {
+                abusingSet.add(address + "/20");
+            } else if (Block.containsCIDR(address + "/28")) {
+                abusingSet.add(address + "/28");
+            } else {
+                abusingSet.add(address);
+            }
+            address = higherBanKey(address);
+        }
+        setBanLast();
+        TreeMap<String,Byte> resultMap = new TreeMap<>();
+        for (String cidr : abusingRangeSet.getAllLegacy()) {
+            if (cidr.startsWith("CIDR=")) {
+                cidr = cidr.substring(5);
+            }
+            int index = cidr.lastIndexOf('/') + 1;
+            byte mask = Byte.parseByte(cidr.substring(index));
+            if (cidr.contains(":")) {
+                mask = mask < 48 ? 48 : mask;
+            } else {
+                mask = mask < 20 ? 20 : mask;
+            }
+            resultMap.put(cidr, mask);
+        }
+        for (String cidr : abusingSet.getAllLegacy()) {
+            if (cidr.startsWith("CIDR=")) {
+                cidr = cidr.substring(5);
+            }
+            if (!abusingRangeSet.contains(cidr)) {
+                int index = cidr.lastIndexOf('/') + 1;
+                byte mask = Byte.parseByte(cidr.substring(index));
+                if (cidr.contains(":")) {
+                    mask = mask < 52 ? 52 : mask;
+                } else {
+                    mask = mask < 28 ? 28 : mask;
+                }
+                resultMap.put(cidr, mask);
+            }
+        }
+        return resultMap;
+    }
+    
+    private boolean ban(String ip) {
+        if (ip == null) {
+            return false;
+        } else if (!isBanActive()) {
+            return false;
+        } else if (Block.containsCIDR(ip)) {
+            putBanValue(ip, System.currentTimeMillis());
+            return true;
+        } else {
+            removeBanKey(ip);
+            return false;
+        }
+    }
+    
+    private boolean banDynamic(String ip) {
+        if (ip == null) {
+            return false;
+        } else if (!isBanActive()) {
+            return false;
+        } else if (ip.contains(":")) {
+            putBanValue(SubnetIPv6.normalizeCIDRv6(ip + "/48"), System.currentTimeMillis());
+            putBanValue(SubnetIPv6.normalizeCIDRv6(ip + "/52"), System.currentTimeMillis());
+            putBanValue(SubnetIPv6.normalizeCIDRv6(ip + "/64"), System.currentTimeMillis());
+            return true;
+        } else {
+            putBanValue(SubnetIPv4.normalizeCIDRv4(ip + "/20"), System.currentTimeMillis());
+            putBanValue(SubnetIPv4.normalizeCIDRv4(ip + "/22"), System.currentTimeMillis());
+            putBanValue(SubnetIPv4.normalizeCIDRv4(ip + "/24"), System.currentTimeMillis());
+            return true;
+        }
+    }
+    
+    public static boolean ban(Client client, String ip) {
+        if (client == null) {
+            return false;
+        } else {
+            return client.ban(ip);
+        }
+    }
+    
+    public static boolean banDynamic(Client client, String ip) {
+        if (client == null) {
+            return false;
+        } else {
+            return client.banDynamic(ip);
+        }
+    }
+    
     private Action actionBLOCK = Action.REJECT;
-    private Action actionRED = Action.FLAG;
+    private Action actionRED = Action.REJECT;
     private Action actionYELLOW = Action.DEFER;
-    private Action actionGRACE = Action.DEFER;
     
     public enum Permission {
         NONE,
         DNSBL,
-        SPFBL,
-//        ALL // Obsoleto
-    }
-    
-    public enum Personality {
-        PASSIVE,
-        RATIONAL,
-        AGRESSIVE
+        SPFBL
     }
     
     private Client(Client other) {
@@ -77,24 +255,29 @@ public class Client implements Serializable, Comparable<Client> {
         this.domain = other.domain;
         this.email = other.email;
         this.permission = other.permission;
-        this.personality = other.personality;
         this.administrator = other.administrator;
         this.limit = other.limit;
+        this.banLast = other.banLast;
+        if (other.banMap == null) {
+            this.banMap = null;
+        } else {
+            this.banMap = new TreeMap<>();
+            this.banMap.putAll(other.banMap);
+        }
         this.frequency = other.frequency == null ? null : other.frequency.replicate();
         this.last = other.last;
         this.actionBLOCK = other.actionBLOCK;
         this.actionRED = other.actionRED;
         this.actionYELLOW = other.actionYELLOW;
-        this.actionGRACE = other.actionGRACE;
     }
     
     private Client(String cidr, String domain, String email) throws ProcessException {
-        if (Subnet.isValidCIDR(cidr) && (domain == null || Domain.isHostname(domain))) {
+        if (isValidCIDR(cidr) && (domain == null || isHostname(domain))) {
             this.cidr = Subnet.normalizeCIDR(cidr);
             this.domain = Domain.extractHost(domain, false);
             if (email == null || email.length() == 0) {
                 this.email = null;
-            } else if (Domain.isValidEmail(email)) {
+            } else if (isValidEmail(email)) {
                 this.email = email.toLowerCase();
             } else {
                 throw new ProcessException("INVALID EMAIL");
@@ -108,7 +291,7 @@ public class Client implements Serializable, Comparable<Client> {
         if (domain == null) {
             this.domain = null;
             CHANGED = true;
-        } else if (Domain.isHostname(domain)) {
+        } else if (isHostname(domain)) {
             this.domain = Domain.extractHost(domain, false);
             CHANGED = true;
         } else {
@@ -120,7 +303,7 @@ public class Client implements Serializable, Comparable<Client> {
         if (email == null || email.length() == 0) {
             this.email = null;
             CHANGED = true;
-        } else if (Domain.isValidEmail(email)) {
+        } else if (isValidEmail(email)) {
             this.email = email.toLowerCase();
             CHANGED = true;
         } else {
@@ -178,37 +361,10 @@ public class Client implements Serializable, Comparable<Client> {
     public boolean setPermission(Permission permission) throws ProcessException {
         if (permission == null) {
             throw new ProcessException("INVALID PERMISSION");
-//        } else if (permission == Permission.ALL) {
-//            if (this.administrator) {
-//                return false;
-//            } else {
-//                this.permission = Permission.SPFBL;
-//                this.administrator = true;
-//                return CHANGED = true;
-//            }
         } else if (this.permission == permission) {
             return false;
         } else {
             this.permission = permission;
-            return CHANGED = true;
-        }
-    }
-    
-    public boolean setPersonality(String personality) throws ProcessException {
-        try {
-            return setPersonality(Personality.valueOf(personality));
-        } catch (Exception ex) {
-            throw new ProcessException("INVALID PERSONALITY");
-        }
-    }
-    
-    public boolean setPersonality(Personality personality) throws ProcessException {
-        if (personality == null) {
-            throw new ProcessException("INVALID PERSONALITY");
-        } else if (this.personality == personality) {
-            return false;
-        } else {
-            this.personality = personality;
             return CHANGED = true;
         }
     }
@@ -274,25 +430,6 @@ public class Client implements Serializable, Comparable<Client> {
             throw new ProcessException("INVALID YELLOW ACTION");
         }
     }
-    
-    public boolean setActionGRACE(String action) throws ProcessException {
-        try {
-            return setActionGRACE(Action.valueOf(action));
-        } catch (Exception ex) {
-            throw new ProcessException("INVALID GRACE ACTION");
-        }
-    }
-    
-    public boolean setActionGRACE(Action action) throws ProcessException {
-        if (action == null) {
-            throw new ProcessException("INVALID GRACE ACTION");
-        } else if (this.actionGRACE == action) {
-            return false;
-        } else {
-            this.actionGRACE = action;
-            return CHANGED = true;
-        }
-    }
 
     public boolean setLimit(String limit) throws ProcessException {
         try {
@@ -303,7 +440,7 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public boolean setLimit(int limit) throws ProcessException {
-        if (limit <= 0 || limit > 3600000) {
+        if (limit < 0 || limit > 3600000) {
             throw new ProcessException("INVALID LIMIT");
         } else if (this.limit == limit) {
             return false;
@@ -322,6 +459,19 @@ public class Client implements Serializable, Comparable<Client> {
             return "NXDOMAIN";
         } else {
             return domain;
+        }
+    }
+    
+    public String getFQDN(InetAddress ip) {
+        if (ip == null) {
+            return domain;
+        } else {
+            String fqdn = FQDN.getFQDN(ip, false);
+            if (fqdn == null) {
+                return domain;
+            } else {
+                return fqdn;
+            }
         }
     }
     
@@ -372,10 +522,6 @@ public class Client implements Serializable, Comparable<Client> {
         return User.get(email);
     }
     
-    public boolean hasUser() {
-        return User.exists(email);
-    }
-    
     public boolean hasEmail() {
         return email != null;
     }
@@ -388,21 +534,20 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public boolean hasSecretOTP() {
-        User user = getUser();
-        if (user == null) {
+    public boolean contains(String ip) {
+        if (ip == null) {
             return false;
+        } else if (ip.contains(":")) {
+            return SubnetIPv6.containsIPv6(cidr, ip);
         } else {
-            return user.hasSecretOTP();
+            return SubnetIPv4.containsIPv4(cidr, ip);
         }
     }
     
-    public boolean contains(String ip) {
-        return Subnet.containsIP(cidr, ip);
-    }
-    
     public boolean containsFull(String ip) {
-        if (Subnet.containsIP(cidr, ip)) {
+        if (ip == null) {
+            return false;
+        } else if (contains(ip)) {
             return true;
         } else {
             Client client = getByIP(ip);
@@ -429,23 +574,21 @@ public class Client implements Serializable, Comparable<Client> {
     public boolean hasPermission(Permission permission) {
         if (this.permission == Permission.NONE) {
             return permission == Permission.NONE;
-//        } else if (this.permission == Permission.ALL) {
-//            return permission != Permission.NONE;
         } else {
             return this.permission == permission;
         }
     }
     
-    public boolean isPassive() {
-        return personality == Personality.PASSIVE;
-    }
-    
-    public boolean isAgressive() {
-        return personality == Personality.AGRESSIVE;
-    }
-    
-    public Personality getPersonality() {
-        return personality;
+    public boolean hasActionHOLD() {
+        if (actionBLOCK == Action.HOLD) {
+            return true;
+        } else if (actionRED == Action.HOLD) {
+            return true;
+        } else if (actionYELLOW == Action.HOLD) {
+            return true;
+        } else {
+            return false;
+        }
     }
     
     public Action getActionBLOCK() {
@@ -460,8 +603,28 @@ public class Client implements Serializable, Comparable<Client> {
         return actionYELLOW;
     }
     
-    public Action getActionGRACE() {
-        return actionGRACE;
+    public String getActionNameBLOCK() {
+        if (actionBLOCK == null) {
+            return "NONE";
+        } else {
+            return actionBLOCK.name();
+        }
+    }
+    
+    public String getActionNameRED() {
+        if (actionRED == null) {
+            return "NONE";
+        } else {
+            return actionRED.name();
+        }
+    }
+    
+    public String getActionNameYELLOW() {
+        if (actionYELLOW == null) {
+            return "NONE";
+        } else {
+            return actionYELLOW.name();
+        }
     }
     
     /**
@@ -477,7 +640,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static Client create(
             String cidr, String domain, String permission, String email
             ) throws ProcessException {
-        if (Subnet.isValidCIDR(cidr)) {
+        if (isValidCIDR(cidr)) {
             TreeSet<Client> clientSet = Client.getSetByCIDR(cidr, permission);
             if (clientSet == null || clientSet.isEmpty()) {
                 String first = Subnet.getFirstIP(cidr);
@@ -499,20 +662,40 @@ public class Client implements Serializable, Comparable<Client> {
         return MAP.put(ip, client);
     }
     
-    public synchronized static TreeSet<Client> getSet() {
-        TreeSet<Client> clientSet = new TreeSet<>();
-        clientSet.addAll(MAP.values());
-        return clientSet;
-    }
-    
-    public static TreeSet<Client> getClientSet(String domain) {
-        TreeSet<Client> clientSet = new TreeSet<>();
-        for (Client client : getSet()) {
-            if (client.isDomain(domain)) {
+    public static ArrayList<Client> getSet() {
+        ArrayList<Client> clientSet = new ArrayList<>();
+        for (String key : getKeySet()) {
+            Client client = getExact(key);
+            if (client != null) {
                 clientSet.add(client);
             }
         }
         return clientSet;
+    }
+    
+    public static TreeSet<String> getEmailSet() {
+        TreeSet<String> emailSet = new TreeSet<>();
+        for (Client client : getSet()) {
+            String email = client.getEmail();
+            if (email != null) {
+                emailSet.add(email);
+            }
+        }
+        return emailSet;
+    }
+    
+    public static TreeSet<Client> getClientSet(String domain) {
+        if (domain == null) {
+            return null;
+        } else {
+            TreeSet<Client> clientSet = new TreeSet<>();
+            for (Client client : getSet()) {
+                if (client.isDomain(domain)) {
+                    clientSet.add(client);
+                }
+            }
+            return clientSet;
+        }
     }
     
     public static TreeSet<Client> dropAll() throws ProcessException {
@@ -530,7 +713,7 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public static Client drop(String cidr) throws ProcessException {
-        if (cidr == null || !Subnet.isValidCIDR(cidr)) {
+        if (cidr == null || !isValidCIDR(cidr)) {
             throw new ProcessException("INVALID CIDR");
         } else {
             cidr = Subnet.normalizeCIDR(cidr);
@@ -547,7 +730,7 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    private synchronized static Client getExact(String key) {
+    private static Client getExact(String key) {
         return MAP.get(key);
     }
     
@@ -597,6 +780,7 @@ public class Client implements Serializable, Comparable<Client> {
             return "UNKNOW";
         } else {
             String ip = address.getHostAddress();
+            ip = Subnet.normalizeIP(ip);
             Client client = getByIP(ip);
             if (client == null) {
                 return ip;
@@ -609,7 +793,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static Client getByEmail(String email) throws ProcessException {
         if (email == null) {
             return null;
-        } else if (!Domain.isValidEmail(email)) {
+        } else if (!isValidEmail(email)) {
             throw new ProcessException("INVALID E-MAIL");
         } else {
             return getExact(email);
@@ -619,7 +803,7 @@ public class Client implements Serializable, Comparable<Client> {
     public static Client getByEmailSafe(String email) {
         if (email == null) {
             return null;
-        } else if (!Domain.isValidEmail(email)) {
+        } else if (!isValidEmail(email)) {
             return null;
         } else {
             return getExact(email);
@@ -629,7 +813,7 @@ public class Client implements Serializable, Comparable<Client> {
     public synchronized static Client getByCIDR(String cidr) throws ProcessException {
         if (cidr == null) {
             return null;
-        } else if (!Subnet.isValidCIDR(cidr)) {
+        } else if (!isValidCIDR(cidr)) {
             throw new ProcessException("INVALID CIDR");
         } else {
             cidr = Subnet.normalizeCIDR(cidr);
@@ -650,15 +834,20 @@ public class Client implements Serializable, Comparable<Client> {
         if (address == null) {
             return null;
         } else {
-            return getByIP(address.getHostAddress());
+            String ip = address.getHostAddress();
+            ip = Subnet.normalizeIP(ip);
+            return getByIP(ip);
         }
     }
     
     public static Client get(InetAddress address, String permissao) {
+        String ip = address.getHostAddress();
         if (address instanceof Inet4Address) {
-            return getByIP(address.getHostAddress(), permissao);
+            ip = SubnetIPv4.normalizeIPv4(ip);
+            return getByIP(ip, permissao);
         } else if (address instanceof Inet6Address) {
-            String ip = SubnetIPv6.getIPv4(address.getHostAddress());
+            ip = SubnetIPv6.normalizeIPv6(ip);
+            ip = SubnetIPv6.getIPv4(ip);
             if (ip == null) {
                 ip = address.getHostAddress();
             }
@@ -674,13 +863,12 @@ public class Client implements Serializable, Comparable<Client> {
             ) throws ProcessException {
         Client client = get(address, permissao);
         if (client == null) {
-            String ip = null;
             String cidr = null;
             if (address instanceof Inet4Address) {
-                ip = SubnetIPv4.normalizeIPv4(address.getHostAddress());
+                String ip = address.getHostAddress();
                 cidr = ip + "/32";
             } else if (address instanceof Inet6Address) {
-                ip = SubnetIPv6.getIPv4(address.getHostAddress());
+                String ip = SubnetIPv6.getIPv4(address.getHostAddress());
                 if (ip == null) {
                     ip = SubnetIPv6.normalizeIPv6(address.getHostAddress());
                     cidr = ip + "/52";
@@ -688,24 +876,11 @@ public class Client implements Serializable, Comparable<Client> {
                     cidr = ip + "/32";
                 }
             }
-            if (ip != null && cidr != null) {
+            if (cidr != null) {
                 client = Client.getByCIDR(cidr);
                 if (client == null) {
-                    String hostame = Reverse.getHostname(ip);
-                    String domain;
-                    if (Generic.containsGeneric(hostame)) {
-                        domain = null;
-                    } else {
-                        try {
-                            domain = Domain.extractDomain(hostame, false);
-                        } catch (ProcessException ex) {
-                            domain = null;
-                        }
-                    }
+                    String domain = null;
                     client = Client.create(cidr, domain, permissao, null);
-                    if (client != null) {
-                        Server.logDebug("CLIENT ADDED " + client);
-                    }
                 } else {
                     return client;
                 }
@@ -776,16 +951,17 @@ public class Client implements Serializable, Comparable<Client> {
         return clientSet;
     }
     
-    public synchronized static Client getByIP(String ip) {
+    public static Client getByIP(String ip) {
         if (ip == null) {
             return null;
         } else {
-            String key = Subnet.expandIP(ip);
-            key = MAP.floorKey(key);
             Client client;
-            if (key == null) {
+            String key = Subnet.expandIP(ip);
+            if ((key = MAP.floorKey(key)) == null) {
                 return null;
-            } else if ((client = MAP.get(key)).contains(ip)) {
+            } else if ((client = MAP.get(key)) == null) {
+                return null;
+            } else if (client.contains(ip)) {
                 return client;
             } else {
                 return null;
@@ -793,17 +969,19 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public synchronized static Client getByIP(String ip, String permissao) {
+    public static Client getByIP(String ip, String permissao) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
+        } else if (isValidIPv4(ip)) {
             String key = SubnetIPv4.expandIPv4(ip);
             while ((key = MAP.floorKey(key)) != null) {
                 if (key.contains(":")) {
                     break;
                 } else {
                     Client client = MAP.get(key);
-                    if (client.isPermission(permissao)) {
+                    if (client == null) {
+                        return null;
+                    } else if (client.isPermission(permissao)) {
                         if (client.contains(ip)) {
                             return client;
                         } else {
@@ -815,14 +993,16 @@ public class Client implements Serializable, Comparable<Client> {
                 }
             }
             return null;
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             String key = SubnetIPv6.expandIPv6(ip);
             while ((key = MAP.floorKey(key)) != null) {
                 if (key.contains(".")) {
                     break;
                 } else {
                     Client client = MAP.get(key);
-                    if (client.isPermission(permissao)) {
+                    if (client == null) {
+                        return null;
+                    } else if (client.isPermission(permissao)) {
                         if (client.contains(ip)) {
                             return client;
                         } else {
@@ -839,7 +1019,7 @@ public class Client implements Serializable, Comparable<Client> {
         }
     }
     
-    public synchronized static TreeSet<Client> getSetByCIDR(
+    public static TreeSet<Client> getSetByCIDR(
             String cidr, String permission
     ) {
         if ((cidr = Subnet.normalizeCIDR(cidr)) == null) {
@@ -881,19 +1061,30 @@ public class Client implements Serializable, Comparable<Client> {
         return map;
     }
     
-    public static synchronized HashMap<String,Client> getCloneMap() {
+    public static synchronized TreeSet<String> getKeySet() {
+        TreeSet<String> resultSet = new TreeSet<>();
+        resultSet.addAll(MAP.keySet());
+        return resultSet;
+    }
+    
+    public static synchronized Client remove(String key) {
+        return MAP.remove(key);
+    }
+    
+    public static HashMap<String,Client> getCloneMap() {
         TreeSet<String> removeSet = new TreeSet<>();
         HashMap<String,Client> map = new HashMap<>();
-        for (String key : MAP.keySet()) {
-            Client client = MAP.get(key);
+        for (String key : getKeySet()) {
+            Client client = getExact(key);
             if (client.isPermission("DNSBL") && !client.hasEmail() && client.isDead()) {
                 removeSet.add(key);
             } else {
+                client.desactiveBan();
                 map.put(key, new Client(client));
             }
         }
         for (String key : removeSet) {
-            MAP.remove(key);
+            remove(key);
         }
         return map;
     }
@@ -903,13 +1094,6 @@ public class Client implements Serializable, Comparable<Client> {
             try {
                 long time = System.currentTimeMillis();
                 HashMap<String,Client> map = getCloneMap();
-//                for (String key : map.keySet()) {
-//                    Client value = map.get(key);
-//                    if (value.administrator) {
-//                        // Compatibilidade com versões anteriores.
-//                        value.permission = Permission.ALL;
-//                    }
-//                }
                 File file = new File("./data/client.map");
                 try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     SerializationUtils.serialize(map, outputStream);
@@ -939,12 +1123,6 @@ public class Client implements Serializable, Comparable<Client> {
                         if (client.permission == null) {
                             client.permission = Permission.NONE;
                             client.administrator = false;
-//                        } else if (client.permission == Permission.ALL) {
-//                            client.permission = Permission.SPFBL;
-//                            client.administrator = true;
-                        }
-                        if (client.limit == 0) {
-                            client.limit = 100;
                         }
                         if (client.actionBLOCK == null) {
                             client.actionBLOCK = Action.REJECT;
@@ -954,12 +1132,6 @@ public class Client implements Serializable, Comparable<Client> {
                         }
                         if (client.actionYELLOW == null) {
                             client.actionYELLOW = Action.DEFER;
-                        }
-                        if (client.actionGRACE == null) {
-                            client.actionGRACE = Action.DEFER;
-                        }
-                        if (client.personality == null) {
-                            client.personality = Personality.RATIONAL;
                         }
                         put(key, client);
                     }
@@ -984,15 +1156,23 @@ public class Client implements Serializable, Comparable<Client> {
     }
     
     public boolean isAbusing() {
-        if (isDead()) {
+        if (limit == 0) {
+            return false;
+        } else if (isDead()) {
             return false;
         } else {
             return frequency.getMaximumInt() < limit;
         }
     }
     
+    public int getLimit() {
+        return limit;
+    }
+    
     public boolean isAbusing(Permission permission) {
-        if (this.permission != permission) {
+        if (limit == 0) {
+            return false;
+        } else if (this.permission != permission) {
             return false;
         } else if (isDead()) {
             return false;
@@ -1016,6 +1196,14 @@ public class Client implements Serializable, Comparable<Client> {
             return true;
         } else {
             return frequency.getMinimumInt() > 60000;
+        }
+    }
+    
+    public int getFrequencyMinimumInt() {
+        if (frequency == null) {
+            return 0;
+        } else {
+            return frequency.getMinimumInt();
         }
     }
     

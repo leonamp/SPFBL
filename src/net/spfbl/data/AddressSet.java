@@ -34,18 +34,22 @@ import net.spfbl.whois.SubnetIPv6;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import static net.spfbl.core.Regex.isValidCIDRv4;
+import static net.spfbl.core.Regex.isValidCIDRv6;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
 
 /**
  * Data structure for CIDR set using a minimal memory 
  * space and full read and write paralelism operations.
  * 
  * It is a binary tree that each leaf represents a CIDR notation.
- * The leaf level represents the CIDR mask and each above branch of 
- * this leaf represents a bit at CIDR address.
- * 
- * If the leaf is a Integer, it is the time of last querie.
- * This Integer is the first 32 bits of system current time millis at querie.
- * If not queried for a long time, the CIDR is removed for saving long-term memory. 
+ The leaf level represents the CIDR mask and each above branch of 
+ this leaf represents a bit at CIDR getAddressIP.
+ 
+ If the leaf is a Integer, it is the time of last querie.
+ This Integer is the first 32 bits of system current time millis at querie.
+ If not queried for a long time, the CIDR is removed for saving long-term memory. 
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
@@ -564,13 +568,13 @@ public class AddressSet {
     public boolean add(String token) {
         if (token == null) {
             return false;
-        } else if (SubnetIPv4.isValidIPv4(token)) {
+        } else if (isValidIPv4(token)) {
             return add4(token + "/32", getIntegerTime());
-        } else if (SubnetIPv4.isValidCIDRv4(token)) {
+        } else if (isValidCIDRv4(token)) {
             return add4(token, getIntegerTime());
-        } else if (SubnetIPv6.isValidIPv6(token)) {
+        } else if (isValidIPv6(token)) {
             return add6(token + "/128", getIntegerTime());
-        } else if (SubnetIPv6.isValidCIDRv6(token)) {
+        } else if (isValidCIDRv6(token)) {
             return add6(token, getIntegerTime());
         } else {
             return false;
@@ -580,13 +584,13 @@ public class AddressSet {
     public String getLegacy(String token) {
         if (token == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(token)) {
+        } else if (isValidIPv4(token)) {
             return getLegacy4(token + "/32", getIntegerTime());
-        } else if (SubnetIPv4.isValidCIDRv4(token)) {
+        } else if (isValidCIDRv4(token)) {
             return getLegacy4(token, getIntegerTime());
-        } else if (SubnetIPv6.isValidIPv6(token)) {
+        } else if (isValidIPv6(token)) {
             return getLegacy6(token + "/128", getIntegerTime());
-        } else if (SubnetIPv6.isValidCIDRv6(token)) {
+        } else if (isValidCIDRv6(token)) {
             return getLegacy6(token, getIntegerTime());
         } else {
             return null;
@@ -596,13 +600,13 @@ public class AddressSet {
     public boolean remove(String token) {
         if (token == null) {
             return false;
-        } else if (SubnetIPv4.isValidIPv4(token)) {
+        } else if (isValidIPv4(token)) {
             return remove4(token + "/32");
-        } else if (SubnetIPv4.isValidCIDRv4(token)) {
+        } else if (isValidCIDRv4(token)) {
             return remove4(token);
-        } else if (SubnetIPv6.isValidIPv6(token)) {
+        } else if (isValidIPv6(token)) {
             return remove6(token + "/128");
-        } else if (SubnetIPv6.isValidCIDRv6(token)) {
+        } else if (isValidCIDRv6(token)) {
             return remove6(token);
         } else {
             return false;
@@ -612,16 +616,24 @@ public class AddressSet {
     public boolean contains(String token) {
         if (token == null) {
             return false;
-        } else if (SubnetIPv4.isValidIPv4(token)) {
+        } else if (isValidIPv4(token)) {
             return contains4(token + "/32", getIntegerTime());
-        } else if (SubnetIPv4.isValidCIDRv4(token)) {
+        } else if (isValidCIDRv4(token)) {
             return contains4(token, getIntegerTime());
-        } else if (SubnetIPv6.isValidIPv6(token)) {
+        } else if (isValidIPv6(token)) {
             return contains6(token + "/128", getIntegerTime());
-        } else if (SubnetIPv6.isValidCIDRv6(token)) {
+        } else if (isValidCIDRv6(token)) {
             return contains6(token, getIntegerTime());
         } else {
             return false;
+        }
+    }
+    
+    public boolean containsCIDRv6(String token) {
+        if (token == null) {
+            return false;
+        } else {
+            return contains6(token, getIntegerTime());
         }
     }
     
@@ -665,9 +677,9 @@ public class AddressSet {
                         } else {
                             add4(token, getIntegerTime());
                         }
-                    } else if (SubnetIPv4.isValidCIDRv4(token)) {
+                    } else if (isValidCIDRv4(token)) {
                         add4(token, getIntegerTime());
-                    } else if (SubnetIPv6.isValidCIDRv6(token)) {
+                    } else if (isValidCIDRv6(token)) {
                         add6(token, getIntegerTime());
                     }
                 }

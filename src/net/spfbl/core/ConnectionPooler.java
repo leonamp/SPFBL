@@ -63,8 +63,9 @@ public class ConnectionPooler {
                 + "" + port + "/" + schema + ""
                 + "?autoReconnect=true"
                 + "&useUnicode=true&characterEncoding=UTF-8"
-                + (ssl ? "&verifyServerCertificate=false"
-                + "&useSSL=true&requireSSL=true" : ""
+                + "&verifyServerCertificate=false"
+                + (ssl ? "&useSSL=true&requireSSL=true" 
+                : "&useSSL=false&requireSSL=false"
                 );
         this.USER = user;
         this.PASSWORD = password;

@@ -24,7 +24,8 @@ import java.io.FileOutputStream;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
+import static net.spfbl.core.Regex.isValidCIDRv4;
+import static net.spfbl.core.Regex.isValidIPv4;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
@@ -288,7 +289,7 @@ public final class SubnetIPv4 extends Subnet {
         return mask;
     }
     
-    public static String reverse(String ip) {
+    public static String reverseIPv4(String ip) {
         if (ip == null) {
             return null;
         } else {
@@ -365,6 +366,14 @@ public final class SubnetIPv4 extends Subnet {
         return address;
     }
     
+    public static String getAddressIP(int address) {
+        int octet1 = (address >> 24 & 0xFF);
+        int octet2 = (address >> 16 & 0xFF);
+        int octet3 = (address >> 8 & 0xFF);
+        int octet4 = (address & 0xFF);
+        return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+    }
+    
     public static long getLongIP(String ip) {
         long address = 0;
         int i = 0;
@@ -397,11 +406,7 @@ public final class SubnetIPv4 extends Subnet {
                 return null;
             } else {
                 address--;
-                int octet1 = (address >> 24 & 0xFF);
-                int octet2 = (address >> 16 & 0xFF);
-                int octet3 = (address >> 8 & 0xFF);
-                int octet4 = (address & 0xFF);
-                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+                return getAddressIP(address);
             }
         } else {
             return null;
@@ -417,75 +422,47 @@ public final class SubnetIPv4 extends Subnet {
                 return null;
             } else {
                 address++;
-                int octet1 = (address >> 24 & 0xFF);
-                int octet2 = (address >> 16 & 0xFF);
-                int octet3 = (address >> 8 & 0xFF);
-                int octet4 = (address & 0xFF);
-                return octet1 + "." + octet2 + "." + octet3 + "." + octet4;
+                return getAddressIP(address);
             }
         } else {
             return null;
         }
     }
     
-    private static final Pattern IPV4_PATTERN = Pattern.compile("^"
-                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-                    + "$"
-    );
-    
-    /**
-     * Verifica se um IP é válido na notação de IP.
-     * @param ip o IP a ser verificado.
-     * @return verdadeiro se um IP é válido na notação de IPv4.
-     */
-    public static boolean isValidIPv4(String ip) {
-        if (ip == null) {
-            return false;
-        } else {
-//            return Pattern.matches("^"
-//                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}"
-//                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-//                    + "$", ip
-//                    );
-            return IPV4_PATTERN.matcher(ip).matches();
-        }
-    }
-    
     public static boolean isReservedIPv4(String ip) {
         if (ip == null) {
             return false;
-        } else if (SubnetIPv4.containsIP("0.0.0.0/8", ip)) {
+        } else if (containsIPv4("0.0.0.0/8", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("10.0.0.0/8", ip)) {
+        } else if (containsIPv4("10.0.0.0/8", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("100.64.0.0/10", ip)) {
+        } else if (containsIPv4("100.64.0.0/10", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("127.0.0.0/8", ip)) {
+        } else if (containsIPv4("127.0.0.0/8", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("169.254.0.0/16", ip)) {
+        } else if (containsIPv4("169.254.0.0/16", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("172.16.0.0/12", ip)) {
+        } else if (containsIPv4("172.16.0.0/12", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("192.0.0.0/24", ip)) {
+        } else if (containsIPv4("192.0.0.0/24", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("192.0.2.0/24", ip)) {
+        } else if (containsIPv4("192.0.2.0/24", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("192.88.99.0/24", ip)) {
+        } else if (containsIPv4("192.88.99.0/24", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("192.168.0.0/16", ip)) {
+        } else if (containsIPv4("192.168.0.0/16", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("198.18.0.0/15", ip)) {
+        } else if (containsIPv4("198.18.0.0/15", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("198.51.100.0/24", ip)) {
+        } else if (containsIPv4("198.51.100.0/24", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("203.0.113.0/24", ip)) {
+        } else if (containsIPv4("203.0.113.0/24", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("224.0.0.0/4", ip)) {
+        } else if (containsIPv4("224.0.0.0/4", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("240.0.0.0/4", ip)) {
+        } else if (containsIPv4("240.0.0.0/4", ip)) {
             return true;
-        } else if (SubnetIPv4.containsIP("255.255.255.255/32", ip)) {
+        } else if (containsIPv4("255.255.255.255/32", ip)) {
             return true;
         } else {
             return false;
@@ -501,31 +478,6 @@ public final class SubnetIPv4 extends Subnet {
             ip = ((int) octeto & 0xFF) + "." + ip;
         }
         return SubnetIPv4.normalizeIPv4(ip);
-    }
-    
-    private static final Pattern CIDRV4_PATTERN = Pattern.compile("^"
-                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
-                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
-                    + "$"
-    );
-    
-    /**
-     * Verifica se um CIDR é válido na notação de IPv4.
-     * @param cidr o CIDR a ser verificado.
-     * @return verdadeiro se um CIDR é válido na notação de IPv4.
-     */
-    public static boolean isValidCIDRv4(String cidr) {
-        if (cidr == null) {
-            return false;
-        } else {
-            cidr = cidr.trim();
-//            return Pattern.matches("^"
-//                    + "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]){1,3}\\.){1,3}"
-//                    + "([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])/[0-9]{1,2}"
-//                    + "$", cidr
-//                    );
-            return CIDRV4_PATTERN.matcher(cidr).matches();
-        }
     }
     
     /**

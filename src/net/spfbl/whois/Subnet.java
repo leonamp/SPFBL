@@ -21,10 +21,18 @@ import net.spfbl.core.ProcessException;
 import java.io.BufferedReader;
 import java.io.Serializable;
 import java.io.StringReader;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.TreeSet;
+import static net.spfbl.core.Regex.isValidCIDRv4;
+import static net.spfbl.core.Regex.isValidCIDRv6;
+import static net.spfbl.core.Regex.isValidIP;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
 import net.spfbl.data.Block;
 
 /**
@@ -99,9 +107,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String getFirstIP(String cidr) {
         if (cidr == null) {
             return null;
-        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        } else if (isValidCIDRv4(cidr)) {
             return SubnetIPv4.getFirstIPv4(cidr);
-        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+        } else if (isValidCIDRv6(cidr)) {
             return SubnetIPv6.getFirstIPv6(cidr);
         } else {
             return null;
@@ -111,9 +119,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String getLastIP(String cidr) {
         if (cidr == null) {
             return null;
-        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        } else if (isValidCIDRv4(cidr)) {
             return SubnetIPv4.getLastIPv4(cidr);
-        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+        } else if (isValidCIDRv6(cidr)) {
             return SubnetIPv6.getLastIPv6(cidr);
         } else {
             return null;
@@ -123,9 +131,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String getPreviousIP(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
+        } else if (isValidIPv4(ip)) {
             return SubnetIPv4.getPreviousIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getPreviousIPv6(ip);
         } else {
             return null;
@@ -135,9 +143,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String getNextIP(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
+        } else if (isValidIPv4(ip)) {
             return SubnetIPv4.getNextIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getNextIPv6(ip);
         } else {
             return null;
@@ -163,9 +171,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String normalizeCIDR(String cidr) {
         if (cidr == null) {
             return null;
-        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        } else if (isValidCIDRv4(cidr)) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
-        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+        } else if (isValidCIDRv6(cidr)) {
             return SubnetIPv6.normalizeCIDRv6(cidr);
         } else if (cidr.contains(".")) {
             return SubnetIPv4.normalizeCIDRv4(cidr);
@@ -195,9 +203,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String normalizeIP(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
+        } else if (isValidIPv4(ip)) {
             return SubnetIPv4.normalizeIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.normalizeIPv6(ip);
         } else {
             return null;
@@ -207,9 +215,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String expandIP(String ip) {
         if (ip == null) {
             return null;
-        } else if (SubnetIPv4.isValidIPv4(ip)) {
+        } else if (isValidIPv4(ip)) {
             return SubnetIPv4.expandIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.expandIPv6(ip);
         } else {
             return ip;
@@ -219,9 +227,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String expandCIDR(String cidr) {
         if (cidr == null) {
             return null;
-        } else if (SubnetIPv4.isValidCIDRv4(cidr)) {
+        } else if (isValidCIDRv4(cidr)) {
             return SubnetIPv4.expandCIDRv4(cidr);
-        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
+        } else if (isValidCIDRv6(cidr)) {
             return SubnetIPv6.expandCIDRv6(cidr);
         } else {
             return cidr;
@@ -348,7 +356,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                                 } else if (line.startsWith("country:")) {
                                     country2 = line.substring(index).trim();
                                 } else {
-                                    Server.logError("Linha não reconhecida: " + line);
+                                    Server.logError("Line not reconized: " + line);
                                 }
                             }
                             Handle handle = Handle.getHandle(nic_hdl_br);
@@ -378,7 +386,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
                     } else if (line.startsWith("% Maximum concurrent connections limit exceeded")) {
                         throw new ProcessException("ERROR: WHOIS CONNECTION LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
-                        Server.logError("Linha não reconhecida: " + line);
+                        Server.logError("Line not reconized: " + line);
                     }
                 }
             }
@@ -508,7 +516,7 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     public static String getValue(String address, String key) {
         if (address == null || key == null) {
             return null;
-        } else if (Subnet.isValidIP(address)) {
+        } else if (isValidIP(address)) {
             try {
                 Subnet subnet = Subnet.getSubnet(address);
                 if (subnet == null) {
@@ -538,9 +546,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String getBlock(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             return SubnetIPv4.getInetnum(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getInetnum(ip);
         } else {
             return null;
@@ -548,9 +556,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String getOwnerID(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             return SubnetIPv4.getOwnerID(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getOwnerID(ip);
         } else {
             return null;
@@ -558,9 +566,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String getInetnum(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             return SubnetIPv4.getInetnum(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getInetnum(ip);
         } else {
             return null;
@@ -568,9 +576,9 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String getOwnerC(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             return SubnetIPv4.getOwnerC(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.getOwnerC(ip);
         } else {
             return null;
@@ -578,58 +586,41 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static String reverse(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
-            return SubnetIPv4.reverse(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            return SubnetIPv6.reverse(ip);
+        if (isValidIPv4(ip)) {
+            return SubnetIPv4.reverseIPv4(ip);
+        } else if (isValidIPv6(ip)) {
+            return SubnetIPv6.reverseIPv6(ip);
         } else {
             return null;
         }
     }
     
-    public static boolean isValidCIDR(String cidr) {
-        if (SubnetIPv4.isValidCIDRv4(cidr)) {
-            return true;
-        } else if (SubnetIPv6.isValidCIDRv6(cidr)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
-    /**
-     * Verifica se um IP é válido na notação de IP.
-     * @param ip o IP a ser verificado.
-     * @return verdadeiro se um IP é válido.
-     */
-    public static boolean isValidIP(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
-            return true;
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
     public static boolean isReservedIP(String ip) {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             return SubnetIPv4.isReservedIPv4(ip);
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             return SubnetIPv6.isReservedIPv6(ip);
         } else {
             return false;
         }
     }
     
-
+    public static boolean isReservedIP(InetAddress ip) {
+        if (ip instanceof Inet4Address) {
+            return SubnetIPv4.isReservedIPv4(ip.getHostAddress());
+        } else if (ip instanceof Inet6Address) {
+            return SubnetIPv6.isReservedIPv6(ip.getHostAddress());
+        } else {
+            return false;
+        }
+    }
     
     public static String splitCIDR(String cidr) {
         String result = "";
         String first = Subnet.getFirstIP(cidr);
         String last = Subnet.getLastIP(cidr);
         short mask = Subnet.getMask(cidr);
-        int max = SubnetIPv4.isValidIPv4(first) ? 32 : 64;
+        int max = isValidIPv4(first) ? 32 : 64;
         if (mask < max) {
             mask++;
             String cidr1 = first + "/" + mask;
@@ -661,67 +652,16 @@ public abstract class Subnet implements Serializable, Comparable<Subnet> {
     }
     
     public static Subnet getSubnet(String ip) throws ProcessException {
-        if (SubnetIPv4.isValidIPv4(ip)) {
+        if (isValidIPv4(ip)) {
             Subnet subnet = SubnetIPv4.getSubnet(ip);
             subnet.queries++;
             return subnet;
-        } else if (SubnetIPv6.isValidIPv6(ip)) {
+        } else if (isValidIPv6(ip)) {
             Subnet subnet = SubnetIPv6.getSubnet(ip);
             subnet.queries++;
             return subnet;
         } else {
             throw new ProcessException("ERROR: INVALID IP");
-        }
-    }
-    
-    private static TreeSet<Subnet> getSubnetSet() {
-        TreeSet<Subnet> subnetSet = new TreeSet<>();
-        subnetSet.addAll(SubnetIPv4.getSubnetSet());
-        subnetSet.addAll(SubnetIPv6.getSubnetSet());
-        return subnetSet;
-    }
-    
-    /**
-     * Atualiza em background todos os registros adicionados no conjunto.
-     */
-    public static boolean backgroundRefresh() {
-        Subnet subnetMax = null;
-        for (Subnet subnet : getSubnetSet()) {
-            if (subnet.isReduced() || subnet.isRegistryExpired()) {
-                if (subnet.queries > 3) {
-                    if (subnetMax == null) {
-                        subnetMax = subnet;
-                    } else if (subnetMax.queries < subnet.queries) {
-                        subnetMax = subnet;
-                    } else if (subnetMax.lastRefresh > subnet.lastRefresh) {
-                        subnetMax = subnet;
-                    }
-                }
-            }
-        }
-        if (subnetMax == null) {
-            return false;
-        } else {
-            try {
-                // Atualizando campos do registro.
-                return subnetMax.refresh();
-            } catch (ProcessException ex) {
-                if (ex.isErrorMessage("WHOIS QUERY LIMIT")) {
-                    // Fazer nada.
-                } else if (ex.isErrorMessage("WHOIS CONNECTION FAIL")) {
-                    // Fazer nada.
-                } else if (ex.isErrorMessage("TOO MANY CONNECTIONS")) {
-                    // Fazer nada.
-                } else if (ex.isErrorMessage("SUBNET NOT ASSIGNED")) {
-                    subnetMax.drop();
-                } else {
-                    Server.logError(ex);
-                }
-                return false;
-            } catch (Exception ex) {
-                Server.logError(ex);
-                return false;
-            }
         }
     }
     

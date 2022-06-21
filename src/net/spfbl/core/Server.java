@@ -16,13 +16,13 @@
  */
 package net.spfbl.core;
 
+import net.spfbl.spf.SPF;
 import net.spfbl.data.Provider;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Block;
 import net.spfbl.data.White;
 import net.spfbl.data.Trap;
 import net.spfbl.data.Ignore;
-import net.spfbl.spf.SPF;
 import net.spfbl.whois.AutonomousSystem;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Handle;
@@ -35,12 +35,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
@@ -57,19 +59,35 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeSet;
+import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
-import java.util.regex.Pattern;
+import java.util.zip.GZIPOutputStream;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.naming.CommunicationException;
+import javax.naming.LimitExceededException;
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.InitialDirContext;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidIP;
 import net.spfbl.data.Abuse;
+import net.spfbl.data.CIDR;
+import net.spfbl.data.DKIM;
+import net.spfbl.data.Dictionary;
 import net.spfbl.data.Generic;
-import net.spfbl.dns.QueryDNS;
-import net.spfbl.http.ServerHTTP;
+import net.spfbl.data.FQDN;
+import net.spfbl.data.FileStore;
+import net.spfbl.data.Recipient;
+import net.spfbl.data.Reputation;
+import net.spfbl.data.URI;
+import net.spfbl.service.ServerDNS;
+import net.spfbl.service.ServerHTTP;
+import net.spfbl.service.ServerP2P;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.net.whois.WhoisClient;
 import org.productivity.java.syslog4j.Syslog;
@@ -131,14 +149,24 @@ public abstract class Server extends Thread {
         Abuse.load();
         SPF.load();
         Defer.load();
-        QueryDNS.load();
+        ServerDNS.load();
         User.load();
         ServerHTTP.load();
-        QueryDNS.loadAbuse();
+        ServerDNS.loadAbuse();
+        FQDN.load();
+        CIDR.load();
+        net.spfbl.data.SPF.load();
+        DKIM.load();
+        Dictionary.load();
+        Abuse.loadTXT();
+        URI.load();
+        net.spfbl.data.Domain.load();
+        Recipient.load();
         System.gc();
     }
     
     private static Semaphore SEMAPHORE_STORE = new Semaphore(1);
+    private static Semaphore SEMAPHORE_PROCESS = new Semaphore(1);
     
     private static class Store extends Thread {
         
@@ -150,9 +178,16 @@ public abstract class Server extends Thread {
         @Override
         public void run() {
             try {
-                storeAll(true, true);
+                storeAll();
             } finally {
                 SEMAPHORE_STORE.release();
+                if (SEMAPHORE_PROCESS.tryAcquire()) {
+                    try {
+                        autoProcess();
+                    } finally {
+                        SEMAPHORE_PROCESS.release();
+                    }
+                }
             }
         }
     }
@@ -185,7 +220,7 @@ public abstract class Server extends Thread {
         try {
             SEMAPHORE_STORE.acquire();
             try {
-                storeAll(false, false);
+                storeAll();
             } finally {
                 SEMAPHORE_STORE.release();
             }
@@ -193,51 +228,8 @@ public abstract class Server extends Thread {
             Server.logError(ex);
         }
     }
-    
-    private static Semaphore SEMAPHORE_TEST = new Semaphore(1);
-    
-    private static class Test extends Thread {
         
-        public Test() {
-            super("BCKGRTEST");
-            super.setPriority(MIN_PRIORITY);
-        }
-        
-        @Override
-        public void run() {
-            try {
-                User.autoInductionWhiteKey();
-                User.autoInductionBlockKey();
-                User.autoInductionBlockSMTP();
-                User.autoInductionHREF();
-            } finally {
-                SEMAPHORE_TEST.release();
-            }
-        }
-    }
-    
-    public static boolean tryAcquireTestCache() {
-        if (SEMAPHORE_TEST.tryAcquire()) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
-    /**
-     * Inicio do teste.
-     */
-    public static boolean tryTestCache() {
-        if (SEMAPHORE_TEST.tryAcquire()) {
-            new Test().start();
-            return true;
-        } else {
-            return false;
-        }
-    }
-        
-    private static void storeAll(boolean simplify, boolean clone) {
-        System.gc();
+    private static void storeAll() {
         Client.store();
         User.store();
         Peer.store();
@@ -245,14 +237,13 @@ public abstract class Server extends Thread {
         Ignore.store();
         Generic.store();
         Trap.store();
-        Abuse.store();
         NoReply.store();
-        QueryDNS.store();
-        White.store(simplify);
+        ServerDNS.store();
+        White.store();
         Analise.store();
         Reverse.store();
         Defer.store();
-        SPF.store(clone);
+        SPF.store();
         Owner.store();
         Domain.store();
         AutonomousSystem.store();
@@ -262,10 +253,26 @@ public abstract class Server extends Thread {
         NameServer.store();
         Core.store();
         Block.store();
-        User.storeDB();
         ServerHTTP.store();
-        QueryDNS.storeAbuse();
+        ServerDNS.storeAbuse();
+        CIDR.store();
+        FQDN.store();
+        net.spfbl.data.SPF.store();
+        DKIM.store();
+        Dictionary.store();
+        Abuse.store();
+        URI.store();
+        net.spfbl.data.Domain.store();
+        Reputation.refreshTime();
+        Recipient.store();
         System.gc();
+    }
+    
+    private static void autoProcess() {
+        Analise.checkAccessSMTP();
+        Server.deleteLogExpired();
+        User.storeDB();
+        Core.autoClearHistory();
     }
 
     private static SecretKey privateKey = null;
@@ -322,7 +329,52 @@ public abstract class Server extends Thread {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
                 byte[] code = cipher.doFinal(byteArray);
-                return new String(Base64Coder.encode(code));
+                return new String(Core.BASE64URLSAFE.encode(code));
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
+    public static String encryptDES(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("DES");
+                cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
+                byte[] code = cipher.doFinal(byteArray);
+                return new String(Core.BASE64URLSAFE.encode(code));
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
+    public static String encryptHEX(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
+                byte[] code = cipher.doFinal(byteArray);
+                return Hex.encodeHexString(code);
+            } catch (Exception ex) {
+                throw new ProcessException("ERROR: ENCRYPTION", ex);
+            }
+        }
+    }
+    
+    public static String encrypt32(byte[] byteArray) throws ProcessException {
+        if (byteArray == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
+                byte[] code = cipher.doFinal(byteArray);
+                return Core.BASE32STANDARD.encodeAsString(code);
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: ENCRYPTION", ex);
             }
@@ -337,7 +389,7 @@ public abstract class Server extends Thread {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.ENCRYPT_MODE, getPrivateKey());
                 byte[] code = cipher.doFinal(byteArray);
-                return Core.BASE64.encodeAsString(code);
+                return Core.BASE64URLSAFE.encodeAsString(code);
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: ENCRYPTION", ex);
             }
@@ -351,7 +403,7 @@ public abstract class Server extends Thread {
             try {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
-                byte[] message = cipher.doFinal(Base64Coder.decode(code));
+                byte[] message = cipher.doFinal(Core.BASE64URLSAFE.decode(code));
                 return new String(message, "UTF8");
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: DECRYPTION", ex);
@@ -359,35 +411,44 @@ public abstract class Server extends Thread {
         }
     }
     
-    private static final Pattern BASE64_REGEX = Pattern.compile("^[a-zA-Z0-9_-]+$");
+    private static final Regex BASE64_REGEX = new Regex("^[a-zA-Z0-9_-]+$");
     
     public static boolean isValidTicket(String code) {
         if (code == null) {
             return false;
         } else if (code.length() < 32) {
             return false;
-        } else if (BASE64_REGEX.matcher(code).find()) {
-            try {
-                decryptToByteArrayURLSafe(code);
-                return true;
-            } catch (ProcessException ex) {
-                return false;
-            }
+        } else if (BASE64_REGEX.matches(code)) {
+            return decryptToByteArrayURLSafe(code) != null;
         } else {
             return false;
         }
     }
     
-    public static byte[] decryptToByteArrayURLSafe(String code) throws ProcessException {
+    public static byte[] decryptToByteArray32(String code) {
         if (code == null) {
             return null;
         } else {
             try {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
-                return cipher.doFinal(Core.BASE64.decode(code));
+                return cipher.doFinal(Core.BASE32STANDARD.decode(code));
             } catch (Exception ex) {
-                throw new ProcessException("ERROR: DECRYPTION", ex);
+                return null;
+            }
+        }
+    }
+    
+    public static byte[] decryptToByteArrayURLSafe(String code) {
+        if (code == null) {
+            return null;
+        } else {
+            try {
+                Cipher cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
+                return cipher.doFinal(Core.BASE64URLSAFE.decode(code));
+            } catch (Exception ex) {
+                return null;
             }
         }
     }
@@ -399,14 +460,12 @@ public abstract class Server extends Thread {
             try {
                 Cipher cipher = Cipher.getInstance("AES");
                 cipher.init(Cipher.DECRYPT_MODE, getPrivateKey());
-                return cipher.doFinal(Base64Coder.decode(code));
+                return cipher.doFinal(Core.BASE64STANDARD.decode(code));
             } catch (Exception ex) {
                 throw new ProcessException("ERROR: DECRYPTION", ex);
             }
         }
     }
-    
-    private static final SimpleDateFormat FORMAT_DATE = new SimpleDateFormat("yyyy-MM-dd");
     
     /**
      * Constante de formatação da data no log.
@@ -416,7 +475,26 @@ public abstract class Server extends Thread {
      * portanto é necessário utilizar sincronismo
      * nos métodos que o utilizam.
      */
-    private static final SimpleDateFormat FORMAT_DATE_LOG = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    private static final LinkedList<SimpleDateFormat> FORMAT_DATE_LOG_LIST = new LinkedList<>();
+    
+    private static synchronized SimpleDateFormat pullLogDateFormat() {
+        return FORMAT_DATE_LOG_LIST.poll();
+    }
+    
+    private static synchronized void addLogDateFormat(SimpleDateFormat dateFormat) {
+        if (dateFormat != null && FORMAT_DATE_LOG_LIST.size() < 4) {
+            FORMAT_DATE_LOG_LIST.add(dateFormat);
+        }
+    }
+    
+    private static SimpleDateFormat createLogDateFormat() {
+        SimpleDateFormat dateFormat = pullLogDateFormat();
+        if (dateFormat == null) {
+            return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+        } else {
+            return dateFormat;
+        }
+    }
     
     /**
      * Constante de formatação da data no ticket.
@@ -426,7 +504,45 @@ public abstract class Server extends Thread {
      * portanto é necessário utilizar sincronismo
      * nos métodos que o utilizam.
      */
-    private static final SimpleDateFormat FORMAT_DATE_TICKET = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+    private static final LinkedList<SimpleDateFormat> FORMAT_DATE_TICKET_LIST = new LinkedList<>();
+    
+    private static synchronized SimpleDateFormat pullTicketDateFormat() {
+        return FORMAT_DATE_TICKET_LIST.poll();
+    }
+    
+    private static synchronized void addTicketDateFormat(SimpleDateFormat dateFormat) {
+        if (dateFormat != null && FORMAT_DATE_TICKET_LIST.size() < 4) {
+            FORMAT_DATE_TICKET_LIST.add(dateFormat);
+        }
+    }
+    
+    public static String formatTicketDate(long time) {
+        return formatTicketDate(new Date(time));
+    }
+    
+    public static String formatTicketDate(Date date) {
+        SimpleDateFormat dateFormat = pullTicketDateFormat();
+        if (dateFormat == null) {
+            dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+        }
+        try {
+            return dateFormat.format(date);
+        } finally {
+            addTicketDateFormat(dateFormat);
+        }
+    }
+    
+    public static Date parseTicketDate(String value) throws ParseException {
+        SimpleDateFormat dateFormat = pullTicketDateFormat();
+        if (dateFormat == null) {
+            dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSZ");
+        }
+        try {
+            return dateFormat.parse(value);
+        } finally {
+            addTicketDateFormat(dateFormat);
+        }
+    }
     
     private static long LAST_UNIQUE_TIME = 0;
     
@@ -446,22 +562,15 @@ public abstract class Server extends Thread {
         return formatTicketDate(time);
     }
     
-    public static synchronized String formatTicketDate(long time) {
-        return FORMAT_DATE_TICKET.format(new Date(time));
-    }
-    
-    public static synchronized String formatTicketDate(Date date) {
-        return FORMAT_DATE_TICKET.format(date);
-    }
-    
-    public static synchronized Date parseTicketDate(String value) throws ParseException {
-        return FORMAT_DATE_TICKET.parse(value);
-    }
+    /**
+     * Constante que representa a quantidade de tempo de um dia em milisegundos.
+     */
+    public static final long MINUTE_TIME = 1000L * 60L;
     
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
      */
-    public static final long HOUR_TIME = 1000L * 60L * 60L;
+    public static final long HOUR_TIME = MINUTE_TIME * 60L;
     
     /**
      * Constante que representa a quantidade de tempo de um dia em milisegundos.
@@ -473,6 +582,33 @@ public abstract class Server extends Thread {
      */
     public static final long WEEK_TIME = DAY_TIME * 7L;
         
+    /**
+     * O campo de latência do LOG tem apenas 4 digitos.
+     * Serve para mostrar quais processamentos levam mais tempo
+     * e para encontrar com mais facilidade códigos
+     * do programa que não estão bem escritos.
+     */
+    private static final LinkedList<DecimalFormat> LATENCIA_FORMAT_LIST = new LinkedList<>();
+    
+    private static synchronized DecimalFormat pullLatenciaFormat() {
+        return LATENCIA_FORMAT_LIST.poll();
+    }
+    
+    private static synchronized void addLatenciaFormat(DecimalFormat decimalFormat) {
+        if (decimalFormat != null && LATENCIA_FORMAT_LIST.size() < 4) {
+            LATENCIA_FORMAT_LIST.add(decimalFormat);
+        }
+    }
+    
+    private static DecimalFormat createLatenciaFormat() {
+        DecimalFormat decimalFormat = pullLatenciaFormat();
+        if (decimalFormat == null) {
+            return new DecimalFormat("00000");
+        } else {
+            return decimalFormat;
+        }
+    }
+    
     /**
      * Registra uma linha de LOG
      * 
@@ -493,39 +629,63 @@ public abstract class Server extends Thread {
      * @param type tipo de registro de LOG.
      * @param message a mensagem do registro de LOG.
      */
-    public static void log(long time, Core.Level level, String type, String message, String result) {
-        if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
-            int latencia = (int) (System.currentTimeMillis() - time);
-            if (latencia > 99999) {
-                // Para manter a formatação correta no LOG,
-                // Registrar apenas latências até 99999, que tem 5 digitos.
-                latencia = 99999;
-            } else if (latencia < 0) {
-                latencia = 0;
+    public static void log(
+            long time, Core.Level level, String type,
+            Long key, String message, String result
+    ) {
+        if (level != null) {
+            if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
+                int latency = (int) (System.currentTimeMillis() - time);
+                if (latency > 99999) {
+                    // Para manter a formatação correta no LOG,
+                    // Registrar apenas latências até 99999, que tem 5 digitos.
+                    latency = 99999;
+                } else if (latency < 0) {
+                    latency = 0;
+                }
+                if (message != null) {
+                    message = message.replace("\r", "\\r");
+                    message = message.replace("\n", "\\n");
+                    message = message.replace("\t", "\\t");
+                }
+                if (result != null) {
+                    result = result.replace("\r", "\\r");
+                    result = result.replace("\n", "\\n");
+                    result = result.replace("\t", "\\t");
+                }
+                SimpleDateFormat dateFormat = createLogDateFormat();
+                DecimalFormat latenciaFormat = createLatenciaFormat();
+                try {
+                    String dateTime = dateFormat.format(new Date(time));
+                    String text = dateTime + " " + latenciaFormat.format(latency)
+                            + " " + Thread.currentThread().getName()
+                            + " " + type
+                            + (key == null ? "" : " #" + Long.toString(key, 32))
+                            + " " + message
+                            + (result == null ? "" : " => " + result);
+                    FileStore logFile = getLogFile(
+                            dateTime.substring(0,10)
+                    );
+                    if (logFile == null) {
+                        System.out.println(text);
+                    } else {
+                        logFile.append(text);
+                    }
+                } finally {
+                    addLogDateFormat(dateFormat);
+                    addLatenciaFormat(latenciaFormat);
+                }
             }
-            if (message != null) {
-                message = message.replace("\r", "\\r");
-                message = message.replace("\n", "\\n");
-                message = message.replace("\t", "\\t");
-            }
-            if (result != null) {
-                result = result.replace("\r", "\\r");
-                result = result.replace("\n", "\\n");
-                result = result.replace("\t", "\\t");
-            }
-            Date date = new Date(time);
-            String text = FORMAT_DATE_LOG.format(date)
-                    + " " + LATENCIA_FORMAT.format(latencia)
-                    + " " + Thread.currentThread().getName()
-                    + " " + type + " " + message
-                    + (result == null ? "" : " => " + result);
-            PrintWriter writer = getLogWriter(date);
-            if (writer == null) {
-                System.out.println(text);
-            } else {
-                writer.println(text);
+            if (syslog != null) {
+                logSyslog(level, type, message, result);
             }
         }
+    }
+    
+    public static synchronized void logSyslog(
+            Core.Level level, String type,
+            String message, String result
+    ) {
         if (syslog != null) {
             if (Core.hasHostname()) {
                 syslog.getConfig().setLocalName(Core.getHostname());
@@ -549,17 +709,13 @@ public abstract class Server extends Thread {
         }
     }
     
-    private static File logFolder = null;
-    private static File logFile = null;
-    private static PrintWriter logWriter = null;
+    private static File LOG_FOLDER = null;
+    private static String logDate = null;
+    private static FileStore logFile = null;
     private static SyslogIF syslog = null;
     private static short logExpires = 7;
     
     public static synchronized void setSyslog(Properties properties) {
-//            String protocol,
-//            String hostname,
-//            String port
-//    ) {
         if (properties != null) {
             String protocol = properties.getProperty("log_server_protocol");
             String hostname = properties.getProperty("log_server_host");
@@ -575,9 +731,9 @@ public abstract class Server extends Thread {
             if (hostname != null) {
                 if (hostname.length() == 0) {
                     hostname = null;
-                } else if (Domain.isHostname(hostname)) {
+                } else if (isHostname(hostname)) {
                     hostname = Domain.extractHost(hostname, false);
-                } else if (Subnet.isValidIP(hostname)) {
+                } else if (isValidIP(hostname)) {
                     hostname = Subnet.normalizeIP(hostname);
                 } else {
                     hostname = null;
@@ -616,12 +772,12 @@ public abstract class Server extends Thread {
     
     public static synchronized void setLogFolder(String path) {
         if (path == null) {
-            Server.logFolder = null;
+            Server.LOG_FOLDER = null;
         } else {
             File folder = new File(path);
             if (folder.exists()) {
                 if (folder.isDirectory()) {
-                    Server.logFolder = folder;
+                    Server.LOG_FOLDER = folder;
                 } else {
                     Server.logError("'" + path + "' is not a folder.");
                 }
@@ -631,7 +787,7 @@ public abstract class Server extends Thread {
         }
     }
     
-    public static synchronized void setLogExpires(String expires) {
+    public static void setLogExpires(String expires) {
         if (expires != null && expires.length() > 0) {
             try {
                 setLogExpires(Integer.parseInt(expires));
@@ -649,63 +805,101 @@ public abstract class Server extends Thread {
         }
     }
     
-    private static synchronized PrintWriter getLogWriter(Date date) {
+    public static void setLogDNS(String mustLog) {
+        if (mustLog != null && mustLog.length() > 0) {
+            ServerDNS.setLog(Boolean.parseBoolean(mustLog));
+        }
+    }
+    
+    public static void setLogP2P(String mustLog) {
+        if (mustLog != null && mustLog.length() > 0) {
+            ServerP2P.setLog(Boolean.parseBoolean(mustLog));
+        }
+    }
+    
+    private static FileStore getLogFile(String date) {
         try {
-            if (logFolder == null || !logFolder.exists()) {
+            if (date == null) {
                 return null;
-            } else if (logWriter == null) {
-                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
-                FileWriter fileWriter = new FileWriter(logFile, true);
-                return logWriter = new PrintWriter(fileWriter, true);
-            } else if (logFile.getName().equals("spfbl." + FORMAT_DATE.format(date) + ".log")) {
-                return logWriter;
+            } else if (LOG_FOLDER == null || !LOG_FOLDER.exists()) {
+                return null;
             } else {
-                logWriter.close();
-                logFile = new File(logFolder, "spfbl." + FORMAT_DATE.format(date) + ".log");
-                FileWriter fileWriter = new FileWriter(logFile, true);
-                return logWriter = new PrintWriter(fileWriter, true);
+                return createLogFile(date);
             }
         } catch (Exception ex) {
             return null;
         }
     }
     
+    private synchronized static FileStore createLogFile(String date) throws IOException {
+        if (logFile == null || logDate == null) {
+            logDate = date;
+            File file = new File(LOG_FOLDER, "spfbl." + date + ".log");
+            logFile = new FileStore(file);
+            logFile.start();
+            return logFile;
+        } else if (logDate.equals(date)) {
+            return logFile;
+        } else {
+            logFile.close();
+            logDate = date;
+            File file = new File(LOG_FOLDER, "spfbl." + date + ".log");
+            logFile = new FileStore(file);
+            logFile.start();
+            return logFile;
+        }
+    }
+    
     private static final FilenameFilter logFilter = new FilenameFilter() {
         @Override
         public boolean accept(File dir, String name) {
-            return name.startsWith("spfbl.") && name.endsWith(".log");
+            return name.startsWith("spfbl.") && (name.endsWith(".log") || name.endsWith(".log.gz"));
         }
     };
     
-    public static synchronized void deleteLogExpired() {
-        if (logFolder != null && logFolder.exists()) {
-            for (File logFileLocal : logFolder.listFiles(logFilter)) {
-                long lastModified = logFileLocal.lastModified();
-                long period = System.currentTimeMillis() - lastModified;
-                int days = (int) (period / (1000 * 60 * 60 * 24));
-                if (days > logExpires) {
-                    if (logFileLocal.delete()) {
-                        Server.logDebug("LOG '" + logFileLocal.getName() + "' deleted.");
-                    } else {
-                        Server.logDebug("LOG '" + logFileLocal.getName() + "' not deleted.");
+    private static void deleteLogExpired() {
+        if (Core.isRunning()) {
+            if (LOG_FOLDER != null && LOG_FOLDER.exists()) {
+                Server.logTrace("deleting expired log files.");
+                for (File logFileLocal : LOG_FOLDER.listFiles(logFilter)) {
+                    long lastModified = logFileLocal.lastModified();
+                    long period = System.currentTimeMillis() - lastModified;
+                    int days = (int) (period / (1000 * 60 * 60 * 24));
+                    if (days > logExpires) {
+                        if (logFileLocal.delete()) {
+                            Server.logInfo("the log file '" + logFileLocal.getName() + "' was deleted.");
+                        } else {
+                            Server.logError("the log file '" + logFileLocal.getName() + "' could not be deleted.");
+                        }
+                    } else if (days > 0) {
+                        String name = logFileLocal.getName();
+                        if (name.endsWith(".log")) {
+                            File newFile = new File(LOG_FOLDER, name + ".gz");
+                            try (GZIPOutputStream out = new GZIPOutputStream(new FileOutputStream(newFile))) {
+                                try (FileInputStream in = new FileInputStream(logFileLocal)) {
+                                    byte[] buffer = new byte[1024];
+                                    int len;
+                                    while ((len = in.read(buffer)) != -1) {
+                                        out.write(buffer, 0, len);
+                                    }
+                                }
+                                newFile.setLastModified(lastModified);
+                                logFileLocal.delete();
+                            } catch (Exception ex) {
+                                Server.logError(ex);
+                            }
+                        }
                     }
                 }
             }
         }
     }
     
-    /**
-     * O campo de latência do LOG tem apenas 4 digitos.
-     * Serve para mostrar quais processamentos levam mais tempo
-     * e para encontrar com mais facilidade códigos
-     * do programa que não estão bem escritos.
-     */
-    private static final DecimalFormat LATENCIA_FORMAT = new DecimalFormat("00000");
-    
     private static void log(
             long time,
             Core.Level level,
             String type,
+            Long key,
             Throwable ex
     ) {
         if (ex != null) {
@@ -713,7 +907,7 @@ public abstract class Server extends Thread {
             PrintStream printStream = new PrintStream(baos);
             ex.printStackTrace(printStream);
             printStream.close();
-            log(time, level, type, baos.toString(), (String) null);
+            log(time, level, type, key, baos.toString(), (String) null);
         }
     }
     
@@ -722,23 +916,29 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logInfo(String message) {
-        log(System.currentTimeMillis(), Core.Level.INFO, "INFOR", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.INFO, "INFOR",
+                (Long) null, message, (String) null);
     }
     
     /**
      * Registra as mensagens para depuração.
      * @param message a mensagem a ser registrada.
      */
-    public static void logDebug(String message) {
-        log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG", message, (String) null);
+    public static void logDebug(Long timeKey, String message) {
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG",
+                timeKey, message, (String) null);
+    }
+    
+    public static void logWarning(String message) {
+        log(System.currentTimeMillis(), Core.Level.WARN, "WARNG", (Long) null, message, (String) null);
     }
     
     public static void logAcme(String message) {
-        log(System.currentTimeMillis(), Core.Level.DEBUG, "ACMEP", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "ACMEP", (Long) null, message, (String) null);
     }
     
-    public static void logSendMTP(String message) {
-        log(System.currentTimeMillis(), Core.Level.DEBUG, "SMTPS", message, (String) null);
+    public static void logSendSMTP(String message) {
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "SMTPS", (Long) null, message, (String) null);
     }
     
     /**
@@ -746,7 +946,64 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logTrace(String message) {
-        log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.TRACE, "TRACE", (Long) null, message, (String) null);
+    }
+    
+    public static String getThreadStack() {
+        StringBuilder builder = new StringBuilder();
+        ThreadMXBean tmxb = ManagementFactory.getThreadMXBean();
+        TreeMap<Long,Long> threadMap = new TreeMap<>();
+        long cpuTimeTotal = 0;
+        for (long threadID : tmxb.getAllThreadIds()) {
+            long cpuTime = tmxb.getThreadCpuTime(threadID);
+            if (cpuTime > 0) {
+                cpuTimeTotal += cpuTime;
+                threadMap.put(threadID, cpuTime);
+            }
+        }
+        for (ThreadInfo info : tmxb.dumpAllThreads(true, true)) {
+            long threadID = info.getThreadId();
+            Long cpuTime = threadMap.get(threadID);
+            if (cpuTime == null) {
+                builder.append("cpu:0 ");
+            } else {
+                long cpuUsage = 100 * cpuTime / cpuTimeTotal;
+                builder.append("cpu:");
+                builder.append(cpuUsage);
+                builder.append(' ');
+            }
+            String text = info.toString();
+            builder.append(text);
+            if (text.endsWith("\n\t...\n\n")) {
+                for (StackTraceElement element : info.getStackTrace()) {
+                    text = element.toString();
+                    builder.append("\tat ");
+                    builder.append(text);
+                    builder.append('\n');
+                }
+                builder.append('\n');
+            }
+        }
+        return builder.toString();
+    }
+    
+    public static void logThreadStack() {
+        Core.Level level = Core.Level.DEBUG;
+        if (level.ordinal() <= Core.LOG_LEVEL.ordinal()) {
+            ThreadMXBean tmxb = ManagementFactory.getThreadMXBean();
+            ThreadInfo[] threads = tmxb.dumpAllThreads(true, true);
+            for (ThreadInfo info : threads) {
+                long threadID = info.getThreadId();
+                long cpuTime = tmxb.getThreadCpuTime(threadID);
+                String text = "cpu:" + cpuTime + " " + info.toString();
+                log(System.currentTimeMillis(), level, "STACK", (Long) null, text, (String) null);
+                if (text.endsWith("\n\t...\n\n")) {
+                    for (StackTraceElement element : info.getStackTrace()) {
+                        log(System.currentTimeMillis(), level, "STACK", (Long) null, element.toString(), (String) null);
+                    }
+                }
+            }
+        }
     }
     
     /**
@@ -754,7 +1011,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logTrace(long time, String message) {
-        log(time, Core.Level.TRACE, "TRACE", message, (String) null);
+        log(time, Core.Level.TRACE, "TRACE", (Long) null, message, (String) null);
     }
     
     /**
@@ -762,7 +1019,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logMySQL(String message) {
-        log(System.currentTimeMillis(), Core.Level.DEBUG, "MYSQL", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "MYSQL", (Long) null, message, (String) null);
     }
     
     /**
@@ -770,7 +1027,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logMySQL(long time, String message) {
-        log(time, Core.Level.DEBUG, "MYSQL", message, null);
+        log(time, Core.Level.DEBUG, "MYSQL", (Long) null, message, null);
     }
     
     /**
@@ -778,7 +1035,7 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logMySQL(long time, String message, String result) {
-        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+        log(time, Core.Level.DEBUG, "MYSQL", (Long) null, message, result);
     }
     
     /**
@@ -787,7 +1044,7 @@ public abstract class Server extends Thread {
      */
     public static void logMySQL(long time, String message, SQLException ex) {
         String result = "ERROR " + ex.getErrorCode() + " " + ex.getMessage();
-        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+        log(time, Core.Level.DEBUG, "MYSQL", (Long) null, message, result);
     }
     
     /**
@@ -799,7 +1056,7 @@ public abstract class Server extends Thread {
         int beginIndex = message.indexOf(' ') + 1;
         int endIndex = message.length();
         message = message.substring(beginIndex, endIndex);
-        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+        log(time, Core.Level.DEBUG, "MYSQL", (Long) null, message, result);
     }
     
     /**
@@ -812,7 +1069,7 @@ public abstract class Server extends Thread {
         int endIndex = message.length();
         message = message.substring(beginIndex, endIndex);
         String result = "ERROR " + ex.getErrorCode() + " " + ex.getMessage();
-        log(time, Core.Level.DEBUG, "MYSQL", message, result);
+        log(time, Core.Level.DEBUG, "MYSQL", (Long) null, message, result);
     }
     
     /**
@@ -820,7 +1077,7 @@ public abstract class Server extends Thread {
      * @param file o arquivo armazenado.
      */
     public static void logStore(long time, File file) {
-        log(time, Core.Level.INFO, "STORE", file.getName(), (String) null);
+        log(time, Core.Level.INFO, "STORE", (Long) null, file.getName(), (String) null);
     }
     
     /**
@@ -828,46 +1085,12 @@ public abstract class Server extends Thread {
      * @param file o arquivo carregado.
      */
     public static void logLoad(long time, File file) {
-        log(time, Core.Level.INFO, "LOADC", file.getName(), (String) null);
-    }
-    
-//    /**
-//     * Registra as mensagens de checagem DNS.
-//     * @param host o host que foi consultado.
-//     */
-//    public static void logCheckDNS(
-//            long time, String host, String result) {
-//        log(time, Core.Level.DEBUG, "DNSCK", host, result);
-//    }
-    
-    /**
-     * Registra os tiquetes processados.
-     * @param tokenSet o conjunto de tokens.
-     */
-    public static void logTicket(long time, 
-            TreeSet<String> tokenSet, String ticket) {
-        log(time, Core.Level.DEBUG, "TIKET", tokenSet.toString(), ticket);
+        log(time, Core.Level.INFO, "LOADC", (Long) null, file.getName(), (String) null);
     }
     
     public static void logPeerSend(long time,
             String address, String token, String result) {
-        log(time, Core.Level.DEBUG, "PEERS", address, token, result);
-    }
-    
-    /**
-     * Registra as consultas DNS.
-     */
-    public static void logLookupDNS(long time, 
-            String type, String host, String result) {
-        log(time, Core.Level.DEBUG, "DNSLK", type + " " + host, result);
-    }
-    
-    /**
-     * Registra as consultas DNS para HELO.
-     */
-    public static void logLookupHELO(long time, 
-            String host, String result) {
-        log(time, Core.Level.DEBUG, "HELOL", host, result);
+        log(time, Core.Level.DEBUG, "PEERS", address, (Long) null, token, result);
     }
     
     /**
@@ -875,15 +1098,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismA(long time, 
             String host, String result) {
-        log(time, Core.Level.DEBUG, "SPFMA", host, result);
-    }
-    
-    /**
-     * Registra as consultas de mecanismo exists de SPF.
-     */
-    public static void logMecanismExists(long time, 
-            String host, String result) {
-        log(time, Core.Level.DEBUG, "SPFEX", host, result);
+        log(time, Core.Level.DEBUG, "SPFMA", (Long) null, host, result);
     }
     
     /**
@@ -891,15 +1106,7 @@ public abstract class Server extends Thread {
      */
     public static void logMecanismMX(long time, 
             String host, String result) {
-        log(time, Core.Level.DEBUG, "SPFMX", host, result);
-    }
-    
-    /**
-     * Registra verificações de macth de HELO.
-     */
-    public static void logMatchHELO(long time, 
-            String query, String result) {
-        log(time, Core.Level.DEBUG, "HELOM", query, result);
+        log(time, Core.Level.DEBUG, "SPFMX", (Long) null, host, result);
     }
     
     /**
@@ -907,7 +1114,7 @@ public abstract class Server extends Thread {
      */
     public static void logDefer(long time, 
             String id, String result) {
-        log(time, Core.Level.DEBUG, "DEFER", id, result);
+        log(time, Core.Level.DEBUG, "DEFER", (Long) null, id, result);
     }
     
     /**
@@ -915,7 +1122,7 @@ public abstract class Server extends Thread {
      */
     public static void logReverseDNS(long time, 
             String ip, String result) {
-        log(time, Core.Level.DEBUG, "DNSRV", ip, result);
+        log(time, Core.Level.DEBUG, "DNSRV", (Long) null, ip, result);
     }
     
     /**
@@ -923,7 +1130,13 @@ public abstract class Server extends Thread {
      * @param message a mensagem a ser registrada.
      */
     public static void logError(String message) {
-        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", message, (String) null);
+        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR",
+                (Long) null, message, (String) null);
+    }
+    
+    public static void logDebug(String message) {
+        log(System.currentTimeMillis(), Core.Level.DEBUG, "DEBUG",
+                (Long) null, message, (String) null);
     }
     
     /**
@@ -932,7 +1145,7 @@ public abstract class Server extends Thread {
      * @param ex a exceção a ser registrada.
      */
     public static void logError(Throwable ex) {
-        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", ex);
+        log(System.currentTimeMillis(), Core.Level.ERROR, "ERROR", (Long) null, ex);
     }
     
     /**
@@ -944,12 +1157,12 @@ public abstract class Server extends Thread {
      */
     public static void logLookupSPF(
             long time, String hostname, String result) {
-        log(time, Core.Level.DEBUG, "SPFLK", hostname, result);
+        log(time, Core.Level.DEBUG, "SPFLK", (Long) null, hostname, result);
     }
     
     public static void logQueryP2PUDP(long time,
             InetAddress ipAddress, String query, String result) {
-        logQuery(time, "P2PUDP", ipAddress, query, result);
+        logQuery(time, "P2PUDP", ipAddress, (Long) null, query, result);
     }
     
     /**
@@ -958,14 +1171,11 @@ public abstract class Server extends Thread {
      * @param query a expressão da consulta.
      * @param result o resultado a ser registrado.
      */
-    public static void logQueryDNSBL(long time,
-            InetAddress ipAddress, String query, String result) {
-        logQuery(time, "DNSBL", ipAddress, query, result);
-    }
-    
-    public static void logQueryDNSBL(long time,
-            String address, String query, String result) {
-        logQuery(time, "DNSBL", address, query, result);
+    public static void logQueryDNSBL(
+            long time,
+            InetAddress ipAddress, String query, String result
+    ) {
+        logQuery(time, "DNSBL", ipAddress, (Long) null, query, result);
     }
     
     /**
@@ -977,7 +1187,7 @@ public abstract class Server extends Thread {
      */
     public static void logWhois(long time,
             String server, String query, String result) {
-        log(time, Core.Level.DEBUG, "WHOIS", server + " " + query, result);
+        log(time, Core.Level.DEBUG, "WHOIS", (Long) null, server + " " + query, result);
     }
     
     /**
@@ -992,18 +1202,21 @@ public abstract class Server extends Thread {
             long time,
             String type,
             InetAddress ipAddress,
-            String query, String result) {
+            Long timeKey,
+            String query, String result
+    ) {
         String origin = Client.getOrigin(ipAddress, "DNSBL");
         if (query == null) {
-            log(time, Core.Level.INFO, type, origin + ":", result);
+            log(time, Core.Level.INFO, type, timeKey, origin + ":", result);
         } else {
-            log(time, Core.Level.INFO, type, origin + ": " + query, result);
+            log(time, Core.Level.INFO, type, timeKey, origin + ": " + query, result);
         }
     }
     
     public static void logQuery(
             long time,
             String type,
+            Long timeKey,
             String client,
             Set<String> tokenSet
     ) {
@@ -1020,7 +1233,11 @@ public abstract class Server extends Thread {
                 }
             }
         }
-        log(time, Core.Level.INFO, type, (client == null ? "" : client + ": ") + message, null);
+        log(
+                time, Core.Level.INFO, type, timeKey,
+                (client == null ? "" : client + ": ") + message,
+                null
+        );
     }
     
     public static void log(
@@ -1028,6 +1245,7 @@ public abstract class Server extends Thread {
             Core.Level level,
             String type,
             String client,
+            Long timeKey,
             String query,
             Set<String> tokenSet,
             String recipient
@@ -1048,7 +1266,7 @@ public abstract class Server extends Thread {
                 result += " >" + recipient;
             }
         }
-        log(time, level, type, client, query, result);
+        log(time, level, type, client, timeKey, query, result);
     }
     
     public static void log(
@@ -1056,16 +1274,42 @@ public abstract class Server extends Thread {
             Core.Level level,
             String type,
             String client,
+            Long timeKey,
             String query,
             String result
     ) {
-        log(time, level, type, (client == null ? "" : client + ": ") + query, result);
+        log(
+                time, level, type, timeKey,
+                (client == null ? "" : client + ": ") + query,
+                result
+        );
     }
     
     public static void logQuery(
             long time,
             String type,
             String client,
+            Long timeKey,
+            String query,
+            String result
+    ) {
+        logQuery(
+                time,
+                Core.Level.INFO,
+                type,
+                client,
+                timeKey,
+                query,
+                result
+        );
+    }
+    
+    public static void logQuery(
+            long time,
+            Core.Level level,
+            String type,
+            String client,
+            Long timeKey,
             String query,
             String result
     ) {
@@ -1076,7 +1320,12 @@ public abstract class Server extends Thread {
             index = Math.max(index, 1024);
             result = result.substring(0, index) + "... too long";
         }
-        log(time, Core.Level.INFO, type, (client == null ? "" : client + ": ") + query, result);
+        log(
+                time, level, type, timeKey,
+                (client == null ? "" : client + ": ") + query,
+                result
+        
+        );
     }
     
     /**
@@ -1096,12 +1345,11 @@ public abstract class Server extends Thread {
             index = Math.max(index, 1024);
             result = result.substring(0, index) + "... too long";
         }
-        log(time, Core.Level.INFO, "ADMIN", origin + ": " + command, result);
+        log(time, Core.Level.INFO, "ADMIN", (Long) null, origin + ": " + command, result);
     }
     
     /**
      * Desliga todos os servidores instanciados.
-     * @throws Exception se houver falha no fechamento de algum servidor.
      */
     public static boolean shutdown() {
         // Inicia finalização dos servidores.
@@ -1109,8 +1357,6 @@ public abstract class Server extends Thread {
         Analise.interrupt();
         Server.logInfo("interrupting user theads...");
         User.interrupt();
-        Server.logInfo("interrupting abuse theads...");
-        Abuse.interrupt();
         Server.logInfo("shutting down server...");
         for (Server server : SERVER_LIST) {
             server.run = false;
@@ -1125,13 +1371,25 @@ public abstract class Server extends Thread {
             }
         }
         // Finaliza timer local.
-        WHOIS_SEMAPHORE_TIMER.cancel();
+        cancelWhoisSemaphoreTimer();
         // Finaliza timer SPF.
         Core.cancelTimer();
+        User.terminateThread();
+        FQDN.terminateThread();
+        CIDR.terminateThread();
+        net.spfbl.data.SPF.terminateThread();
+        DKIM.terminateThread();
+        Dictionary.terminateThread();
+        Block.terminateThread();
+        Generic.terminateThread();
+        Abuse.terminateThread();
+        net.spfbl.data.URI.terminateThread();
+        Recipient.terminateThread();
         // Armazena os registros em disco.
         storeCache();
         // Fecha pooler de conexão MySQL.
         Core.closeConnectionPooler();
+        User.closeAllHistory();
         if (syslog != null) {
             // Fecha conexão Syslog.
             syslog.shutdown();
@@ -1148,7 +1406,20 @@ public abstract class Server extends Thread {
     /**
      * Timer que controla a liberação dos semáforos do WHOIS.
      */
-    private static final Timer WHOIS_SEMAPHORE_TIMER = new Timer("TIMEWHOIS");
+    private static Timer WHOIS_SEMAPHORE_TIMER = null;
+    
+    private static synchronized Timer getWhoisSemaphoreTimer() {
+        if (WHOIS_SEMAPHORE_TIMER == null) {
+            WHOIS_SEMAPHORE_TIMER = new Timer("TIMEWHOIS");
+        }
+        return WHOIS_SEMAPHORE_TIMER;
+    }
+    
+    private static synchronized void cancelWhoisSemaphoreTimer() {
+        if (WHOIS_SEMAPHORE_TIMER != null) {
+            WHOIS_SEMAPHORE_TIMER.cancel();
+        }
+    }
     
     /**
      * Semáphoro que controla o número máximo de consultas no WHOIS.
@@ -1184,8 +1455,9 @@ public abstract class Server extends Thread {
      */
     public static void acquireWhoisQuery() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
-        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, WHOIS_FREQUENCY);
-        WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
+        Timer timer = getWhoisSemaphoreTimer();
+        timer.schedule(whoisSemaphore, WHOIS_FREQUENCY);
+        timer.purge(); // Libera referências processadas.
     }
     
     /**
@@ -1196,7 +1468,8 @@ public abstract class Server extends Thread {
      */
     public static void removeWhoisQueryDay() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
-        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, DAY_TIME);
+        Timer timer = getWhoisSemaphoreTimer();
+        timer.schedule(whoisSemaphore, DAY_TIME);
     }
     
     /**
@@ -1207,7 +1480,8 @@ public abstract class Server extends Thread {
      */
     public static void removeWhoisQueryHour() throws ProcessException {
         WhoisSemaphore whoisSemaphore = new WhoisSemaphore();
-        WHOIS_SEMAPHORE_TIMER.schedule(whoisSemaphore, HOUR_TIME);
+        Timer timer = getWhoisSemaphoreTimer();
+        timer.schedule(whoisSemaphore, HOUR_TIME);
     }
     
     /**
@@ -1242,8 +1516,9 @@ public abstract class Server extends Thread {
      */
     private static void acquireWhoisIDQuery() throws ProcessException {
         WhoisIDSemaphore whoisIDSemaphore = new WhoisIDSemaphore();
-        WHOIS_SEMAPHORE_TIMER.schedule(whoisIDSemaphore, DAY_TIME); // Libera o direito à consulta em 24h.
-        WHOIS_SEMAPHORE_TIMER.purge(); // Libera referências processadas.
+        Timer timer = getWhoisSemaphoreTimer();
+        timer.schedule(whoisIDSemaphore, DAY_TIME); // Libera o direito à consulta em 24h.
+        timer.purge(); // Libera referências processadas.
     }
     
     /**
@@ -1251,6 +1526,10 @@ public abstract class Server extends Thread {
      * Limite de 2 conexões simultâneas por IP de origem.
      */
     private static final Semaphore WHOIS_CONNECTION_SEMAPHORE = new Semaphore(2);
+    
+    public static void removeWhoisConnection() {
+        WHOIS_CONNECTION_SEMAPHORE.tryAcquire();
+    }
     
     /**
      * Consulta de identificação no WHOIS.
@@ -1321,63 +1600,118 @@ public abstract class Server extends Thread {
             SubnetIPv6.init();
         }
     }
+
+    private static final LinkedList<InitialDirContext> IDC_LIST = new LinkedList<>();
     
-    /**
-     * Consulta de registros de nome de domínio.
-     */
-    private static InitialDirContext INITIAL_DIR_CONTEXT;
+    private synchronized static InitialDirContext pollInitialDirContext() {
+        return IDC_LIST.poll();
+    }
+    
+    private synchronized static void addInitialDirContext(InitialDirContext idc) {
+        if (idc != null && IDC_LIST.size() < 4) {
+            IDC_LIST.add(idc);
+        }
+    }
     
     public static Attributes getAttributesDNS(String hostname, String... types) throws NamingException {
         return getAttributesDNS(null, hostname, types);
     }
     
     public static Attributes getAttributesDNS(String server, String hostname, String[] types) throws NamingException {
-        if (server != null) {
-            if (server.contains(":")) {
-                return INITIAL_DIR_CONTEXT.getAttributes("dns://[" + server + "]/" + hostname, types);
-            } else {
-                return INITIAL_DIR_CONTEXT.getAttributes("dns://" + server + "/" + hostname, types);
-            }
-        } else if (DNS_PROVIDER != null) {
-            if (DNS_PROVIDER.contains(":")) {
-                return INITIAL_DIR_CONTEXT.getAttributes("dns://[" + DNS_PROVIDER + "]/" + hostname, types);
-            } else {
-                return INITIAL_DIR_CONTEXT.getAttributes("dns://" + DNS_PROVIDER + "/" + hostname, types);
-            }
-        } else {
-            return INITIAL_DIR_CONTEXT.getAttributes("dns:/" + hostname, types);
+        InitialDirContext idc = pollInitialDirContext();
+        if (idc == null) {
+            Hashtable<String,String> env = new Hashtable<>();
+            env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
+//            env.put("java.naming.provider.url", "dns://ns.dnssek.org");
+            env.put("com.sun.jndi.dns.timeout.initial", "1000");
+            env.put("com.sun.jndi.dns.timeout.retries", "1");
+            idc = new InitialDirContext(env);
         }
-    }
-    
-    static {
         try {
-            initDNS();
-        } catch (Exception ex) {
-            Server.logError(ex);
-            System.exit(1);
+            if (server == null) {
+                if (DNS_PROVIDER_PRIMARY != null && DNS_PROVIDER_PRIMARY_TIME > System.currentTimeMillis()) {
+                    try {
+                        if (DNS_PROVIDER_PRIMARY.contains(":")) {
+                            return idc.getAttributes("dns://[" + DNS_PROVIDER_PRIMARY + "]/" + hostname, types);
+                        } else {
+                            return idc.getAttributes("dns://" + DNS_PROVIDER_PRIMARY + "/" + hostname, types);
+                        }
+                    } catch (NameNotFoundException ex) {
+                        throw ex;
+                    } catch (CommunicationException ex) {
+                        DNS_PROVIDER_PRIMARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (ServiceUnavailableException ex) {
+                        DNS_PROVIDER_PRIMARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (LimitExceededException ex) {
+                        DNS_PROVIDER_PRIMARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (NamingException ex) {
+                        Server.logError(ex);
+                    }
+                }
+                if (DNS_PROVIDER_SECONDARY != null && DNS_PROVIDER_SECONDARY_TIME > System.currentTimeMillis()) {
+                    try {
+                        if (DNS_PROVIDER_SECONDARY.contains(":")) {
+                            return idc.getAttributes("dns://[" + DNS_PROVIDER_SECONDARY + "]/" + hostname, types);
+                        } else {
+                            return idc.getAttributes("dns://" + DNS_PROVIDER_SECONDARY + "/" + hostname, types);
+                        }
+                    } catch (NameNotFoundException ex) {
+                        throw ex;
+                    } catch (CommunicationException ex) {
+                        DNS_PROVIDER_SECONDARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (ServiceUnavailableException ex) {
+                        DNS_PROVIDER_SECONDARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (LimitExceededException ex) {
+                        DNS_PROVIDER_SECONDARY_TIME = System.currentTimeMillis() + Server.HOUR_TIME;
+                        Server.logError(ex);
+                    } catch (NamingException ex) {
+                        Server.logError(ex);
+                    }
+                }
+                return idc.getAttributes("dns:/" + hostname, types);
+            } else {
+                if (server.contains(":")) {
+                    return idc.getAttributes("dns://[" + server + "]/" + hostname, types);
+                } else {
+                    return idc.getAttributes("dns://" + server + "/" + hostname, types);
+                }
+            }
+        } finally {
+            addInitialDirContext(idc);
         }
     }
     
-    private static String DNS_PROVIDER = null;
+    private static String DNS_PROVIDER_PRIMARY = null;
+    private static String DNS_PROVIDER_SECONDARY = null;
     
-    public static void setProviderDNS(String ip) {
+    private static long DNS_PROVIDER_PRIMARY_TIME = 0L;
+    private static long DNS_PROVIDER_SECONDARY_TIME = 0L;
+    
+    public static void setPrimaryProviderDNS(String ip) {
         if (ip != null && ip.length() > 0) {
-            if (Subnet.isValidIP(ip)) {
-                Server.DNS_PROVIDER = Subnet.normalizeIP(ip);
-                Server.logInfo("using " + ip + " as fixed DNS provider.");
+            if (isValidIP(ip)) {
+                Server.DNS_PROVIDER_PRIMARY = Subnet.normalizeIP(ip);
+                Server.logInfo("using " + ip + " as fixed primary DNS provider.");
             } else {
-                Server.logError("invalid DNS provider '" + ip + "'.");
+                Server.logError("invalid primary DNS provider '" + ip + "'.");
             }
         }
     }
     
-    @SuppressWarnings("unchecked")
-    public static void initDNS() throws NamingException {
-        Hashtable env = new Hashtable();
-        env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
-        env.put("com.sun.jndi.dns.timeout.initial", "3000");
-        env.put("com.sun.jndi.dns.timeout.retries", "1");
-        INITIAL_DIR_CONTEXT = new InitialDirContext(env);
+    public static void setSecondaryProviderDNS(String ip) {
+        if (ip != null && ip.length() > 0) {
+            if (isValidIP(ip)) {
+                Server.DNS_PROVIDER_SECONDARY = Subnet.normalizeIP(ip);
+                Server.logInfo("using " + ip + " as fixed secondary DNS provider.");
+            } else {
+                Server.logError("invalid secondary DNS provider '" + ip + "'.");
+            }
+        }
     }
     
     /**
@@ -1389,7 +1723,9 @@ public abstract class Server extends Thread {
      * @throws ProcessException se houver falha no processamento da informação.
      */
     public static String whois(String query, String server) throws ProcessException {
-        if (WHOIS_BR.length() == 0) {
+        if (WHOIS_BR == null) {
+            return null;
+        } else if (WHOIS_BR.length() == 0) {
             return null;
         } else {
             long time = System.currentTimeMillis();
@@ -1434,21 +1770,6 @@ public abstract class Server extends Thread {
     }
     
     /**
-     * Atualiza os registros quase expirando.
-     */
-    public static synchronized boolean tryRefreshWHOIS() {
-        if (WHOIS_QUERY_SEMAPHORE.availablePermits() == WHOIS_QUERY_LIMIT) {
-            if (Domain.backgroundRefresh()) {
-                return true;
-            } else {
-                return Subnet.backgroundRefresh();
-            }
-        } else {
-            return false;
-        }
-    }
-    
-    /**
      * Processa a consulta e retorna o resultado.
      * @param query a expressão da consulta.
      * @return o resultado do processamento.
@@ -1479,7 +1800,7 @@ public abstract class Server extends Thread {
                             }
                         }
                     }
-                } else if (Subnet.isValidIP(token) && tokenizer.hasMoreTokens()) {
+                } else if (isValidIP(token) && tokenizer.hasMoreTokens()) {
                     Subnet subnet = Subnet.getSubnet(token);
                     while (tokenizer.hasMoreTokens()) {
                         String field = tokenizer.nextToken();

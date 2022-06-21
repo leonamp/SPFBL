@@ -16,6 +16,7 @@
  */
 package net.spfbl.core;
 
+import net.spfbl.service.ServerP2P;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
@@ -24,7 +25,6 @@ import com.sun.mail.smtp.SMTPTransport;
 import com.sun.mail.util.MailConnectException;
 import de.agitos.dkim.Canonicalization;
 import de.agitos.dkim.DKIMSigner;
-import de.agitos.dkim.SMTPDKIMMessage;
 import de.agitos.dkim.SigningAlgorithm;
 import it.sauronsoftware.junique.AlreadyLockedException;
 import it.sauronsoftware.junique.JUnique;
@@ -32,6 +32,8 @@ import it.sauronsoftware.junique.MessageHandler;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -39,6 +41,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.BindException;
 import java.net.InetAddress;
@@ -50,6 +53,8 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyStore;
@@ -66,11 +71,13 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -80,15 +87,16 @@ import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
-import net.spfbl.whois.QueryTCP;
-import net.spfbl.spf.QuerySPF;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.DataFormatException;
@@ -98,29 +106,56 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import javax.imageio.ImageIO;
+import javax.json.Json;
+import javax.json.JsonArray;
+import javax.json.JsonArrayBuilder;
+import javax.json.JsonObject;
+import javax.json.JsonObjectBuilder;
+import javax.json.JsonReader;
+import javax.json.JsonWriter;
 import javax.mail.Address;
 import javax.mail.AuthenticationFailedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
+import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeUtility;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import javax.net.ssl.HttpsURLConnection;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isReverseIPv6;
+import static net.spfbl.core.Regex.isValidEmail;
+import static net.spfbl.core.Regex.isValidIP;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
+import net.spfbl.data.Abuse;
 import net.spfbl.data.Block;
+import net.spfbl.data.CIDR;
+import net.spfbl.data.DKIM;
+import net.spfbl.data.Dictionary;
+import net.spfbl.data.FQDN;
+import net.spfbl.data.Generic;
+import net.spfbl.data.Ignore;
 import net.spfbl.data.NoReply;
-import net.spfbl.data.Provider;
+import net.spfbl.data.Recipient;
 import net.spfbl.data.Trap;
-import net.spfbl.dns.QueryDNS;
-import net.spfbl.http.ServerHTTP;
-import net.spfbl.spf.SPF;
+import net.spfbl.service.ServerDNS;
+import net.spfbl.service.ServerHTTP;
+import net.spfbl.service.ServerSMTP;
+import net.spfbl.service.ServerSPFBL;
+import net.spfbl.spf.SPF.Qualifier;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.codec.binary.Base64;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.shredzone.acme4j.Account;
 import org.shredzone.acme4j.AccountBuilder;
 import org.shredzone.acme4j.Authorization;
@@ -130,6 +165,7 @@ import org.shredzone.acme4j.OrderBuilder;
 import org.shredzone.acme4j.challenge.Http01Challenge;
 import org.shredzone.acme4j.util.CSRBuilder;
 import org.shredzone.acme4j.util.KeyPairUtils;
+import org.xbill.DNS.TextParseException;
 
 /**
  * Classe principal de inicilização do serviço.
@@ -138,8 +174,8 @@ import org.shredzone.acme4j.util.KeyPairUtils;
  */
 public class Core {
     
-    private static final byte VERSION = 2;
-    private static final byte SUBVERSION = 11;
+    private static final byte VERSION = 3;
+    private static final byte SUBVERSION = 0;
     private static final byte RELEASE = 0;
     private static final boolean TESTING = false;
     
@@ -151,11 +187,15 @@ public class Core {
         return VERSION + "." + SUBVERSION + "." + RELEASE;
     }
     
+    public static boolean isTestingVersion() {
+        return TESTING;
+    }
+    
     public static String getSubVersion() {
         return VERSION + "." + SUBVERSION;
     }
     
-    private static final Pattern VERSION_PATTERN = Pattern.compile("^"
+    private static final Regex VERSION_PATTERN = new Regex("^"
             + "[0-9]+\\.[0-9]+(\\.[0-9]+)?"
             + "$"
     );
@@ -164,8 +204,7 @@ public class Core {
         if (version == null) {
             return false;
         } else {
-//            return Pattern.matches("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$", version);
-            return VERSION_PATTERN.matcher(version).matches();
+            return VERSION_PATTERN.matches(version);
         }
     }
     
@@ -244,16 +283,110 @@ public class Core {
     private static final Huffman HUFFMAN = Huffman.load();
     private static final Huffman HUFFMANPLUS = Huffman.loadPlus();
     
-    public static byte[] encodeHuffmanPlus(String text, int deslocamento) throws ProcessException {
+    public static String encryptURL(long time, String text) throws ProcessException {
+        byte[] byteArray = Core.encodeHuffman(text, 8);
+        byteArray[0] = (byte) (time & 0xFF);
+        byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+        return Server.encryptURLSafe(byteArray);
+    }
+    
+    public static String encrypt32(long time, String text) throws ProcessException {
+        byte[] byteArray = Core.encodeHuffman(text, 8);
+        byteArray[0] = (byte) (time & 0xFF);
+        byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
+        byteArray[7] = (byte) ((time >>> 8) & 0xFF);
+        return Server.encrypt32(byteArray);
+    }
+    
+    public static String decryptURLSafe(String ticket) {
+        try {
+            return decryptURL(ticket);
+        } catch (ProcessException ex) {
+            return null;
+        }
+    }
+    
+    public static String decryptURL(String ticket) throws ProcessException {
+        if (ticket == null) {
+            return null;
+        } else {
+            byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
+            if (byteArray.length > 8) {
+                long time = byteArray[7] & 0xFF;
+                time <<= 8;
+                time += byteArray[6] & 0xFF;
+                time <<= 8;
+                time += byteArray[5] & 0xFF;
+                time <<= 8;
+                time += byteArray[4] & 0xFF;
+                time <<= 8;
+                time += byteArray[3] & 0xFF;
+                time <<= 8;
+                time += byteArray[2] & 0xFF;
+                time <<= 8;
+                time += byteArray[1] & 0xFF;
+                time <<= 8;
+                time += byteArray[0] & 0xFF;
+                if (System.currentTimeMillis() - time < Server.WEEK_TIME) {
+                    return Core.decodeHuffman(byteArray, 8);
+                } else {
+                    throw new ProcessException("ERROR: EXPIRED");
+                }
+            } else {
+                throw new ProcessException("ERROR: CORRUPTED");
+            }
+        }
+    }
+    
+    public static Entry<Long,String> decrypt32(String ticket) {
+        if (ticket == null) {
+            return null;
+        } else {
+            byte[] byteArray = Server.decryptToByteArray32(ticket);
+            if (byteArray == null) {
+                return null;
+            } else if (byteArray.length > 8) {
+                long time = byteArray[7] & 0xFF;
+                time <<= 8;
+                time += byteArray[6] & 0xFF;
+                time <<= 8;
+                time += byteArray[5] & 0xFF;
+                time <<= 8;
+                time += byteArray[4] & 0xFF;
+                time <<= 8;
+                time += byteArray[3] & 0xFF;
+                time <<= 8;
+                time += byteArray[2] & 0xFF;
+                time <<= 8;
+                time += byteArray[1] & 0xFF;
+                time <<= 8;
+                time += byteArray[0] & 0xFF;
+                if (System.currentTimeMillis() - time < Server.WEEK_TIME) {
+                    String command = Core.decodeHuffman(byteArray, 8);
+                    return new AbstractMap.SimpleEntry<>(time, command);
+                }
+            }
+            return null;
+        }
+    }
+    
+    public static byte[] encodeHuffman(String text, int deslocamento) throws ProcessException {
         if (text == null) {
             return null;
         } else {
             return HUFFMANPLUS.encodeByteArray(text.toLowerCase(), deslocamento);
         }
-    }
-    
-    public static String decodeHuffmanPlus(byte[] byteArray, int deslocamento) {
-        return Core.HUFFMANPLUS.decode(byteArray, deslocamento);
     }
     
     public static String decodeHuffman(byte[] byteArray, int deslocamento) {
@@ -262,9 +395,15 @@ public class Core {
             return Core.HUFFMAN.decode(byteArray, deslocamento);
         } else if (query.startsWith("block ")) {
             return query;
+        } else if (query.startsWith("ban ")) {
+            return query;
+        } else if (query.startsWith("bansubject ")) {
+            return query;
         } else if (query.startsWith("holding ")) {
             return query;
         } else if (query.startsWith("release ")) {
+            return query;
+        } else if (query.startsWith("remove ")) {
             return query;
         } else if (query.startsWith("spam ")) {
             return query;
@@ -276,20 +415,28 @@ public class Core {
             return query;
         } else if (query.startsWith("unhold ")) {
             return query;
+        } else if (query.startsWith("unholdadmin ")) {
+            return query;
         } else if (query.startsWith("unsubscribe ")) {
             return query;
         } else if (query.startsWith("white ")) {
             return query;
         } else if (query.startsWith("delist ")) {
             return query;
+        } else if (query.startsWith("licence ")) {
+            return query;
+        } else if (isValidEmail(query)) {
+            return query;
         } else {
             return Core.HUFFMAN.decode(byteArray, deslocamento);
         }
     }
     
-    public static final Base64 BASE64 = new Base64(0, new byte[0], true);
+    public static final Base32 BASE32STANDARD = new Base32(0, new byte[0], false);
+    public static final Base64 BASE64URLSAFE = new Base64(0, new byte[0], true);
+    public static final Base64 BASE64STANDARD = new Base64(0, new byte[0], false);
     
-    public static String getReleaseURL(User user, String id) throws ProcessException {
+    public static String getReleaseURL(User user, String id) {
         if (serviceHTTP == null) {
             return null;
         } else if (Core.hasRecaptchaKeys()) {
@@ -301,21 +448,13 @@ public class Core {
             } else if (url == null) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
+                String ticket = "release " + id;
                 try {
-                    long time = System.currentTimeMillis();
-                    String ticket = "release " + id;
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -352,7 +491,7 @@ public class Core {
             String sender,
             String hostname,
             String recipient
-            ) throws ProcessException {
+            ) {
         if (recipient == null) {
             return null;
         } else if (Trap.containsInexistent(client, user, recipient)) {
@@ -378,7 +517,7 @@ public class Core {
             String sender,
             String hostname,
             String recipient
-            ) throws ProcessException {
+            ) {
         if (userEmail == null) {
             return null;
         } else if (ip == null) {
@@ -387,9 +526,9 @@ public class Core {
             return null;
         } else if (recipient == null) {
             return null;
-        } else if (!Domain.isValidEmail(sender)) {
+        } else if (!isValidEmail(sender)) {
             return null;
-        } else if (!Domain.isValidEmail(recipient)) {
+        } else if (!isValidEmail(recipient)) {
             return null;
         } else if (NoReply.contains(recipient, true)) {
             return null;
@@ -400,26 +539,18 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
+                String ticket = "unblock";
                 try {
-                    long time = System.currentTimeMillis();
-                    String ticket = "unblock";
                     ticket += ' ' + userEmail;
                     ticket += ' ' + ip;
                     ticket += ' ' + sender;
                     ticket += ' ' + recipient;
                     ticket += hostname == null ? "" : ' ' + hostname;
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -431,10 +562,10 @@ public class Core {
             Locale locale,
             String client,
             String ip
-            ) throws ProcessException {
+            ) {
         if (client == null) {
             return null;
-        } else if (!Domain.isValidEmail(client)) {
+        } else if (!isValidEmail(client)) {
             return null;
         } else if (ip == null) {
             return null;
@@ -450,19 +581,10 @@ public class Core {
                 ticket += ' ' + client;
                 ticket += ' ' + ip;
                 try {
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    Server.logError("compress fail: " + ticket);
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -478,12 +600,12 @@ public class Core {
             String playerid,
             String currency,
             String price
-            ) throws ProcessException {
+            ) {
         if (user == null) {
             return null;
         } else if (ip == null) {
             return null;
-        } else if (!Domain.isValidEmail(user)) {
+        } else if (!isValidEmail(user)) {
             return null;
         } else if (serviceHTTP == null) {
             return null;
@@ -494,26 +616,17 @@ public class Core {
             } else {
                 long time = System.currentTimeMillis();
                 String ticket = "unblockpp";
-                ticket += ' ' + user;
-                ticket += ' ' + ip;
+                ticket += ' ' + user.toLowerCase();
+                ticket += ' ' + ip.toLowerCase();
                 ticket += ' ' + token;
                 ticket += ' ' + playerid;
                 ticket += ' ' + price;
                 ticket += ' ' + currency;
                 try {
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    Server.logError("compress fail: " + ticket);
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -524,7 +637,7 @@ public class Core {
     public static String getHoldingURL(
             User user,
             long time
-    ) throws ProcessException {
+    ) {
         if (user == null) {
             return null;
         } else if (serviceHTTP == null) {
@@ -535,21 +648,13 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                String ticket = "holding";
                 try {
-                    String ticket = "holding";
                     ticket += ' ' + user.getEmail();
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -560,7 +665,7 @@ public class Core {
     public static String getUnholdURL(
             User user,
             long time
-    ) throws ProcessException {
+    ) {
         if (user == null) {
             return null;
         } else if (serviceHTTP == null) {
@@ -571,21 +676,13 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                String ticket = "unhold";
                 try {
-                    String ticket = "unhold";
                     ticket += ' ' + user.getEmail();
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -596,7 +693,7 @@ public class Core {
     public static String getUnholdURL(
             long time,
             String user
-    ) throws ProcessException {
+    ) {
         if (user == null) {
             return null;
         } else if (serviceHTTP == null) {
@@ -607,21 +704,45 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                String ticket = "unhold";
                 try {
-                    String ticket = "unhold";
                     ticket += ' ' + user;
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getUnholdAdminURL(
+            long time,
+            String email,
+            String blockKey
+    ) {
+        if (blockKey == null) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            String adminEmail = Core.getAdminEmail();
+            Locale locale = Core.getDefaultLocale(adminEmail);
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                String ticket = "unholdadmin";
+                try {
+                    blockKey = Core.BASE32STANDARD.encodeToString(blockKey.getBytes());
+                    blockKey = blockKey.replace('=', '+').toLowerCase();
+                    ticket += ' ' + email + ' ' + blockKey;
+                    return url + encryptURL(time, ticket);
+                } catch (Exception ex) {
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -637,27 +758,20 @@ public class Core {
             return null;
         } else if (serviceHTTP == null) {
             return null;
+        } else if (!isValidEmail(recipient.getAddress())) {
+            return null;
         } else if (Core.hasRecaptchaKeys()) {
             String url = serviceHTTP.getSecuredURL(locale);
             if (url == null) {
                 return null;
             } else {
+                long time = Server.getNewUniqueTime();
+                String ticket = "unsubscribe";
                 try {
-                    long time = Server.getNewUniqueTime();
-                    String ticket = "unsubscribe";
                     ticket += ' ' + recipient.getAddress();
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    Server.logError(ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
                     return null;
                 }
             }
@@ -680,21 +794,12 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                String ticket = "block";
                 try {
-                    String ticket = "block";
                     ticket += ' ' + user.getEmail();
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    Server.logError(ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
                     return null;
                 }
             }
@@ -717,21 +822,68 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                String ticket = "block";
                 try {
-                    String ticket = "block";
                     ticket += ' ' + user;
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    Server.logError(ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getBanURL(
+            long time,
+            String user
+    ) {
+        if (user == null) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Locale locale = Core.getDefaultLocale(user);
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                String ticket = "ban";
+                try {
+                    ticket += ' ' + user;
+                    return url + encryptURL(time, ticket);
+                } catch (Exception ex) {
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    
+    public static String getBanBySubjectURL(
+            long time,
+            String user
+    ) {
+        if (user == null) {
+            return null;
+        } else if (serviceHTTP == null) {
+            return null;
+        } else if (Core.hasRecaptchaKeys()) {
+            Locale locale = Core.getDefaultLocale(user);
+            String url = serviceHTTP.getSecuredURL(locale);
+            if (url == null) {
+                return null;
+            } else {
+                String ticket = "bansubject";
+                try {
+                    ticket += ' ' + user;
+                    return url + encryptURL(time, ticket);
+                } catch (Exception ex) {
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
                     return null;
                 }
             }
@@ -748,7 +900,7 @@ public class Core {
             String sender,
             String hostname,
             String recipient
-            ) throws ProcessException {
+    ) {
         if (white == null) {
             return null;
         } else if (client == null) {
@@ -766,27 +918,19 @@ public class Core {
             if (url == null) {
                 return null;
             } else {
+                long time = System.currentTimeMillis();
+                String ticket = "white";
                 try {
-                    long time = System.currentTimeMillis();
-                    String ticket = "white";
                     ticket += ' ' + white;
                     ticket += ' ' + client;
                     ticket += ' ' + ip;
                     ticket += ' ' + sender;
                     ticket += ' ' + recipient;
                     ticket += hostname == null ? "" : ' ' + hostname;
-                    byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-                    byteArray[0] = (byte) (time & 0xFF);
-                    byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-                    byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-                    return url + Server.encryptURLSafe(byteArray);
+                    return url + encryptURL(time, ticket);
                 } catch (Exception ex) {
-                    throw new ProcessException("FATAL", ex);
+                    Server.logError(new Exception("compress fail: " + ticket, ex));
+                    return null;
                 }
             }
         } else {
@@ -809,13 +953,24 @@ public class Core {
     }
     
     private static AdministrationTCP administrationTCP = null;
-    private static QuerySPF querySPF = null;
-    private static QueryDNS queryDNSBL = null;
-    private static PeerUDP peerUDP = null;
+    private static ServerSPFBL querySPF = null;
+    private static ServerDNS queryDNSBL = null;
+    private static ServerP2P peerUDP = null;
+    private static ServerSMTP serviceESMTP = null;
     
-    public static void interruptTimeout() {
-        if (querySPF != null) {
-            querySPF.interruptTimeout();
+    public static boolean tryToProcessQueue() {
+        if (serviceESMTP == null) {
+            return false;
+        } else {
+            return serviceESMTP.tryToProcessQueue();
+        }
+    }
+    
+    public static boolean processDelivery(long time) {
+        if (serviceESMTP == null) {
+            return false;
+        } else {
+            return serviceESMTP.processDelivery(time);
         }
     }
     
@@ -829,7 +984,12 @@ public class Core {
                     Server.setSyslog(properties);
                     Server.setLogFolder(properties.getProperty("log_folder"));
                     Server.setLogExpires(properties.getProperty("log_expires"));
-                    Server.setProviderDNS(properties.getProperty("dns_provider"));
+                    User.setHistoryExpires(properties.getProperty("history_expires"));
+                    Server.setLogDNS(properties.getProperty("log_dns"));
+                    Server.setLogDNS(properties.getProperty("log_p2p"));
+                    Server.setPrimaryProviderDNS(properties.getProperty("dns_provider"));
+                    Server.setPrimaryProviderDNS(properties.getProperty("dns_provider_primary"));
+                    Server.setSecondaryProviderDNS(properties.getProperty("dns_provider_secondary"));
                     Server.setServerWHOISBR(properties.getProperty("whois_server_br"));
                     Core.setShowAdvertisement(properties.getProperty("advertisement_show"));
                     Core.setHostname(properties.getProperty("hostname"));
@@ -852,12 +1012,13 @@ public class Core {
                     Core.setInexistentExpires(properties.getProperty("inexistent_expires"));
                     Core.setPortADMIN(properties.getProperty("admin_port"));
                     Core.setPortADMINS(properties.getProperty("admins_port"));
-                    Core.setPortWHOIS(properties.getProperty("whois_port"));
                     Core.setPortSPFBL(properties.getProperty("spfbl_port"));
                     Core.setPortSPFBLS(properties.getProperty("spfbls_port"));
                     Core.setPortDNSBL(properties.getProperty("dnsbl_port"));
                     Core.setPortHTTP(properties.getProperty("http_port"));
                     Core.setPortHTTPS(properties.getProperty("https_port"));
+                    Core.setPortESMTP(properties.getProperty("esmtp_port"));
+                    Core.setPortESMTPS(properties.getProperty("esmtps_port"));
                     Core.setPayPalAccount(
                             properties.getProperty("paypal_account_user"),
                             properties.getProperty("paypal_account_password"),
@@ -868,35 +1029,29 @@ public class Core {
                     Core.setPayPalPriceDelistJPY(properties.getProperty("paypal_delist_jpy"));
                     Core.setPayPalPriceDelistBRL(properties.getProperty("paypal_delist_brl"));
                     Core.setMaxUDP(properties.getProperty("udp_max"));
-                    Core.setFloodTimeIP(properties.getProperty("flood_time_ip"));
-                    Core.setFloodTimeHELO(properties.getProperty("flood_time_helo"));
-                    Core.setFloodTimeSender(properties.getProperty("flood_time_sender"));
-                    Core.setFloodMaxRetry(properties.getProperty("flood_max_retry"));
-                    Core.setDeferTimeFLOOD(properties.getProperty("defer_time_flood"));
                     Core.setDeferTimeSOFTFAIL(properties.getProperty("defer_time_softfail"));
                     Core.setDeferTimeYELLOW(properties.getProperty("defer_time_gray")); // Obsolete.
                     Core.setDeferTimeYELLOW(properties.getProperty("defer_time_yellow"));
                     Core.setDeferTimeRED(properties.getProperty("defer_time_black")); // Obsolete.
                     Core.setDeferTimeRED(properties.getProperty("defer_time_red"));
                     Core.setDeferTimeHOLD(properties.getProperty("defer_time_hold"));
-                    Core.setReverseRequired(properties.getProperty("reverse_required"));
                     Core.setLevelLOG(properties.getProperty("log_level"));
                     Core.setRecaptchaKeySite(properties.getProperty("recaptcha_key_site"));
                     Core.setRecaptchaKeySecret(properties.getProperty("recaptcha_key_secret"));
-                    Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
+                    Core.setSafeBrowsingKey(properties.getProperty("gsb_api_key"));
+//                    Core.setCacheTimeStore(properties.getProperty("cache_time_store"));
                     Core.setHostnameMySQL(properties.getProperty("mysql_hostname"));
                     Core.setPortMySQL(properties.getProperty("mysql_port"));
                     Core.setSchemaMySQL(properties.getProperty("mysql_schema"));
                     Core.setUserMySQL(properties.getProperty("mysql_user"));
                     Core.setPasswordMySQL(properties.getProperty("mysql_password"));
                     Core.setSSLMySQL(properties.getProperty("mysql_ssl"));
-                    PeerUDP.setConnectionLimit(properties.getProperty("peer_limit"));
-                    QueryDNS.setConnectionLimit(properties.getProperty("dnsbl_limit"));
-                    QuerySPF.setConnectionLimit(properties.getProperty("spfbl_limit"));
+                    Core.setExpiresMySQL(properties.getProperty("mysql_expires"));
+                    ServerP2P.setConnectionLimit(properties.getProperty("peer_limit"));
+                    ServerDNS.setConnectionLimit(properties.getProperty("dnsbl_limit"));
+                    ServerSPFBL.setConnectionLimit(properties.getProperty("spfbl_limit"));
                     ServerHTTP.setConnectionLimit(properties.getProperty("http_limit"));
-                    Analise.setAnaliseExpires(properties.getProperty("analise_expires"));
-                    Analise.setAnaliseIP(properties.getProperty("analise_ip"));
-                    Analise.setAnaliseMX(properties.getProperty("analise_mx"));
+                    ServerSMTP.setConnectionLimit(properties.getProperty("smtp_limit"));
                     return true;
                 }
             } catch (IOException ex) {
@@ -914,12 +1069,13 @@ public class Core {
     private static String MYSQL_USER = null;
     private static String MYSQL_PASSWORD = null;
     private static boolean MYSQL_SSL = false;
+    private static short MYSQL_EXPIRES = 0;
     
     public static synchronized void setHostnameMySQL(String hostname) {
         if (hostname != null && hostname.length() > 0) {
-            if (Domain.isHostname(hostname)) {
+            if (isHostname(hostname)) {
                 Core.MYSQL_HOSTNAME = Domain.extractHost(hostname, false);
-            } else if (Subnet.isValidIP(hostname)) {
+            } else if (isValidIP(hostname)) {
                 Core.MYSQL_HOSTNAME = Subnet.normalizeIP(hostname);
             } else {
                 Server.logError("invalid MySQL address '" + hostname + "'.");
@@ -975,6 +1131,24 @@ public class Core {
     
     public static synchronized void setSSLMySQL(boolean ssl) {
         Core.MYSQL_SSL = ssl;
+    }
+    
+    public static void setExpiresMySQL(String expires) {
+        if (expires != null && expires.length() > 0) {
+            try {
+                setExpiresMySQL(Integer.parseInt(expires));
+            } catch (Exception ex) {
+                Server.logError("invalid MySQL expires days '" + expires + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setExpiresMySQL(int expires) {
+        if (expires < 0 || expires > Short.MAX_VALUE) {
+            Server.logError("invalid MySQL expires days '" + expires + "'.");
+        } else {
+            Core.MYSQL_EXPIRES = (short) expires;
+        }
     }
     
     public static boolean hasMySQL() {
@@ -1055,6 +1229,8 @@ public class Core {
         }
     }
     
+    
+    
     public static Connection newConnectionMySQL() throws Exception {
         if (MYSQL_HOSTNAME == null) {
             return null;
@@ -1069,8 +1245,9 @@ public class Core {
                     + "" + MYSQL_PORT + "/" + MYSQL_SCHEMA + ""
                     + "?autoReconnect=true"
                     + "&useUnicode=true&characterEncoding=UTF-8"
-                    + (MYSQL_SSL ? "&verifyServerCertificate=false"
-                    + "&useSSL=true&requireSSL=true" : "");
+                    + "&verifyServerCertificate=false"
+                    + (MYSQL_SSL ? "&useSSL=true&requireSSL=true"
+                    : "&useSSL=false&requireSSL=false");
             DriverManager.setLoginTimeout(3);
             Connection connection = DriverManager.getConnection(
                     url, MYSQL_USER, MYSQL_PASSWORD
@@ -1086,6 +1263,14 @@ public class Core {
                 connection.close();
                 throw ex;
             }
+        }
+    }
+    
+    public static Short getExpiresMySQL() {
+        if (MYSQL_EXPIRES > 0) {
+            return MYSQL_EXPIRES;
+        } else {
+            return null;
         }
     }
     
@@ -1267,13 +1452,35 @@ public class Core {
     private static String ABUSE_EMAIL = null;
     private static short PORT_ADMIN = 9875;
     private static short PORT_ADMINS = 0;
-    private static short PORT_WHOIS = 0;
     private static short PORT_SPFBL = 9877;
     private static short PORT_SPFBLS = 0;
     private static short PORT_DNSBL = 0;
     private static short PORT_HTTP = 0;
     private static short PORT_HTTPS = 0;
+    private static short PORT_ESMTP = 0;
+    private static short PORT_ESMTPS = 0;
     private static short UDP_MAX = 512; // UDP max size packet.
+    
+    public static String getTicketSender(String sender) {
+        if (sender == null) {
+            return null;
+        } else {
+            int index = sender.indexOf('@');
+            String ticket = sender.substring(0, index).toUpperCase();
+            String hostname = sender.substring(index + 1);
+            return isMyHostname(hostname) ? ticket : null;
+        }
+    }
+    
+    public static boolean isAdminEmail(String email, String result) {
+        if (email == null) {
+            return false;
+        } else if (Objects.equals(result, "PASS")) {
+            return email.equals(ADMIN_EMAIL);
+        } else {
+            return false;
+        }
+    }
     
     public static boolean isAdminEmail(String email) {
         if (email == null) {
@@ -1324,6 +1531,10 @@ public class Core {
         return ADMIN_EMAIL;
     }
     
+    public static User getAdminUser() {
+        return User.getUserFor(ADMIN_EMAIL);
+    }
+    
     public static String getAbuseEmail() {
         return ABUSE_EMAIL;
     }
@@ -1338,14 +1549,6 @@ public class Core {
     
     public static short getPortADMINS() {
         return PORT_ADMINS;
-    }
-    
-    public static short getPortWHOIS() {
-        return PORT_WHOIS;
-    }
-    
-    public static boolean hasPortWHOIS() {
-        return PORT_WHOIS > 0;
     }
     
     public static short getPortSPFBL() {
@@ -1384,8 +1587,24 @@ public class Core {
         return PORT_HTTPS;
     }
     
+    public static short getPortESMTP() {
+        return PORT_ESMTP;
+    }
+    
+    public static short getPortESMTPS() {
+        return PORT_ESMTPS;
+    }
+    
     public static boolean hasPortHTTPS() {
         return PORT_HTTPS > 0;
+    }
+    
+    public static boolean hasPortESMTP() {
+        return PORT_ESMTP > 0;
+    }
+    
+    public static boolean hasPortESMTPS() {
+        return PORT_ESMTPS > 0;
     }
     
     public static boolean hasInterface() {
@@ -1400,8 +1619,18 @@ public class Core {
         return HOSTNAME;
     }
     
-    public static boolean isHostname(String hostname) {
-        if (hostname == null) {
+    public static boolean isMatrixDefence() {
+        if (HOSTNAME == null) {
+            return TESTING;
+        } else if (HOSTNAME.equals("matrix.spfbl.net")) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean isMyHostname(String hostname) {
+        if ((hostname = Domain.normalizeHostname(hostname, false)) == null) {
             return false;
         } else {
             return hostname.equals(HOSTNAME);
@@ -1422,7 +1651,7 @@ public class Core {
                 if (attributeAAAA != null) {
                     for (int i = 0; i < attributeAAAA.size(); i++) {
                         String host6Address = (String) attributeAAAA.get(i);
-                        if (SubnetIPv6.isValidIPv6(host6Address)) {
+                        if (isValidIPv6(host6Address)) {
                             try {
                                 InetAddress address = InetAddress.getByName(host6Address);
                                 if (address.isLinkLocalAddress()) {
@@ -1441,7 +1670,7 @@ public class Core {
                 for (int i = 0; i < attributeA.size(); i++) {
                     String host4Address = (String) attributeA.get(i);
                     host4Address = host4Address.trim();
-                    if (SubnetIPv4.isValidIPv4(host4Address)) {
+                    if (isValidIPv4(host4Address)) {
                         try {
                             InetAddress address = InetAddress.getByName(host4Address);
                             if (address.isLinkLocalAddress()) {
@@ -1484,7 +1713,7 @@ public class Core {
     
     public static synchronized void setHostname(String hostame) {
         if (hostame != null && hostame.length() > 0) {
-            if (!Domain.isHostname(hostame)) {
+            if (!isHostname(hostame)) {
                 Server.logError("invalid hostname '" + hostame + "'.");
             } else if (!Core.TESTING && !hostame.equals("localhost") && !isRouteable(hostame)) {
                 Server.logError("unrouteable hostname '" + hostame + "'.");
@@ -1598,8 +1827,8 @@ public class Core {
     
     public static synchronized void setAdminEmail(String email) {
         if (email != null && email.length() > 0) {
-            if (Domain.isValidEmail(email)) {
-                Core.ADMIN_EMAIL = email.toLowerCase();
+            if (isValidEmail(email)) {
+                Core.ADMIN_EMAIL = Domain.normalizeEmail(email);
             } else {
                 Server.logError("invalid admin e-mail '" + email + "'.");
             }
@@ -1608,7 +1837,7 @@ public class Core {
     
     public static synchronized void setAbuseEmail(String email) {
         if (email != null && email.length() > 0) {
-            if (Domain.isValidEmail(email)) {
+            if (isValidEmail(email)) {
                 Core.ABUSE_EMAIL = email.toLowerCase();
             } else {
                 Server.logError("invalid abuse e-mail '" + email + "'.");
@@ -1649,24 +1878,6 @@ public class Core {
             Server.logError("invalid ADMINS port '" + port + "'.");
         } else {
             Core.PORT_ADMINS = (short) port;
-        }
-    }
-    
-    public static void setPortWHOIS(String port) {
-        if (port != null && port.length() > 0) {
-            try {
-                setPortWHOIS(Integer.parseInt(port));
-            } catch (Exception ex) {
-                Server.logError("invalid WHOIS port '" + port + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setPortWHOIS(int port) {
-        if (port < 1 || port > Short.MAX_VALUE) {
-            Server.logError("invalid WHOIS port '" + port + "'.");
-        } else {
-            Core.PORT_WHOIS = (short) port;
         }
     }
     
@@ -1760,6 +1971,42 @@ public class Core {
         }
     }
     
+    public static void setPortESMTP(String port) {
+        if (port != null && port.length() > 0) {
+            try {
+                setPortESMTP(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid ESMTP port '" + port + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPortESMTP(int port) {
+        if (port != 25) {
+            Server.logError("invalid ESMTP port '" + port + "'.");
+        } else {
+            Core.PORT_ESMTP = (short) port;
+        }
+    }
+    
+    public static void setPortESMTPS(String port) {
+        if (port != null && port.length() > 0) {
+            try {
+                setPortESMTPS(Integer.parseInt(port));
+            } catch (Exception ex) {
+                Server.logError("invalid ESMTPS port '" + port + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setPortESMTPS(int port) {
+        if (port < 1 || port > Short.MAX_VALUE) {
+            Server.logError("invalid ESMTPS port '" + port + "'.");
+        } else {
+            Core.PORT_ESMTPS = (short) port;
+        }
+    }
+    
     public static void setMaxUDP(String max) {
         if (max != null && max.length() > 0) {
             try {
@@ -1799,133 +2046,13 @@ public class Core {
         }
     }
     
-    private static float FLOOD_TIME_IP = 1.0f;
-    
-    public static float getFloodTimeIP() {
-        return FLOOD_TIME_IP;
-    }
-    
-    public static void setFloodTimeIP(String time) {
-        if (time != null && time.length() > 0) {
-            try {
-                setFloodTimeIP(Float.parseFloat(time));
-            } catch (Exception ex) {
-                Server.logError("invalid FLOOD IP time '" + time + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setFloodTimeIP(float time) {
-        if (time < 0.0f || time > Byte.MAX_VALUE) {
-            Server.logError("invalid FLOOD IP time '" + time + "s'.");
-        } else {
-            Core.FLOOD_TIME_IP = time;
-        }
-    }
-    
-    private static float FLOOD_TIME_HELO = 10.0f;
-    
-    public static float getFloodTimeHELO() {
-        return FLOOD_TIME_HELO;
-    }
-    
-    public static void setFloodTimeHELO(String time) {
-        if (time != null && time.length() > 0) {
-            try {
-                setFloodTimeHELO(Float.parseFloat(time));
-            } catch (Exception ex) {
-                Server.logError("invalid FLOOD HELO time '" + time + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setFloodTimeHELO(float time) {
-        if (time < 0.0f || time > Byte.MAX_VALUE) {
-            Server.logError("invalid FLOOD HELO time '" + time + "s'.");
-        } else {
-            Core.FLOOD_TIME_HELO = time;
-        }
-    }
-    
-    private static float FLOOD_TIME_SENDER = 30.0f;
-    
-    public static float getFloodTimeSender() {
-        return FLOOD_TIME_SENDER;
-    }
-    
-    public static void setFloodTimeSender(String time) {
-        if (time != null && time.length() > 0) {
-            try {
-                setFloodTimeSender(Float.parseFloat(time));
-            } catch (Exception ex) {
-                Server.logError("invalid FLOOD SENDER time '" + time + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setFloodTimeSender(float time) {
-        if (time < 0.0f || time > Byte.MAX_VALUE) {
-            Server.logError("invalid FLOOD SENDER time '" + time + "s'.");
-        } else {
-            Core.FLOOD_TIME_SENDER = time;
-        }
-    }
-    
-    private static byte FLOOD_MAX_RETRY = 32;
-    
-    public static float getFloodMaxRetry() {
-        return FLOOD_MAX_RETRY;
-    }
-    
-    public static void setFloodMaxRetry(String max) {
-        if (max != null && max.length() > 0) {
-            try {
-                setFloodMaxRetry(Integer.parseInt(max));
-            } catch (Exception ex) {
-                Server.logError("invalid FLOOD max retry '" + max + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setFloodMaxRetry(int max) {
-        if (max < 0 || max > Byte.MAX_VALUE) {
-            Server.logError("invalid FLOOD max retry '" + max + "'.");
-        } else {
-            Core.FLOOD_MAX_RETRY = (byte) max;
-        }
-    }
-    
     private static class ApplicationMessageHandler implements MessageHandler {
         @Override
         public synchronized String handle(String message) {
             if (message.equals("register")) {
-                Server.logDebug("another instance of this application tried to start.");
+                Server.logInfo("another instance of this application tried to start.");
             }
             return null;
-        }
-    }
-    
-    private static byte DEFER_TIME_FLOOD = 0;
-    
-    public static byte getDeferTimeFLOOD() {
-        return DEFER_TIME_FLOOD;
-    }
-    
-    public static void setDeferTimeFLOOD(String time) {
-        if (time != null && time.length() > 0) {
-            try {
-                setDeferTimeFLOOD(Integer.parseInt(time));
-            } catch (Exception ex) {
-                Server.logError("invalid DEFER time for FLOOD '" + time + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setDeferTimeFLOOD(int time) {
-        if (time < 0 || time > Byte.MAX_VALUE) {
-            Server.logError("invalid DEFER time for FLOOD '" + time + "'.");
-        } else {
-            Core.DEFER_TIME_FLOOD = (byte) time;
         }
     }
     
@@ -2024,26 +2151,6 @@ public class Core {
             Core.DEFER_TIME_HOLD = (short) time;
         }
     }
-
-    private static boolean REVERSE_REQUIRED = false;
-    
-    public static boolean isReverseRequired() {
-        return REVERSE_REQUIRED;
-    }
-    
-    public static void setReverseRequired(String required) {
-        if (required != null && required.length() > 0) {
-            try {
-                setReverseRequired(Boolean.parseBoolean(required));
-            } catch (Exception ex) {
-                Server.logError("invalid required reverse flag '" + required + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setReverseRequired(boolean required) {
-        Core.REVERSE_REQUIRED = required;
-    }
     
     private static String RECAPTCHA_KEY_SITE = null;
     private static String RECAPTCHA_KEY_SECRET = null;
@@ -2058,7 +2165,11 @@ public class Core {
     
     public static void setRecaptchaKeySite(String key) {
         if (key != null && key.length() > 0) {
-            RECAPTCHA_KEY_SITE = key;
+            if (key.matches("^[0-9a-zA-Z_-]+$")) {
+                RECAPTCHA_KEY_SITE = key;
+            } else {
+                Server.logError("invalid reCAPTCHA key site '" + key + "'.");
+            }
         }
     }
     
@@ -2068,7 +2179,11 @@ public class Core {
     
     public static void setRecaptchaKeySecret(String key) {
         if (key != null && key.length() > 0) {
-            RECAPTCHA_KEY_SECRET = key;
+            if (key.matches("^[0-9a-zA-Z_-]+$")) {
+                RECAPTCHA_KEY_SECRET = key;
+            } else {
+                Server.logError("invalid reCAPTCHA key secret '" + key + "'.");
+            }
         }
     }
     
@@ -2077,7 +2192,7 @@ public class Core {
     
     public static synchronized void setSelectorDKIM(String selector) {
         if (selector != null && selector.length() > 0) {
-            if (Domain.isHostname(selector)) {
+            if (isHostname(selector)) {
                 Core.DKIM_SELECTOR = Domain.normalizeHostname(selector, false);
             } else {
                 Server.logError("invalid DKIM selector '" + selector + "'.");
@@ -2088,7 +2203,7 @@ public class Core {
     public static synchronized void setPrivateDKIM(String privateKey) {
         if (privateKey != null && privateKey.length() > 0) {
             try {
-                byte[] privateKeyBytes = BASE64.decode(privateKey);
+                byte[] privateKeyBytes = BASE64STANDARD.decode(privateKey);
                 PKCS8EncodedKeySpec encodedKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
                 KeyFactory kf = KeyFactory.getInstance("RSA");
                 Core.DKIM_PRIVATE = kf.generatePrivate(encodedKeySpec);
@@ -2098,7 +2213,7 @@ public class Core {
         }
     }
     
-    private static short INEXISTENT_EXPIRES = 365;
+    private static short INEXISTENT_EXPIRES = 180;
     
     public static synchronized void setInexistentExpires(String expires) {
         if (expires != null && expires.length() > 0) {
@@ -2177,9 +2292,9 @@ public class Core {
     
     public static synchronized void setHostSMTP(String host) {
         if (host != null && host.length() > 0) {
-            if (Subnet.isValidIP(host)) {
+            if (isValidIP(host)) {
                 Core.SMTP_HOST = Subnet.normalizeIP(host);
-            } else if (Domain.isHostname(host)) {
+            } else if (isHostname(host)) {
                 Core.SMTP_HOST = Domain.normalizeHostname(host, false);
             } else {
                 Server.logError("invalid SMTP hostname '" + host + "'.");
@@ -2189,7 +2304,7 @@ public class Core {
     
     public static synchronized void setUserSMTP(String user) {
         if (user != null && user.length() > 0) {
-            if (Domain.isValidEmail(user) || Domain.isHostname(user)) {
+            if (isValidEmail(user) || isHostname(user)) {
                 Core.SMTP_USER = user;
             } else {
                 Server.logError("invalid SMTP user '" + user + "'.");
@@ -2207,7 +2322,7 @@ public class Core {
         }
     }
     
-    private static final short REPUTATION_LIMIT = 512;
+    private static final short REPUTATION_LIMIT = 256;
     
     public static short getReputationLimit() {
         return REPUTATION_LIMIT;
@@ -2238,6 +2353,14 @@ public class Core {
         return DATE_EMAIL_FULL_FORMATTER.format(new Date());
     }
     
+    public static String getEmailDate(long timeMillis) {
+        if (timeMillis == 0) {
+            return null;
+        } else {
+            return getEmailDate(new Date(timeMillis));
+        }
+    }
+    
     public static synchronized String getEmailDate(Date date) {
         if (date == null) {
             return null;
@@ -2252,24 +2375,57 @@ public class Core {
     private static final SimpleDateFormat DATE_EMAIL_FULL_PARSER = new SimpleDateFormat("EEE, dd MMM yy HH:mm:ss Z", Locale.US);
     private static final SimpleDateFormat DATE_EMAIL_SHORT_PARSER = new SimpleDateFormat("dd MMM yy HH:mm:ss Z", Locale.US);
     
+    public static synchronized String formatEmailDate(long time) {
+        return DATE_EMAIL_FULL_PARSER.format(new Date(time));
+    }
+    
+    public static synchronized String formatEmailDate(Date date) {
+        if (date == null) {
+            return null;
+        } else {
+            return DATE_EMAIL_FULL_PARSER.format(date);
+        }
+    }
+    
     public static synchronized Date parseEmailDate(String date) throws ParseException {
-        return DATE_EMAIL_FULL_PARSER.parse(date);
+        if (date == null) {
+            return null;
+        } else {
+            return DATE_EMAIL_FULL_PARSER.parse(date);
+        }
     }
     
     public static synchronized Date parseEmailShortDate(String date) throws ParseException {
-        return DATE_EMAIL_SHORT_PARSER.parse(date);
+        if (date == null) {
+            return null;
+        } else {
+            return DATE_EMAIL_SHORT_PARSER.parse(date);
+        }
     }
     
-    public static Date parseEmailDateSafe(String date) throws ParseException {
+    public static long parseEmailDateLong(String date) {
+        Date dateObj = parseEmailDateSafe(date);
+        if (dateObj == null) {
+            return 0;
+        } else {
+            return dateObj.getTime();
+        }
+    }
+    
+    public static Date parseEmailDateSafe(String date) {
         if (date == null) {
             return null;
         } else {
             try {
                 return parseEmailDate(date);
             } catch (ParseException ex) {
-                int index = date.indexOf(',') + 1;
-                date = date.substring(index).trim();
-                return parseEmailShortDate(date);
+                try {
+                    int index = date.indexOf(',') + 1;
+                    date = date.substring(index).trim();
+                    return parseEmailShortDate(date);
+                } catch (ParseException ex2) {
+                    return null;
+                }
             }
         }
     }
@@ -2304,7 +2460,7 @@ public class Core {
         }
     }
     
-    private static DKIMSigner getDKIMSigner() {
+    public static DKIMSigner getDKIMSigner() {
         if (ADMIN_EMAIL == null) {
             return null;
         } else if (DKIM_SELECTOR == null) {
@@ -2322,6 +2478,8 @@ public class Core {
                 dkimSigner.setSigningAlgorithm(SigningAlgorithm.SHA1withRSA);
 //                dkimSigner.setZParam(true); // Debug
                 dkimSigner.addHeaderToSign("List-Unsubscribe");
+                dkimSigner.addHeaderToSign("Reply-To");
+                dkimSigner.addHeaderToSign("Date");
                 return dkimSigner;
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -2330,36 +2488,30 @@ public class Core {
         }
     }
     
-    public static MimeMessage newMessage() throws Exception {
-        Properties props = System.getProperties();
-        javax.mail.Session session = javax.mail.Session.getDefaultInstance(props);
+    public static MimeMessage newMessage(boolean invitation) throws Exception {
+        Properties props = new Properties();
+        props.putAll(System.getProperties());
+        Session session = Session.getInstance(props);
         DKIMSigner dkimSigner;
         MimeMessage message;
         if (!isDirectSMTP()) {
-            message = new MimeMessage(session);
+            message = new SPFBLMimeMessage(session);
         } else if ((dkimSigner = getDKIMSigner()) == null) {
-            message = new MimeMessage(session);
+            message = new SPFBLMimeMessage(session);
         } else {
-            message = new SMTPDKIMMessage(session, dkimSigner);
+            message = new DKIMMimeMessage(session, dkimSigner);
+        }
+        InternetAddress adminAddress = Core.getAdminInternetAddress();
+        message.setFrom(adminAddress);
+        if (invitation) {
+            User user = User.getUserFor(adminAddress);
+            InternetAddress[] replyTo = User.getInvitationArray(user, adminAddress);
+            if (replyTo != null) {
+                message.setReplyTo(replyTo);
+            }
         }
         message.setHeader("Date", Core.getEmailDate());
-        message.setFrom(Core.getAdminInternetAddress());
         return message;
-    }
-    
-    public static boolean sendMessage(
-            Locale locale, Message message, int timeout
-    ) throws Exception {
-        Object response = getLastResponse(
-                locale, message, timeout
-        );
-        if (response instanceof String) {
-            return true;
-        } else if (response instanceof Boolean) {
-            return (Boolean) response;
-        } else {
-            return false;
-        }
     }
     
     public static Object getLastResponse(
@@ -2368,10 +2520,10 @@ public class Core {
         if (message == null) {
             return null;
         } else if (isDirectSMTP()) {
-            Server.logInfo("sending e-mail message.");
-            Server.logSendMTP("authenticate: false.");
-            Server.logSendMTP("start TLS: true.");
-            Properties props = System.getProperties();
+            Server.logSendSMTP("authenticate: false.");
+            Server.logSendSMTP("start TLS: true.");
+            Properties props = new Properties();
+            props.putAll(System.getProperties());
             props.put("mail.smtp.auth", "false");
             props.put("mail.smtp.port", "25");
             props.put("mail.smtp.timeout", Integer.toString(timeout));   
@@ -2390,10 +2542,11 @@ public class Core {
             MessagingException messagingException = null;
             for (InternetAddress recipient : recipients) {
                 String email = recipient.getAddress();
-                if (NoReply.contains(email, true)) {
-                    Server.logDebug("the recipient '" + email +  "' is in no-reply list.");
+                if (NoReply.isUnsubscribed(email)) {
+                    Server.logSendSMTP("the recipient '" + email +  "' is unsubscribed.");
                     return false;
                 } else {
+                    Server.logSendSMTP("sending message to " + recipient + ".");
                     String domain = Domain.normalizeHostname(email, false);
                     String url = Core.getListUnsubscribeURL(locale, recipient);
                     if (url != null) {
@@ -2401,61 +2554,60 @@ public class Core {
                     }
                     message.saveChanges();
                     try {
-                        for (String mx : Reverse.getMXSet(domain)) {
-                            mx = mx.substring(1);
+                        for (String mx : Reverse.getMXSet(domain, false)) {
                             props.put("mail.smtp.starttls.enable", "true");
                             props.put("mail.smtp.host", mx);
                             props.put("mail.smtp.ssl.trust", mx);
                             InternetAddress[] recipientAlone = new InternetAddress[1];
                             recipientAlone[0] = (InternetAddress) recipient;
-                            javax.mail.Session session = javax.mail.Session.getDefaultInstance(props);
+                            Session session = Session.getInstance(props);
                             SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
                             try {
                                 transport.setLocalHost(HOSTNAME);
-                                Server.logSendMTP("connecting to " + mx + ":25.");
+                                Server.logSendSMTP("connecting to " + mx + ":25.");
                                 transport.connect(mx, 25, null, null);
-                                Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
+                                Server.logSendSMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
                                 transport.sendMessage(message, recipientAlone);
-                                Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
-                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                                return mx + ": " + transport.getLastServerResponse();
+                                Server.logSendSMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
+                                Server.logSendSMTP("last response: " + transport.getLastServerResponse());
+                                String response = transport.getLastServerResponse();
+                                return mx + ": " + response;
                             } catch (MailConnectException ex) {
-                                Server.logSendMTP("connection failed.");
+                                Server.logSendSMTP("connection failed.");
                                 mailConnectException = ex;
                             } catch (SendFailedException ex) {
-                                Server.logSendMTP("send failed.");
-                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                Server.logSendSMTP("send failed.");
+                                Server.logSendSMTP("last response: " + transport.getLastServerResponse());
                                 sendFailedException = ex;
                             } catch (MessagingException ex) {
-    //                            if (ex.getMessage().contains(" TLS ")) {
-    //                            Server.logSendMTP("cannot establish TLS connection.");
-                                Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                Server.logSendSMTP("last response: " + transport.getLastServerResponse());
                                 if (transport.isConnected()) {
                                     transport.close();
-                                    Server.logSendMTP("connection closed.");
+                                    Server.logSendSMTP("connection closed.");
                                 }
                                 messagingException = ex;
                                 Server.logInfo("sending e-mail message without TLS.");
                                 props.put("mail.smtp.starttls.enable", "false");
-                                session = javax.mail.Session.getDefaultInstance(props);
+                                session = Session.getInstance(props);
                                 transport = (SMTPTransport) session.getTransport("smtp");
                                 try {
                                     transport.setLocalHost(HOSTNAME);
-                                    Server.logSendMTP("connecting to " + mx + ":25.");
+                                    Server.logSendSMTP("connecting to " + mx + ":25.");
                                     transport.connect(mx, 25, null, null);
-                                    Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
+                                    Server.logSendSMTP("sending '" + message.getSubject() + "' to " + recipient + ".");
                                     transport.sendMessage(message, recipientAlone);
-                                    Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
-                                    Server.logSendMTP("last response: " + transport.getLastServerResponse());
-                                    return mx + ": " + transport.getLastServerResponse();
+                                    Server.logSendSMTP("message '" + message.getSubject() + "' sent to " + recipient + ".");
+                                    Server.logSendSMTP("last response: " + transport.getLastServerResponse());
+                                    String response = transport.getLastServerResponse();
+                                    return mx + ": " + response;
                                 } catch (SendFailedException ex2) {
-                                    Server.logSendMTP("send failed.");
-                                    Server.logSendMTP("last response: " + transport.getLastServerResponse());
+                                    Server.logSendSMTP("send failed.");
+                                    Server.logSendSMTP("last response: " + transport.getLastServerResponse());
                                     sendFailedException = ex2;
                                 } catch (MessagingException ex2) {
-                                    messagingException = ex;
+                                    messagingException = ex2;
                                 } catch (Exception ex2) {
-                                    lastException = ex;
+                                    lastException = ex2;
                                 }
                             } catch (Exception ex) {
                                 Server.logError(ex);
@@ -2463,7 +2615,7 @@ public class Core {
                             } finally {
                                 if (transport.isConnected()) {
                                     transport.close();
-                                    Server.logSendMTP("connection closed.");
+                                    Server.logSendSMTP("connection closed.");
                                 }
                             }
                         }
@@ -2484,10 +2636,16 @@ public class Core {
                 return false;
             }
         } else if (hasRelaySMTP()) {
-            Server.logInfo("sending e-mail message.");
-            Server.logSendMTP("authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
-            Server.logSendMTP("start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
-            Properties props = System.getProperties();
+            Address[] recipients = message.getAllRecipients();
+            TreeSet<String> recipientSet = new TreeSet<>();
+            for (Address recipient : recipients) {
+                recipientSet.add(recipient.toString());
+            }
+            Server.logSendSMTP("sending message to " + recipientSet + ".");
+            Server.logSendSMTP("authenticate: " + Boolean.toString(SMTP_IS_AUTH) + ".");
+            Server.logSendSMTP("start TLS: " + Boolean.toString(SMTP_STARTTLS) + ".");
+            Properties props = new Properties();
+            props.putAll(System.getProperties());
             props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
             props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
             props.put("mail.smtp.host", SMTP_HOST);
@@ -2495,46 +2653,56 @@ public class Core {
             props.put("mail.smtp.timeout", Integer.toString(timeout));   
             props.put("mail.smtp.connectiontimeout", "3000");
             props.put("mail.smtp.ssl.trust", SMTP_HOST);
-            Address[] recipients = message.getAllRecipients();
-            TreeSet<String> recipientSet = new TreeSet<>();
-            for (Address recipient : recipients) {
-                recipientSet.add(recipient.toString());
-            }
-            javax.mail.Session session = javax.mail.Session.getDefaultInstance(props);
-            SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
-            try {
+            
+            Session session = Session.getInstance(props);
+            try (SMTPTransport transport = (SMTPTransport) session.getTransport("smtp")) {
                 if (HOSTNAME != null) {
                     transport.setLocalHost(HOSTNAME);
                 }
-                Server.logSendMTP("connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
+                Server.logSendSMTP("connecting to " + SMTP_HOST + ":" + SMTP_PORT + ".");
                 transport.connect(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD);
-                Server.logSendMTP("sending '" + message.getSubject() + "' to " + recipientSet + ".");
+                Server.logSendSMTP("sending '" + message.getSubject() + "' to " + recipientSet + ".");
                 transport.sendMessage(message, recipients);
-                Server.logSendMTP("message '" + message.getSubject() + "' sent to " + recipientSet + ".");
+                Server.logSendSMTP("message '" + message.getSubject() + "' sent to " + recipientSet + ".");
                 return transport.getLastServerResponse();
             } catch (SendFailedException ex) {
-                Server.logSendMTP("send failed.");
+                Server.logSendSMTP("send failed.");
                 throw ex;
             } catch (AuthenticationFailedException ex) {
-                Server.logSendMTP("authentication failed.");
+                Server.logSendSMTP("authentication failed.");
                 return false;
             } catch (MailConnectException ex) {
-                Server.logSendMTP("connection failed.");
+                Server.logSendSMTP("connection failed.");
                 return false;
             } catch (MessagingException ex) {
-                Server.logSendMTP("messaging failed.");
+                Server.logSendSMTP("messaging failed.");
                 return false;
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
             } finally {
-                if (transport.isConnected()) {
-                    transport.close();
-                    Server.logSendMTP("connection closed.");
-                }
+                Server.logSendSMTP("connection closed.");
             }
         } else {
             return false;
+        }
+    }
+    
+    public static Properties[] getRelaySessionProperties() {
+        if (hasRelaySMTP()) {
+            Properties props = new Properties();
+            props.put("mail.transport.protocol", "smtp");
+            props.put("mail.smtp.auth", Boolean.toString(SMTP_IS_AUTH));
+            props.put("mail.smtp.starttls.enable", Boolean.toString(SMTP_STARTTLS));
+            props.put("mail.smtp.host", SMTP_HOST);
+            props.put("mail.smtp.port", Short.toString(SMTP_PORT));
+            props.put("mail.smtp.timeout", "60000");   
+            props.put("mail.smtp.connectiontimeout", "5000");
+            props.put("mail.smtp.ssl.trust", SMTP_HOST);
+            Properties[] propsArray = {props};
+            return propsArray;
+        } else {
+            return null;
         }
     }
     
@@ -2559,6 +2727,7 @@ public class Core {
             } else {
                 loadConfiguration();
                 Server.logInfo("starting server...");
+                User.startIndex();
                 Server.loadCache();
                 try {
                     administrationTCP = new AdministrationTCP(PORT_ADMIN, PORT_ADMINS, HOSTNAME);
@@ -2567,25 +2736,25 @@ public class Core {
                     Server.logError("system could not start because ADMIN port " + PORT_ADMIN + " is already in use.");
                     System.exit(1);
                 }
-                if (PORT_WHOIS > 0) {
-                    try {
-                        new QueryTCP(PORT_WHOIS).start();
-                    } catch (BindException ex) {
-                        Server.logError("WHOIS socket was not binded because TCP port " + PORT_WHOIS + " is already in use.");
-                    }
-                }
                 if (PORT_DNSBL > 0) {
-                    try {
-                        queryDNSBL = new QueryDNS(PORT_DNSBL);
-                        queryDNSBL.start();
-                    } catch (BindException ex) {
-                        queryDNSBL = null;
-                        Server.logError("DNSBL socket was not binded because UDP port " + PORT_DNSBL + " is already in use.");
+                    if (HOSTNAME == null) {
+                        Server.logInfo("DNSBL socket was not binded because no hostname was defined.");
+                    } else {
+                        try {
+                            queryDNSBL = new ServerDNS(HOSTNAME, PORT_DNSBL);
+                            queryDNSBL.start();
+                        } catch (TextParseException ex) {
+                            queryDNSBL = null;
+                            Server.logError("DNSBL socket was not binded because the hostname '" + HOSTNAME + "' is not valid for DNS.");
+                        } catch (BindException ex) {
+                            queryDNSBL = null;
+                            Server.logError("DNSBL socket was not binded because UDP port " + PORT_DNSBL + " is already in use.");
+                        }
                     }
                 }
                 if (PORT_HTTP > 0) {
                     if (HOSTNAME == null) {
-                        Server.logInfo("HTTP socket was not binded because no hostname defined.");
+                        Server.logInfo("HTTP socket was not binded because no hostname was defined.");
                     } else {
                         try {
                             serviceHTTP = new ServerHTTP(HOSTNAME, PORT_HTTP, PORT_HTTPS);
@@ -2596,19 +2765,48 @@ public class Core {
                         }
                     }
                 }
+                if (PORT_ESMTP > 0) {
+                    if (Core.isTestingVersion()) {
+                        File deliveryFolder = new File("./delivery/");
+                        File incomingFolder = new File("./incoming/");
+                        if (!deliveryFolder.exists()) {
+                            Server.logInfo("ESMTP socket was not binded because the delivery folder not exists.");
+                        } else if (!deliveryFolder.isDirectory()) {
+                            Server.logInfo("ESMTP socket was not binded because the delivery folder not exists.");
+                        } else if (!incomingFolder.exists()) {
+                            Server.logInfo("ESMTP socket was not binded because the incoming folder not exists.");
+                        } else if (!incomingFolder.isDirectory()) {
+                            Server.logInfo("ESMTP socket was not binded because the incoming folder not exists.");
+                        } else if (HOSTNAME == null) {
+                            Server.logInfo("ESMTP socket was not binded because no hostname was defined.");
+                        } else if (ADMIN_EMAIL == null) {
+                            Server.logInfo("ESMTP socket was not binded because no admin email was defined.");
+                        } else {
+                            try {
+                                serviceESMTP = new ServerSMTP(HOSTNAME, PORT_ESMTPS, ADMIN_EMAIL);
+                                serviceESMTP.start();
+                            } catch (BindException ex) {
+                                serviceESMTP = null;
+                                Server.logError("ESMTP socket was not binded because TCP port " + PORT_ESMTP + " is already in use.");
+                            }
+                        }
+                    } else {
+                        Server.logInfo("ESMTP socket was not binded because it's an experimental implementation.");
+                    }
+                }
                 if (PORT_SPFBL > 0) {
                     try {
-                        querySPF = new QuerySPF(PORT_SPFBL, PORT_SPFBLS, HOSTNAME);
+                        querySPF = new ServerSPFBL(PORT_SPFBL, PORT_SPFBLS, HOSTNAME);
                         querySPF.start();
                     } catch (BindException ex) {
                         querySPF = null;
                         Server.logError("SPFBL socket was not binded because TCP port " + PORT_SPFBL + " is already in use.");
                     }
                     if (HOSTNAME == null) {
-                        Server.logInfo("P2P socket was not binded because no hostname defined.");
+                        Server.logInfo("P2P socket was not binded because no hostname was defined.");
                     } else if (isRouteable(HOSTNAME)) {
                         try {
-                            peerUDP = new PeerUDP(HOSTNAME, PORT_SPFBL, PORT_SPFBLS, UDP_MAX);
+                            peerUDP = new ServerP2P(HOSTNAME, PORT_SPFBL, PORT_SPFBLS, UDP_MAX);
                             peerUDP.start();
                         } catch (BindException ex) {
                             peerUDP = null;
@@ -2618,9 +2816,19 @@ public class Core {
                         Server.logError("P2P socket was not binded because '" + HOSTNAME + "' is not a routeable hostname.");
                     }
                 }
-                Core.startTimer();
+//                Core.startTimer();
+                User.startThread();
+                FQDN.startThread();
+                CIDR.startThread();
+                net.spfbl.data.SPF.startThread();
+                DKIM.startThread();
+                Dictionary.startThread();
+                Block.startThread();
+                Generic.startThread();
+                Abuse.startThread();
                 Analise.initProcess();
-                Peer.sendHeloToAll();
+                net.spfbl.data.URI.startThread();
+                Recipient.startThread();
             }
         } catch (Exception ex) {
             Server.logError(ex);
@@ -2631,292 +2839,18 @@ public class Core {
     /**
      * Timer que controla os processos em background.
      */
-    private static final Timer TIMER = new Timer("BCKGROUND");
+//    private static Timer TIMER = null;
     private static boolean running = true;
 
     public static void cancelTimer() {
         running = false;
-        TIMER.cancel();
+//        if (TIMER != null) {
+//            TIMER.cancel();
+//        }
     }
     
     public static boolean isRunning() {
         return running;
-    }
-    
-    private static class TimerInterruptTimeout extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Interromper conexões vencidas.
-                Core.interruptTimeout();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerRefreshSPF extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Atualiza registro SPF mais consultado.
-                SPF.refreshSPF();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerRefreshHELO extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Atualiza registro HELO mais consultado.
-                SPF.refreshHELO();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerRefreshReverse extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Atualiza registro de IP reverso mais consultado.
-                Reverse.refreshLast();
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerRefreshWHOIS extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerRefreshWHOIS started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Atualiza registros WHOIS expirando.
-                Server.tryRefreshWHOIS();
-                Server.logTrace("TimerRefreshWHOIS finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredSPF extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredSPF started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Remoção de registros SPF expirados. 
-                SPF.dropExpiredSPF();
-                Server.logTrace("TimerDropExpiredSPF finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerCheckAccessSMTP extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerCheckAccessSMTP started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                Analise.checkAccessSMTP();
-                Server.logTrace("TimerCheckAccessSMTP finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerSendHoldingWarningMessages extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerSendHoldingWarningMessages started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                User.sendHoldingWarning();
-                Server.logTrace("TimerSendHoldingWarningMessages finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerSendWarningMessages extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerSendWarningMessages started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                User.sendWarningMessages();
-                User.storeAndDropFinished();
-                Server.logTrace("TimerSendWarningMessages finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredPeer extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredPeer started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Remoção de registros de reputação expirados. 
-                Peer.dropExpired();
-                Peer.sendHeloToAll();
-                Server.logTrace("TimerDropExpiredPeer finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredHELO extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredHELO started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apagar todas os registros de DNS de HELO vencidos.
-                SPF.dropExpiredHELO();
-                Server.logTrace("TimerDropExpiredHELO finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredReverse extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredReverse started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apagar todas os registros de IP reverso vencidos.
-                Reverse.dropExpired();
-                Server.logTrace("TimerDropExpiredReverse finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredDistribution extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredDistribution started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apagar todas as distribuições e consultas vencidas.
-                User.dropAllExpiredQuery();
-//                SPF.dropExpiredDistribution();
-//                Block.dropExpired();
-                Server.logTrace("TimerDropExpiredDistribution finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDropExpiredDefer extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDropExpiredDefer started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apagar todas os registros de atrazo programado vencidos.
-                Defer.dropExpired();
-                Server.logTrace("TimerDropExpiredDefer finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerStoreCache extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerStoreCache started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Armazena todos os registros atualizados durante a consulta.
-                Server.tryStoreCache();
-                Server.logTrace("TimerStoreCache finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static class TimerDeleteLogExpired extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                Server.logTrace("TimerDeleteLogExpired started.");
-                Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-                // Apaga todos os arquivos de LOG vencidos.
-                Server.deleteLogExpired();
-                // Apaga todos as listas de analise vencidas.
-                Analise.dropExpired();
-                Server.logTrace("TimerDeleteLogExpired finished.");
-            } catch (Exception ex) {
-                Server.logError(ex);
-            }
-        }
-    }
-    
-    private static long CACHE_TIME_STORE = 3600000; // Frequência de 1 hora.
-    
-    public static void setCacheTimeStore(String time) {
-        if (time != null && time.length() > 0) {
-            try {
-                setCacheTimeStore(Integer.parseInt(time));
-            } catch (Exception ex) {
-                Server.logError("invalid cache time store '" + time + "'.");
-            }
-        }
-    }
-    
-    public static synchronized void setCacheTimeStore(int time) {
-        if (time < 0 || time > 1440) {
-            Server.logError("invalid cache time store '" + time + "'.");
-        } else {
-            Core.CACHE_TIME_STORE = time * 60000;
-        }
-    }
-    
-    public static void startTimer() {
-        TIMER.schedule(new TimerInterruptTimeout(), 10000, 10000); // Frequência de 10 segundos.
-        TIMER.schedule(new TimerRefreshSPF(), 30000, 60000); // Frequência de 1 minuto.
-        TIMER.schedule(new TimerRefreshHELO(), 60000, 60000); // Frequência de 1 minuto.
-        TIMER.schedule(new TimerRefreshReverse(), 60000, 60000); // Frequência de 1 minuto.
-        TIMER.schedule(new TimerRefreshWHOIS(), 600000, 600000); // Frequência de 10 minutos.
-        TIMER.schedule(new TimerSendHoldingWarningMessages(), 600000, 600000); // Frequência de 10 minutos.
-        TIMER.schedule(new TimerDropExpiredPeer(), 900000, 1800000); // Frequência de 30 minutos.
-        TIMER.schedule(new TimerDropExpiredSPF(), 600000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerDropExpiredHELO(), 1200000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerDropExpiredReverse(), 1200000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerDropExpiredDistribution(), 1800000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerDropExpiredDefer(), 2400000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerSendWarningMessages(), 3600000, 3600000); // Frequência de 1 hora.
-        TIMER.schedule(new TimerDeleteLogExpired(), 3600000, 3600000); // Frequência de 1 hora.
-        if (CACHE_TIME_STORE > 0) {
-            TIMER.schedule(new TimerStoreCache(), CACHE_TIME_STORE, CACHE_TIME_STORE);
-        }
-        TIMER.schedule(new TimerCheckAccessSMTP(), 0, 86400000); // Frequência de 24 horas.
     }
     
     public static String removerAcentuacao(String text) {
@@ -3105,23 +3039,30 @@ public class Core {
     
     private static final QRCodeWriter qrCodeWriter = new QRCodeWriter();
 
-    public static File getQRCodeTempFile(String codigo) throws Exception {
-        BitMatrix matrix = qrCodeWriter.encode(codigo, BarcodeFormat.QR_CODE, 256, 256);
-        int width = matrix.getWidth();
-        int height = matrix.getHeight();
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if (!matrix.get(x, y)) {
-                    image.setRGB(x, y, Color.WHITE.getRGB());
+    public static File getQRCodeTempFile(String codigo) {
+        try {
+            File file = File.createTempFile(Long.toString(Server.getNewUniqueTime()), ".png");
+            Server.logTrace("QRCode temp file created at " + file.getAbsolutePath() + ".");
+            BitMatrix matrix = qrCodeWriter.encode(codigo, BarcodeFormat.QR_CODE, 256, 256);
+            Server.logTrace("QRCode matrix created.");
+            int width = matrix.getWidth();
+            int height = matrix.getHeight();
+            BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    if (!matrix.get(x, y)) {
+                        image.setRGB(x, y, Color.WHITE.getRGB());
+                    }
                 }
             }
+            Server.logTrace("writing image at QRCode temp file.");
+            ImageIO.write(image, "PNG", file);
+            file.deleteOnExit();
+            return file;
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return null;
         }
-        File file = File.createTempFile(Long.toString(Server.getNewUniqueTime()), ".png");
-        ImageIO.write(image, "PNG", file);
-        Server.logTrace("QRCode temp file created at " + file.getAbsolutePath() + ".");
-        file.deleteOnExit();
-        return file;
     }
     
 //    public static Number getPositiveInteger(String text) {
@@ -3210,12 +3151,33 @@ public class Core {
 //        }
 //    }
     
+    public static boolean isInteger(String text) {
+        try {
+            Integer.parseInt(text);
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+    
     public static boolean isLong(String text) {
         try {
             Long.parseLong(text);
             return true;
         } catch (Exception ex) {
             return false;
+        }
+    }
+    
+    public static Long parseLong(String code, int radix) {
+        if (code == null) {
+            return null;
+        } else {
+            try {
+                return Long.parseLong(code, radix);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
         }
     }
     
@@ -3296,6 +3258,25 @@ public class Core {
         }
     }
     
+    public static String getSequence(InternetAddress[] addresses, String demiliter) {
+        if (addresses == null) {
+            return null;
+        } else if (demiliter == null) {
+            return null;
+        } else if (addresses.length == 0) {
+            return null;
+        } else {
+            StringBuilder builder = new StringBuilder();
+            for (InternetAddress address : addresses) {
+                if (builder.length() > 0) {
+                    builder.append(demiliter);
+                }
+                builder.append(address.getAddress());
+            }
+            return builder.toString();
+        }
+    }
+    
     public static String getSequence(
             TreeMap<String,Boolean> map,
             String demiliter,
@@ -3331,30 +3312,6 @@ public class Core {
         } else {
             for (char character : text.toCharArray()) {
                 if (Character.UnicodeBlock.of(character) == block) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-    
-    public static boolean hasMiscellaneousSymbols(String text) {
-        if (text == null) {
-            return false;
-        } else {
-            for (char character : text.toCharArray()) {
-                Character.UnicodeBlock block = Character.UnicodeBlock.of(character);
-                if (block == Character.UnicodeBlock.MISCELLANEOUS_MATHEMATICAL_SYMBOLS_A) {
-                    return true;
-                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_MATHEMATICAL_SYMBOLS_B) {
-                    return true;
-                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS) {
-                    return true;
-                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS_AND_ARROWS) {
-                    return true;
-                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS) {
-                    return true;
-                } else if (block == Character.UnicodeBlock.MISCELLANEOUS_TECHNICAL) {
                     return true;
                 }
             }
@@ -3467,7 +3424,7 @@ public class Core {
         }
     }
     
-    private static HashMap<String,KeyStore> KEYSTORE_MAP = new HashMap<>();
+    private static final HashMap<String,KeyStore> KEYSTORE_MAP = new HashMap<>();
     
     public static synchronized void storeKeystoreMap() {
         for (String hostname : KEYSTORE_MAP.keySet()) {
@@ -3475,6 +3432,14 @@ public class Core {
             if (Core.validCertificate(keyStore, hostname)) {
                 Core.storeKeyStore(keyStore, hostname);
             }
+        }
+    }
+    
+    public static synchronized KeyStore getKeyStore(String hostname) {
+        if (hostname == null) {
+            return null;
+        } else {
+            return KEYSTORE_MAP.get(hostname);
         }
     }
     
@@ -3521,7 +3486,7 @@ public class Core {
     
     private static boolean updateCertificate(KeyStore keyStore, String hostname) {
         if (requestCertificate(keyStore, hostname)) {
-            removeExpiring(hostname);
+            removeExpiringCertificate(hostname);
             return true;
         } else {
             // TODO: manual certificate update.
@@ -3557,22 +3522,22 @@ public class Core {
         } else if (provider == null) {
             return false;
         } else if (hostname == null) {
-            Server.logDebug("cannot request a certificate without a hostname.");
+            Server.logInfo("cannot request a certificate without a hostname.");
             return false;
         } else if (hostname.equals("localhost")) {
-            Server.logDebug("cannot request a certificate for localhost.");
+            Server.logInfo("cannot request a certificate for localhost.");
             return false;
         } else if (adminEmail == null) {
-            Server.logDebug("cannot request a certificate without an admin e-mail.");
+            Server.logInfo("cannot request a certificate without an admin e-mail.");
             return false;
         } else if (serverKeyPair == null) {
-            Server.logDebug("cannot request a certificate without a server key pair.");
+            Server.logInfo("cannot request a certificate without a server key pair.");
             return false;
         } else if (serviceHTTP == null) {
-            Server.logDebug("cannot request a certificate without HTTP service.");
+            Server.logInfo("cannot request a certificate without HTTP service.");
             return false;
         } else if (serviceHTTP.getPort() != 80) {
-            Server.logDebug("cannot request a certificate because HTTP service is not binded at port 80.");
+            Server.logInfo("cannot request a certificate because HTTP service is not binded at port 80.");
             return false;
         } else {
             try {
@@ -3671,15 +3636,15 @@ public class Core {
     
     private static final HashSet<String> EXPIRING_SET = new HashSet<>();
     
-    private static synchronized boolean removeExpiring(String token) {
+    private static synchronized boolean removeExpiringCertificate(String token) {
         return EXPIRING_SET.remove(token);
     }
     
-    private static synchronized boolean addExpiring(String token) {
+    private static synchronized boolean addExpiringCertificate(String token) {
         return EXPIRING_SET.add(token);
     }
     
-    public static synchronized boolean isExpiring(String token) {
+    public static synchronized boolean isExpiringCertificate(String token) {
         return EXPIRING_SET.contains(token);
     }
     
@@ -3690,7 +3655,7 @@ public class Core {
             try {
                 java.security.cert.Certificate cert = keyStore.getCertificate(hostname);
                 if (cert == null) {
-                    Server.logDebug("no " + hostname + " certificate at keystore.");
+                    Server.logInfo("no " + hostname + " certificate at keystore.");
                     return updateCertificate(keyStore, hostname);
                 } else if (cert instanceof X509Certificate) {
                     X509Certificate X509cert = (X509Certificate) cert;
@@ -3698,8 +3663,8 @@ public class Core {
                         GregorianCalendar calendar = new GregorianCalendar();
                         calendar.add(Calendar.DAY_OF_YEAR, 30);
                         X509cert.checkValidity(calendar.getTime());
-                        Server.logDebug(hostname + " certificate is valid.");
-                        removeExpiring(hostname);
+                        Server.logInfo(hostname + " certificate is valid.");
+                        removeExpiringCertificate(hostname);
                         return true;
                     } catch (CertificateExpiredException ex) {
                         try {
@@ -3712,22 +3677,22 @@ public class Core {
                                 } else {
                                     Server.logInfo(hostname + " certificate is valid but will expire soon.");
                                 }
-                                addExpiring(hostname);
+                                addExpiringCertificate(hostname);
                                 return true;
                             }
                         } catch (CertificateExpiredException ex2) {
-                            Server.logDebug("expired " + hostname + " certificate at keystore.");
+                            Server.logInfo("expired " + hostname + " certificate at keystore.");
                             return updateCertificate(keyStore, hostname);
                         } catch (CertificateNotYetValidException ex2) {
-                            Server.logDebug("invalid " + hostname + " certificate at keystore.");
+                            Server.logInfo("invalid " + hostname + " certificate at keystore.");
                             return updateCertificate(keyStore, hostname);
                         }
                     } catch (CertificateNotYetValidException ex) {
-                        Server.logDebug("invalid " + hostname + " certificate at keystore.");
+                        Server.logInfo("invalid " + hostname + " certificate at keystore.");
                         return updateCertificate(keyStore, hostname);
                     }
                 } else {
-                    Server.logDebug("invalid " + hostname + " certificate at keystore.");
+                    Server.logInfo("invalid " + hostname + " certificate at keystore.");
                     return updateCertificate(keyStore, hostname);
                 }
             } catch (KeyStoreException ex) {
@@ -3761,7 +3726,7 @@ public class Core {
     }
     
     public static String compressAsString(byte[] data) throws IOException {
-        return BASE64.encodeAsString(compress(data));
+        return BASE64URLSAFE.encodeAsString(compress(data));
     }
     
     public static byte[] decompress(byte[] data) throws IOException, DataFormatException {
@@ -3790,12 +3755,14 @@ public class Core {
     }
     
     public static byte[] decompress(String data) throws IOException, DataFormatException {
-        return decompress(BASE64.decode(data));
+        return decompress(BASE64URLSAFE.decode(data));
     }
     
-    private static final Pattern EXECUTABLE_SIGNATURE_PATTERN = Pattern.compile("^"
+    private static final Regex EXECUTABLE_SIGNATURE_PATTERN = new Regex("^"
             + "[0-9a-f]{32}\\.[0-9]+\\."
-            + "(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)"
+            + "(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|"
+            + "hta|jar|ace|js|msi|sh|zip|7z|rar|gz|z|lzh|r13|doc|xls|"
+            + "docx|docm|xlsx|xlsm|xlsb|html|pdf)"
             + "$"
     );
     
@@ -3803,13 +3770,12 @@ public class Core {
         if (token == null) {
             return false;
         } else {
-//            return Pattern.matches("^[0-9a-f]{32}\\.[0-9]+\\.(com|vbs|vbe|bat|cmd|pif|scr|prf|lnk|exe|shs|arj|hta|jar|ace|js|msi|sh|zip|7z|rar)$", token);
-            return EXECUTABLE_SIGNATURE_PATTERN.matcher(token).matches();
+            return EXECUTABLE_SIGNATURE_PATTERN.matches(token);
         }
     }
     
-    private static final Pattern URL_SIGNATURE_PATTERN = Pattern.compile("^"
-            + "[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?"
+    public static final Regex URL_SIGNATURE_PATTERN = new Regex("^"
+            + "([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.([0-9]+)\\.(https?))"
             + "$"
     );
     
@@ -3817,8 +3783,7 @@ public class Core {
         if (token == null) {
             return false;
         } else {
-//            return Pattern.matches("^[0-9a-f]{32}(\\.[a-z0-9_-]+)+\\.[0-9]+\\.https?$", token);
-            return URL_SIGNATURE_PATTERN.matcher(token).matches();
+            return URL_SIGNATURE_PATTERN.matches(token);
         }
     }
     
@@ -3826,18 +3791,19 @@ public class Core {
         if (token == null) {
             return null;
         } else {
-            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.[0-9]+\\.https?)$");
-            Matcher matcher = pattern.matcher(token);
+            Matcher matcher = URL_SIGNATURE_PATTERN.createMatcher(token);
             if (matcher.find()) {
                 String host = matcher.group(2).substring(1);
-                if (SubnetIPv4.isValidIPv4(host)) {
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
+                if (isValidIPv4(host)) {
                     host = SubnetIPv4.reverseToIPv4(host);
-                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                } else if (isReverseIPv6(host)) {
                     host = SubnetIPv6.reverseToIPv6(host);
                     host = SubnetIPv6.tryTransformToIPv4(host);
                 }
                 return host;
             } else {
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
                 return null;
             }
         }
@@ -3856,18 +3822,18 @@ public class Core {
         if (token == null) {
             return null;
         } else {
-            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.([0-9]+)\\.(https?))$");
-            Matcher matcher = pattern.matcher(token);
+            Matcher matcher = URL_SIGNATURE_PATTERN.createMatcher(token);
             if (matcher.find()) {
                 String host = matcher.group(2).substring(1);
-                if (SubnetIPv4.isValidIPv4(host)) {
+                if (isValidIPv4(host)) {
                     host = SubnetIPv4.reverseToIPv4(host);
-                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                } else if (isReverseIPv6(host)) {
                     host = SubnetIPv6.reverseToIPv6(host);
                     host = SubnetIPv6.tryTransformToIPv4(host);
                 }
                 String port = matcher.group(4);
                 String protocol = matcher.group(5);
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
                 if (protocol.equals("http") && port.equals("80")) {
                     port = "";
                 } else if (protocol.equals("https") && port.equals("443")) {
@@ -3877,6 +3843,7 @@ public class Core {
                 }
                 return protocol + "://" + host + port + "/";
             } else {
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
                 return null;
             }
         }
@@ -3886,59 +3853,86 @@ public class Core {
         if (token == null) {
             return null;
         } else {
-            Pattern pattern = Pattern.compile("^([0-9a-f]{32}((\\.[a-z0-9_-]+)+)\\.([0-9]+)\\.(https?))$");
-            Matcher matcher = pattern.matcher(token);
+            Matcher matcher = URL_SIGNATURE_PATTERN.createMatcher(token);
             if (matcher.find()) {
                 String host = matcher.group(2).substring(1);
-                if (SubnetIPv4.isValidIPv4(host)) {
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
+                if (isValidIPv4(host)) {
                     host = SubnetIPv4.reverseToIPv4(host);
-                } else if (SubnetIPv6.isReverseIPv6(host)) {
+                } else if (isReverseIPv6(host)) {
                     host = SubnetIPv6.reverseToIPv6(host);
                     host = SubnetIPv6.tryTransformToIPv4(host);
                 }
                 return host;
             } else {
+                URL_SIGNATURE_PATTERN.offerMatcher(matcher);
                 return null;
             }
         }
     }
     
-    private static final Pattern URL_SIG_PATTERN = Pattern.compile("^(https?)\\:\\/\\/([a-z0-9\\._-]+|\\[[a-f0-9\\:]+\\])(:([0-9]{1,6}))?(\\/|\\?|#|$)");
-    private static final Pattern URL_IPV6_PATTERN = Pattern.compile("^\\[([a-f0-9\\:]+)\\]$");
+    private static final Regex URL_SIG_PATTERN = new Regex("^"
+            + "(https?)\\:\\/\\/([a-z0-9\\._-]+|\\[[a-f0-9\\:]+\\])(:([0-9]{1,6}))?"
+            + "(\\/|\\?|#|$)"
+    );
+    
+    private static final Regex URL_IPV6_PATTERN = new Regex(""
+            + "^\\[([a-f0-9\\:]+)\\]"
+            + "$"
+    );
     
     public static boolean isValidURL(String url) {
         if (url == null) {
             return false;
+        } else if (URL_SIG_PATTERN.matches(url)) {
+            return true;
         } else {
-            return URL_SIG_PATTERN.matcher(url).find();
+            try {
+                new URL(url);
+                return true;
+            } catch (MalformedURLException ex) {
+                return false;
+            }
         }
     }
     
-    public static String md2Hex(String token) {
+    public static String md5Hex(String token) {
         if (token == null) {
             return null;
         } else {
             try {
                 MessageDigest md = MessageDigest.getInstance("MD5");
                 md.update(token.getBytes());
-                byte[] digest = md.digest();
-                StringBuilder sb = new StringBuilder();
-                for (byte b : digest) {
-                    sb.append(String.format("%02x", b & 0xff));
-                }
-                return sb.toString();
+                return md5Hex(md.digest());
             } catch (NoSuchAlgorithmException ex) {
                 return null;
             }
         }
     }
     
+    public static String md5Hex(byte[] digest) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b & 0xff));
+        }
+        return sb.toString();
+    }
+    
+    public static String getSignature(URL url) {
+        if (url == null) {
+            return null;
+        } else {
+            return getSignatureURL(url.toString());
+        }
+    }
+    
     public static String getSignatureURL(String url) {
-        Matcher matcher = URL_SIG_PATTERN.matcher(url);
+        Matcher matcher = URL_SIG_PATTERN.createMatcher(url);
         if (matcher.find()) {
             String protocol = matcher.group(1).toLowerCase();
             String host = matcher.group(2).toLowerCase();
             String port = matcher.group(4);
+            URL_SIG_PATTERN.offerMatcher(matcher);
             if (port == null) {
                 if (protocol.equals("http")) {
                     port = "80";
@@ -3946,19 +3940,37 @@ public class Core {
                     port = "443";
                 }
             }
-            if (SubnetIPv4.isValidIPv4(host)) {
+            if (isValidIPv4(host)) {
                 host = SubnetIPv4.reverseToIPv4(host);
-            } else if ((matcher = URL_IPV6_PATTERN.matcher(host)).find() && SubnetIPv6.isValidIPv6(matcher.group(1))) {
-                host = SubnetIPv6.reverseToIPv6(matcher.group(1));
+            } else {
+                matcher = URL_IPV6_PATTERN.createMatcher(host);
+                if (matcher.find() && isValidIPv6(matcher.group(1))) {
+                    host = SubnetIPv6.reverseToIPv6(matcher.group(1));
+                }
+                URL_IPV6_PATTERN.offerMatcher(matcher);
             }
-            String signature = md2Hex(url);
+            int index = url.indexOf('?');
+            if (index > 0) {
+                url = url.substring(0, index);
+            }
+            String signature = md5Hex(url);
             return signature + "." + host + "." + port + "." + protocol;
+        } else {
+            URL_SIG_PATTERN.offerMatcher(matcher);
+            return null;
+        }
+    }
+    
+    public static String getHostnameURL(String url) {
+        Matcher matcher = URL_SIG_PATTERN.createMatcher(url);
+        if (matcher.find()) {
+            return matcher.group(2).toLowerCase();
         } else {
             return null;
         }
     }
     
-    private static final Pattern URL_SHORTENER_PATTERN = Pattern.compile(
+    private static final Regex URL_SHORTENER_PATTERN = new Regex(
             "^(https?)\\:\\/\\/(1link\\.in|1url\\.com|2big\\.at|2pl\\.us|"
                     + "2tu\\.us|2ya\\.com|4url\\.cc|6url\\.com|a\\.gg|a\\.nf|"
                     + "a2a\\.me|abbrr\\.com|adf\\.ly|adjix\\.com|alturl\\.com|"
@@ -4016,14 +4028,1434 @@ public class Core {
                     + "x\\.se|xaddr\\.com|xeeurl\\.com|xr\\.com|xrl\\.in|"
                     + "xrl\\.us|xurl\\.jp|xzb\\.cc|yep\\.it|yfrog\\.com|"
                     + "yourls\\.org|yweb\\.com|zi\\.ma|zi\\.pe|"
-                    + "zipmyurl\\.com|zz\\.gd|back\\.ly|ouo\\.io)\\/"
+                    + "zipmyurl\\.com|zz\\.gd|back\\.ly|ouo\\.io|tini\\.to|s\\.id)\\/"
     );
     
     public static boolean isShortenerURL(String url) {
         if (url == null) {
             return false;
         } else {
-            return URL_SHORTENER_PATTERN.matcher(url).find();
+            return URL_SHORTENER_PATTERN.matches(url);
+        }
+    }
+    
+    
+    public static boolean isShortenerHost(String host) {
+        if (host == null) {
+            return false;
+        } else {
+            return SHORTENER_SET.contains(host);
+        }
+    }
+    
+    public static HashSet<String> getUserClientSet() {
+        HashSet<String> returnSet = new HashSet<>();
+        String adminEmail = getAdminEmail();
+        if (adminEmail != null) {
+            returnSet.add(adminEmail);
+        }
+        returnSet.addAll(User.getKeySet());
+        returnSet.addAll(Client.getEmailSet());
+        return returnSet;
+    }
+    
+    protected static void autoClearHistory() {
+        autoClearHistory(600, 100000);
+    }
+    
+    protected static void autoClearHistory(int timeout, int limit) {
+        Short expires = getExpiresMySQL();
+        if (expires != null && Core.isRunning()) {
+            try {
+                Server.logTrace("starting history clear.");
+                Connection connection = Core.newConnectionMySQL();
+                if (connection != null) {
+                    try {
+                        int expiresInt = expires * 24 * 60 * 60;
+                        String command = "DELETE FROM user_query\n"
+                                + "WHERE time < ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP)"
+                                + " - " + expiresInt + ") * 1000)\n"
+                                + "LIMIT " + limit;
+                        long begin = System.currentTimeMillis();
+                        try (Statement statement = connection.createStatement()) {
+                            statement.setQueryTimeout(timeout);
+                            statement.executeUpdate(command);
+                        } catch (MySQLTimeoutException ex) {
+                            Server.logMySQL(begin, command, ex);
+                        }
+                    } finally {
+                        connection.close();
+                        Server.logMySQL("connection closed.");
+                    }
+                }
+                Server.logTrace("finished history clear.");
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+    }
+    
+    public static final HashSet<String> SHORTENER_SET = new HashSet<>();
+    
+    static {
+        SHORTENER_SET.add("1link.in");
+        SHORTENER_SET.add("1url.com");
+        SHORTENER_SET.add("2big.at");
+        SHORTENER_SET.add("2pl.us");
+        SHORTENER_SET.add("2tu.us");
+        SHORTENER_SET.add("2ya.com");
+        SHORTENER_SET.add("4url.cc");
+        SHORTENER_SET.add("6url.com");
+        SHORTENER_SET.add("a.gg");
+        SHORTENER_SET.add("a.nf");
+        SHORTENER_SET.add("a2a.me");
+        SHORTENER_SET.add("abbrr.com");
+        SHORTENER_SET.add("adf.ly");
+        SHORTENER_SET.add("adjix.com");
+        SHORTENER_SET.add("alturl.com");
+        SHORTENER_SET.add("atu.ca");
+        SHORTENER_SET.add("b23.ru");
+        SHORTENER_SET.add("back.ly");
+        SHORTENER_SET.add("bacn.me");
+        SHORTENER_SET.add("bc.vc");
+        SHORTENER_SET.add("bit.do");
+        SHORTENER_SET.add("bit.ly");
+        SHORTENER_SET.add("bitly.com");
+        SHORTENER_SET.add("bkite.com");
+        SHORTENER_SET.add("bloat.me");
+        SHORTENER_SET.add("budurl.com");
+        SHORTENER_SET.add("buk.me");
+        SHORTENER_SET.add("burnurl.com");
+        SHORTENER_SET.add("buzurl.com");
+        SHORTENER_SET.add("c-o.in");
+        SHORTENER_SET.add("chilp.it");
+        SHORTENER_SET.add("clck.ru");
+        SHORTENER_SET.add("cli.gs");
+        SHORTENER_SET.add("clickmeter.com");
+        SHORTENER_SET.add("cort.as");
+        SHORTENER_SET.add("cur.lv");
+        SHORTENER_SET.add("cutt.us");
+        SHORTENER_SET.add("cuturl.com");
+        SHORTENER_SET.add("db.tt");
+        SHORTENER_SET.add("decenturl.com");
+        SHORTENER_SET.add("dfl8.me");
+        SHORTENER_SET.add("digbig.com");
+        SHORTENER_SET.add("digg.com");
+        SHORTENER_SET.add("doiop.com");
+        SHORTENER_SET.add("dwarfurl.com");
+        SHORTENER_SET.add("dy.fi");
+        SHORTENER_SET.add("easyuri.com");
+        SHORTENER_SET.add("easyurl.net");
+        SHORTENER_SET.add("eepurl.com");
+        SHORTENER_SET.add("esyurl.com");
+        SHORTENER_SET.add("ewerl.com");
+        SHORTENER_SET.add("fa.b");
+        SHORTENER_SET.add("ff.im");
+        SHORTENER_SET.add("fff.to");
+        SHORTENER_SET.add("fhurl.com");
+        SHORTENER_SET.add("filoops.info");
+        SHORTENER_SET.add("fire.to");
+        SHORTENER_SET.add("firsturl.de");
+        SHORTENER_SET.add("flic.kr");
+        SHORTENER_SET.add("fly2.ws");
+        SHORTENER_SET.add("fon.gs");
+        SHORTENER_SET.add("fwd4.me");
+        SHORTENER_SET.add("gl.am");
+        SHORTENER_SET.add("go.9nl.com");
+        SHORTENER_SET.add("go2.me");
+        SHORTENER_SET.add("go2cut.com");
+        SHORTENER_SET.add("goo.gl");
+        SHORTENER_SET.add("goshrink.com");
+        SHORTENER_SET.add("gowat.ch");
+        SHORTENER_SET.add("gri.ms");
+        SHORTENER_SET.add("gurl.es");
+        SHORTENER_SET.add("hellotxt.com");
+        SHORTENER_SET.add("hex.io");
+        SHORTENER_SET.add("hover.com");
+        SHORTENER_SET.add("href.in");
+        SHORTENER_SET.add("htxt.it");
+        SHORTENER_SET.add("hugeurl.com");
+        SHORTENER_SET.add("hurl.it");
+        SHORTENER_SET.add("hurl.me");
+        SHORTENER_SET.add("hurl.ws");
+        SHORTENER_SET.add("icanhaz.com");
+        SHORTENER_SET.add("idek.net");
+        SHORTENER_SET.add("inreply.to");
+        SHORTENER_SET.add("inx.lv");
+        SHORTENER_SET.add("is.gd");
+        SHORTENER_SET.add("iscool.net");
+        SHORTENER_SET.add("iterasi.net");
+        SHORTENER_SET.add("ity.im");
+        SHORTENER_SET.add("j.mp");
+        SHORTENER_SET.add("jijr.com");
+        SHORTENER_SET.add("jmp2.net");
+        SHORTENER_SET.add("just.as");
+        SHORTENER_SET.add("kissa.be");
+        SHORTENER_SET.add("kl.am");
+        SHORTENER_SET.add("klck.me");
+        SHORTENER_SET.add("korta.nu");
+        SHORTENER_SET.add("krunchd.com");
+        SHORTENER_SET.add("liip.to");
+        SHORTENER_SET.add("liltext.com");
+        SHORTENER_SET.add("lin.cr");
+        SHORTENER_SET.add("link.zip.net");
+        SHORTENER_SET.add("linkbee.com");
+        SHORTENER_SET.add("linkbun.ch");
+        SHORTENER_SET.add("liurl.cn");
+        SHORTENER_SET.add("ln-s.net");
+        SHORTENER_SET.add("ln-s.ru");
+        SHORTENER_SET.add("lnk.gd");
+        SHORTENER_SET.add("lnk.in");
+        SHORTENER_SET.add("lnkd.in");
+        SHORTENER_SET.add("loopt.us");
+        SHORTENER_SET.add("lru.jp");
+        SHORTENER_SET.add("lt.tl");
+        SHORTENER_SET.add("lurl.no");
+        SHORTENER_SET.add("metamark.net");
+        SHORTENER_SET.add("migre.me");
+        SHORTENER_SET.add("minilien.com");
+        SHORTENER_SET.add("miniurl.com");
+        SHORTENER_SET.add("minurl.fr");
+        SHORTENER_SET.add("moourl.com");
+        SHORTENER_SET.add("myurl.in");
+        SHORTENER_SET.add("ne1.net");
+        SHORTENER_SET.add("njx.me");
+        SHORTENER_SET.add("nn.nf");
+        SHORTENER_SET.add("notlong.com");
+        SHORTENER_SET.add("nsfw.in");
+        SHORTENER_SET.add("o-x.fr");
+        SHORTENER_SET.add("om.ly");
+        SHORTENER_SET.add("ouo.io");
+        SHORTENER_SET.add("ow.ly");
+        SHORTENER_SET.add("pd.am");
+        SHORTENER_SET.add("pic.gd");
+        SHORTENER_SET.add("ping.fm");
+        SHORTENER_SET.add("piurl.com");
+        SHORTENER_SET.add("pnt.me");
+        SHORTENER_SET.add("po.st");
+        SHORTENER_SET.add("poprl.com");
+        SHORTENER_SET.add("post.ly");
+        SHORTENER_SET.add("posted.at");
+        SHORTENER_SET.add("prettylinkpro.com");
+        SHORTENER_SET.add("profile.to");
+        SHORTENER_SET.add("q.gs");
+        SHORTENER_SET.add("qicute.com");
+        SHORTENER_SET.add("qlnk.net");
+        SHORTENER_SET.add("qr.ae");
+        SHORTENER_SET.add("qr.net");
+        SHORTENER_SET.add("quip-art.com");
+        SHORTENER_SET.add("rb6.me");
+        SHORTENER_SET.add("redirx.com");
+        SHORTENER_SET.add("ri.ms");
+        SHORTENER_SET.add("rickroll.it");
+        SHORTENER_SET.add("riz.gd");
+        SHORTENER_SET.add("rsmonkey.com");
+        SHORTENER_SET.add("ru.ly");
+        SHORTENER_SET.add("rubyurl.com");
+        SHORTENER_SET.add("s7y.us");
+        SHORTENER_SET.add("safe.mn");
+        SHORTENER_SET.add("scrnch.me");
+        SHORTENER_SET.add("sharein.com");
+        SHORTENER_SET.add("sharetabs.com");
+        SHORTENER_SET.add("shorl.com");
+        SHORTENER_SET.add("short.ie");
+        SHORTENER_SET.add("short.to");
+        SHORTENER_SET.add("shortlinks.co.uk");
+        SHORTENER_SET.add("shortna.me");
+        SHORTENER_SET.add("shorturl.com");
+        SHORTENER_SET.add("shoturl.us");
+        SHORTENER_SET.add("shrinkify.com");
+        SHORTENER_SET.add("shrinkster.com");
+        SHORTENER_SET.add("shrt.st");
+        SHORTENER_SET.add("shrten.com");
+        SHORTENER_SET.add("shrunkin.com");
+        SHORTENER_SET.add("shw.me");
+        SHORTENER_SET.add("simurl.com");
+        SHORTENER_SET.add("sn.im");
+        SHORTENER_SET.add("snipr.com");
+        SHORTENER_SET.add("snipurl.com");
+        SHORTENER_SET.add("snurl.com");
+        SHORTENER_SET.add("sp2.ro");
+        SHORTENER_SET.add("spedr.com");
+        SHORTENER_SET.add("sqrl.it");
+        SHORTENER_SET.add("starturl.com");
+        SHORTENER_SET.add("sturly.com");
+        SHORTENER_SET.add("su.pr");
+        SHORTENER_SET.add("t.co");
+        SHORTENER_SET.add("tcrn.ch");
+        SHORTENER_SET.add("thrdl.es");
+        SHORTENER_SET.add("tighturl.com");
+        SHORTENER_SET.add("tiny.cc");
+        SHORTENER_SET.add("tiny.pl");
+        SHORTENER_SET.add("tiny123.com");
+        SHORTENER_SET.add("tinyarro.ws");
+        SHORTENER_SET.add("tinyarrows.com");
+        SHORTENER_SET.add("tinytw.it");
+        SHORTENER_SET.add("tinyuri.ca");
+        SHORTENER_SET.add("tinyurl.com");
+        SHORTENER_SET.add("tinyvid.io");
+        SHORTENER_SET.add("tnij.org");
+        SHORTENER_SET.add("to.ly");
+        SHORTENER_SET.add("togoto.us");
+        SHORTENER_SET.add("tr.im");
+        SHORTENER_SET.add("tr.my");
+        SHORTENER_SET.add("traceurl.com");
+        SHORTENER_SET.add("turo.us");
+        SHORTENER_SET.add("tweetburner.com");
+        SHORTENER_SET.add("tweez.me");
+        SHORTENER_SET.add("twirl.at");
+        SHORTENER_SET.add("twit.ac");
+        SHORTENER_SET.add("twitterpan.com");
+        SHORTENER_SET.add("twitthis.com");
+        SHORTENER_SET.add("twiturl.de");
+        SHORTENER_SET.add("twurl.cc");
+        SHORTENER_SET.add("twurl.nl");
+        SHORTENER_SET.add("u.bb");
+        SHORTENER_SET.add("u.mavrev.com");
+        SHORTENER_SET.add("u.nu");
+        SHORTENER_SET.add("u.to");
+        SHORTENER_SET.add("u6e.de");
+        SHORTENER_SET.add("ub0.cc");
+        SHORTENER_SET.add("ulvis.net");
+        SHORTENER_SET.add("updating.me");
+        SHORTENER_SET.add("ur1.ca");
+        SHORTENER_SET.add("url.co.uk");
+        SHORTENER_SET.add("url.ie");
+        SHORTENER_SET.add("url4.eu");
+        SHORTENER_SET.add("urlao.com");
+        SHORTENER_SET.add("urlbrief.com");
+        SHORTENER_SET.add("urlcover.com");
+        SHORTENER_SET.add("urlcut.com");
+        SHORTENER_SET.add("urlenco.de");
+        SHORTENER_SET.add("urlhawk.com");
+        SHORTENER_SET.add("urlkiss.com");
+        SHORTENER_SET.add("urlot.com");
+        SHORTENER_SET.add("urlpire.com");
+        SHORTENER_SET.add("urlx.ie");
+        SHORTENER_SET.add("urlx.org");
+        SHORTENER_SET.add("urlzen.com");
+        SHORTENER_SET.add("v.gd");
+        SHORTENER_SET.add("virl.com");
+        SHORTENER_SET.add("vl.am");
+        SHORTENER_SET.add("vzturl.com");
+        SHORTENER_SET.add("w3t.org");
+        SHORTENER_SET.add("wapurl.co.uk");
+        SHORTENER_SET.add("we.tl");
+        SHORTENER_SET.add("wipi.es");
+        SHORTENER_SET.add("wp.me");
+        SHORTENER_SET.add("x.co");
+        SHORTENER_SET.add("x.se");
+        SHORTENER_SET.add("xaddr.com");
+        SHORTENER_SET.add("xeeurl.com");
+        SHORTENER_SET.add("xr.com");
+        SHORTENER_SET.add("xrl.in");
+        SHORTENER_SET.add("xrl.us");
+        SHORTENER_SET.add("xurl.es");
+        SHORTENER_SET.add("xurl.jp");
+        SHORTENER_SET.add("xzb.cc");
+        SHORTENER_SET.add("yep.it");
+        SHORTENER_SET.add("yfrog.com");
+        SHORTENER_SET.add("yourls.org");
+        SHORTENER_SET.add("yweb.com");
+        SHORTENER_SET.add("zi.ma");
+        SHORTENER_SET.add("zi.pe");
+        SHORTENER_SET.add("zipmyurl.com");
+        SHORTENER_SET.add("zz.gd");
+        SHORTENER_SET.add("ujeb.se");
+        SHORTENER_SET.add("soo.gd");
+        SHORTENER_SET.add("gee.su");
+        SHORTENER_SET.add("gmy.su");
+        SHORTENER_SET.add("v.ht");
+        SHORTENER_SET.add("tini.to");
+        SHORTENER_SET.add("s.id");
+    }
+    
+    public static final HashSet<String> EXECUTABLE_SET = new HashSet<>();
+    
+    static {
+        EXECUTABLE_SET.add("com");
+        EXECUTABLE_SET.add("vbs");
+        EXECUTABLE_SET.add("vbe");
+        EXECUTABLE_SET.add("bat");
+        EXECUTABLE_SET.add("cmd");
+        EXECUTABLE_SET.add("pif");
+        EXECUTABLE_SET.add("scr");
+        EXECUTABLE_SET.add("prf");
+        EXECUTABLE_SET.add("lnk");
+        EXECUTABLE_SET.add("exe");
+        EXECUTABLE_SET.add("shs");
+        EXECUTABLE_SET.add("arj");
+        EXECUTABLE_SET.add("hta");
+        EXECUTABLE_SET.add("jar");
+        EXECUTABLE_SET.add("ace");
+        EXECUTABLE_SET.add("js");
+        EXECUTABLE_SET.add("msi");
+        EXECUTABLE_SET.add("sh");
+        EXECUTABLE_SET.add("zip");
+        EXECUTABLE_SET.add("7z");
+        EXECUTABLE_SET.add("rar");
+        EXECUTABLE_SET.add("z");
+        EXECUTABLE_SET.add("lzh");
+        EXECUTABLE_SET.add("r13");
+        EXECUTABLE_SET.add("doc");
+        EXECUTABLE_SET.add("xls");
+        EXECUTABLE_SET.add("docx");
+        EXECUTABLE_SET.add("xlsx");
+        EXECUTABLE_SET.add("xlsm");
+        EXECUTABLE_SET.add("xlsb");
+        EXECUTABLE_SET.add("html");
+        EXECUTABLE_SET.add("pdf");
+    }
+    
+    public static final HashSet<String> HARMFUL_SET = new HashSet<>();
+    
+    static {
+        HARMFUL_SET.add("com");
+        HARMFUL_SET.add("vbs");
+        HARMFUL_SET.add("vbe");
+        HARMFUL_SET.add("bat");
+        HARMFUL_SET.add("cmd");
+        HARMFUL_SET.add("pif");
+        HARMFUL_SET.add("scr");
+        HARMFUL_SET.add("prf");
+        HARMFUL_SET.add("lnk");
+        HARMFUL_SET.add("exe");
+        HARMFUL_SET.add("shs");
+        HARMFUL_SET.add("arj");
+        HARMFUL_SET.add("hta");
+        HARMFUL_SET.add("jar");
+        HARMFUL_SET.add("ace");
+        HARMFUL_SET.add("js");
+        HARMFUL_SET.add("msi");
+    }
+    
+    public static final HashSet<String> COMPACTED_SET = new HashSet<>();
+    
+    static {
+        COMPACTED_SET.add("zip");
+        COMPACTED_SET.add("gz");
+        COMPACTED_SET.add("tar");
+        COMPACTED_SET.add("rar");
+        COMPACTED_SET.add("7z");
+        COMPACTED_SET.add("z");
+        COMPACTED_SET.add("lzh");
+        COMPACTED_SET.add("r13");
+    }
+    
+    private static String GSB_API_KEY = null;
+    
+    public synchronized static void setSafeBrowsingKey(String key) {
+        if (key != null && key.length() > 0) {
+            if (key.matches("^[0-9a-zA-Z_-]+$")) {
+                GSB_API_KEY = key;
+                beginTimeForGSB = 0;
+            } else {
+                Server.logError("invalid Safe Browsing key '" + key + "'.");
+            }
+        }
+    }
+    
+    private static long beginTimeForGSB = 0;
+    
+    public synchronized static String getSafeBrowsingKey() {
+        if (System.currentTimeMillis() > beginTimeForGSB) {
+            return GSB_API_KEY;
+        } else {
+            return null;
+        }
+    }
+    
+    public synchronized static void pauseSafeBrowsing() {
+        beginTimeForGSB = System.currentTimeMillis() + Server.HOUR_TIME;
+    }
+    
+    public synchronized static void disableSafeBrowsing() {
+        beginTimeForGSB = Long.MAX_VALUE;
+    }
+    
+    public static String checkGoogleSafeBrowsing(Long timeKey, String user, TreeSet<String> urlSet) {
+        String gsbKey = getSafeBrowsingKey();
+        if (gsbKey == null) {
+            return null;
+        } else if (urlSet == null) {
+            return null;
+        } else if (urlSet.isEmpty()) {
+            return null;
+        } else {
+            Server.logInfo("quering Google Safe Browsing.");
+
+            JsonObjectBuilder root = Json.createObjectBuilder();
+
+            JsonObjectBuilder client = Json.createObjectBuilder();
+            client.add("clientId", "SPFBL");
+            client.add("clientVersion", Core.getVersion());
+            root.add("client", client);
+
+            JsonObjectBuilder threatInfo = Json.createObjectBuilder();
+            JsonArrayBuilder threatTypes = Json.createArrayBuilder();
+            threatTypes.add("MALWARE");
+            threatTypes.add("SOCIAL_ENGINEERING");
+            threatTypes.add("UNWANTED_SOFTWARE");
+            threatTypes.add("POTENTIALLY_HARMFUL_APPLICATION");
+            threatInfo.add("threatTypes", threatTypes);
+            JsonArrayBuilder platformTypes = Json.createArrayBuilder();
+            platformTypes.add("LINUX");
+            platformTypes.add("ANDROID");
+            platformTypes.add("OSX");
+            platformTypes.add("IOS");
+            platformTypes.add("WINDOWS");
+            threatInfo.add("platformTypes", platformTypes);
+            JsonArrayBuilder threatEntryTypes = Json.createArrayBuilder();
+            threatEntryTypes.add("URL");
+            threatInfo.add("threatEntryTypes", threatEntryTypes);
+            JsonArrayBuilder threatEntries = Json.createArrayBuilder();
+            for (String url : urlSet) {
+                JsonObjectBuilder entrie = Json.createObjectBuilder();
+                entrie.add("url", url);
+                threatEntries.add(entrie);
+            }
+            threatInfo.add("threatEntries", threatEntries);
+            root.add("threatInfo", threatInfo);
+
+            JsonObject object = root.build();
+            try {
+                URL gsbURL = new URL("https://safebrowsing.googleapis.com/v4/threatMatches:find?key=" + gsbKey);
+                HttpsURLConnection gsbConn = (HttpsURLConnection) gsbURL.openConnection();
+                gsbConn.setConnectTimeout(3000);
+                gsbConn.setReadTimeout(5000);
+                gsbConn.setRequestMethod("POST");
+                gsbConn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                gsbConn.setRequestProperty("Accept", "application/json");
+                gsbConn.setDoOutput(true);
+                try (JsonWriter writer = Json.createWriter(gsbConn.getOutputStream())) {
+                    writer.writeObject(object);
+                }
+                try (JsonReader reader = Json.createReader(gsbConn.getInputStream())) {
+                    object = reader.readObject();
+                }
+                JsonArray matches = object.getJsonArray("matches");
+                if (matches == null) {
+                    return null;
+                } else {
+                    TreeSet<String> malwareSet = new TreeSet<>();
+                    for (JsonObject match : matches.getValuesAs(JsonObject.class)) {
+                        JsonObject threat = match.getJsonObject("threat");
+                        URL url = new URL(threat.getJsonString("url").getString());
+                        String host = url.getHost().toLowerCase();
+                        if (host.charAt(0) == '[') {
+                            int index = host.length() - 1;
+                            host = host.substring(1, index);
+                            malwareSet.add("Google.SafeBrowsing.IP");
+                        } else if (isValidIP(host)) {
+                            malwareSet.add("Google.SafeBrowsing.IP");
+                        } else {
+                            malwareSet.add("Google.SafeBrowsing." + host);
+                        }
+                        if (SHORTENER_SET.contains(host)) {
+                            String signature = Core.getSignature(url);
+                            if (Block.addExact(signature)) {
+                                Server.logDebug(timeKey, "new BLOCK '" + signature + "' added by 'Google.SafeBrowsing'.");
+                            }
+                        } else if (Block.addExact("HREF=." + host)) {
+                            Server.logDebug(timeKey, "new BLOCK 'HREF=." + host + "' added by 'Google.SafeBrowsing'.");
+                        }
+                    }
+                    if (malwareSet.isEmpty()) {
+                        return null;
+                    } else if (malwareSet.size() == 1) {
+                        return malwareSet.first();
+                    } else {
+                        for (String malware : malwareSet) {
+                            if (user != null && !Ignore.containsExact(user + ":MALWARE=" + malware)) {
+                                return malware;
+                            }
+                        }
+                        return malwareSet.first();
+                    }
+                }
+            } catch (Exception ex) {
+                if (ex.getMessage().startsWith("Server returned HTTP response code: 400 ")) {
+                    disableSafeBrowsing();
+                    Server.logError("Google Safe Browsing was disabled by invalid parameter.");
+                } else if (ex.getMessage().startsWith("Server returned HTTP response code: 401 ")) {
+                    disableSafeBrowsing();
+                    Server.logError("Google Safe Browsing was disabled by invalid credentials.");
+                } else if (ex.getMessage().startsWith("Server returned HTTP response code: 403 ")) {
+                    pauseSafeBrowsing();
+                    Server.logWarning("Google Safe Browsing paused for a while by quota exceeded.");
+                } else if (ex.getMessage().startsWith("Server returned HTTP response code: 429 ")) {
+                    pauseSafeBrowsing();
+                    Server.logWarning("Google Safe Browsing paused for a while by resource exhausted.");
+                } else {
+                    Server.logError(ex);
+                }
+                return null;
+            }
+        }
+    }
+    
+    private static File getTemplateFolder(User user) {
+        File folder = null;
+        if (user != null) {
+            folder = new File("./template/" + user.getEmail() + "/");
+        }
+        if (folder == null || !folder.exists()) {
+            folder = new File("./template/");
+        }
+        return folder;
+    }
+    
+    public static Document getTemplateWarningRetentionUser(User user, Locale locale) {
+        File folder = getTemplateFolder(user);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.retention.user." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.retention.user.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningRetentionRecipient(User user, Locale locale) {
+        File folder = getTemplateFolder(user);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.retention.recipient." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.retention.recipient.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningRejectionRecipient(User user, Locale locale) {
+        File folder = getTemplateFolder(user);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.rejection.recipient." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.rejection.recipient.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningRetentionSender(User user, Locale locale) {
+        File folder = getTemplateFolder(user);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.retention.sender." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.retention.sender.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningRejectionSender(User user, Locale locale) {
+        File folder = getTemplateFolder(user);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.rejection.sender." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.rejection.sender.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningHijackedSender(Locale locale) {
+        File folder = getTemplateFolder(null);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.hijacked.sender." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.hijacked.sender.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static Document getTemplateWarningReleasedSender(Locale locale) {
+        File folder = getTemplateFolder(null);
+        String language = locale == null ? "en" : locale.getLanguage();
+        File file = new File(folder, "warning.released.sender." + language + ".html");
+        if (!file.exists()) {
+            file = new File(folder, "warning.released.sender.en.html");
+        }
+        try {
+            return Jsoup.parse(file, "UTF-8");
+        } catch (IOException ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
+    public static File getLogoFile(User user) {
+        if (user == null) {
+            return ServerHTTP.getWebFile("logo.png");
+        } else {
+            File folder = null;
+            if (user != null) {
+                folder = new File("./template/" + user.getEmail() + "/");
+            }
+            if (folder == null || !folder.exists()) {
+                folder = new File("./template/");
+            }
+            
+            
+            
+            File file = new File("./template/" + user.getEmail() + "/logo.png");
+            if (file.exists()) {
+                return file;
+            } else {
+                return ServerHTTP.getWebFile("logo.png");
+            }
+        }
+    }
+    
+    private static final Regex PATTERN_BITCOIN = new Regex(
+            "\\b[13][a-km-zA-HJ-NP-Z1-9]{26,34}\\b"
+    );
+    
+    public static boolean hasBitcoinPattern(String text) {
+        if (text == null) {
+            return false;
+        } else {
+            return PATTERN_BITCOIN.matches(text);
+        }
+    }
+    
+    private static final Regex MIME_PARTS_REGEX = new Regex(
+            "=\\?([^?]+)\\?([^?]+)\\?([^?]+)\\?="
+    );
+    
+    public static String tryToDecodeRecursivelyMIME(String text) {
+        if (text == null) {
+            return null;
+        } else {
+            int count = 0;
+            String decoded;
+            while ((decoded = tryToDecodeMIME(text)) != null && !decoded.equals(text) && count < 4) {
+                text = decoded;
+                count++;
+            }
+            return text;
+        }
+    }
+    
+    public static String tryToDecodeMIME(String mimeText) {
+        if (mimeText == null) {
+            return null;
+        } else {
+            try {
+                String decoded = MimeUtility.decodeText(mimeText);
+                if (!Objects.equals(mimeText, decoded)) {
+                    mimeText = Dictionary.normalizeCharset(decoded);
+                }
+                mimeText = mimeText.replace("?= =?", "?==?");
+                Matcher matcher = MIME_PARTS_REGEX.createMatcher(mimeText);
+                if (matcher.find()) {
+                    do {
+                        String mime = matcher.group(0);
+                        String enconding = matcher.group(2);
+                        if (enconding.equals("B")) {
+                            // Fix space character encoding.
+                            decoded = MimeUtility.decodeText(mime.replace(" ", ""));
+                        } else if (enconding.equals("Q")) {
+                            // Fix space character encoding.
+                            decoded = MimeUtility.decodeText(mime.replace(' ', '_'));
+                        } else if (enconding.equals("q")) {
+                            // Fix space character encoding.
+                            decoded = MimeUtility.decodeText(mime.replace(' ', '_'));
+                        } else {
+                            decoded = MimeUtility.decodeText(mime);
+                        }
+                        mimeText = mimeText.replace(mime, decoded);
+                    } while (matcher.find());
+                }
+                MIME_PARTS_REGEX.offerMatcher(matcher);
+                return MimeUtility.decodeText(mimeText);
+            } catch (UnsupportedEncodingException ex) {
+                return mimeText;
+            }
+        }
+    }
+    
+    public static boolean isAutoExecutableOfficeFile(
+            String extension,
+            InputStream inputStream,
+            MessageDigest messageDigest
+    ) throws IOException {
+        if (extension == null) {
+            return false;
+        } else if (inputStream == null) {
+            return false;
+//        } else if (extension.equals("xlsx")) {
+//            ZipInputStream zis = new ZipInputStream(inputStream);
+//            ZipEntry entry;
+//            while ((entry = zis.getNextEntry()) != null) {
+//                System.out.println(entry.getName());
+//                int code;
+//                while ((code = zis.read()) != -1) {
+//                    if (Character.isLetterOrDigit((char) code)) {
+//                        System.out.print((char) code);
+//                    }
+//                }
+//                System.out.println();
+//                System.out.println();
+//            }
+//            return false;
+        } else if (extension.equals("doc")) {
+            int i1 = 0;
+            int i2 = 0;
+            int i3 = 0;
+            char[] state1 = {'a','u','t','o','o','p','e','n'};
+            char[] state2 = {'d','o','c','u','m','e','n','t','o','p','e','n'};
+            char[] state3 = {'w','o','r','d','v','b','a','p','r','o','j','e','c','t','b','i','n'};
+            boolean executable = false;
+            int code;
+            while ((code = inputStream.read()) != -1) {
+                if (messageDigest != null) {
+                    messageDigest.update((byte) code);
+                }
+                if (!executable) {
+                    char character = Character.toLowerCase((char) code);
+//                    if (Character.isLetterOrDigit(character)) {
+//                        System.out.print(character);
+//                    }
+                    if (character == 'a') {
+                        i1 = 1;
+                    } else if (state1[i1] == character) {
+                        if (++i1 == 8) {
+                            i1 = 0;
+                            executable = true;
+                        }
+                    } else if (Character.isLetter(character)) {
+                        i1 = 0;
+                    }
+                    if (character == 'd') {
+                        i2 = 1;
+                    } else if (state2[i2] == character) {
+                        if (++i2 == 12) {
+                            i2 = 0;
+                            executable = true;
+                        }
+                    } else if (Character.isLetter(character)) {
+                        i2 = 0;
+                    }
+                    if (character == 'w') {
+                        i3 = 1;
+                    } else if (state3[i3] == character) {
+                        if (++i3 == 17) {
+                            i3 = 0;
+                            executable = true;
+                        }
+                    } else if (Character.isLetter(character)) {
+                        i3 = 0;
+                    }
+                } else if (messageDigest == null) {
+                    break;
+                }
+            }
+            return executable;
+        } else if (extension.equals("xls")) {
+            int i1 = 0;
+            char[] state1 = {'w','o','r','k','b','o','o','k','o','p','e','n'};
+            boolean executable = false;
+            int code;
+            while ((code = inputStream.read()) != -1) {
+                if (messageDigest != null) {
+                    messageDigest.update((byte) code);
+                }
+                if (!executable) {
+                    char character = Character.toLowerCase((char) code);
+//                    if (Character.isLetterOrDigit(character)) {
+//                        System.out.print(character);
+//                    }
+                    if (character == 'a') {
+                        i1 = 1;
+                    } else if (state1[i1] == character) {
+                        if (++i1 == 12) {
+                            i1 = 0;
+                            executable = true;
+                        }
+                    } else if (Character.isLetter(character)) {
+                        i1 = 0;
+                    }
+                } else if (messageDigest == null) {
+                    break;
+                }
+            }
+            return executable;
+        } else {
+            return false;
+        }
+    }
+    
+    public static boolean isSupportedCharset(String charset) {
+        if (charset == null) {
+            return false;
+        } else {
+            try {
+                return Charset.isSupported(charset);
+            } catch (Exception ex) {
+                return false;
+            }
+        }
+    }
+    
+    public static boolean writeUTF(DataOutput dos, String text) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (text == null) {
+            dos.writeShort(-1);
+            return false;
+        } else {
+            byte[] data = text.getBytes(UTF_8);
+            if (data.length > Short.MAX_VALUE) {
+                throw new Exception("encoded string too long: " + data.length + " bytes");
+            } else {
+                dos.writeShort(data.length);
+                dos.write(data);
+            }
+            return true;
+        }
+    }
+    
+    public static boolean writeURL(DataOutput dos, URL url) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (url == null) {
+            writeUTF(dos, (String) null);
+            return false;
+        } else {
+            writeUTF(dos, url.toString());
+            return true;
+        }
+    }
+    
+    public static boolean writeQualifier(DataOutput dos, Qualifier qualifier) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (qualifier == null) {
+            dos.writeByte(-1);
+            return false;
+        } else {
+            switch (qualifier) {
+                case PASS:
+                    dos.writeByte(0);
+                    return true;
+                case FAIL:
+                    dos.writeByte(1);
+                    return true;
+                case SOFTFAIL:
+                    dos.writeByte(2);
+                    return true;
+                case NEUTRAL:
+                    dos.writeByte(3);
+                    return true;
+                default:
+                    dos.writeByte(-1);
+                    return false;
+            }
+        }
+    }
+
+    
+    public static boolean writeEnum(DataOutput dos, Enum enumeration) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (enumeration == null) {
+            dos.writeByte(-1);
+            return false;
+        } else {
+            dos.writeByte(enumeration.ordinal());
+            return false;
+        }
+    }
+    
+    public static boolean writeTinySubset(DataOutput dos, Set<String> set, Set<String> subset) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (set == null) {
+            return false;
+        } else if (subset == null) {
+            dos.writeByte(0);
+            return true;
+        } else {
+            int size = subset.size();
+            if (size > 255) {
+                throw new Exception("set size too big: " + size + " elements");
+            } else {
+                dos.writeByte(size);
+                for (String key : subset) {
+                    dos.writeByte(Core.getElementIndex(set, key));
+                }
+                return true;
+            }
+        }
+    }
+    
+    public static boolean writeSmallUTF(DataOutput dos, Set<String> set) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (set == null) {
+            dos.writeShort(-1);
+            return false;
+        } else {
+            int size = set.size();
+            if (size > Short.MAX_VALUE) {
+                throw new Exception("set size too big: " + size + " elements");
+            } else {
+                dos.writeShort(size);
+                for (String text : set) {
+                    dos.writeUTF(text);
+                }
+                return true;
+            }
+        }
+    }
+    
+    public static boolean writeTinyUTF(DataOutput dos, Set<String> set) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (set == null) {
+            dos.writeByte(0);
+            return false;
+        } else {
+            int size = set.size();
+            if (size > 256) {
+                throw new Exception("set size too big: " + size + " elements");
+            } else {
+                dos.writeByte(size);
+                for (String text : set) {
+                    dos.writeUTF(text);
+                }
+                return true;
+            }
+        }
+    }
+    
+    private static short getElementIndex(Set<String> set, String element) {
+        if (set == null) {
+            return -1;
+        } else if (element == null) {
+            return -1;
+        } else {
+            short index = 0;
+            for (String key : set) {
+                if (key.equals(element)) {
+                    return index;
+                }
+                index++;
+            }
+            return -1;
+        }
+    }
+    
+    public static boolean writeTinyElement(DataOutput dos, Set<String> set, String element) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (set == null) {
+            return false;
+        } else if (set.size() > 256) {
+            throw new Exception("set size too big: " + set.size() + " elements");
+        } else {
+            dos.writeByte(getElementIndex(set, element));
+            return true;
+        }
+    }
+    
+    public static boolean writeBooleanArray(
+            DataOutput dos,
+            boolean b0, boolean b1, boolean b2, boolean b3,
+            boolean b4, boolean b5, boolean b6, boolean b7
+    ) throws Exception {
+        if (dos == null) {
+            return false;
+        } else {
+            byte value = 0;
+            if (b7) value++; value <<= 1;
+            if (b6) value++; value <<= 1;
+            if (b5) value++; value <<= 1;
+            if (b4) value++; value <<= 1;
+            if (b3) value++; value <<= 1;
+            if (b2) value++; value <<= 1;
+            if (b1) value++; value <<= 1;
+            if (b0) value++;
+            dos.writeByte(value);
+            return true;
+        }
+    }
+    
+    public static boolean[] readBooleanArray(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            byte value = dis.readByte();
+            boolean[] b = new boolean[8];
+            b[0] = (value & 0x01) == 1; value >>>= 1;
+            b[1] = (value & 0x01) == 1; value >>>= 1;
+            b[2] = (value & 0x01) == 1; value >>>= 1;
+            b[3] = (value & 0x01) == 1; value >>>= 1;
+            b[4] = (value & 0x01) == 1; value >>>= 1;
+            b[5] = (value & 0x01) == 1; value >>>= 1;
+            b[6] = (value & 0x01) == 1; value >>>= 1;
+            b[7] = (value & 0x01) == 1;
+            return b;
+        }
+    }
+    
+    public static boolean writeBoolean(DataOutput dos, Boolean value) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (value == null) {
+            dos.writeByte(-1);
+            return false;
+        } else if (value) {
+            dos.writeByte(1);
+            return true;
+        } else {
+            dos.writeByte(0);
+            return true;
+        }
+    }
+    
+    public static boolean writeUTF(DataOutput dos, Map<String,Boolean> map) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (map == null) {
+            dos.writeShort(-1);
+            return false;
+        } else {
+            int size = map.size();
+            if (size > Short.MAX_VALUE) {
+                throw new Exception("map size too big: " + size + " elements");
+            } else {
+                dos.writeShort(size);
+                for (String key : map.keySet()) {
+                    Boolean value = map.get(key);
+                    writeUTF(dos, key);
+                    writeBoolean(dos, value);
+                }
+                return true;
+            }
+        }
+    }
+
+    
+    public static boolean writeTimestamp(DataOutput dos, Timestamp date) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (date == null) {
+            dos.writeLong(-1);
+            return false;
+        } else {
+            dos.writeLong(date.getTime());
+            return true;
+        }
+    }
+    
+    public static boolean writeDate(DataOutput dos, Date date) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (date == null) {
+            dos.writeLong(-1);
+            return false;
+        } else {
+            dos.writeLong(date.getTime());
+            return true;
+        }
+    }
+    
+    public static String readIP(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            byte version = dis.readByte();
+            switch (version) {
+                case 4:
+                    return SubnetIPv4.getAddressIP(dis.readInt());
+                case 6:
+                    byte[] buffer = new byte[16];
+                    dis.readFully(buffer);
+                    return SubnetIPv6.getAddressIP(buffer);
+                default:
+                    throw new Exception("undefined IP version: " + version);
+            }
+        }
+    }
+    
+    public static boolean writeIP(DataOutput dos, String ip) throws Exception {
+        if (dos == null) {
+            return false;
+        } else if (isValidIPv4(ip)) {
+            dos.writeByte(4);
+            dos.writeInt(SubnetIPv4.getAddressIP(ip));
+            return true;
+        } else if (isValidIPv6(ip)) {
+            dos.writeByte(6);
+            dos.write(SubnetIPv6.getAddressIP(ip));
+            return true;
+        } else {
+            dos.writeByte(-1);
+            return false;
+        }
+    }
+    
+    public static String readElement(DataInput dis, TreeSet<String> set) throws Exception {
+        if (dis == null) {
+            return null;
+        } else if (set == null) {
+            return null;
+        } else {
+            int index = dis.readUnsignedByte();
+            for (String element : set) {
+                if (index-- == 0) {
+                    return element;
+                }
+            }
+            return null;
+        }
+    }
+    
+    public static String readUTF(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            short length = dis.readShort();
+            if (length < 0) {
+                return null;
+            } else {
+                byte[] data = new byte[length];
+                dis.readFully(data);
+                return new String(data, UTF_8);
+            }
+        }
+    }
+    
+    public static Qualifier readQualifier(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            switch (dis.readByte()) {
+                case 0:
+                    return Qualifier.PASS;
+                case 1:
+                    return Qualifier.FAIL;
+                case 2:
+                    return Qualifier.SOFTFAIL;
+                case 3:
+                    return Qualifier.NEUTRAL;
+                default:
+                    return null;
+            }
+        }
+    }
+    
+    public static Enum readEnum(DataInput dis, Class classObj) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            int index = dis.readByte();
+            if (index < 0) {
+                return null;
+            } else if (classObj == null) {
+                return null;
+            } else if (classObj.isEnum()) {
+                try {
+                    return (Enum) classObj.getEnumConstants()[index];
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static Date readDate(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            long time = dis.readLong();
+            if (time < 0) {
+                return null;
+            } else {
+                return new Date(time);
+            }
+        }
+    }
+    
+    public static Timestamp readTimestamp(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            long time = dis.readLong();
+            if (time < 0) {
+                return null;
+            } else {
+                return new Timestamp(time);
+            }
+        }
+    }
+    
+    public static URL readURL(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            String url = readUTF(dis);
+            if (url == null) {
+                return null;
+            } else {
+                try {
+                    return new URL(url);
+                } catch (MalformedURLException ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        }
+    }
+    
+    public static Boolean readBoolean(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            switch (dis.readByte()) {
+                case 0:
+                    return false;
+                case 1:
+                    return true;
+                default:
+                    return null;
+            }
+        }
+    }
+    
+    public static TreeSet<String> readTinySetUTF(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            int size = dis.readUnsignedByte();
+            if (size == 0) {
+                return null;
+            } else {
+                TreeSet<String> set = new TreeSet<>();
+                while (size-- > 0) {
+                    set.add(dis.readUTF());
+                }
+                return set;
+            }
+        }
+    }
+    
+    public static TreeSet<String> readTinySetUTF(
+            DataInput dis, TreeSet<String> set
+    ) throws Exception {
+        if (dis == null) {
+            return null;
+        } else if (set == null) {
+            return null;
+        } else {
+            int size = dis.readUnsignedByte();
+            if (size == 0) {
+                return null;
+            } else {
+                TreeSet<String> resultSet = new TreeSet<>();
+                while (size-- > 0) {
+                    String element = readElement(dis, set);
+                    if (element != null) {
+                        resultSet.add(element);
+                    }
+                }
+                return resultSet;
+            }
+        }
+    }
+    
+    public static TreeSet<String> readSmallSetUTF(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            short size = dis.readShort();
+            if (size < 0) {
+                return null;
+            } else {
+                TreeSet<String> set = new TreeSet<>();
+                while (size-- > 0) {
+                    set.add(dis.readUTF());
+                }
+                return set;
+            }
+        }
+    }
+    
+    public static TreeMap<String,Boolean> readMapBooleanUTF(DataInput dis) throws Exception {
+        if (dis == null) {
+            return null;
+        } else {
+            short size = dis.readShort();
+            if (size < 0) {
+                return null;
+            } else {
+                TreeMap<String,Boolean> map = new TreeMap<>();
+                while (size-- > 0) {
+                    String key = readUTF(dis);
+                    Boolean value = readBoolean(dis);
+                    map.put(key, value);
+                }
+                return map;
+            }
+        }
+    }
+    
+    public static boolean deleteFully(File file) {
+        if (file == null) {
+            return false;
+        } else if (file.isDirectory()) {
+            for (File child : file.listFiles()) {
+                deleteFully(child);
+            }
+            return file.delete();
+        } else {
+            return file.delete();
+        }
+    }
+    
+    public static Boolean getBooleanObject(String value) {
+        if (value == null) {
+            return null;
+        } else {
+            switch (value.toLowerCase()) {
+                case "true":
+                    return true;
+                case "false":
+                    return false;
+                default:
+                    return null;
+            }
         }
     }
 }

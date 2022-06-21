@@ -17,10 +17,13 @@ package net.spfbl.data;
  * along with SPFBL. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.Charset;
 import java.util.LinkedList;
 import java.util.concurrent.Semaphore;
 import net.spfbl.core.Server;
@@ -32,15 +35,27 @@ import net.spfbl.core.Server;
  */
 public class FileStore extends Thread {
     
+    private final Charset CHARSET;
     private final File FILE;
-    private FileWriter WRITER = null;
+    private Writer WRITER = null;
     private final LinkedList<String> LIST = new LinkedList<>();
     private final Semaphore SEMAPHORE = new Semaphore(1);
     private boolean keepRunning = true;
     
     public FileStore(File file) throws IOException {
+        super.setName(file.getName());
+        CHARSET = null;
         FILE = file;
         WRITER = new FileWriter(file, true);
+        setPriority(Thread.MIN_PRIORITY);
+    }
+    
+    public FileStore(File file, Charset charset) throws IOException {
+        super.setName(file.getName());
+        CHARSET = charset;
+        FILE = file;
+        FileOutputStream fos = new FileOutputStream(FILE, true);
+        WRITER = new OutputStreamWriter(fos, CHARSET);
         setPriority(Thread.MIN_PRIORITY);
     }
     
@@ -60,7 +75,8 @@ public class FileStore extends Thread {
         if (WRITER != null) {
             String line;
             while ((line = LIST.poll()) != null) {
-                WRITER.write(line + "\n");
+                WRITER.write(line);
+                WRITER.write('\n');
             }
             WRITER.flush();
         }
@@ -98,7 +114,12 @@ public class FileStore extends Thread {
     public synchronized void unpause() throws IOException {
         try {
             SEMAPHORE.acquire();
-            WRITER = new FileWriter(FILE, true);
+            if (CHARSET == null) {
+                WRITER = new FileWriter(FILE, true);
+            } else {
+                FileOutputStream fos = new FileOutputStream(FILE, true);
+                WRITER = new OutputStreamWriter(fos, CHARSET);
+            }
         } catch (InterruptedException ex) {
             Server.logError(ex);
         } finally {
@@ -113,7 +134,7 @@ public class FileStore extends Thread {
             String line;
             while ((line = LIST.poll()) != null) {
                 WRITER.write(line);
-                WRITER.write("\n");
+                WRITER.write('\n');
             }
             WRITER.close();
         } catch (InterruptedException ex) {

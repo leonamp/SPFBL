@@ -52,7 +52,7 @@ public class NormalDistribution implements Serializable {
         this.xi2Sum = xi2Sum;
     }
     
-    public static NormalDistribution newDistribution(
+    public static NormalDistribution newNormalDistribution(
             String xiSum,
             String xi2Sum
     ) {
@@ -133,8 +133,10 @@ public class NormalDistribution implements Serializable {
         return Math.sqrt(std);
     }
     
+    private static final double POPULATION_SQRT = Math.sqrt(POPULATION);
+    
     public double getStandardError() {
-        return getStandardDeviation() / Math.sqrt(POPULATION);
+        return getStandardDeviation() / POPULATION_SQRT;
     }
     
     public String toStringInt() {

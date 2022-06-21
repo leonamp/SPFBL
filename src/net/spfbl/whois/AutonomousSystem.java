@@ -204,7 +204,7 @@ public class AutonomousSystem implements Serializable, Comparable<AutonomousSyst
                         Server.removeWhoisQueryDay();
                         throw new ProcessException("ERROR: WHOIS QUERY LIMIT");
                     } else if (line.length() > 0 && Character.isLetter(line.charAt(0))) {
-                        Server.logError("Linha não reconhecida: " + line);
+                        Server.logError("Line not reconized: " + line);
                     }
                 }
             }

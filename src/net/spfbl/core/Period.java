@@ -243,23 +243,6 @@ public class Period {
             return avg + stdError < time;
         }
     }
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String[] args) {
-        try {
-            Period period = new Period();
-            for (int i = 0; i < 1000000000; i++) {
-                period.addInterval((long) (Math.random() * 86400000));
-            }
-            System.out.println(period);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        } finally {
-            System.exit(0);
-        }
-    }
     
     private static final float SECOND = 1000.0f;
     private static final float MINUTE = SECOND * 60;

@@ -16,35 +16,50 @@
  */
 package net.spfbl.data;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
+import net.spfbl.core.Core;
 import net.spfbl.core.ProcessException;
+import net.spfbl.core.Regex;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidIP;
+import static net.spfbl.core.Regex.isValidIPv4;
 import net.spfbl.core.Reverse;
 import net.spfbl.core.Server;
+import net.spfbl.data.Reputation.Flag;
+import static net.spfbl.data.Reputation.Flag.ACCEPTABLE;
+import static net.spfbl.data.Reputation.Flag.HARMFUL;
+import static net.spfbl.data.Reputation.Flag.UNACCEPTABLE;
+import static net.spfbl.data.Reputation.Flag.UNDESIRABLE;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv6;
 import org.apache.commons.lang3.SerializationUtils;
 
 /**
- * Representa a lista de reversos genáricos do sistema.
+ * Representa a lista de reversos genéricos do sistema.
  * 
  * @author Leandro Carlos Rodrigues <leandro@spfbl.net>
  */
 public class Generic {
     
-    /**
-     * Flag que indica se o cache foi modificado.
-     */
-    private static boolean CHANGED = false;
-
     /**
      * Conjunto de zonas de reversos genericos.
      */
@@ -58,7 +73,6 @@ public class Generic {
         
         public static synchronized void clearGeneric() {
             MAP.clear();
-            CHANGED = true;
         }
         
         public static synchronized void clearDynamic() {
@@ -96,9 +110,7 @@ public class Generic {
                 return false;
             } else {
                 Boolean old = MAP.put(token, false);
-                boolean changed = old == null || old.equals(true);
-                CHANGED |= changed;
-                return changed;
+                return old == null || old.equals(true);
             }
         }
         
@@ -107,9 +119,7 @@ public class Generic {
                 return false;
             } else {
                 Boolean old = MAP.put(token, true);
-                boolean changed = old == null || old.equals(false);
-                CHANGED |= changed;
-                return changed;
+                return old == null || old.equals(false);
             }
         }
         
@@ -118,9 +128,7 @@ public class Generic {
                 return false;
             } else {
                 Boolean old = MAP.put(token, dyn);
-                boolean changed = old == null || !old.equals(dyn);
-                CHANGED |= changed;
-                return changed;
+                return old == null || !old.equals(dyn);
             }
         }
         
@@ -128,9 +136,7 @@ public class Generic {
             if (token == null) {
                 return false;
             } else {
-                boolean changed = MAP.remove(token) != null;
-                CHANGED |= changed;
-                return changed;
+                return MAP.remove(token) != null;
             }
         }
         
@@ -143,18 +149,18 @@ public class Generic {
                     return false;
                 } else if (dyn) {
                     MAP.put(token, false);
-                    return CHANGED = true;
+                    return true;
                 } else {
                     return false;
                 }
             }
         }
         
-        public static synchronized boolean containsGeneric(String token) {
+        public static boolean containsGeneric(String token) {
             return MAP.containsKey(token);
         }
         
-        public static synchronized boolean containsDynamic(String token) {
+        public static boolean containsDynamic(String token) {
             Boolean dyn = MAP.get(token);
             if (dyn == null) {
                 return false;
@@ -164,129 +170,12 @@ public class Generic {
         }
     }
     
-//    /**
-//     * Conjunto de REGEX para bloqueio.
-//     */
-//    private static class REGEX {
-//        
-//        private static final HashMap<String,ArrayList<Pattern>> MAP = new HashMap<>();
-//        
-//        public static synchronized boolean isEmpty() {
-//            return MAP.isEmpty();
-//        }
-//        
-//        public static synchronized void clear() {
-//            MAP.clear();
-//        }
-//        
-//        public static synchronized TreeSet<String> getAll() {
-//            TreeSet<String> set = new TreeSet<>();
-//            for (String client : MAP.keySet()) {
-//                for (Pattern pattern : MAP.get(client)) {
-//                    if (client == null) {
-//                        set.add("REGEX=" + pattern);
-//                    } else {
-//                        set.add(client + ":REGEX=" + pattern);
-//                    }
-//                }
-//            }
-//            return set;
-//        }
-//        
-//        private static synchronized boolean dropExact(String token) {
-//            int index = token.indexOf('=');
-//            String regex = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            ArrayList<Pattern> list = MAP.get(client);
-//            if (list == null) {
-//                return false;
-//            } else {
-//                for (index = 0; index < list.size(); index++) {
-//                    Pattern pattern = list.get(index);
-//                    if (regex.equals(pattern.pattern())) {
-//                        list.remove(index);
-//                        if (list.isEmpty()) {
-//                            MAP.remove(client);
-//                        }
-//                        return CHANGED = true;
-//                    }
-//                }
-//                return false;
-//            }
-//        }
-//        
-//        private static synchronized boolean addExact(String token) {
-//            int index = token.indexOf('=');
-//            String regex = token.substring(index+1);
-//            index = token.lastIndexOf(':', index);
-//            String client;
-//            if (index == -1) {
-//                client = null;
-//            } else {
-//                client = token.substring(0, index);
-//            }
-//            ArrayList<Pattern> list = MAP.get(client);
-//            if (list == null) {
-//                list = new ArrayList<>();
-//                MAP.put(client, list);
-//            }
-//            for (index = 0; index < list.size(); index++) {
-//                Pattern pattern = list.get(index);
-//                if (regex.equals(pattern.pattern())) {
-//                    return false;
-//                }
-//            }
-//            Pattern pattern = Pattern.compile(regex);
-//            list.add(pattern);
-//            return CHANGED = true;
-//        }
-//        
-//        private static synchronized ArrayList<Pattern> getClientList(String client) {
-//            return MAP.get(client);
-//        }
-//        
-//        private static String get(
-//                Collection<String> tokenList
-//                ) throws ProcessException {
-//            if (tokenList.isEmpty()) {
-//                return null;
-//            } else {
-//                ArrayList<Pattern> patternList = getClientList(null);
-//                if (patternList != null) {
-//                    for (Object object : patternList.toArray()) {
-//                        Pattern pattern = (Pattern) object;
-//                        for (String token : tokenList) {
-//                            if (token.contains("@") == pattern.pattern().contains("@")) {
-//                                Matcher matcher = pattern.matcher(token);
-//                                if (matcher.matches()) {
-//                                    return "REGEX=" + pattern.pattern();
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//                return null;
-//            }
-//        }
-//    }
-    
     public static boolean dropGenericExact(String token) {
         if (token == null) {
             return false;
-//        } else if (token.contains("REGEX=")) {
-//            if (REGEX.dropExact(token)) {
-//                return CHANGED = true;
-//            } else {
-//                return false;
-//            }
         } else if (MAP.dropGenericExact(token)) {
-            return CHANGED = true;
+            append("DROP " + token);
+            return true;
         } else {
             return false;
         }
@@ -298,7 +187,8 @@ public class Generic {
         } else if (token.contains("REGEX=")) {
             return false;
         } else if (MAP.dropDynamicExact(token)) {
-            return CHANGED = true;
+            append("PUT " + token + " false");
+            return true;
         } else {
             return false;
         }
@@ -306,38 +196,52 @@ public class Generic {
 
     public static boolean dropGenericAll() {
         MAP.clearGeneric();
-//        REGEX.clear();
-        return CHANGED = true;
+        return true;
     }
     
     public static boolean dropDynamicAll() {
         MAP.clearDynamic();
-        return CHANGED = true;
+        return true;
+    }
+    
+    private static boolean addGenericSafe(String token) {
+        try {
+            return addGenericExact(token);
+        } catch (ProcessException ex) {
+            Server.logError(ex);
+            return false;
+        }
     }
 
     private static boolean addGenericExact(String token) throws ProcessException {
         if (token == null) {
             return false;
-//        } else if (token.contains("REGEX=")) {
-//            if (REGEX.addExact(token)) {
-//                return CHANGED = true;
-//            } else {
-//                return false;
-//            }
         } else if (MAP.addGenericExact(token)) {
-            return CHANGED = true;
+            append("PUT " + token + " false");
+            return true;
         } else {
             return false;
         }
     }
     
-    private static boolean addDynamicExact(String token) throws ProcessException {
+    public static String addDynamicPTR(String ptr) {
+        String mask = convertHostToMask(ptr);
+        if (addDynamicExact(mask)) {
+            return mask;
+        } else {
+            return null;
+        }
+    }
+        
+    
+    private static boolean addDynamicExact(String token) {
         if (token == null) {
             return false;
         } else if (token.contains("REGEX=")) {
             return false;
         } else if (MAP.addDynamicExact(token)) {
-            return CHANGED = true;
+            append("PUT " + token + " true");
+            return true;
         } else {
             return false;
         }
@@ -345,7 +249,6 @@ public class Generic {
     
     public static TreeSet<String> getGenericAll() throws ProcessException {
         TreeSet<String> set = MAP.getGenericAll();
-//        set.addAll(REGEX.getAll());
         return set;
     }
     
@@ -356,44 +259,49 @@ public class Generic {
     
     public static TreeMap<String,Boolean> getMapAll() throws ProcessException {
         TreeMap<String,Boolean> map = MAP.getMapAll();
-//        for (String key : REGEX.getAll()) {
-//            map.put(key, false);
-//        }
         return map;
     }
     
-    public static boolean isQualifiedIP(String ip) {
-        if (ip == null) {
+    public static boolean isDynamicIP(String ip) {
+        if (FQDN.hasFQDN(ip)) {
             return false;
-        } else if (Abuse.containsEmail(ip)) {
-            return true;
-        } else if (SubnetIPv6.isSLAAC(ip)) {
+        } else if (Subnet.isReservedIP(ip)) {
             return false;
         } else {
-            boolean validFCrDNS = false;
-            for (String hostname : Reverse.getPointerSetSafe(ip)) {
-                if (Generic.isGenericEC2(hostname)) {
-                    return false;
-                } else if (containsGenericDomain(hostname)) {
-                    return false;
-                } else if (Reverse.getAddressSetSafe(hostname).contains(ip)) {
-                    validFCrDNS = true;
+            Reverse reverse = Reverse.get(ip);
+            if (reverse == null || reverse.isEmpty()) {
+                return SubnetIPv6.isSLAAC(ip);
+            } else {
+                for (String address : reverse.getAddressSet()) {
+                    if (Generic.containsDynamic(address)) {
+                        Block.tryToDominoBlockIP(ip, "DYNAMIC");
+                        return true;
+                    }
                 }
+                return false;
             }
-            return validFCrDNS;
         }
     }
     
-    public static boolean isDynamicIP(String ip) {
-        if (ip == null) {
-            return false;
+    public static String getDynamicMaskRDNS(String ip) {
+        if (FQDN.hasFQDN(ip)) {
+            return null;
+        } else if (Subnet.isReservedIP(ip)) {
+            return null;
         } else {
-            for (String address : Reverse.getPointerSetSafe(ip)) {
-                if (Generic.containsDynamic(address)) {
-                    return true;
+            Reverse reverse = Reverse.get(ip);
+            if (reverse == null || reverse.isEmpty()) {
+                return null;
+            } else {
+                String mask;
+                for (String address : reverse.getAddressSet()) {
+                    if ((mask = Generic.findDynamic(address)) != null) {
+                        Block.tryToDominoBlockIP(ip, "DYNAMIC");
+                        return mask;
+                    }
                 }
+                return null;
             }
-            return false;
         }
     }
     
@@ -405,107 +313,124 @@ public class Generic {
         }
     }
     
+    public static void clearGeneric(String ip, String cause) {
+        for (String ptr : Reverse.getPointerSetSafe(ip)) {
+            String mask;
+            if ((mask = convertDomainToMask(ptr)) != null) {
+                if (dropGenericExact(mask)) {
+                    Server.logDebug(null, "false positive GENERIC '" + mask + "' detected by '" + cause + "'.");
+                }
+            }
+            String host = ptr;
+            mask = convertHostToMask(host);
+            if (mask == null) {
+                host = Domain.normalizeHostname(host, true);
+            } else {
+                host = mask;
+            }
+            if (host != null) {
+                if (dropGenericExact(host)) {
+                    Server.logDebug(null, "false positive GENERIC '" + host + "' detected by '" + cause + "'.");
+                }
+                int index;
+                while ((index = host.indexOf('.', 1)) > 0) {
+                    host = host.substring(index);
+                    if (dropGenericExact(host)) {
+                        Server.logDebug(null, "false positive GENERIC '" + host + "' detected by '" + cause + "'.");
+                    }
+                }
+            }
+        }
+    }
+    
+    public static boolean containsGenericMaskFQDN(String host) {
+        String mask = convertHostToMask(host);
+        if (mask == null) {
+            return false;
+        } else {
+            return MAP.containsGeneric(mask);
+        }
+    }
+    
+    public static boolean containsGenericFQDN(String host) {
+        String mask;
+        if ((mask = convertDomainToMask(host)) != null) {
+            if (MAP.containsGeneric(mask)) {
+                return true;
+            }
+        }
+        mask = convertHostToMask(host);
+        if (mask == null) {
+            host = Domain.normalizeHostname(host, true);
+        } else {
+            host = mask;
+        }
+        if (host == null) {
+            return false;
+        } else if (MAP.containsGeneric(host)) {
+            return true;
+        } else {
+            int index;
+            while ((index = host.indexOf('.', 1)) > 0) {
+                host = host.substring(index);
+                if (MAP.containsGeneric(host)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    public static boolean containsGenericEmail(String email) {
+        if (email == null) {
+            return false;
+        } else {
+            int index = email.indexOf('@') + 1;
+            String hostname = '.' + email.substring(index);
+            do {
+                index = hostname.indexOf('.') + 1;
+                hostname = hostname.substring(index);
+                if (MAP.containsGeneric('.' + hostname)) {
+                    return true;
+                }
+            } while (hostname.contains("."));
+            return false;
+        }
+    }
+    
     public static boolean containsGenericDomain(String address) {
         if (address == null) {
             return false;
         } else {
-//            try {
-                int index = address.indexOf('@') + 1;
-                address = address.substring(index);
-                String hostname = Domain.normalizeHostname(address, true);
-                if (hostname == null) {
-                    return false;
-                } else {
-                    LinkedList<String> regexList = new LinkedList<>();
-                    do {
-                        index = hostname.indexOf('.') + 1;
-                        hostname = hostname.substring(index);
-                        if (MAP.containsGeneric('.' + hostname)) {
-                            return true;
-                        } else {
-                            regexList.addFirst('.' + hostname);
-                        }
-                    } while (hostname.contains("."));
-//                    return REGEX.get(regexList) != null;
-                    return false;
-                }
-//            } catch (ProcessException ex) {
-//                Server.logError(ex);
-//                return false;
-//            }
+            int index = address.indexOf('@') + 1;
+            address = address.substring(index);
+            String hostname = Domain.normalizeHostname(address, true);
+            if (hostname == null) {
+                return false;
+            } else {
+                do {
+                    index = hostname.indexOf('.') + 1;
+                    hostname = hostname.substring(index);
+                    if (MAP.containsGeneric('.' + hostname)) {
+                        return true;
+                    }
+                } while (hostname.contains("."));
+                return false;
+            }
         }
     }
-
-//    public static boolean containsDynamicDomain(String address) {
-//        if (address == null) {
-//            return false;
-//        } else {
-//            int index = address.indexOf('@') + 1;
-//            address = address.substring(index);
-//            String hostname = Domain.normalizeHostname(address, true);
-//            if (hostname == null) {
-//                return false;
-//            } else {
-//                do {
-//                    index = hostname.indexOf('.') + 1;
-//                    hostname = hostname.substring(index);
-//                    if (MAP.containsDynamic('.' + hostname)) {
-//                        return true;
-//                    }
-//                } while (hostname.contains("."));
-//                return false;
-//            }
-//        }
-//    }
 
     private static String normalizeToken(String token, boolean regex) {
         if (token == null) {
             return null;
-        } else if (Subnet.isValidIP(token)) {
+        } else if (isValidIP(token)) {
             return null;
         } else if (Domain.isMailFrom(token)) {
             return null;
-//        } else if (SPF.isREGEX(token)) {
-//            if (regex) {
-//                return token;
-//            } else {
-//                return null;
-//            }
-//        } else if (token.contains("#") || token.contains(".H.")) {
-//            while (token.contains(".H.")) {
-//                token = token.replace(".H.", ".$.");
-//            }
-//            while (token.contains("##")) {
-//                token = token.replace("##", "#");
-//            }
-//            String normal = token.replace('#', '0');
-//            normal = normal.replace(".$.", ".a0.");
-//            if (Domain.isHostname(normal)) {
-//                try {
-//                    String domain = Domain.extractDomain(normal, true);
-//                    if (normal.equals(domain)) {
-//                        // Domínio genérico.
-//                        token = Domain.normalizeHostname(token, true);
-//                        while (token.contains(".$.")) {
-//                            token = token.replace(".$.", ".H.");
-//                        }
-//                        return token;
-//                    } else if (token.endsWith(domain)) {
-//                        // Hostname genérico.
-//                        token = Domain.normalizeHostname(token, true);
-//                        while (token.contains(".$.")) {
-//                            token = token.replace(".$.", ".H.");
-//                        }
-//                        return token;
-//                    }
-//                } catch (ProcessException ex) {
-//                }
-//            }
-//            return null;
         } else if (token.contains("#") || token.matches("\\bH\\b")) {
             token = token.replace('H', '#');
             return token.replaceAll("\\#+", "#");
-        } else if (Domain.isHostname(token)) {
+        } else if (isHostname(token)) {
             return Domain.normalizeHostname(token, true);
         } else {
             return null;
@@ -605,6 +530,8 @@ public class Generic {
                 return true;
             } else if (mask.equals(".ec#-#-#-#-#.us-west-#.compute.amazonaws.com")) {
                 return true;
+            } else if (mask.equals(".ec#-#-#-#-#.cn-north-#.compute.amazonaws.com.cn")) {
+                return true;
             } else {
                 return false;
             }
@@ -615,6 +542,14 @@ public class Generic {
         return findGeneric(token) != null;
     }
     
+    public static boolean containsMask(String mask) {
+        if (mask == null) {
+            return false;
+        } else {
+            return MAP.containsGeneric(mask);
+        }
+    }
+    
     public static boolean containsGenericSoft(String token) {
         return findGenericSoft(token) != null;
     }
@@ -623,35 +558,31 @@ public class Generic {
         return findDynamic(token) != null;
     }
     
-//    public static String convertDomainToMask(String host) {
-//        if ((host = Domain.normalizeHostname(host, true)) == null) {
-//            return null;
-//        } else {
-//            String domain = Domain.extractDomainSafe(host, true);
-//            if (domain == null) {
-//                return null;
-//            } else {
-//                String mask = domain.replace('0', '#');
-//                mask = mask.replace('1', '#');
-//                mask = mask.replace('2', '#');
-//                mask = mask.replace('3', '#');
-//                mask = mask.replace('4', '#');
-//                mask = mask.replace('5', '#');
-//                mask = mask.replace('6', '#');
-//                mask = mask.replace('7', '#');
-//                mask = mask.replace('8', '#');
-//                mask = mask.replace('9', '#');
-//                while (mask.contains("##")) {
-//                    mask = mask.replace("##", "#");
-//                }
-//                if (mask.equals(domain)) {
-//                    return null;
-//                } else {
-//                    return mask;
-//                }
-//            }
-//        }
-//    }
+    public static String returnDynamicPTR(Set<String> tokenSet) {
+        if (tokenSet == null) {
+            return null;
+        } else {
+            for (String token : tokenSet) {
+                if (findDynamic(token) != null) {
+                    return token;
+                }
+            }
+            return null;
+        }
+    }
+    
+    public static String returnGenericPTR(Set<String> tokenSet) {
+        if (tokenSet == null) {
+            return null;
+        } else {
+            for (String token : tokenSet) {
+                if (findGeneric(token) != null) {
+                    return token;
+                }
+            }
+            return null;
+        }
+    }
     
     public static String convertDomainToMask(String host) {
         if ((host = Domain.normalizeHostname(host, true)) == null) {
@@ -663,6 +594,8 @@ public class Generic {
             } else {
                 String mask = domain.toLowerCase();
                 mask = mask.replaceAll("[0-9a-f]{32}", "#");
+                mask = mask.replaceAll("[0-9a-f]{16}", "#");
+                mask = mask.replaceAll("[0-9a-f]{8}", "#");
                 mask = mask.replaceAll("[0-9#]+", "#");
                 if (mask.equals(domain)) {
                     return null;
@@ -685,36 +618,6 @@ public class Generic {
     public static String convertHostToMask(String host) {
         if ((host = Domain.normalizeHostname(host, true)) == null) {
             return null;
-        } else if (host.contains("mail")) {
-            return null;
-        } else if (host.contains("http")) {
-            return null;
-        } else if (host.contains("smtp")) {
-            return null;
-        } else if (host.contains("cpanel")) {
-            return null;
-        } else if (host.contains("relay")) {
-            return null;
-        } else if (host.contains("mta")) {
-            return null;
-        } else if (host.contains("zimbra")) {
-            return null;
-        } else if (host.contains("postfix")) {
-            return null;
-        } else if (host.contains("correio")) {
-            return null;
-        } else if (host.contains("newsletter")) {
-            return null;
-        } else if (host.contains("bounce")) {
-            return null;
-        } else if (host.contains("gateway")) {
-            return null;
-        } else if (host.contains("mbox")) {
-            return null;
-        } else if (host.startsWith(".www.")) {
-            return null;
-        } else if (host.startsWith(".mx-")) {
-            return null;
         } else if (host.startsWith(".xn--")) {
             return null;
         } else {
@@ -726,29 +629,55 @@ public class Generic {
                     int index = host.length() - domain.length();
                     if (index > 0) {
                         String mask = host.substring(0, index);
-                        mask = mask.replaceAll("\\b[0-9]+\\b", "#");
-                        mask = mask.replaceAll("\\b[0-9a-f]{4,16}\\b", "#");
-                        mask = mask.replaceAll("[0-9a-f]{16}\\b", "#");
-                        mask = mask.replaceAll("[0-9a-f]{12}\\b", "#");
-                        mask = mask.replaceAll("[0-9a-f]{8}\\b", "#");
-                        mask = mask.replaceAll("[0-9#]+", "#");
-                        mask += domain;
-                        if (mask.equals(host)) {
+                        if (mask.contains("mail")) {
                             return null;
-                        } else if (mask.startsWith(".pm#")) {
+                        } else if (mask.contains("smtp")) {
                             return null;
-                        } else if (mask.startsWith(".mx#")) {
+                        } else if (mask.contains("cpanel")) {
                             return null;
-                        } else if (mask.startsWith(".pop#")) {
+                        } else if (mask.contains("relay")) {
                             return null;
-                        } else if (mask.startsWith(".dns#")) {
+                        } else if (mask.contains("mta")) {
                             return null;
-                        } else if (mask.startsWith(".out#")) {
+                        } else if (mask.contains("zimbra")) {
                             return null;
-                        } else if (mask.startsWith(".www#")) {
+                        } else if (mask.contains("postfix")) {
+                            return null;
+                        } else if (mask.contains("correio")) {
+                            return null;
+                        } else if (mask.contains("newsletter")) {
+                            return null;
+                        } else if (mask.contains("bounce")) {
+                            return null;
+                        } else if (mask.contains("mxout")) {
+                            return null;
+                        } else if (mask.contains("gateway")) {
+                            return null;
+                        } else if (mask.contains("mbox")) {
+                            return null;
+                        } else if (mask.startsWith(".mx-")) {
                             return null;
                         } else {
-                            return mask;
+                            mask = mask.replaceAll("\\b[0-9]+\\b", "#");
+                            mask = mask.replaceAll("\\b[0-9a-f]{4,16}\\b", "#");
+                            mask = mask.replaceAll("[0-9a-f]{16}\\b", "#");
+                            mask = mask.replaceAll("[0-9a-f]{12}\\b", "#");
+                            mask = mask.replaceAll("[0-9a-f]{8}\\b", "#");
+                            mask = mask.replaceAll("[0-9#]+", "#");
+                            mask += domain;
+                            if (mask.equals(host)) {
+                                return null;
+                            } else if (mask.startsWith(".pm#")) {
+                                return null;
+                            } else if (mask.startsWith(".mx#")) {
+                                return null;
+                            } else if (mask.startsWith(".pop#")) {
+                                return null;
+                            } else if (mask.startsWith(".out#")) {
+                                return null;
+                            } else {
+                                return mask;
+                            }
                         }
                     } else {
                         return null;
@@ -760,98 +689,11 @@ public class Generic {
         }
     }
     
-//    public static String findGeneric(
-//            String token
-//            ) {
-//        String mask = null;
-//        LinkedList<String> regexList = new LinkedList<>();
-//        if (token == null) {
-//            return null;
-//        } else if (Domain.isHostname(token)) {
-//            token = Domain.normalizeHostname(token, true);
-//            String host = token;
-//            do {
-//                int index = host.indexOf('.') + 1;
-//                host = host.substring(index);
-//                String token2 = '.' + host;
-//                if (MAP.containsGeneric(token2)) {
-//                    return token2;
-//                }
-//                regexList.addFirst(token2);
-//                if ((token2 = convertHostToMask(token2)) != null) {
-//                    if (MAP.containsGeneric(token2)) {
-//                        return token2;
-//                    }
-//                }
-//            } while (host.contains("."));
-//            if ((host = convertDomainToMask(token)) != null) {
-//                mask = host;
-//                if (MAP.containsGeneric(host)) {
-//                    return host;
-//                }
-//            }
-//        } else if (token.contains("@")) {
-//            int index = token.lastIndexOf('@') + 1;
-//            token = token.substring(index);
-//            token = Domain.normalizeHostname(token, true);
-//            return findGeneric(token);
-//        } else {
-//            regexList.add(token);
-//        }
-//        try {
-//            // Verifica um critério do REGEX.
-//            String regex;
-//            if ((regex = REGEX.get(regexList)) != null) {
-//                if (mask != null) {
-//                    int index = regex.indexOf('=') + 1;
-//                    if (!regex.contains("[0-9a-f]+") && !regex.contains("[0-9a-z]+") && !regex.contains("[a-z]+")) {
-//                        Pattern pattern = Pattern.compile(regex.substring(index));
-//                        index = mask.length();
-//                        while ((index = mask.lastIndexOf('.', index-1)) >= 0) {
-//                            String subMask = mask.substring(index);
-//                            if (Domain.isOfficialTLD(subMask)) {
-//                                // Do nothing.
-//                            } else if (Domain.isDomain(subMask)) {
-//                                if ((subMask = Generic.convertDomainToMask(subMask)) != null) {
-//                                    Matcher matcher = pattern.matcher(subMask.replace('#', '0'));
-//                                    if (matcher.matches()) {
-//                                        if (addGenericExact(subMask)) {
-//                                            Block.clear(subMask.replace('#', '0'), "GENERIC");
-//                                            Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
-//                                            return subMask;
-//                                        }
-//                                    }
-//                                }
-//                            } else {
-//                                Matcher matcher = pattern.matcher(subMask.replace('#', '0').replace(".H.", ".0a."));
-//                                if (matcher.matches()) {
-//                                    if (addGenericExact(subMask)) {
-//                                        Block.clear(subMask.replace('#', '0').replace(".H.", ".0a."), "GENERIC");
-//                                        Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
-//                                        return subMask;
-//                                    }
-//                                    break;
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//                return regex;
-//            }
-//        } catch (Exception ex) {
-//            Server.logError(ex);
-//        }
-//        return null;
-//    }
-    
-    public static String findGeneric(
-            String token
-            ) {
-        String mask = null;
+    public static String findGeneric(String token) {
         LinkedList<String> regexList = new LinkedList<>();
         if (token == null) {
             return null;
-        } else if (Domain.isHostname(token)) {
+        } else if (isHostname(token)) {
             token = Domain.normalizeHostname(token, true);
             String host = token;
             do {
@@ -869,7 +711,6 @@ public class Generic {
                 }
             } while (host.contains("."));
             if ((host = convertDomainToMask(token)) != null) {
-                mask = host;
                 if (MAP.containsGeneric(host)) {
                     return host;
                 }
@@ -882,49 +723,6 @@ public class Generic {
         } else {
             regexList.add(token);
         }
-//        try {
-//            // Verifica um critério do REGEX.
-//            String regex;
-//            if ((regex = REGEX.get(regexList)) != null) {
-//                if (mask != null) {
-//                    int index = regex.indexOf('=') + 1;
-//                    if (!regex.contains("[0-9a-f]+") && !regex.contains("[0-9a-z]+") && !regex.contains("[a-z]+")) {
-//                        Pattern pattern = Pattern.compile(regex.substring(index));
-//                        index = mask.length();
-//                        while ((index = mask.lastIndexOf('.', index-1)) >= 0) {
-//                            String subMask = mask.substring(index);
-//                            if (Domain.isOfficialTLD(subMask)) {
-//                                // Do nothing.
-//                            } else if (Domain.isDomain(subMask)) {
-//                                if ((subMask = Generic.convertDomainToMask(subMask)) != null) {
-//                                    Matcher matcher = pattern.matcher(subMask.replace('#', '0'));
-//                                    if (matcher.matches()) {
-//                                        if (addGenericExact(subMask)) {
-//                                            Block.clear(subMask.replace('#', '0'), "GENERIC");
-//                                            Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
-//                                            return subMask;
-//                                        }
-//                                    }
-//                                }
-//                            } else {
-//                                Matcher matcher = pattern.matcher(subMask.replace('#', '0'));
-//                                if (matcher.matches()) {
-//                                    if (addGenericExact(subMask)) {
-//                                        Block.clear(subMask.replace('#', '0'), "GENERIC");
-//                                        Server.logDebug("new GENERIC '" + subMask + "' added by '" + regex + "'.");
-//                                        return subMask;
-//                                    }
-//                                    break;
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//                return regex;
-//            }
-//        } catch (Exception ex) {
-//            Server.logError(ex);
-//        }
         return null;
     }
     
@@ -933,7 +731,7 @@ public class Generic {
             ) {
         if (token == null) {
             return null;
-        } else if (Domain.isHostname(token)) {
+        } else if (isHostname(token)) {
             token = Domain.normalizeHostname(token, true);
             String host = token;
             do {
@@ -973,12 +771,37 @@ public class Generic {
         return null;
     }
     
-    public static String findDynamic(
-            String token
-            ) {
+    public static boolean containsDynamicDomain(String token) {
+        if ((token = Domain.normalizeHostname(token, true)) == null) {
+            return false;
+        } else {
+            String host = token;
+            do {
+                int index = host.indexOf('.') + 1;
+                host = host.substring(index);
+                String token2 = '.' + host;
+                if (MAP.containsDynamic(token2)) {
+                    return true;
+                }
+                if ((token2 = convertHostToMask(token2)) != null) {
+                    if (MAP.containsDynamic(token2)) {
+                        return true;
+                    }
+                }
+            } while (host.contains("."));
+            if ((host = convertDomainToMask(token)) != null) {
+                if (MAP.containsDynamic(host)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    public static String findDynamic(String token) {
         if (token == null) {
             return null;
-        } else if (Domain.isHostname(token)) {
+        } else if (isHostname(token)) {
             token = Domain.normalizeHostname(token, true);
             String host = token;
             do {
@@ -1017,38 +840,59 @@ public class Generic {
         }
         return null;
     }
-
-    public static void store() {
-        if (CHANGED) {
+    
+    private static final File FILE = new File("./data/generic.txt");
+    private static Writer WRITER = null;
+    private static final LinkedList<String> LIST = new LinkedList<>();
+    private static final Semaphore SEMAPHORE = new Semaphore(0);
+    
+    private static void append(String line) {
+        if (SEMAPHORE.tryAcquire()) {
             try {
-                long time = System.currentTimeMillis();
-                File file = new File("./data/generic.set");
-                TreeSet<String> set = getGenericAll();
-                FileOutputStream outputStream = new FileOutputStream(file);
-                try {
-                    SerializationUtils.serialize(set, outputStream);
-                    CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-                Server.logStore(time, file);
-                time = System.currentTimeMillis();
-                file = new File("./data/generic.map");
-                TreeMap<String,Boolean> map = getMapAll();
-                outputStream = new FileOutputStream(file);
-                try {
-                    SerializationUtils.serialize(map, outputStream);
-                    CHANGED = false;
-                } finally {
-                    outputStream.close();
-                }
-                Server.logStore(time, file);
+                writeList();
+                WRITER.append(line);
+                WRITER.write('\n');
+                WRITER.flush();
             } catch (Exception ex) {
                 Server.logError(ex);
+            } finally {
+                SEMAPHORE.release();
+            }
+        } else {
+            LIST.offer(line);
+        }
+    }
+    
+    private static void writeList() {
+        try {
+            String line;
+            while ((line = LIST.poll()) != null) {
+                WRITER.write(line);
+                WRITER.write('\n');
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        }
+    }
+    
+    private static void startWriter() {
+        try {
+            WRITER = new FileWriter(FILE, true);
+            writeList();
+            if (Core.isRunning()) {
+                WRITER.flush();
+            } else {
+                WRITER.close();
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+        } finally {
+            if (Core.isRunning()) {
+                SEMAPHORE.release();
             }
         }
     }
-
+    
     public static void load() {
         long time = System.currentTimeMillis();
         File file = new File("./data/generic.map");
@@ -1060,14 +904,8 @@ public class Generic {
                 }
                 for (String token : map.keySet()) {
                     boolean dyn = map.get(token);
-//                    if (token.startsWith("REGEX=")) {
-//                        REGEX.addExact(token);
-//                    } else {
-                        token = normalizeToken(token, false); // Temp.
-                        MAP.putExact(token, dyn);
-//                    }
+                    MAP.putExact(token, dyn);
                 }
-                CHANGED = false;
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
@@ -1079,17 +917,535 @@ public class Generic {
                     set = SerializationUtils.deserialize(fileInputStream);
                 }
                 for (String token : set) {
-//                    if (token.startsWith("REGEX=")) {
-//                        REGEX.addExact(token);
-//                    } else {
-                        token = normalizeToken(token, false); // Temp.
-                        MAP.addGenericExact(token);
-//                    }
+                    MAP.addGenericExact(token);
                 }
-                CHANGED = false;
                 Server.logLoad(time, file);
             } catch (Exception ex) {
                 Server.logError(ex);
+            }
+        }
+        if (FILE.exists()) {
+            String line;
+            try (BufferedReader reader = new BufferedReader(new FileReader(FILE))) {
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        StringTokenizer tokenizer = new StringTokenizer(line, " ");
+                        String token = tokenizer.nextToken();
+                        if (token.equals("PUT")) {
+                            String generic = tokenizer.nextToken();
+                            boolean dynamic = Boolean.valueOf(tokenizer.nextToken());
+                            MAP.putExact(generic, dynamic);
+                        } else if (token.equals("DROP")) {
+                            String generic = tokenizer.nextToken();
+                            MAP.dropGenericExact(generic);
+                        } else if (token.equals("REP")) {
+                            String zone = tokenizer.nextToken();
+                            float xiSum = Float.parseFloat(tokenizer.nextToken());
+                            float xi2Sum = Float.parseFloat(tokenizer.nextToken());
+                            int last = Integer.parseInt(tokenizer.nextToken());
+                            String flag = tokenizer.nextToken();
+                            byte min = 0;
+                            byte max = 0;
+                            if (tokenizer.hasMoreTokens()) {
+                                min = Byte.parseByte(tokenizer.nextToken());
+                                max = Byte.parseByte(tokenizer.nextToken());
+                            }
+                            Node.load(zone, xiSum, xi2Sum, last, flag, min, max);
+                        } else if (token.equals("QUEUE")) {
+                            String helo = tokenizer.nextToken();
+                            Byte value = tokenizer.hasMoreTokens() ? Byte.parseByte(tokenizer.nextToken()) : null;
+                            addOperation(helo, value);
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(line);
+                        Server.logError(ex);
+                    }
+                }
+                Server.logLoad(time, FILE);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        startWriter();
+    }
+    
+    public static boolean store() {
+        try {
+            long time = System.currentTimeMillis();
+            SEMAPHORE.acquire();
+            try {
+                WRITER.close();
+                Path source = FILE.toPath();
+                Path temp = source.resolveSibling('.' + FILE.getName());
+                try (FileWriter writer = new FileWriter(temp.toFile())) {
+                    TreeMap<String,Boolean> map = MAP.getMapAll();
+                    for (String generic : map.keySet()) {
+                        boolean dynamic = map.get(generic);
+                        writer.write("PUT ");
+                        writer.write(generic);
+                        writer.write(' ');
+                        writer.write(Boolean.toString(dynamic));
+                        writer.write('\n');
+                        writer.flush();
+                    }
+                    ROOT.store(writer, ".");
+                    THREAD.store(writer);
+                }
+                Files.move(temp, source, REPLACE_EXISTING);
+                Server.logStore(time, FILE);
+                return true;
+            } finally {
+                startWriter();
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return false;
+        }
+    }
+
+    private static final Node ROOT = new Node();
+    
+    public static boolean addHarmful(String helo) {
+        return addOperation(helo, (byte) -4);
+    }
+    
+    public static boolean addUndesirable(String helo) {
+        return addOperation(helo, (byte) -2);
+    }
+    
+    public static boolean addUnacceptable(String helo) {
+        return addOperation(helo, (byte) -1);
+    }
+    
+    public static boolean addAcceptable(String helo) {
+        return addOperation(helo, (byte) 1);
+    }
+    
+    public static boolean addDesirable(String helo) {
+        return addOperation(helo, (byte) 2);
+    }
+    
+    public static boolean addBeneficial(String helo) {
+        return addOperation(helo, (byte) 4);
+    }
+    
+    private static boolean addOperation(String helo, Byte value) {
+        if (helo == null) {
+            return false;
+        } else if (value == null) {
+            return false;
+        } else {
+            THREAD.offer(new SimpleImmutableEntry<>(helo, value));
+            return true;
+        }
+    }
+    
+    public static boolean isDynamicPattern(String mask) {
+        if (mask == null) {
+            return false;
+        } else {
+            String domain = Domain.extractDomainSafe(mask, false);
+            if (domain != null) {
+                mask = mask.replace(domain, "");
+            }
+            if (mask.matches(".*\\bdynamic\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bftth\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bpppoe\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bnat\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bcgnat\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bdinamico\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\badsl\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bwireless\\b.*")) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    private static boolean isStaticPattern(String mask) {
+        if (mask == null) {
+            return false;
+        } else {
+            String domain = Domain.extractDomainSafe(mask, false);
+            if (domain != null) {
+                mask = mask.replace(domain, "");
+            }
+            if (mask.matches(".*\\bstatic\\b.*")) {
+                return true;
+            } else if (mask.matches(".*\\bdedicated\\b.*")) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+    
+    private static final ProcessThread THREAD = new ProcessThread();
+    
+    public static void startThread() {
+        THREAD.start();
+    }
+    
+    public static void terminateThread() {
+        THREAD.terminate();
+    }
+    
+    private static class ProcessThread extends Thread {
+        
+        private final LinkedList<SimpleImmutableEntry> QUEUE = new LinkedList<>();
+        private boolean run = true;
+        
+        private ProcessThread() {
+            super("GNRCTHRED");
+            setPriority(Thread.MIN_PRIORITY);
+        }
+        
+        private void offer(SimpleImmutableEntry<String,Byte> entry) {
+            QUEUE.offer(entry);
+            notifyQueue();
+        }
+        
+        private SimpleImmutableEntry poll() {
+            return QUEUE.poll();
+        }
+        
+        private synchronized void waitNext() {
+            try {
+                wait(60000);
+            } catch (InterruptedException ex) {
+                Server.logError(ex);
+            }
+        }
+        
+        private boolean continueRun() {
+            return run;
+        }
+        
+        public void terminate() {
+            run = false;
+            notifyQueue();
+        }
+        
+        public synchronized void notifyQueue() {
+            notify();
+        }
+        
+        @Override
+        public void run() {
+            try {
+                Server.logTrace("thread started.");
+                SimpleImmutableEntry<String,Byte> entry;
+                while (Core.isRunning() && continueRun()) {
+                    while (Core.isRunning() && (entry = poll()) != null) {
+                        String helo = entry.getKey();
+                        String mask;
+                        if (isValidIPv4(helo)) {
+                            mask = ".#";
+                        } else if (Domain.isRootDomain(helo)) {
+                            mask = Generic.convertDomainToMask(helo);
+                        } else {
+                            mask = Generic.convertHostToMask(helo);
+                        }
+                        if (mask != null) {
+                            byte value = entry.getValue();
+                            if (value < -1 && Ignore.containsFQDN(helo)) {
+                                value = -1;
+                            } else if (value < -2 && Provider.containsFQDN(helo)) {
+                                value = -2;
+                            }
+//                            Server.logTrace("reputation " + value + " " + mask);
+                            int level = 0;
+                            LinkedList<String> stack = new LinkedList<>();
+                            StringTokenizer tokenizer = new StringTokenizer(mask, ".");
+                            while (tokenizer.hasMoreTokens()) {
+                                stack.push(tokenizer.nextToken());
+                            }
+                            Node reputation = ROOT;
+                            String zone = ".";
+                            reputation.addValue(value, level);
+                            Flag flag = reputation.refreshFlag(zone, level, Flag.ACCEPTABLE);
+                            while (!stack.isEmpty()) {
+                                if (++level > 7) {
+                                    break;
+                                } else {
+                                    String key = stack.pop();
+                                    reputation = reputation.newReputation(zone, key);
+                                    if (reputation == null) {
+                                        break;
+                                    } else {
+                                        zone += key + '.';
+                                        reputation.addValue(value, level);
+                                        flag = reputation.refreshFlag(zone, level, flag);
+                                    }
+                                }
+                            }
+                            if (flag == Flag.HARMFUL || flag == Flag.UNDESIRABLE) {
+                                if (!Generic.containsGeneric(mask)) {
+                                    if (isDynamicPattern(mask) && addDynamicExact(mask)) {
+                                        Server.logDebug(null, "new DYNAMIC '" + mask + "' added by '" + flag.name() + "'.");
+                                    } else if (isStaticPattern(mask) && Generic.addGenericSafe(mask)) {
+                                        Server.logDebug(null, "new GENERIC '" + mask + "' added by '" + flag.name() + "'.");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    waitNext();
+                }
+                
+            } finally {
+                Server.logTrace("thread closed.");
+            }
+        }
+        
+        private void store(FileWriter writer) throws IOException {
+            if (!Core.isRunning()) {
+                SimpleImmutableEntry<String,Byte> entry;
+                while ((entry = poll()) != null) {
+                    String fqdn = entry.getKey();
+                    Byte value = entry.getValue();
+                    writer.write("QUEUE ");
+                    writer.write(fqdn);
+                    if (value != null) {
+                        writer.write(' ');
+                        writer.write(Byte.toString(value));
+                    }
+                    writer.write('\n');
+                    writer.flush();
+                }
+            }
+        }
+    }
+    
+    public static Flag getFlag(String helo) {
+        if (helo == null) {
+            return null;
+        } else if (!Regex.isHostname(helo)) {
+            return UNACCEPTABLE;
+        } else {
+            String mask = Generic.convertHostToMask(helo);
+            if (mask == null) {
+                return ACCEPTABLE;
+            } else {
+                LinkedList<String> stack = new LinkedList<>();
+                StringTokenizer tokenizer = new StringTokenizer(mask, ".");
+                while (tokenizer.hasMoreTokens()) {
+                    stack.push(tokenizer.nextToken());
+                }
+                Node node = ROOT;
+                Flag flag = node.getFlag();
+                while (!stack.isEmpty()) {
+                    String key = stack.pop();
+                    node = node.getReputation(key);
+                    if (node == null) {
+                        break;
+                    } else {
+                        Flag newFlag = node.getFlag();
+                        if (newFlag == null) {
+                            break;
+                        } else {
+                            flag = newFlag;
+                        }
+                    }
+                }
+                return flag;
+            }
+        }
+    }
+
+    private static class Node extends Reputation {
+        
+        private static final int POPULATION[] = {
+            16384, 8192, 4096, 2048, 1024, 512, 256, 128
+        };
+        
+        private Node() {
+            super();
+        }
+        
+        private Node(Node other) {
+            super(other, 2.0f);
+        }
+        
+        private void addValue(int value, int level) {
+            super.add(value, POPULATION[level]);
+        }
+        
+        private TreeMap<String,Node> MAP = null;
+        
+        private synchronized Node newReputation(String zone, String key) {
+            Flag flag = getFlag();
+            byte[] extremes = getExtremes();
+            byte minimum = extremes[0];
+            byte maximum = extremes[1];
+            if (key == null) {
+                return null;
+            } else if (flag == null) {
+                return null;
+            } else if (flag == Flag.HARMFUL && minimum == -4 && maximum == -4) {
+                MAP = null;
+                return null;
+            } else if (flag == Flag.UNDESIRABLE && minimum == -2 && maximum == -2) {
+                MAP = null;
+                return null;
+            } else if (flag == Flag.UNACCEPTABLE && minimum == -1 && maximum == -1) {
+                MAP = null;
+                return null;
+            } else if (flag == Flag.ACCEPTABLE && minimum == 1 && maximum == 1) {
+                MAP = null;
+                return null;
+            } else if (flag == Flag.DESIRABLE && minimum == 2 && maximum == 2) {
+                MAP = null;
+                return null;
+            } else if (flag == Flag.BENEFICIAL && minimum == 4 && maximum == 4) {
+                MAP = null;
+                return null;
+            } else {
+                Node node = null;
+                if (MAP == null) {
+                    MAP = new TreeMap<>();
+                } else {
+                    node = MAP.get(key);
+                }
+                if (node == null) {
+                    node = new Node(this);
+                    MAP.put(key, node);
+                }
+                return node;
+            }
+        }
+        
+        private synchronized void clearMap() {
+            MAP = null;
+        }
+        
+        private synchronized void dropMap(String key) {
+            if (MAP != null) {
+                MAP.remove(key);
+                if (MAP.isEmpty()) {
+                    MAP = null;
+                }
+            }
+        }
+        
+        private synchronized TreeSet<String> keySet() {
+            TreeSet<String> keySet = new TreeSet<>();
+            if (MAP != null) {
+                keySet.addAll(MAP.keySet());
+            }
+            return keySet;
+        }
+        
+        private synchronized Node getReputation(String key) {
+            if (MAP == null) {
+                return null;
+            } else {
+                return MAP.get(key);
+            }
+        }
+        
+        private Flag refreshFlag(String zone, int level, Flag defaultFlag) {
+            Flag oldFlag = getFlag();
+            Flag newFlag = refreshFlag(
+                    POPULATION[level], false
+            );
+            if (newFlag != oldFlag) {
+                float[] xisArray = getXiSum();
+                byte[] extremes = getExtremes();
+                int last = getLast();
+                append(
+                        "REP " + zone + " " + xisArray[0] + " " + xisArray[1] + " "
+                                + last + " " + newFlag + " "
+                                + extremes[0] + " " + extremes[1]
+                );
+            }
+            if (newFlag == null) {
+                return defaultFlag;
+            } else {
+                return newFlag;
+            }
+        }
+        
+        private static void load(
+                String zone,
+                float xiSum,
+                float xi2Sum,
+                int last,
+                String flag,
+                byte minimum,
+                byte maximum
+        ) {
+            try {
+                StringTokenizer tokenizer = new StringTokenizer(zone, ".");
+                Node node = ROOT;
+                String zoneNode = ".";
+                while (node != null && tokenizer.hasMoreTokens()) {
+                    String key = tokenizer.nextToken();
+                    node = node.newReputation(zoneNode, key);
+                    zoneNode += key + '.';
+                }
+                if (node != null) {
+                    node.set(xiSum, xi2Sum, last, flag, minimum, maximum);
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        
+        private void store(FileWriter writer, String zone) throws IOException {
+            float[] xiResult = getXiSum();
+            Object flag = getFlagObject();
+            byte[] extremes = getExtremes();
+            int last = getLast();
+            writer.write("REP ");
+            writer.write(zone);
+            writer.write(' ');
+            writer.write(Float.toString(xiResult[0]));
+            writer.write(' ');
+            writer.write(Float.toString(xiResult[1]));
+            writer.write(' ');
+            writer.write(Integer.toString(last));
+            writer.write(' ');
+            writer.write(flag.toString());
+            writer.write(' ');
+            writer.write(Byte.toString(extremes[0]));
+            writer.write(' ');
+            writer.write(Byte.toString(extremes[1]));
+            writer.write('\n');
+            writer.flush();
+            if (flag instanceof Integer) {
+                clearMap();
+            } else if (flag == Flag.HARMFUL && extremes[0] == -4 && extremes[1] == -4) {
+                clearMap();
+            } else if (flag == Flag.UNDESIRABLE && extremes[0] == -2 && extremes[1] == -2) {
+                clearMap();
+            } else if (flag == Flag.UNACCEPTABLE && extremes[0] == -1 && extremes[1] == -1) {
+                clearMap();
+            } else if (flag == Flag.ACCEPTABLE && extremes[0] == 1 && extremes[1] == 1) {
+                clearMap();
+            } else if (flag == Flag.DESIRABLE && extremes[0] == 2 && extremes[1] == 2) {
+                clearMap();
+            } else if (flag == Flag.BENEFICIAL && extremes[0] == 4 && extremes[1] == 4) {
+                clearMap();
+            } else {
+                for (String key : keySet()) {
+                    Node reputation = getReputation(key);
+                    if (reputation != null) {
+                        if (reputation.isExpired()) {
+                            dropMap(key);
+                        } else {
+                            reputation.store(writer, zone + key + '.');
+                        }
+                    }
+                }
             }
         }
     }

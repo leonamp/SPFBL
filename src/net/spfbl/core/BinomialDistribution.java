@@ -100,6 +100,19 @@ public class BinomialDistribution implements Serializable {
         this.sucess += count;
     }
     
+    public int getCount() {
+        return failure + sucess;
+    }
+    
+    public Float getPercentual() {
+        int n = failure + sucess;
+        if (n == 0) {
+            return null;
+        } else {
+            return (float) sucess / (float) n;
+        }
+    }
+    
     @Override
     public String toString() {
         int n = failure + sucess;

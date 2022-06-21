@@ -1,5 +1,5 @@
 /*
- * This file is part of SPFBL.
+ * This dataFile is part of SPFBL.
  * 
  * SPFBL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,44 +17,75 @@
 
 package net.spfbl.core;
 
+import net.spfbl.spf.SPF;
 import com.mysql.jdbc.exceptions.MySQLTimeoutException;
 import com.sun.mail.smtp.SMTPAddressFailedException;
 import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.util.MailConnectException;
+import com.sun.mail.util.SocketConnectException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
 import java.net.MalformedURLException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.AbstractMap;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipException;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.SendFailedException;
+import javax.mail.Session;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
@@ -64,17 +95,42 @@ import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
+import static net.spfbl.core.Core.encrypt32;
+import net.spfbl.core.Filterable.Filter;
+import static net.spfbl.core.Filterable.Filter.ABUSE_SUBMISSION;
+import static net.spfbl.core.Filterable.Filter.USER_PHISHING;
+import static net.spfbl.core.Filterable.Filter.USER_SPAM;
+import net.spfbl.core.Filterable.Situation;
+import static net.spfbl.core.Regex.isHostname;
+import static net.spfbl.core.Regex.isValidEmail;
+import static net.spfbl.core.Regex.isValidRecipient;
+import static net.spfbl.core.Regex.isValidIP;
+import static net.spfbl.core.Regex.isValidIPv4;
+import static net.spfbl.core.Regex.isValidIPv6;
+import static net.spfbl.core.Server.MINUTE_TIME;
 import net.spfbl.data.Abuse;
 import net.spfbl.data.Block;
+import net.spfbl.data.CIDR;
+import net.spfbl.data.DKIM;
+import net.spfbl.data.Dictionary;
+import net.spfbl.data.FQDN;
 import net.spfbl.data.Generic;
 import net.spfbl.data.Ignore;
 import net.spfbl.data.NoReply;
 import net.spfbl.data.Provider;
+import net.spfbl.data.Recipient;
+import static net.spfbl.data.Recipient.Type.INEXISTENT;
+import net.spfbl.data.Reputation;
+import net.spfbl.data.Reputation.Flag;
+import static net.spfbl.data.Reputation.Flag.BENEFICIAL;
+import static net.spfbl.data.Reputation.Flag.DESIRABLE;
 import net.spfbl.data.Trap;
+import net.spfbl.data.URI;
 import net.spfbl.data.White;
-import net.spfbl.http.ServerHTTP;
-import net.spfbl.spf.SPF;
+import net.spfbl.service.ServerHTTP;
+import net.spfbl.service.ServerSMTP;
 import net.spfbl.spf.SPF.Distribution;
+import net.spfbl.spf.SPF.Qualifier;
 import net.spfbl.whois.Domain;
 import net.spfbl.whois.Subnet;
 import net.spfbl.whois.SubnetIPv4;
@@ -84,6 +140,8 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 /**
  * Representa um usuário do sistema.
@@ -102,13 +160,16 @@ public class User implements Serializable, Comparable<User> {
     private boolean supressClearBLOCK = false;
 
     /**
-     * Atributos para OTP.
+     * Authentication attributes.
      */
     private String otp_secret = null; // Chave oficial.
     private String otp_transition = null; // Chave de transição.
     private byte otp_fail = 0;
     private Integer otp_sucess = null;
     private long otp_last = 0;
+    private String password_md5 = null;
+    private byte password_fail = 0;
+    private long password_last = 0;
     
     private User(User other) {
         this.email = other.email;
@@ -122,11 +183,17 @@ public class User implements Serializable, Comparable<User> {
         this.otp_fail = other.otp_fail;
         this.otp_sucess = other.otp_sucess;
         this.otp_last = other.otp_last;
-        this.queryMap = other.cloneQueryMap();
+        this.password_md5 = other.password_md5;
+        this.password_fail = other.password_fail;
+        this.password_last = other.password_last;
+        this.queryMap = other.cloneQueryMap(User.this);
+        this.identificationMap = other.cloneIdentificationMap();
+        this.DEFERED_MAP = other.getDeferedMap();
+        this.transportMap = other.getTransportMap();
     }
     
     private User(String email, String name) throws ProcessException {
-        if (Domain.isValidEmail(email) && simplify(name) != null) {
+        if (isValidEmail(email) && simplify(name) != null) {
             this.email = email.toLowerCase();
             this.name = simplify(name);
             this.locale = Core.getDefaultLocale(email);
@@ -217,7 +284,7 @@ public class User implements Serializable, Comparable<User> {
         return email.substring(index);
     }
     
-    public boolean isUsingHeader() {
+    public boolean usingHeader() {
         return usingHeader;
     }
     
@@ -241,8 +308,98 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public boolean isSameRootDomain(String address) {
+        if (address == null) {
+            return false;
+        } else {
+            int index1 = email.indexOf('@') + 1;
+            int index2 = address.indexOf('@') + 1;
+            String domain1 = Domain.extractDomainSafeNotNull(email.substring(index1), false);
+            String domain2 = Domain.extractDomainSafeNotNull(address.substring(index2), false);
+            return domain1.equals(domain2);
+        }
+    }
+    
     public boolean isEmail(String email) {
         return this.email.equals(email);
+    }
+    
+    private static final Regex PASSWORD_PATTERN = new Regex("^"
+            + "[0-9a-zA-Z@#$%!&?;<>{}]{8,32}"
+            + "$"
+    );
+    
+    public boolean setPassword(String password) {
+        if (password == null) {
+            return false;
+        } else {
+            String md5 = null;
+            if (PASSWORD_PATTERN.matches(password)) {
+                md5 = Core.md5Hex(password);
+            }
+            if (md5 == null) {
+                return false;
+            } else {
+                password_md5 = md5;
+                password_fail = 0;
+                password_last = 0;
+                otp_transition = null;
+                otp_fail = 0;
+                return CHANGED = true;
+            }
+        }
+    }
+    
+    public void clearPassword() {
+        if (password_md5 != null) {
+            password_md5 = null;
+            password_fail = 0;
+            password_last = 0;
+            otp_transition = null;
+            CHANGED = true;
+        }
+    }
+    
+    public boolean isValidPassword(String password) {
+        String md5 = Core.md5Hex(password);
+        if (md5 == null) {
+            return false;
+        } else if (md5.equals(password_md5)) {
+            password_fail = 0;
+            password_last = System.currentTimeMillis();
+            otp_transition = null;
+            return true;
+        } else {
+            password_fail++;
+            password_last = System.currentTimeMillis();
+            CHANGED = true;
+            return false;
+        }
+    }
+    
+    public long getFailTimePassword() {
+        long thresholdTime = (long) Math.pow(2, password_fail);
+        long idleTime = System.currentTimeMillis() - password_last;
+        if (idleTime < 1000) {
+            return 1000;
+        } else {
+            return thresholdTime - idleTime;
+        }
+        
+    }
+    
+    public boolean tooManyFailsPassword() {
+        long thresholdTime = (long) Math.pow(2, password_fail);
+        long idleTime = System.currentTimeMillis() - password_last;
+        if (idleTime < 1000) {
+            return false;
+        } else {
+            return thresholdTime > idleTime;
+        }
+    }
+    
+    public boolean hasPassword() {
+        return password_md5 != null;
     }
     
     public boolean hasSecretOTP() {
@@ -258,7 +415,12 @@ public class User implements Serializable, Comparable<User> {
         return otp_transition = Core.generateSecretOTP();
     }
     
-    public long getFailTime() {
+    public void clearTransitionOTP() {
+        CHANGED = true;
+        otp_transition = null;
+    }
+    
+    public long getFailTimeOTP() {
         long thresholdTime = (long) Math.pow(2, otp_fail);
         long idleTime = System.currentTimeMillis() - otp_last;
         if (idleTime < 1000) {
@@ -269,7 +431,7 @@ public class User implements Serializable, Comparable<User> {
         
     }
     
-    public boolean tooManyFails() {
+    public boolean tooManyFailsOTP() {
         long thresholdTime = (long) Math.pow(2, otp_fail);
         long idleTime = System.currentTimeMillis() - otp_last;
         if (idleTime < 1000) {
@@ -298,6 +460,8 @@ public class User implements Serializable, Comparable<User> {
             otp_sucess = code;
             otp_last = System.currentTimeMillis();
             CHANGED = true;
+            return true;
+        } else if (Core.isTestingVersion() && Core.isMyHostname("localhost")) {
             return true;
         } else if (otp_fail < Byte.MAX_VALUE) {
             otp_fail++;
@@ -337,6 +501,134 @@ public class User implements Serializable, Comparable<User> {
             }
         }
     }
+    
+    private TreeMap<Integer,Properties> transportMap = null;
+    
+    public synchronized boolean hasTransport() {
+        if (transportMap == null) {
+            return false;
+        } else {
+            return !transportMap.isEmpty();
+        }
+    }
+    
+    private synchronized Object getTransport() {
+        if (transportMap == null) {
+            return null;
+        } else if (transportMap.isEmpty()) {
+            return null;
+        } else if (transportMap.size() == 1) {
+            int key = transportMap.firstKey();
+            return transportMap.get(key);
+        } else {
+            TreeMap<Integer,Properties> resultMap = new TreeMap<>();
+            resultMap.putAll(transportMap);
+            return resultMap;
+        }
+    }
+    
+    public synchronized TreeMap<Integer,Properties> getTransportMap() {
+        if (transportMap == null) {
+            return null;
+        } else if (transportMap.isEmpty()) {
+            return null;
+        } else {
+            TreeMap<Integer,Properties> resultMap = new TreeMap<>();
+            resultMap.putAll(transportMap);
+            return resultMap;
+        }
+    }
+    
+    public synchronized Properties putTransport(int index, Properties props) {
+        if (props == null) {
+            return null;
+        } else if (transportMap == null) {
+            transportMap = new TreeMap<>();
+            return transportMap.put(index, props);
+        } else {
+            return transportMap.put(index, props);
+        }
+    }
+    
+    public synchronized Properties removeTransport(int index) {
+        if (transportMap == null) {
+            return null;
+        } else {
+            Properties props = transportMap.remove(index);
+            if (transportMap.isEmpty()) {
+                transportMap = null;
+            }
+            return props;
+        }
+    }
+    
+    public synchronized String setTransport(int index, String name, String value) {
+        if (name == null) {
+            return null;
+        } else if (transportMap == null) {
+            return null;
+        } else {
+            Properties props = transportMap.get(index);
+            if (props == null) {
+                return null;
+            } else if (value == null) {
+                return (String) props.remove(name);
+            } else if (props.containsKey(name)) {
+                return (String) props.put(name, value);
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public synchronized boolean putTransport(int index, String name, String value) {
+        if (name == null) {
+            return false;
+        } else if (value == null) {
+            return false;
+        } else if (transportMap == null) {
+            return false;
+        } else {
+            Properties props = transportMap.get(index);
+            if (props == null) {
+                return false;
+            } else if (props.containsKey(name)) {
+                return false;
+            } else {
+                props.put(name, value);
+                return true;
+            }
+        }
+    }
+    
+    public static Properties[] getSessionProperties(InternetAddress address) {
+        User user = User.getUserFor(address);
+        if (user == null) {
+            return null;
+        } else {
+            return user.getSessionProperties();
+        }
+    }
+    
+    public Properties[] getSessionProperties() {
+        Object result = getTransport();
+        if (result instanceof Properties) {
+            Properties[] propsArray = new Properties[1];
+            propsArray[0] = (Properties) result;
+            return propsArray;
+        } else if (result instanceof TreeMap) {
+            TreeMap<Integer,Properties> resultMap = (TreeMap) result;
+            int size = resultMap.size();
+            int index = 0;
+            Properties[] propsArray = new Properties[size];
+            for (Integer key : resultMap.keySet()) {
+                propsArray[index++] = resultMap.get(key);
+            }
+            return propsArray;
+        } else {
+            return null;
+        }
+    }
 
     public Locale getLocale() {
         return locale;
@@ -374,6 +666,182 @@ public class User implements Serializable, Comparable<User> {
         InternetAddress[] internetAddresses = new InternetAddress[1];
         internetAddresses[0] = getInternetAddress();
         return internetAddresses;
+    }
+    
+    private SecretKey secretKey = null;
+    private byte[] ivBytes = null;
+    
+    private synchronized SecretKey getSecretKey() {
+        if (secretKey == null) {
+            try {
+                KeyGenerator keyGen = KeyGenerator.getInstance("DES");
+                keyGen.init(new SecureRandom());
+                secretKey = keyGen.generateKey();
+                CHANGED = true;
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        return secretKey;
+    }
+    
+    private transient IvParameterSpec ivParams = null;
+    
+    private synchronized IvParameterSpec getIV() {
+        if (ivBytes == null) {
+            SecureRandom randomSecureRandom = new SecureRandom();
+            randomSecureRandom.nextBytes(ivBytes = new byte[8]);
+            CHANGED = true;
+        }
+        if (ivParams == null) {
+            ivParams = new IvParameterSpec(ivBytes);
+        }
+        return ivParams;
+    }
+    
+    public static InternetAddress[] getInvitationArray(User user, InternetAddress address) {
+        InternetAddress invitation = getInvitation(user, address);
+        if (invitation == null) {
+            return null;
+        } else {
+            InternetAddress[] invitationArray = {invitation};
+            return invitationArray;
+        }
+    }
+    
+    public static InternetAddress getInvitation(User user, InternetAddress address) {
+        if (user == null) {
+            return null;
+        } else if (address == null) {
+            return null;
+        } else {
+            return user.getInvitation(address);
+        }
+    }
+    
+    public InternetAddress getInvitation(InternetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            try {
+                String invitation = getInvitation(address.getAddress());
+                if (invitation == null) {
+                    return null;
+                } else {
+                    String personal = address.getPersonal();
+                    return new InternetAddress(invitation, personal);
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return null;
+            }
+        }
+    }
+    
+    public String getInvitation(String recipient) {
+        if (recipient == null) {
+            return null;
+        } else if (recipient.contains("+")) {
+            return null;
+        } else {
+            try {
+                recipient = recipient.toLowerCase();
+                long timeMillis = System.currentTimeMillis();
+                int timeLong = (int) (timeMillis >>> 32);
+                int timeShort = (int) (timeMillis & 0xFFFFFFFF);
+                int hashCode = recipient.hashCode() + timeLong;
+                // Encrypt.
+                ByteBuffer buffer = ByteBuffer.allocate(8);
+                buffer.putInt(hashCode);
+                buffer.putInt(timeShort);
+                byte[] signature = buffer.array();
+                Cipher cipher = Cipher.getInstance("DES/CBC/NoPadding");
+                cipher.init(Cipher.ENCRYPT_MODE, getSecretKey(), getIV());
+                byte[] code = cipher.doFinal(signature);
+                // Encode.
+                String encoded = Core.BASE32STANDARD.encodeToString(code);
+                encoded = encoded.substring(0, 13);
+                encoded = encoded.toLowerCase();
+                // Concatenate.
+                int index = recipient.lastIndexOf('@');
+                String part = recipient.substring(0, index);
+                String domain = recipient.substring(index);
+                return part + "+" + encoded + domain;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return recipient;
+            }
+        }
+    }
+    
+    public boolean isInvitation(String recipient, String subaddress) {
+        if (recipient == null) {
+            return false;
+        } else if (subaddress == null) {
+            return false;
+        } else if (subaddress.length() != 13) {
+            return false;
+        } else if (recipient.contains("+")) {
+            return false;
+        } else {
+            try {
+                // Decode.
+                subaddress = subaddress.toUpperCase();
+                byte[] code = Core.BASE32STANDARD.decode(subaddress);
+                if (code.length == 8) {
+                    // Decrypt.
+                    Cipher cipher = Cipher.getInstance("DES/CBC/NoPadding");
+                    cipher.init(Cipher.DECRYPT_MODE, getSecretKey(), getIV());
+                    code = cipher.doFinal(code);
+                    ByteBuffer buffer = ByteBuffer.wrap(code);
+                    long timeMillis = System.currentTimeMillis();
+                    int timeLong = (int) (timeMillis >>> 32);
+                    int hashCode = buffer.getInt() - timeLong;
+                    int timeShort = buffer.getInt();
+                    long creation = 0;
+                    recipient = recipient.toLowerCase();
+                    // Compare.
+                    if (hashCode == recipient.hashCode()) {
+                        creation = timeLong & 0x00000000FFFFFFFFL;
+                        creation <<= 32;
+                        creation |= timeShort & 0x00000000FFFFFFFFL;
+                    } else if (hashCode + 1 == recipient.hashCode()) {
+                        creation = timeLong & 0x00000000FFFFFFFFL;
+                        creation--;
+                        creation <<= 32;
+                        creation |= timeShort & 0x00000000FFFFFFFFL;
+                    }
+                    return System.currentTimeMillis() - creation < Server.DAY_TIME;
+                } else {
+                    return false;
+                }
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+        
+    public boolean isInvitation(String recipient) {
+        if (recipient == null) {
+            return false;
+        } else {
+            int index1 = recipient.indexOf('+');
+            int index2 = recipient.lastIndexOf('@');
+            if (index1 > 0 && index2 > 0) {
+                // Subaddress Extension.
+                // https://tools.ietf.org/html/rfc5233.html
+                String subaddress = recipient.substring(index1 + 1, index2);
+                // Concatenate.
+                String part = recipient.substring(0, index1);
+                String domain = recipient.substring(index2);
+                recipient = part + domain;
+                recipient = recipient.toLowerCase();
+                return isInvitation(recipient, subaddress);
+            } else {
+                return false;
+            }
+        }
     }
     
     private static String simplify(String text) {
@@ -435,9 +903,13 @@ public class User implements Serializable, Comparable<User> {
         for (long time : headSet(threshold)) {
             Query query = getQuery(time);
             if (query != null) {
-                query.setResult("GREYLIST", "REJECT");
-                query.setResult("LISTED", "REJECT");
-                query.setResult("HOLD", "REJECT");
+                if (query.isResult("HOLD")) {
+                    processExpired(time, query);
+                } else if (query.setResult("GREYLIST", "REJECT")) {
+                    query.addUnacceptable();
+                } else if (query.setResult("LISTED", "REJECT")) {
+                    query.addUnacceptable();
+                }
                 storeDB(time, query);
             }
             if (dropQuery(time)) {
@@ -446,7 +918,69 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    private static final int QUERY_MAX = 512;
+    private static boolean processExpired(long timeKey, Query query) {
+        if (query == null) {
+            return false;
+        } else {
+            SimpleImmutableEntry<Filter,String> filterEntry = query.processFilterExpired();
+            Filter filter = filterEntry.getKey();
+            String reason = filterEntry.getValue();
+            String filterResult = filter.name() + (reason == null ? "" : ';' + reason);
+            switch (filter) {
+                case HOLD_WHITE_KEY_USER: // 50,00%
+                    query.setResult("WHITE");
+                    query.addBeneficial(timeKey);
+                    break;
+                case HOLD_BLOCK_KEY_USER: // 50,00%
+                    query.setResult("BLOCK");
+                    query.addUndesirable(timeKey);
+                    break;
+                case HOLD_WHITE_KEY_ADMIN: // 97,64%
+                case HOLD_WHITELISTED: // 97,14%
+                    query.whiteKey(timeKey);
+                    query.setResultFilter("WHITE", filterResult);
+                    query.addDesirable(timeKey);
+                    break;
+                case HOLD_SPF_FAIL: // 50,00%
+                    query.blockKey(timeKey, "SPF_FAIL");
+                case HOLD_BANNED: // 50,00%
+                    query.setResultFilter("BLOCK", filterResult);
+                    query.addHarmful(timeKey);
+                    break;
+                case HOLD_BLOCK_KEY_ADMIN: // 99,93%
+                case HOLD_BLOCKED: // 98,60%
+                case HOLD_SENDER_RED: // 96,97%
+                case HOLD_UNDESIRABLE: // 93,81%
+                case HOLD_RECIPIENT_RESTRICT: // 92,86%
+                case HOLD_ENVELOPE_BLOCKED: // 89,07%
+                case HOLD_HREF_SUSPECT: // 86,84%
+                case HOLD_ENVELOPE_UNDESIRABLE: // 50,00%
+                    query.blockKey(timeKey, filter.name());
+                    query.setResultFilter("BLOCK", filterResult);
+                    query.addUndesirable(timeKey);
+                    break;
+                case HOLD_DOMAIN_EMERGED: // 89,15%
+                case HOLD_RECIPIENT_UNDESIRABLE: // 50,00%
+                    query.setResultFilter("ACCEPT", filterResult);
+                    query.addAcceptable();
+                    break;
+                case HOLD_EXPIRED: // 79,64%
+                case HOLD_SPF_SOFTFAIL: // 76,00%
+                case HOLD_FQDN_RED: // 66,67%
+                    query.setResultFilter("REJECT", filterResult);
+                    query.addUnacceptable();
+                    break;
+                default:
+                    Server.logError("undefined filter: " + filter.name());
+                    query.setResultFilter("ACCEPT", filterResult);
+                    query.addAcceptable();
+            }
+            query.adviseMailerDaemonHOLDING(timeKey);
+            return true;
+        }
+    }
+    
+    private static final int QUERY_MAX = 256;
     
     private synchronized void hairCutQuery() {
         if (queryMap != null && queryMap.size() > QUERY_MAX) {
@@ -465,9 +999,20 @@ public class User implements Serializable, Comparable<User> {
     }
     
     public static void dropAllExpiredQuery() {
-        for (User user : getSet()) {
-            user.dropExpiredQuery();
-            user.hairCutQuery();
+        if (Core.isRunning()) {
+            for (User user : getUserList()) {
+                user.dropExpiredQuery();
+                user.hairCutQuery();
+                user.dropExpiredIdentification();
+            }
+        }
+    }
+    
+    public static void dropAllExpiredDefered() {
+        if (Core.isRunning()) {
+            for (User user : getUserList()) {
+                user.dropExpiredDeferedMap();
+            }
         }
     }
     
@@ -499,7 +1044,7 @@ public class User implements Serializable, Comparable<User> {
     protected boolean addRecipient(String client, String address) {
         if (address == null) {
             return false;
-        } else if (Domain.isValidEmail(address = address.toLowerCase())) {
+        } else if (isValidEmail(address = address.toLowerCase())) {
             Trap.dropSafe(client, address);
             if (addRecipient(address)) {
                 return CHANGED = true;
@@ -521,79 +1066,188 @@ public class User implements Serializable, Comparable<User> {
     /**
      * Mapa de usuário com busca de hash O(1).
      */
-    private static final HashMap<String,User> MAP = new HashMap<>();
+    private static final HashMap<String,Object> MAP = new HashMap<>();
     
     /**
      * Flag que indica se o cache foi modificado.
      */
     private static boolean CHANGED = false;
     
-    public synchronized static User create(String email,
-            String name) throws ProcessException {
-        if (MAP.containsKey(email)) {
+    public synchronized static User create(
+            String email, String name
+    ) throws ProcessException {
+        if (email == null) {
             return null;
         } else {
-            User user = new User(email, name);
-            MAP.put(email, user);
-            CHANGED = true;
-            return user;
+            Object value;
+            while ((value = MAP.get(email.toLowerCase())) instanceof String) {
+                email = (String) value;
+            }
+            if (value instanceof User) {
+                return (User) value;
+            } else {
+                User user = new User(email, name);
+                MAP.put(email, user);
+                CHANGED = true;
+                return user;
+            }
         }
     }
     
-    public synchronized static TreeSet<User> getSet() {
-        TreeSet<User> userSet = new TreeSet<>();
-        userSet.addAll(MAP.values());
-        return userSet;
-    }
-    
-    public synchronized static TreeSet<String> keySet() {
+    public synchronized static TreeSet<String> getKeySet() {
         TreeSet<String> keySet = new TreeSet<>();
         keySet.addAll(MAP.keySet());
         return keySet;
     }
     
-    public synchronized static User drop(String email) {
-        User user = MAP.remove(email);
-        if (user != null) {
-            CHANGED = true;
-        }
-        return user;
+    public synchronized static TreeMap<String,Object> getMap() {
+        TreeMap<String,Object> resultMap = new TreeMap<>();
+        resultMap.putAll(MAP);
+        return resultMap;
     }
     
-    public static TreeSet<User> dropAll() {
-        TreeSet<User> userSet = new TreeSet<>();
-        for (User user : getSet()) {
-            String email = user.getEmail();
-            user = drop(email);
-            if (email != null) {
-                userSet.add(user);
+    public static ArrayList<User> getUserList() {
+        TreeSet<String> keySet = getKeySet();
+        int n = keySet.size();
+        ArrayList<User> userList = new ArrayList<>(n);
+        for (String key : keySet) {
+            Object value = MAP.get(key);
+            if (value instanceof User) {
+                userList.add((User) value);
             }
         }
-        return userSet;
+        return userList;
     }
     
-    public synchronized static User get(String email) {
-        if (email == null) {
-            return null;
-        } else {
-            return MAP.get(email);
+    public synchronized static Object drop(String email) {
+        Object value = MAP.remove(email);
+        if (value != null) {
+            CHANGED = true;
         }
+        return value;
     }
     
-    public synchronized static User clone(String email) {
-        if (email == null) {
-            return null;
-        } else {
-            User user = MAP.get(email);
-            return new User(user);
-        }
-    }
-    
-    public static boolean exists(String email) {
-        if (email == null) {
+    private synchronized static boolean putAlias(String key, String value) {
+        Object oldValue = MAP.put(key, value);
+        if (oldValue instanceof User) {
+            MAP.put(key, oldValue);
             return false;
         } else {
-            return MAP.containsKey(email);
+            return !value.equals(oldValue);
+        }
+    }
+    
+    public static boolean alias(String key, String value) {
+        if ((key = Domain.normalizeEmail(key)) == null) {
+            return false;
+        } else if ((value = Domain.normalizeEmail(value)) == null) {
+            return false;
+        } else {
+            key = key.toLowerCase();
+            value = value.toLowerCase();
+            if (key.equals(value)) {
+                return false;
+            } else {
+                return putAlias(key, value);
+            }
+        }
+    }
+    
+    public static TreeSet<Object> dropAll() {
+        TreeSet<Object> dropSet = new TreeSet<>();
+        for (String key : getKeySet()) {
+            Object value = MAP.get(key);
+            if (value instanceof User) {
+                User user = (User) value;
+                String email = user.getEmail();
+                if (drop(email) != null) {
+                    dropSet.add(user);
+                }
+            } else if (value instanceof String) {
+                String alias = (String) value;
+                if (drop(alias) != null) {
+                    dropSet.add(alias);
+                }
+            }
+        }
+        return dropSet;
+    }
+    
+    public static boolean isAlias(String email) {
+        if ((email = Domain.normalizeEmail(email)) == null) {
+            return false;
+        } else {
+            Object value = MAP.get(email);
+            if (value instanceof User) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+    }
+    
+    public static User getExact(String email) {
+        if ((email = Domain.normalizeEmail(email)) == null) {
+            return null;
+        } else {
+            Object value = MAP.get(email);
+            if (value instanceof User) {
+                return (User) value;
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static User get(String email) {
+        if ((email = Domain.normalizeEmail(email)) == null) {
+            return null;
+        } else {
+            Object value;
+            while ((value = MAP.get(email)) instanceof String) {
+                email = (String) value;
+            }
+            if (value instanceof User) {
+                return (User) value;
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    public static User get(String email, String password) {
+        if ((email = Domain.normalizeEmail(email)) == null) {
+            return null;
+        } else if (password == null) {
+            return null;
+        } else {
+            Object value;
+            while ((value = MAP.get(email)) instanceof String) {
+                email = (String) value;
+            }
+            if (value instanceof User) {
+                User user = (User) value;
+                if (user.isValidPassword(password)) {
+                    return user;
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    private static Object clone(String email) {
+        if (email == null) {
+            return null;
+        } else {
+            Object value = MAP.get(email);
+            if (value instanceof User) {
+                return new User((User) value);
+            } else {
+                return value;
+            }
         }
     }
     
@@ -602,7 +1256,7 @@ public class User implements Serializable, Comparable<User> {
             return false;
         } else {
             for (String email : emailSet) {
-                if (exists(email)) {
+                if (MAP.containsKey(email)) {
                     return true;
                 }
             }
@@ -610,387 +1264,34 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public static synchronized HashMap<String,User> getMap() {
-        HashMap<String,User> map = new HashMap<>();
-        map.putAll(MAP);
-        return map;
-    }
-    
-    public static HashMap<String,User> cloneMap() {
-        HashMap<String,User> map = new HashMap<>();
-        for (String key : keySet()) {
-            User user = clone(key);
-            map.put(key, user);
-        }
-        return map;
-    }
-    
-    protected static void autoInductionWhiteKey() {
-        try {
-            Server.logTrace("starting auto whiteKey.");
-            Connection connection = Core.newConnectionMySQL();
-            if (connection != null) {
-                try {
-                    for (User user : User.getSet()) {
-                        long begin = System.currentTimeMillis();
-                        String command = "SELECT whiteKey\n"
-                                + "FROM user_query\n"
-                                + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 3456000) * 1000)\n"
-                                + "AND user = '" + user.getEmail() + "'\n"
-                                + "GROUP BY whiteKey\n"
-                                + "HAVING MAX(result * 1) = 2\n"
-                                + "AND COUNT(*) > 32\n"
-                                + "AND STD(time) / 86400000 > 7";
-                        try {
-                            Statement statement = connection.createStatement();
-                            statement.setQueryTimeout(600);
-                            ResultSet rs = statement.executeQuery(command);
-                            while (rs.next()) {
-                                String whiteKey = rs.getString(1);
-                                if (White.addExact(user, whiteKey)) {
-                                    Server.logDebug("new WHITE '" + user.getEmail() + ":" + whiteKey + "' added by 'RECURRENCE'.");
-                                }
-                            }
-                        } catch (MySQLTimeoutException ex) {
-                            Server.logMySQL(begin, command, ex);
-                        }
-                    }
-                } finally {
-                    connection.close();
-                    Server.logMySQL("connection closed.");
+    private static HashMap<String,Object> getHashMap() {
+        if (Core.isRunning()) {
+            HashMap<String,Object> map = new HashMap<>();
+            for (String key : getKeySet()) {
+                Object value = clone(key);
+                if (value != null) {
+                    map.put(key, value);
                 }
             }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            Server.logTrace("finished auto whiteKey.");
-        }
-    }
-    
-    protected static void autoInductionBlockKey() {
-        try {
-            Server.logTrace("starting auto blockKey.");
-            Connection connection = Core.newConnectionMySQL();
-            if (connection != null) {
-                try {
-                    for (User user : User.getSet()) {
-                        long begin = System.currentTimeMillis();
-                        String command = "SELECT whiteKey, blockKey\n"
-                                + "FROM user_query\n"
-                                + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 3456000) * 1000)\n"
-                                + "AND user = '" + user.getEmail() + "'\n"
-                                + "GROUP BY whiteKey, blockKey\n"
-                                + "HAVING MIN(result * 1) BETWEEN 3 AND 12\n"
-                                + "AND MAX(result * 1) > 6\n"
-                                + "AND COUNT(*) > 32\n"
-                                + "AND STD(time) / 86400000 > 7";
-                        try {
-                            Statement statement = connection.createStatement();
-                            statement.setQueryTimeout(600);
-                            ResultSet rs = statement.executeQuery(command);
-                            while (rs.next()) {
-                                String whiteKey = rs.getString(1);
-                                String blockKey = rs.getString(2);
-                                boolean white = White.containsExtact(user, whiteKey);
-                                if (!white && Block.addExact(user, blockKey)) {
-                                    Server.logDebug("new BLOCK '" + user.getEmail() + ":" + blockKey + "' added by 'RECURRENCE'.");
-                                }
-                            }
-                        } catch (MySQLTimeoutException ex) {
-                            Server.logMySQL(begin, command, ex);
-                        }
-                    }
-                } finally {
-                    connection.close();
-                    Server.logMySQL("connection closed.");
-                }
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            Server.logTrace("finished auto blockKey.");
-        }
-    }
-    
-    public static void autoInductionBlockSMTP() {
-        try {
-            Server.logTrace("starting auto block SMTP.");
-            Connection connection = Core.newConnectionMySQL();
-            if (connection != null) {
-                try {
-                    for (User user : User.getSet()) {
-                        if (user.isUsingHeader()) {
-                            TreeMap<String,BinomialDistribution> binomialMap = new TreeMap<>();
-                            TreeMap<String,Long> beginMap = new TreeMap<>();
-                            TreeMap<String,Long> endMap = new TreeMap<>();
-                            String userEmail = user.getEmail();
-                            long time = System.currentTimeMillis();
-                            String command = "SELECT ip, sender, "
-                                    + "IF(hostname = '', null, hostname) AS hostname, "
-                                    + "qualifier, recipient,\n"
-                                    + "SUM((result * 1) < 3) AS ham,\n"
-                                    + "SUM((result * 1) > 6) AS spam,\n"
-                                    + "MIN(time) AS begin,\n"
-                                    + "MAX(time) AS end\n"
-                                    + "FROM user_query\n"
-                                    + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 7776000) * 1000)\n"
-                                    + "AND user = '" + userEmail + "'\n"
-                                    + "GROUP BY ip, sender, hostname, qualifier, recipient";
-                            try {
-                                Statement statement = connection.createStatement();
-                                statement.setQueryTimeout(600);
-                                ResultSet rs = statement.executeQuery(command);
-                                while (rs.next()) {
-                                    String ip = rs.getString("ip");
-                                    String sender = rs.getString("sender");
-                                    String hostname = rs.getString("hostname");
-                                    String qualifier = rs.getString("qualifier");
-                                    String recipient = rs.getString("recipient");
-                                    int ham = rs.getInt("ham");
-                                    int spam = rs.getInt("spam");
-                                    long begin = rs.getLong("begin");
-                                    long end = rs.getLong("end");
-                                    String blockKey = Block.keySMTP(
-                                            userEmail, ip, sender,
-                                            hostname, qualifier, recipient
-                                    );
-                                    BinomialDistribution distribution = binomialMap.get(blockKey);
-                                    if (distribution == null) {
-                                        distribution = new BinomialDistribution();
-                                        binomialMap.put(blockKey, distribution);
-                                    }
-                                    distribution.addFailure(ham);
-                                    distribution.addSucess(spam);
-                                    Long beginMin = beginMap.get(blockKey);
-                                    if (beginMin == null || begin < beginMin) {
-                                        beginMap.put(blockKey, begin);
-                                    }
-                                    Long endMax = endMap.get(blockKey);
-                                    if (endMax == null || end > endMax) {
-                                        endMap.put(blockKey, end);
-                                    }
-                                }
-                                for (String blockKey : binomialMap.keySet()) {
-                                    BinomialDistribution distribution = binomialMap.get(blockKey);
-                                    if (distribution.getFailure() == 0) {
-                                        if (distribution.getSucess() > 32) {
-                                            long beginMin = beginMap.get(blockKey);
-                                            long endMax = endMap.get(blockKey);
-                                            long diff = endMax - beginMin;
-                                            long diffMin = Server.WEEK_TIME * 3;
-                                            if (diff > diffMin && Block.addExact(blockKey)) {
-                                                Server.logDebug("new BLOCK '" + blockKey + "' added by 'RECURRENCE'.");
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (MySQLTimeoutException ex) {
-                                Server.logMySQL(time, command, ex);
-                            } catch (Exception ex) {
-                                Server.logError(ex);
-                            }
-                        }
-                    }
-                } finally {
-                    connection.close();
-                    Server.logMySQL("connection closed.");
-                }
-            }
-        } catch (Exception ex) {
-            Server.logError(ex);
-        } finally {
-            Server.logTrace("finished auto block SMTP.");
-        }
-    }
-    
-    private static ArrayList<String[]> getHREFInductionList(User user) {
-        if (user == null) {
-            return null;
-        } else if (user.isUsingHeader()) {
-            try {
-                Connection connection = Core.newConnectionMySQL();
-                if (connection == null) {
-                    return null;
-                } else {
-                    long begin = System.currentTimeMillis();
-                    String command = "SELECT whiteKey, blockKey, linkMap FROM user_query\n"
-                            + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 3456000) * 1000)\n"
-                            + "AND user = '" + user.getEmail() + "'\n"
-                            + "AND linkMap IS NOT NULL\n"
-                            + "ORDER BY time DESC\n"
-                            + "LIMIT 100000";
-                    try {
-                        ArrayList<String[]> rowList = new ArrayList<>();
-                        try (Statement statement = connection.createStatement()) {
-                            statement.setQueryTimeout(600);
-                            ResultSet rs = statement.executeQuery(command);
-                            while (rs.next()) {
-                                String[] queryRow = new String[3];
-                                queryRow[0] = rs.getString(1);
-                                queryRow[1] = rs.getString(2);
-                                queryRow[2] = rs.getString(3);
-                                rowList.add(queryRow);
-                            }
-                            return rowList;
-                        } catch (SQLException ex) {
-                            Server.logMySQL(begin, command, ex);
-                            return null;
-                        } catch (Exception ex) {
-                            Server.logError(ex);
-                            return null;
-                        }
-                    } finally {
-                        connection.close();
-                        Server.logMySQL("connection closed.");
-                    }
-                }
-            } catch (Exception ex) {
-                Server.logError(ex);
-                return null;
-            }
+            return map;
         } else {
-            return null;
+            return MAP;
         }
-    }
-    
-    protected static void autoInductionHREF() {
-        Server.logTrace("starting auto block HREF.");
-        TreeSet<String> adminTokenSet = new TreeSet<>();
-        TreeSet<String> userTokenSet = new TreeSet<>();
-        TreeMap<String,TreeSet<String>> ipMap = new TreeMap<>();
-        TreeMap<String,BinomialDistribution> binomialMap = new TreeMap<>();
-        for (User user : User.getSet()) {
-            ArrayList<String[]> queryList = getHREFInductionList(user);
-            if (queryList != null) {
-                for (String[] queryRow : queryList) {
-                    String whiteKey = queryRow[0];
-                    String blockKey = queryRow[1];
-                    String linkMap = queryRow[2];
-                    boolean white = White.containsExtact(user, whiteKey);
-                    boolean block = !white && Block.containsExact(user, blockKey);
-                    if (white || block) {
-                        TreeMap<String,Boolean> map = Core.getTreeMapBoolean(linkMap, ";");
-                        TreeSet<String> expandedSet = new TreeSet<>();
-                        for (String link : map.keySet()) {
-                            if (Core.isSignatureURL(link)) {
-                                link = Core.getSignatureHostnameURL(link);
-                            }
-                            if (!Ignore.contains(link)) {
-                                String ownerID = null;
-                                String generic = null;
-                                if (Subnet.isValidIP(link)) {
-                                    expandedSet.add("HREF=" + link);
-                                } else if (link.contains("@")) {
-                                    expandedSet.add("HREF=" + link);
-                                    String host = Domain.extractHost(link, true);
-                                    if (!Provider.containsMX(host)) {
-                                        expandedSet.add("HREF=" + host);
-                                        expandedSet.add("HREF=" + Domain.extractDomainSafeNotNull(link, true));
-                                        expandedSet.add("HREF=" + Domain.extractTLDSafeNotNull(link, true));
-                                        ownerID = Domain.getOwnerID(link);
-                                    }
-                                } else if ((generic = Generic.findGenericSoft(link)) != null) {
-                                    while (generic.contains("#") || generic.contains(".H.")) {
-                                        int index = generic.indexOf('.', 1);
-                                        if (index == -1) {
-                                            generic = null;
-                                            break;
-                                        } else {
-                                            generic = generic.substring(index);
-                                        }
-                                    }
-                                    if (generic != null) {
-                                        expandedSet.add("HREF=" + generic);
-                                    }
-                                } else if (ipMap.containsKey(link)) {
-                                    expandedSet.add("HREF=." + link);
-                                    expandedSet.add("HREF=" + Domain.extractDomainSafeNotNull(link, true));
-                                    expandedSet.add("HREF=" + Domain.extractTLDSafeNotNull(link, true));
-                                    for (String ip : ipMap.get(link)) {
-                                         expandedSet.add("HREF=" + ip);
-                                    }
-                                    ownerID = Domain.getOwnerID(link);
-                                } else {
-                                    expandedSet.add("HREF=." + link);
-                                    expandedSet.add("HREF=" + Domain.extractDomainSafeNotNull(link, true));
-                                    expandedSet.add("HREF=" + Domain.extractTLDSafeNotNull(link, true));
-                                    ipMap.put(link, Reverse.getAddressSetSafe(link));
-                                    for (String ip : ipMap.get(link)) {
-                                         expandedSet.add("HREF=" + ip);
-                                    }
-                                    ownerID = Domain.getOwnerID(link);
-                                }
-                                if (ownerID != null) {
-                                    expandedSet.add("HREF=" + ownerID);
-                                }
-                            }
-                        }
-                        for (String token : expandedSet) {
-                            for (int i = 0; i < 2; i++) {
-                                BinomialDistribution distribution = binomialMap.get(token);
-                                if (distribution == null) {
-                                    distribution = new BinomialDistribution();
-                                    binomialMap.put(token, distribution);
-                                }
-                                if (white) {
-                                    distribution.addFailure();
-                                } else if (block) {
-                                    distribution.addSucess();
-                                }
-                                if (i == 0) {
-                                    adminTokenSet.add(token);
-                                    token = user.getEmail() + ":" + token;
-                                    userTokenSet.add(token);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        TreeSet<String> blockSet = new TreeSet<>();
-        for (String token : adminTokenSet) {
-            if (!Domain.isOfficialTLD(token.startsWith("HREF=") ? token.substring(5) : token)) {
-                BinomialDistribution distribution = binomialMap.get(token);
-                if (distribution.getFailure() == 0) {
-                    if (distribution.getSucess() > 32) {
-                        blockSet.add(token);
-                    }
-                }
-            }
-        }
-        for (String token : userTokenSet) {
-            BinomialDistribution distribution = binomialMap.get(token);
-            if (distribution.getFailure() == 0) {
-                if (distribution.getSucess() > 2) {
-                    int index = token.indexOf(':');
-                    String href = token.substring(index + 1);
-                    distribution = binomialMap.get(href);
-                    if (distribution.getFailure() < 3) {
-                        if (distribution.getSucess() > 32) {
-                            blockSet.add(token);
-                        }
-                    }
-                }
-            }
-        }
-        for (String token : blockSet) {
-            try {
-                if (Block.addExact(token)) {
-                    Server.logDebug("new BLOCK '" + token + "' added by 'RECURRENCE'.");
-                }
-            } catch (ProcessException ex) {
-                Server.logError(ex);
-            }
-        }
-        Server.logTrace("finished auto block HREF.");
     }
     
     public static void store() {
+        closeExpiredHistory();
+        removeExpiredHistory();
+        dropAllExpiredQuery();
+        dropAllExpiredDefered();
+        storeMap();
+    }
+    
+    public static void storeMap() {
         if (CHANGED) {
             try {
                 long time = System.currentTimeMillis();
-                HashMap<String,User> map = getMap();
+                HashMap<String,Object> map = getHashMap();
                 File fileTemp = new File("./data/.user.map");
                 int attempts = 3;
                 while (attempts-- > 0) {
@@ -1031,6 +1332,7 @@ public class User implements Serializable, Comparable<User> {
                 }
                 for (String key : map.keySet()) {
                     Object value = map.get(key);
+                    key = Domain.normalizeEmail(key);
                     if (value instanceof User) {
                         User user = (User) value;
                         if (user.locale == null) {
@@ -1039,10 +1341,22 @@ public class User implements Serializable, Comparable<User> {
                         if (user.timezone == null) {
                             user.timezone = Core.getDefaultTimeZone(user.email);
                         }
-                        for (long time2 : user.getTimeSet()) {
+                        if (user.password_md5 != null) {
+                            user.otp_transition = null;
+                        }
+                        for (long time2 : user.getTimeKeySet()) {
                             Query query = user.getQuery(time2);
+                            if (query.unsubscribe != null && !query.unsubscribe.getProtocol().matches("^https?$")) {
+                                query.unsubscribe = null;
+                            }
                             if (query.date != null && Math.abs(time2 - query.date.getTime()) > 31104000000L) {
                                 query.date = null;
+                            }
+                            if (query.sender != null && !query.sender.contains("@")) {
+                                query.sender = null;
+                            }
+                            if (query.from != null && !query.from.contains("@")) {
+                                query.from = null;
                             }
                             if (query.CHANGED == null) {
                                 query.CHANGED = new BinarySemaphore(!query.STORED);
@@ -1057,6 +1371,10 @@ public class User implements Serializable, Comparable<User> {
                             }
                         }
                         MAP.put(key, user);
+                    } else if (value instanceof String) {
+                        String alias = (String) value;
+                        alias = Domain.normalizeEmail(alias);
+                        MAP.put(key, alias);
                     }
                 }
                 Server.logLoad(time, file);
@@ -1099,6 +1417,139 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    private HashMap<String,Long> identificationMap = null;
+    
+    public static User getUserByIdentification(
+            String messageID, String queueID, String fqdn
+    ) {
+        if (messageID == null) {
+            return null;
+        } else if (queueID == null) {
+            return null;
+        } else if (fqdn == null) {
+            return null;
+        } else {
+            for (User user : getUserList()) {
+                Long timeKey = user.getTimeByIdentification(messageID);
+                Query query = user.getQuery(timeKey);
+                if (query == null) {
+                    timeKey = user.getTimeByIdentification(queueID, fqdn);
+                    query = user.getQuery(timeKey);
+                }
+                if (query != null) {
+                    if (query.isMessageID(messageID)) {
+                        return user;
+                    } else if (query.isQueueID(fqdn, queueID)) {
+                        return user;
+                    }
+                }
+            }
+            return null;
+        }
+    }
+    
+    public synchronized Long getTimeByIdentification(String messageID) {
+        if (messageID == null) {
+            return null;
+        } else if (identificationMap == null) {
+            return null;
+        } else {
+            return identificationMap.get(messageID);
+        }
+    }
+    
+    public synchronized Long getTimeByIdentification(String queueID, String fqdn) {
+        if (queueID == null) {
+            return null;
+        } else if (fqdn == null) {
+            return null;
+        } else if (identificationMap == null) {
+            return null;
+        } else {
+            return identificationMap.get(queueID + '@' + fqdn);
+        }
+    }
+    
+    public synchronized boolean putIdentification(String messageID, Long timeKey) {
+        if (messageID == null) {
+            return false;
+        } else if (timeKey == null) {
+            return false;
+        } else {
+            if (identificationMap == null) {
+                identificationMap = new HashMap<>();
+            }
+            Long oldValue = identificationMap.put(messageID, timeKey);
+            if (oldValue == null) {
+                return CHANGED = true;
+            } else if (oldValue.equals(timeKey)) {
+                return false;
+            } else {
+                return CHANGED = true;
+            }
+        }
+    }
+    
+    public synchronized boolean putIdentification(String queueID, String fqdn, long timeKey) {
+        if (queueID == null) {
+            return false;
+        } else if (fqdn == null) {
+            return false;
+        } else {
+            if (identificationMap == null) {
+                identificationMap = new HashMap<>();
+            }
+            Long oldValue = identificationMap.put(queueID + '@' + fqdn, timeKey);
+            if (oldValue == null) {
+                return CHANGED = true;
+            } else if (oldValue.equals(timeKey)) {
+                return false;
+            } else {
+                return CHANGED = true;
+            }
+        }
+    }
+    
+    private synchronized boolean dropIdentification(String messageID) {
+        if (messageID == null) {
+            return false;
+        } else if (identificationMap == null) {
+            return false;
+        } else {
+            Long oldValue = identificationMap.remove(messageID);
+            if (oldValue == null) {
+                return false;
+            } else if (identificationMap.isEmpty()) {
+                identificationMap = null;
+                return CHANGED = true;
+            } else {
+                return CHANGED = true;
+            }
+        }
+    }
+    
+    private void dropExpiredIdentification() {
+        HashMap<String,Long> idMap = cloneIdentificationMap();
+        if (idMap != null) {
+            for (String messageID : idMap.keySet()) {
+                long timeKey = idMap.get(messageID);
+                if (System.currentTimeMillis() - timeKey > Server.WEEK_TIME) {
+                    dropIdentification(messageID);
+                }
+            }
+        }
+    }
+    
+    private synchronized HashMap<String,Long> cloneIdentificationMap() {
+        if (identificationMap == null) {
+            return null;
+        } else {
+            HashMap<String,Long> resultMap = new HashMap<>();
+            resultMap.putAll(identificationMap);
+            return resultMap;
+        }
+    }
+    
     /**
      * Registro de consultas.
      */
@@ -1106,6 +1557,7 @@ public class User implements Serializable, Comparable<User> {
     
     public User.Query addQuery(
             long time,
+            InetAddress clientIP,
             Client client,
             String ip,
             String helo,
@@ -1113,8 +1565,10 @@ public class User implements Serializable, Comparable<User> {
             String sender,
             String qualifier,
             String recipient,
+            String subaddress,
             TreeSet<String> tokenSet,
-            String result
+            String result,
+            String filter
     ) {
         SPF.Qualifier qualifierEnum;
         try {
@@ -1122,14 +1576,65 @@ public class User implements Serializable, Comparable<User> {
         } catch (Exception ex) {
             qualifierEnum = null;
         }
-        if (client == null) {
-            return addQuery(time, this.getDomain(), ip, helo, hostname, sender,
-                    qualifierEnum, recipient, tokenSet, result
+        String fqdn;
+        if (client != null) {
+            return addQuery(
+                    time, clientIP, client, ip, helo, hostname, sender,
+                    qualifierEnum, recipient, subaddress, tokenSet,
+                    result, filter
+            );
+        } else if ((fqdn = FQDN.getFQDN(clientIP, false)) != null) {
+            return addQuery(
+                    time, fqdn, ip, helo, hostname, sender,
+                    qualifierEnum, recipient, subaddress, tokenSet,
+                    result, filter
             );
         } else {
-            return addQuery(time, client.getDomain(), ip, helo, hostname, sender,
-                    qualifierEnum, recipient, tokenSet, result
+            return addQuery(
+                    time, this.getDomain(), ip, helo, hostname, sender,
+                    qualifierEnum, recipient, subaddress, tokenSet,
+                    result, filter
             );
+        }
+    }
+    
+    public User.Query addQuery(
+            long time,
+            InetAddress clientIP,
+            Client client,
+            String ip,
+            String helo,
+            String hostname,
+            String sender,
+            SPF.Qualifier qualifier,
+            String recipient,
+            String subaddress,
+            TreeSet<String> tokenSet,
+            String result,
+            String filter
+    ) {
+        try {
+            String clientFQDN = FQDN.getFQDN(clientIP, false);
+            Query query = new Query(
+                    clientFQDN,
+                    client,
+                    ip,
+                    helo,
+                    hostname,
+                    sender,
+                    qualifier,
+                    recipient,
+                    subaddress,
+                    tokenSet,
+                    result,
+                    filter
+            );
+            putQuery(time, query);
+            storeDB(time, query);
+            return query;
+        } catch (ProcessException ex) {
+            Server.logError(ex);
+            return null;
         }
     }
     
@@ -1142,8 +1647,10 @@ public class User implements Serializable, Comparable<User> {
             String sender,
             SPF.Qualifier qualifier,
             String recipient,
+            String subaddress,
             TreeSet<String> tokenSet,
-            String result
+            String result,
+            String filter
     ) {
         try {
             Query query = new Query(
@@ -1154,8 +1661,10 @@ public class User implements Serializable, Comparable<User> {
                     sender,
                     qualifier,
                     recipient,
+                    subaddress,
                     tokenSet,
-                    result
+                    result,
+                    filter
             );
             putQuery(time, query);
             storeDB(time, query);
@@ -1166,42 +1675,134 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public User.Query newQuery(
+            String client,
+            String ip,
+            String helo,
+            String fqdn,
+            String sender,
+            SPF.Qualifier qualifier,
+            String recipient,
+            String subaddress,
+            TreeSet<String> tokenSet,
+            String result,
+            String from,
+            String replyTo,
+            Date date,
+            URL unsubscribe,
+            TreeSet<String> signerSet,
+            String subject,
+            String messageID,
+            String queueID,
+            Date arrival
+    ) {
+        return new Query(
+                client, ip, helo, fqdn, sender, qualifier, recipient, subaddress,
+                tokenSet, result, from, replyTo, date, unsubscribe,
+                signerSet, subject, messageID, queueID, arrival
+        );
+    }
+    
+    public static TreeMap<Long,Query> getQueries(
+            String email, long timeKey, String blockKey
+    ) throws Exception {
+        if (blockKey == null) {
+            return null;
+        } else {
+            TreeMap<Long,Query> resultMap = new TreeMap<>();
+            for (User user : getUserList()) {
+                if (user.isEmail(email)) {
+                    Query query = user.getQuerySafe(timeKey);
+                    if (query != null) {
+                        resultMap.put(timeKey, query);
+                    }
+                }
+                for (long timeKey2 : user.getTimeKeySet()) {
+                    Query query = user.getQuery(timeKey2);
+                    if (query != null) {
+                        if (timeKey == timeKey2) {
+                            resultMap.put(timeKey2, query);
+                        } else if (query.isHolding() && blockKey.equals(query.getBlockKey())) {
+                            resultMap.put(timeKey2, query);
+                        }
+                    }
+                }
+            }
+            return resultMap;
+        }
+    }
+    
     public TreeMap<Long,Query> getQueryMap(
             Long begin, String filter
     ) {
+        long timeLast = begin == null ? System.currentTimeMillis() : begin;
         TreeMap<Long,Query> resultMap = new TreeMap<>();
-        if (begin == null) {
-            TreeMap<Long,Query> queryLocalMap;
-            if (isAdmin()) {
-                queryLocalMap = getAllQueryHeadMap(begin);
-            } else {
-                queryLocalMap = getQueryHeadMap(begin);
-            }
-            long timeRED;
-            if (Core.hasMySQL()) {
-                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                timeRED = System.currentTimeMillis() - deferTimeRED;
-            } else {
-                timeRED = 0;
-            }
-            Entry<Long,Query> entry;
-            while ((entry = queryLocalMap.pollLastEntry()) != null) {
-                long time = entry.getKey();
-                if (time > timeRED) {
-                    Query query = entry.getValue();
-                    if (filter == null) {
-                        resultMap.put(time, query);
-                    } else if (filter.length() == 0) {
-                        resultMap.put(time, query);
-                    } else if (query.matchAll(time, filter)) {
-                        resultMap.put(time, query);
-                    }
-                } else {
-                    break;
+        TreeMap<Long,Query> queryLocalMap;
+        if (isAdmin()) {
+            queryLocalMap = getAllQueryHeadMap(begin, 1024);
+        } else {
+            queryLocalMap = getQueryHeadMap(begin, 1024);
+        }
+        long timeRED;
+        if (Core.hasMySQL() || hasHistory()) {
+            long deferTimeRED = Core.getDeferTimeRED() * 60000L;
+            timeRED = System.currentTimeMillis() - deferTimeRED;
+        } else {
+            timeRED = 0;
+        }
+        Entry<Long,Query> entry;
+        while ((entry = queryLocalMap.pollLastEntry()) != null) {
+            long timeKey = entry.getKey();
+            if (timeKey > timeRED) {
+                Query query = entry.getValue();
+                if (filter == null) {
+                    resultMap.put(timeKey, query);
+                } else if (filter.length() == 0) {
+                    resultMap.put(timeKey, query);
+                } else if (query.matchAll(timeKey, filter)) {
+                    resultMap.put(timeKey, query);
                 }
+            } else {
+                break;
             }
         }
         boolean finished = false;
+        if (resultMap.isEmpty() && hasHistory()) {
+            long start = System.currentTimeMillis();
+            long end;
+            long dayKey = (begin == null ? start : begin) / Server.DAY_TIME;
+            long dayMin = (start / Server.DAY_TIME) - HISTORY_EXPIRES;
+            try {
+                do {
+                    timeLast = dayKey * Server.DAY_TIME;
+                    History history = getHistoryByDay(dayKey);
+                    if (history == null) {
+                        break;
+                    } else {
+                        for (long timeKey : history.getTimeKeySet(User.this)) {
+                            if (begin == null || timeKey < begin) {
+                                Query query = history.load(this, timeKey);
+                                if (query != null) {
+                                    if (filter == null) {
+                                        resultMap.put(timeKey, query);
+                                    } else if (filter.length() == 0) {
+                                        resultMap.put(timeKey, query);
+                                    } else if (query.matchAll(timeKey, filter)) {
+                                        resultMap.put(timeKey, query);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    dayKey--;
+                    end = System.currentTimeMillis();
+                } while (dayKey >= dayMin && resultMap.size() < 32 && end - start < 5000);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            } finally {
+                finished = dayKey < dayMin;
+            }
+        }
         if (resultMap.isEmpty() && Core.hasMySQL()) {
             finished = true;
             Date date = null;
@@ -1210,7 +1811,10 @@ public class User implements Serializable, Comparable<User> {
             String domainParam = null;
             boolean rejectedParam = false;
             boolean unsuspectedParam = false;
+            boolean suspectedParam = false;
             boolean whitelistedParam = false;
+            boolean malwareParam = false;
+            boolean trapParam = false;
             if (filter != null) {
                 filter = filter.toLowerCase();
                 StringTokenizer tokenizer = new StringTokenizer(filter, ",");
@@ -1218,8 +1822,8 @@ public class User implements Serializable, Comparable<User> {
                     String token = tokenizer.nextToken();
                     token = token.trim();
                     date = getDate(token, date);
-                    ipParam = Subnet.isValidIP(token) ? Subnet.normalizeIP(token) : ipParam;
-                    if (Domain.isValidEmail(token)) {
+                    ipParam = isValidIP(token) ? Subnet.normalizeIP(token) : ipParam;
+                    if (isValidEmail(token)) {
                         emailParam = token.toLowerCase();
                     } else if (Domain.hasTLD(token)) {
                         domainParam = Domain.normalizeHostname(token, true);
@@ -1234,14 +1838,27 @@ public class User implements Serializable, Comparable<User> {
                             return new TreeMap<>();
                         case "atrasada": case "atrasado": case "delayed":
                         case "atrasadas": case "atrasados":
+                        case "greylisting": case "greylist":
                             return new TreeMap<>();
                         case "insuspeita": case "insuspeito": case "unsuspected":
                         case "insuspeitas": case "insuspeitos":
+                        case "aceita": case "aceitas":
+                        case "aceito": case "aceitos":
                             unsuspectedParam = true;
+                            break;
+                        case "suspeito": case "suspeita":
+                        case "suspeitos": case "suspeitas":
+                        case "flagged": case "junk":
+                        case "suspect": case "suspects": case "suspected":
+                            suspectedParam = true;
                             break;
                         case "confiavel": case "confiaveis": case "whitelisted":
                         case "confiável": case "confiáveis":
                             whitelistedParam = true;
+                        case "malware": case "virus": case "vírus":
+                            malwareParam = true;
+                        case "trap": case "spamtrap":
+                            trapParam = true;
                     }
                 }
             }
@@ -1267,7 +1884,10 @@ public class User implements Serializable, Comparable<User> {
                     + (isAdmin() ? "" : "AND user = '" + getEmail() + "'\n")
                     + (rejectedParam ? "AND result IN('BLOCK','REJECT')\n" : "")
                     + (unsuspectedParam ? "AND result = 'ACCEPT'\n" : "")
+                    + (suspectedParam ? "AND result = 'FLAG'\n" : "")
                     + (whitelistedParam ? "AND result = 'WHITE'\n" : "")
+                    + (trapParam ? "AND result = 'TRAP'\n" : "")
+                    + (malwareParam ? "AND malware IS NOT NULL\n" : "")
                     + (ipParam == null ? "" : "AND ip = '" + ipParam + "'\n")
                     + (emailParam == null ? "" : ""
                     + "AND (sender = '" + emailParam + "' "
@@ -1275,7 +1895,8 @@ public class User implements Serializable, Comparable<User> {
                     + "OR replyto = '" + emailParam + "' "
                     + "OR recipient = '" + emailParam + "')\n")
                     + (domainParam == null ? "" : ""
-                    + "AND (helo = '" + domainParam.substring(1) + "' "
+                    + "AND (client = '" + domainParam + "' "
+                    + "OR helo = '" + domainParam.substring(1) + "' "
                     + "OR hostname = '" + domainParam.substring(1) + "' "
                     + "OR sender LIKE '%@" + domainParam.substring(1) + "' "
                     + "OR mailFrom LIKE '%@" + domainParam.substring(1) + "' "
@@ -1329,7 +1950,7 @@ public class User implements Serializable, Comparable<User> {
         }
         if (!finished) {
             if (resultMap.isEmpty()) {
-                resultMap.put(System.currentTimeMillis(), null);
+                resultMap.put(timeLast - 1, null);
             } else {
                 long firstKey = resultMap.firstKey();
                 resultMap.put(firstKey - 1, null);
@@ -1348,55 +1969,101 @@ public class User implements Serializable, Comparable<User> {
     }
     
     public static Entry<Long,Query> getQueryEntry(String ticket) {
-        try {
-            byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
-            if (byteArray.length > 8) {
-                long date = byteArray[7] & 0xFF;
-                date <<= 8;
-                date += byteArray[6] & 0xFF;
-                date <<= 8;
-                date += byteArray[5] & 0xFF;
-                date <<= 8;
-                date += byteArray[4] & 0xFF;
-                date <<= 8;
-                date += byteArray[3] & 0xFF;
-                date <<= 8;
-                date += byteArray[2] & 0xFF;
-                date <<= 8;
-                date += byteArray[1] & 0xFF;
-                date <<= 8;
-                date += byteArray[0] & 0xFF;
-                if (System.currentTimeMillis() - date > 432000000) {
-                    return null;
-                } else {
-                    ticket = Core.decodeHuffman(byteArray, 8);
-                    StringTokenizer tokenizer = new StringTokenizer(ticket, " ");
-                    while (tokenizer.hasMoreTokens()) {
-                        String token = tokenizer.nextToken();
-                        if (token.endsWith(":")) {
-                            int endIndex = token.length() - 1;
-                            token = token.substring(0, endIndex);
-                            if (Domain.isValidEmail(token)) {
-                                User user = User.get(token);
-                                if (user == null) {
+        byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
+        if (byteArray == null) {
+            return null;
+        } else if (byteArray.length > 8) {
+            long date = byteArray[7] & 0xFF;
+            date <<= 8;
+            date += byteArray[6] & 0xFF;
+            date <<= 8;
+            date += byteArray[5] & 0xFF;
+            date <<= 8;
+            date += byteArray[4] & 0xFF;
+            date <<= 8;
+            date += byteArray[3] & 0xFF;
+            date <<= 8;
+            date += byteArray[2] & 0xFF;
+            date <<= 8;
+            date += byteArray[1] & 0xFF;
+            date <<= 8;
+            date += byteArray[0] & 0xFF;
+            if (System.currentTimeMillis() - date > 432000000) {
+                return null;
+            } else {
+                ticket = Core.decodeHuffman(byteArray, 8);
+                StringTokenizer tokenizer = new StringTokenizer(ticket, " ");
+                while (tokenizer.hasMoreTokens()) {
+                    String token = tokenizer.nextToken();
+                    if (token.endsWith(":")) {
+                        int endIndex = token.length() - 1;
+                        token = token.substring(0, endIndex);
+                        if (isValidEmail(token)) {
+                            User user = User.get(token);
+                            if (user == null) {
+                                return null;
+                            } else {
+                                Query query = user.getQuery(date);
+                                if (query == null) {
                                     return null;
                                 } else {
-                                    Query query = user.getQuery(date);
-                                    if (query == null) {
-                                        return null;
-                                    } else {
-                                        return new AbstractMap.SimpleEntry<>(date, query);
-                                    }
+                                    return new AbstractMap.SimpleEntry<>(date, query);
                                 }
                             }
                         }
                     }
-                    return null;
                 }
-            } else {
                 return null;
             }
-        } catch (ProcessException ex) {
+        } else {
+            return null;
+        }
+    }
+    
+    public static Entry<Long,Query> getQueryEntrySafe(String ticket) {
+        byte[] byteArray = Server.decryptToByteArrayURLSafe(ticket);
+        if (byteArray == null) {
+            return null;
+        } else if (byteArray.length > 8) {
+            long date = byteArray[7] & 0xFF;
+            date <<= 8;
+            date += byteArray[6] & 0xFF;
+            date <<= 8;
+            date += byteArray[5] & 0xFF;
+            date <<= 8;
+            date += byteArray[4] & 0xFF;
+            date <<= 8;
+            date += byteArray[3] & 0xFF;
+            date <<= 8;
+            date += byteArray[2] & 0xFF;
+            date <<= 8;
+            date += byteArray[1] & 0xFF;
+            date <<= 8;
+            date += byteArray[0] & 0xFF;
+            ticket = Core.decodeHuffman(byteArray, 8);
+            StringTokenizer tokenizer = new StringTokenizer(ticket, " ");
+            while (tokenizer.hasMoreTokens()) {
+                String token = tokenizer.nextToken();
+                if (token.endsWith(":")) {
+                    int endIndex = token.length() - 1;
+                    token = token.substring(0, endIndex);
+                    if (isValidEmail(token)) {
+                        User user = User.get(token);
+                        if (user == null) {
+                            return null;
+                        } else {
+                            Query query = user.getQuerySafe(date);
+                            if (query == null) {
+                                return null;
+                            } else {
+                                return new AbstractMap.SimpleEntry<>(date, query);
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        } else {
             return null;
         }
     }
@@ -1414,9 +2081,72 @@ public class User implements Serializable, Comparable<User> {
         return new Query(rs);
     }
     
+    public Query getQuery(byte version, DataInput dis) throws Exception {
+        return new Query(version, dis);
+    }
+    
+    public static User getUserFor(InternetAddress address) {
+        if (address == null) {
+            return null;
+        } else {
+            return getUserFor(address.getAddress());
+        }
+    }
+    
+    public static User getUserFor(String email) {
+        if (email == null) {
+            return null;
+        } else {
+            email = email.toLowerCase();
+            User user = User.get(email);
+            if (user == null) {
+                int index = email.indexOf('@');
+                String domain = email.substring(index);
+                user = User.get("postmaster" + domain);
+            }
+            return user;
+        }
+    }
+    
+    public static Query getQuery(User user, Long time) {
+        if (user == null) {
+            return null;
+        } else if (time == null) {
+            return null;
+        } else {
+            return user.getQuerySafe(time);
+        }
+    }
+    
+    public static Query getQuery(String email, long time) {
+        if (email == null) {
+            return null;
+        } else {
+            email = email.toLowerCase();
+            User user = User.get(email);
+            if (user == null) {
+                int index = email.indexOf('@');
+                String domain = email.substring(index);
+                user = User.get("postmaster" + domain);
+            }
+            if (user == null) {
+                return null;
+            } else {
+                return user.getQuerySafe(time);
+            }
+        }
+    }
+    
     public static Query getAnyQuery(long time) {
-        for (User user : User.getSet()) {
+        ArrayList<User> userSet = User.getUserList();
+        for (User user : userSet) {
             Query query = user.getQuery(time);
+            if (query != null) {
+                return query;
+            }
+        }
+        for (User user : userSet) {
+            Query query = user.loadHistory(time);
             if (query != null) {
                 return query;
             }
@@ -1429,7 +2159,7 @@ public class User implements Serializable, Comparable<User> {
             if (connection != null) {
                 try {
                     try (Statement statement = connection.createStatement()) {
-                        statement.setQueryTimeout(3);
+                        statement.setQueryTimeout(5);
                         ResultSet rs = statement.executeQuery(command);
                         if (rs.next()) {
                             String email = rs.getString("user");
@@ -1455,35 +2185,146 @@ public class User implements Serializable, Comparable<User> {
         return null;
     }
     
-    public Query getQuerySafe(long time) {
-        Query query = getQuery(time);
-        if (query == null && Core.hasMySQL()) {
-            long time2 = System.currentTimeMillis();
-            String command = "SELECT * FROM user_query\n"
-                    + "WHERE time = " + time
-                    + (isAdmin() ? "" : "\nAND user = '" + getEmail() + "'");
-            Connection connection = Core.aquireConnectionMySQL();
-            if (connection != null) {
-                try {
-                    try (Statement statement = connection.createStatement()) {
-                        statement.setQueryTimeout(3);
-                        ResultSet rs = statement.executeQuery(command);
-                        if (rs.next()) {
-                            query = new Query(rs);
-                            putQuery(time, query);
-                            Server.logMySQL(time2, command, "FOUND");
-                        } else {
-                            Server.logMySQL(time2, command, "NOT FOUND");
+    public Query getQuerySafe(Long time) {
+        if (time == null) {
+            return null;
+        } else {
+            Query query = getQuery(time);
+            if (query == null) {
+                query = loadHistory(time);
+            }
+            if (query == null && Core.hasMySQL()) {
+                long time2 = System.currentTimeMillis();
+                String command = "SELECT * FROM user_query\n"
+                        + "WHERE time = " + time
+                        + (isAdmin() ? "" : "\nAND user = '" + getEmail() + "'");
+                Connection connection = Core.aquireConnectionMySQL();
+                if (connection != null) {
+                    try {
+                        try (Statement statement = connection.createStatement()) {
+                            statement.setQueryTimeout(5);
+                            ResultSet rs = statement.executeQuery(command);
+                            if (rs.next()) {
+                                query = User.getUserQuery(rs);
+                                putQuery(time, query);
+                                Server.logMySQL(time2, command, "FOUND");
+                            } else {
+                                Server.logMySQL(time2, command, "NOT FOUND");
+                            }
+                        } catch (SQLException ex) {
+                            Server.logMySQL(time2, command, ex);
                         }
-                    } catch (SQLException ex) {
-                        Server.logMySQL(time2, command, ex);
+                    } finally {
+                        Core.releaseConnectionMySQL();
                     }
-                } finally {
-                    Core.releaseConnectionMySQL();
                 }
             }
+            return query;
         }
-        return query;
+    }
+    
+    private HashMap<String,Long> DEFERED_MAP = null;
+    
+    private synchronized HashMap<String,Long> getDeferedMap() {
+        if (DEFERED_MAP == null) {
+            return null;
+        } else {
+            HashMap<String,Long> resultMap = new HashMap<>();
+            resultMap.putAll(DEFERED_MAP);
+            return resultMap;
+        }
+    }
+    
+    private synchronized TreeSet<String> getDeferedKeySet() {
+        TreeSet<String> resultSet = new TreeSet<>();
+        if (DEFERED_MAP != null) {
+            resultSet.addAll(DEFERED_MAP.keySet());
+        }
+        return resultSet;
+    }
+    
+    private synchronized Long removeDeferedTimeKey(String flowKey) {
+        if (flowKey == null) {
+            return null;
+        } else if (DEFERED_MAP == null) {
+            return null;
+        } else {
+            Long timeKey = DEFERED_MAP.remove(flowKey);
+            if (DEFERED_MAP.isEmpty()) {
+                DEFERED_MAP = null;
+            }
+            return timeKey;
+        }
+    }
+    
+    private synchronized Long getDeferedTimeKey(String flowKey) {
+        if (flowKey == null) {
+            return null;
+        } else if (DEFERED_MAP == null) {
+            return null;
+        } else {
+            return DEFERED_MAP.get(flowKey);
+        }
+    }
+    
+    private synchronized boolean putDeferedTimeKey(String flowKey, Long timeKey) {
+        if (flowKey == null) {
+            return true;
+        } else if (timeKey == null) {
+            return false;
+        } else {
+            if (DEFERED_MAP == null) {
+                DEFERED_MAP = new HashMap<>();
+            }
+            return !Objects.equals(
+                    DEFERED_MAP.put(flowKey, timeKey),
+                    timeKey
+            );
+        }
+    }
+    
+    public void dropExpiredDeferedMap() {
+        for (String flowKey : getDeferedKeySet()) {
+            Long timeKey = getDeferedTimeKey(flowKey);
+            if (timeKey != null && System.currentTimeMillis() - timeKey > Server.WEEK_TIME) {
+                removeDeferedTimeKey(flowKey);
+            }
+        }
+    }
+    
+    private static String getDeferedFlowKey(
+            String ip,
+            String hostname,
+            String sender,
+            String recipient
+    ) {
+        if ((ip = Subnet.normalizeIP(ip)) == null) {
+            return null;
+        } else {
+            hostname = Domain.normalizeHostname(hostname, false);
+            String flowKey = (sender == null ? "MAILER-DAEMON" : sender);
+            flowKey += ">" + (hostname == null ? ip : hostname);
+            flowKey += ">" + (recipient == null ? "@" : recipient);
+            return flowKey;
+        }
+    }
+
+    public boolean setDeferedQuery(
+            long timeKey,
+            String ip,
+            String hostname,
+            String sender,
+            String recipient,
+            String result
+    ) {
+        if (result == null) {
+            return false;
+        } else if (result.equals("GREYLIST") || result.equals("LISTED")) {
+            String flowKey = getDeferedFlowKey(ip, hostname, sender, recipient);
+            return putDeferedTimeKey(flowKey, timeKey);
+        } else {
+            return false;
+        }
     }
     
     public Object[] getDeferedQuery(
@@ -1493,21 +2334,19 @@ public class User implements Serializable, Comparable<User> {
             String recipient,
             String newResult
     ) {
-        ip = Subnet.normalizeIP(ip);
-        hostname = Domain.normalizeHostname(hostname, false);
-        long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-        long timeBegin = System.currentTimeMillis() - deferTimeRED;
-        for (long time : getTimeTail(timeBegin).descendingSet()) {
-            User.Query query = getQuery(time);
+        String flowKey = getDeferedFlowKey(ip, hostname, sender, recipient);
+        Long timeKey = removeDeferedTimeKey(flowKey);
+        if (timeKey != null) {
+            Query query = getQuery(timeKey);
             if (query != null) {
                 String oldResult = query.getResult();
                 if (oldResult.equals("GREYLIST") || oldResult.equals("LISTED")) {
                     if (query.isOrigin(ip, hostname) && query.isMailFromTo(sender, recipient)) {
                         if (query.setResult(oldResult, newResult)) {
                             Object[] resultSet = new Object[2];
-                            resultSet[0] = time;
+                            resultSet[0] = timeKey;
                             resultSet[1] = query;
-                            storeDB(time, query);
+                            storeDB(timeKey, query);
                             return resultSet;
                         }
                     }
@@ -1526,15 +2365,49 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
+    public static boolean hasHistory() {
+        File folder = new File("./history/");
+        return folder.exists();
+    }
+    
+    public Query loadHistory(long timeKey) {
+        try {
+            History history = getHistoryByTime(timeKey, false);
+            if (history == null) {
+                return null;
+            } else {
+                return history.load(User.this, timeKey);
+            }
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return null;
+        }
+    }
+    
     public synchronized Query getQuery(long time) {
         if (queryMap == null) {
             return null;
         } else {
-            return queryMap.get(time);
+            Query query = queryMap.get(time);
+            if (query != null) {
+                return query;
+            } else if (isAdmin()) {
+                for (User user : User.getUserList()) {
+                    if (user.queryMap != null) {
+                        query = user.queryMap.get(time);
+                        if (query != null) {
+                            return query;
+                        }
+                    }
+                }
+                return null;
+            } else {
+                return null;
+            }
         }
-    }
+    } 
     
-    public synchronized TreeSet<Long> getTimeSet() {
+    public synchronized TreeSet<Long> getTimeKeySet() {
         if (queryMap == null) {
             return new TreeSet<>();
         } else {
@@ -1556,7 +2429,7 @@ public class User implements Serializable, Comparable<User> {
     
     public TreeSet<Long> getAllTimeSet(long begin, long end) {
         TreeSet<Long> timeSet = new TreeSet<>();
-        for (User user : User.getSet()) {
+        for (User user : User.getUserList()) {
             timeSet.addAll(user.getTimeSet(begin, end));
         }
         return timeSet;
@@ -1582,57 +2455,103 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public static TreeMap<Long,Query> getAllQueryHeadMap(Long begin) {
+    public static TreeMap<Long,Query> getAllQueryHeadMap(Long begin, int limit) {
         TreeMap<Long,Query> resultMap = new TreeMap<>();
-        for (User user : User.getSet()) {
-            resultMap.putAll(user.getQueryHeadMap(begin));
+        for (User user : User.getUserList()) {
+            resultMap.putAll(user.getQueryHeadMap(begin, limit));
         }
         return resultMap;
     }
     
-    public synchronized TreeMap<Long,Query> getQueryHeadMap(Long begin) {
+    public synchronized TreeSet<Long> getQuerySet(Long begin, int limit) {
         if (queryMap == null) {
-            return new TreeMap<>();
+            return new TreeSet<>();
         } else if (begin == null) {
-            TreeMap<Long,Query> resultMap = new TreeMap<>();
-            resultMap.putAll(queryMap);
-            return resultMap;
-        } else {
-            TreeMap<Long,Query> resultMap = new TreeMap<>();
-            resultMap.putAll(queryMap.headMap(begin));
-            return resultMap;
-        }
-    }
-    
-    private synchronized void putQuery(long time, Query query) {
-        if (queryMap == null) {
-            queryMap = new TreeMap<>();
-        }
-        queryMap.put(time, query);
-        CHANGED = true;
-    }
-    
-    private TreeMap<Long,Query> cloneQueryMap() {
-        TreeMap<Long,Query> queryMap = new TreeMap<>();
-        for (long time : getTimeSet()) {
-            Query query = cloneQuery(time);
-            queryMap.put(time, query);
-        }
-        return queryMap;
-    }
-    
-    public String blockByMessageID(String messageID) {
-        if (messageID == null || messageID.length() == 0) {
-            return "INVALID MESSAGE";
-        } else {
-            long timeFound = 0;
-            Query queryFound = null;
-            for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuerySafe(time);
-                if (query != null && query.isMessage(messageID)) {
-                    timeFound = time;
-                    queryFound = query;
+            TreeSet<Long> resultSet = new TreeSet<>();
+            for (long timeKey : queryMap.descendingKeySet()) {
+                if (resultSet.size() < limit) {
+                    resultSet.add(timeKey);
+                } else {
                     break;
+                }
+            }
+            return resultSet;
+        } else {
+            TreeSet<Long> tempSet = new TreeSet<>();
+            tempSet.addAll(queryMap.headMap(begin).keySet());
+            TreeSet<Long> resultSet = new TreeSet<>();
+            for (long timeKey : tempSet.descendingSet()) {
+                if (resultSet.size() < limit) {
+                    resultSet.add(timeKey);
+                } else {
+                    break;
+                }
+            }
+            return resultSet;
+        }
+    }
+    
+    public Query getQuery(Long timeKey) {
+        if (timeKey == null) {
+            return null;
+        } else if (queryMap == null) {
+            return null;
+        } else {
+            return queryMap.get(timeKey);
+        }
+    }
+    
+    public TreeMap<Long,Query> getQueryHeadMap(Long begin, int limit) {
+        TreeMap<Long,Query> resultMap = new TreeMap<>();
+        for (long timeKey : getQuerySet(begin, limit)) {
+            Query query = getQuery(timeKey);
+            if (query == null) {
+                break;
+            } else {
+                resultMap.put(timeKey, query);
+            }
+        }
+        return resultMap;
+    }
+    
+    private synchronized boolean putQuery(long time, Query query) {
+        if (query == null) {
+            return false;
+        } else {
+            if (queryMap == null) {
+                queryMap = new TreeMap<>();
+            }
+            queryMap.put(time, query);
+            return CHANGED = true;
+        }
+    }
+    
+    private TreeMap<Long,Query> cloneQueryMap(User other) {
+        TreeMap<Long,Query> resultMap = new TreeMap<>();
+        for (long time : getTimeKeySet()) {
+            Query query = getQuery(time);
+            if (query != null) {
+                resultMap.put(time, other.cloneQuery(query));
+            }
+        }
+        return resultMap;
+    }
+    
+    public Entry<Long,Query> getByMessageID(String messageID) {
+        if (messageID == null || messageID.length() == 0) {
+            return null;
+        } else {
+            Long timeFound = getTimeByIdentification(messageID);
+            Query queryFound = getQuerySafe(timeFound);
+            if (queryFound == null) {
+                for (long time : getTimeKeySet().descendingSet()) {
+                    Query query = getQuerySafe(time);
+                    if (query != null && query.isMessage(messageID)) {
+                        timeFound = time;
+                        queryFound = query;
+                        putIdentification(messageID, time);
+                        break;
+                    }
                 }
             }
             if (queryFound == null && Core.hasMySQL()) {
@@ -1647,11 +2566,12 @@ public class User implements Serializable, Comparable<User> {
                 if (connection != null) {
                     try {
                         try (Statement statement = connection.createStatement()) {
-                            statement.setQueryTimeout(3);
+                            statement.setQueryTimeout(5);
                             ResultSet rs = statement.executeQuery(command);
                             if (rs.next()) {
                                 timeFound = rs.getLong("time");
                                 queryFound = new Query(rs);
+                                putIdentification(messageID, timeFound);
                                 Server.logMySQL(time2, command, "FOUND");
                             } else {
                                 Server.logMySQL(time2, command, "NOT FOUND");
@@ -1664,26 +2584,83 @@ public class User implements Serializable, Comparable<User> {
                     }
                 }
             }
+            if (timeFound == null) {
+                return null;
+            } else if (queryFound == null) {
+                return null;
+            } else {
+                return new SimpleImmutableEntry<>(timeFound, queryFound);
+            }
+        }
+    }
+    
+    public String blockByMessageID(String messageID) {
+        if (messageID == null || messageID.length() == 0) {
+            return "INVALID MESSAGE";
+        } else {
+            Long timeFound = getTimeByIdentification(messageID);
+            Query queryFound = getQuerySafe(timeFound);
             if (queryFound == null) {
+                for (long time : getTimeKeySet().descendingSet()) {
+                    Query query = getQuerySafe(time);
+                    if (query != null && query.isMessage(messageID)) {
+                        timeFound = time;
+                        queryFound = query;
+                        putIdentification(messageID, time);
+                        break;
+                    }
+                }
+            }
+            if (queryFound == null && Core.hasMySQL()) {
+                long time2 = System.currentTimeMillis();
+                String command = "SELECT * FROM user_query\n"
+                        + "WHERE time > ((UNIX_TIMESTAMP(CURRENT_TIMESTAMP) - 604800) * 1000)\n"
+                        + "AND messageID = '" + messageID + "'\n"
+                        + "AND user = '" + getEmail() + "'\n"
+                        + "ORDER BY time DESC\n"
+                        + "LIMIT 1";
+                Connection connection = Core.aquireConnectionMySQL();
+                if (connection != null) {
+                    try {
+                        try (Statement statement = connection.createStatement()) {
+                            statement.setQueryTimeout(5);
+                            ResultSet rs = statement.executeQuery(command);
+                            if (rs.next()) {
+                                timeFound = rs.getLong("time");
+                                queryFound = new Query(rs);
+                                putIdentification(messageID, timeFound);
+                                Server.logMySQL(time2, command, "FOUND");
+                            } else {
+                                Server.logMySQL(time2, command, "NOT FOUND");
+                            }
+                        } catch (SQLException ex) {
+                            Server.logMySQL(time2, command, ex);
+                        }
+                    } finally {
+                        Core.releaseConnectionMySQL();
+                    }
+                }
+            }
+            if (timeFound == null || queryFound == null) {
                 return "MESSAGE NOT FOUND";
-            } else if (queryFound.isWhiteKey() && queryFound.isGreen()) {
-                if (queryFound.complain(timeFound)) {
+            } else if (queryFound.isWhiteKey() && queryFound.isDesirable()) {
+                if (queryFound.setSpam(timeFound)) {
                     return "COMPLAINED " + queryFound.getTokenSet();
                 } else {
                     return "ALREADY COMPLAINED";
                 }
-            } else if (queryFound.hasTokenRed()) {
-                if (queryFound.blockKey(timeFound)) {
+            } else if (queryFound.isHarmful()) {
+                if (queryFound.blockKey(timeFound, "HARMFUL")) {
                     return "BLOCKED " + queryFound.getBlockKey();
-                } else if (queryFound.complain(timeFound)) {
+                } else if (queryFound.setSpam(timeFound)) {
                     return "COMPLAINED " + queryFound.getTokenSet();
                 } else {
                     return "ALREADY COMPLAINED";
                 }
             } else if (queryFound.blockForRecipient(timeFound)) {
-                queryFound.complain(timeFound);
+                queryFound.setSpam(timeFound);
                 return "BLOCKED " + queryFound.getBlockKey() + ">" + queryFound.getRecipient();
-            } else if (queryFound.complain(timeFound)) {
+            } else if (queryFound.setSpam(timeFound)) {
                 return "COMPLAINED " + queryFound.getTokenSet();
             } else {
                 return "ALREADY COMPLAINED";
@@ -1708,7 +2685,7 @@ public class User implements Serializable, Comparable<User> {
             } else {
                 TreeSet<String> blockKeySet = new TreeSet<>();
                 TreeMap<Long,Query> queryMap = new TreeMap<>();
-                for (long time : getTimeSet().descendingSet()) {
+                for (long time : getTimeKeySet().descendingSet()) {
                     Query query = getQuerySafe(time);
                     if (query != null && query.isSubject(subject)) {
                         queryMap.put(time, query);
@@ -1718,24 +2695,24 @@ public class User implements Serializable, Comparable<User> {
                 if (blockKeySet.size() == 1) {
                     long time = queryMap.firstKey();
                     Query query = queryMap.get(time);
-                    if (query.isWhiteKey() && query.isGreen()) {
-                        if (query.complain(time)) {
+                    if (query.isWhiteKey() && query.isDesirable()) {
+                        if (query.setSpam(time)) {
                             return "COMPLAINED " + query.getTokenSet();
                         } else {
                             return "ALREADY COMPLAINED";
                         }
-                    } else if (query.hasTokenRed()) {
-                        if (query.blockKey(time)) {
+                    } else if (query.isHarmful()) {
+                        if (query.blockKey(time, "HARMFUL")) {
                             return "BLOCKED " + query.getBlockKey();
-                        } else if (query.complain(time)) {
+                        } else if (query.setSpam(time)) {
                             return "COMPLAINED " + query.getTokenSet();
                         } else {
                             return "ALREADY COMPLAINED";
                         }
                     } else if (query.blockForRecipient(time)) {
-                        query.complain(time);
+                        query.setSpam(time);
                         return "BLOCKED " + query.getBlockKey() + ">" + query.getRecipient();
-                    } else if (query.complain(time)) {
+                    } else if (query.setSpam(time)) {
                         return "COMPLAINED " + query.getTokenSet();
                     } else {
                         return "ALREADY COMPLAINED";
@@ -1751,7 +2728,7 @@ public class User implements Serializable, Comparable<User> {
         if (messageID == null || messageID.length() == 0) {
             return "INVALID MESSAGE";
         } else {
-            for (User user : User.getSet()) {
+            for (User user : User.getUserList()) {
                 String result = user.whiteByMessageID(messageID);
                 if (!result.equals("NOT FOUND")) {
                     return result;
@@ -1765,7 +2742,7 @@ public class User implements Serializable, Comparable<User> {
         if (messageID == null || messageID.length() == 0) {
             return "INVALID MESSAGE";
         } else {
-            for (long time : getTimeSet().descendingSet()) {
+            for (long time : getTimeKeySet().descendingSet()) {
                 Query query = getQuerySafe(time);
                 if (query != null && query.isMessage(messageID)) {
                     String block = query.getBlock();
@@ -1781,6 +2758,8 @@ public class User implements Serializable, Comparable<User> {
                                     return "ADDED " + query.getSenderSimplified(false, true) + ";" + query.getOriginDomain(false);
                                 case AUTHENTIC:
                                     return "ADDED " + query.getSenderSimplified(false, true) + ";PASS";
+                                case BULK:
+                                    return "ADDED " + query.getSenderSimplified(false, true) + ";BULK";
                                 default:
                                     return "ERROR: FATAL";
                             }
@@ -1799,18 +2778,18 @@ public class User implements Serializable, Comparable<User> {
     private static String normalizeLink(String token) {
         if (token == null) {
             return null;
-        } else if (Subnet.isValidIP(token)) {
+        } else if (isValidIP(token)) {
             token = SubnetIPv6.tryTransformToIPv4(token);
             if (Subnet.isReservedIP(token)) {
                 return null;
             } else {
                 return Subnet.normalizeIP(token);
             }
-        } else if (Domain.isValidEmail(token)) {
-            return token.toLowerCase();
+        } else if (isValidEmail(token)) {
+            return Domain.normalizeEmail(token);
         } else if (Domain.isOfficialTLD(token)) {
             return null;
-        } else if (Domain.isHostname(token)) {
+        } else if (isHostname(token)) {
             return Domain.normalizeHostname(token, false);
         } else {
             return null;
@@ -1820,26 +2799,31 @@ public class User implements Serializable, Comparable<User> {
     private static String normalizeSigner(String signer) {
         if (signer == null) {
             return null;
-        } else if (Domain.isHostname(signer)) {
+        } else if (isHostname(signer)) {
             return Domain.normalizeHostname(signer, false);
         } else {
             return null;
         }
     }
-    
-    public enum Situation {
-        
-        NONE,
-        ORIGIN,
-        IP,
-        ZONE,
-        AUTHENTIC,
-        SAME,
-        DOMAIN,
-        RECIPIENT,
-        MALWARE,
-        ALL
-        
+
+    public boolean adviseMailerDaemonHOLDING() {
+        try {
+            boolean advised = false;
+            for (long time : getTimeKeySet()) {
+                Query query = getQuery(time);
+                if (query != null && query.isHolding()) {
+                    if (query.hasDefinedKey()) {
+                        if (query.adviseMailerDaemonHOLDING(time)) {
+                            advised = true;
+                        }
+                    }
+                }
+            }
+            return advised;
+        } catch (Exception ex) {
+            Server.logError(ex);
+            return false;
+        }
     }
     
     public static boolean isExpiredHOLD(long time) {
@@ -1848,242 +2832,340 @@ public class User implements Serializable, Comparable<User> {
         return time < thresholdTime;
     }
     
-    private static final Semaphore warningSemaphore = new Semaphore(1);
+    public static boolean isExpiredRED(long time) {
+        long expireTime = Core.getDeferTimeRED() * 60000L;
+        long thresholdTime = System.currentTimeMillis() - expireTime;
+        return time < thresholdTime;
+    }
     
-//    public static void sendHoldingWarning() {
-//        if (warningSemaphore.tryAcquire()) {
-//            try {
-//                for (User user : getSet()) {
-//                    if (!Core.isRunning()) {
-//                        break;
-//                    } else if (user.isUsingHeader()) {
-//                        TreeSet<String> whiteKeySet = new TreeSet<>();
-//                        long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-//                        long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-//                        long deferTimeHOLD = Core.getDeferTimeHOLD() * 60000L;
-//                        long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-//                        long timeAdmin = System.currentTimeMillis() - 3 * deferTimeYELLOW;
-//                        long timeUser = System.currentTimeMillis() - deferTimeRED;
-//                        long timeBegin = System.currentTimeMillis() - deferTimeHOLD;
-//                        for (long time : user.getTimeSet(timeBegin, timeEnd)) {
-//                            Query query = user.getQuery(time);
-//                            if (!Core.isRunning()) {
-//                                break;
-//                            } else if (query != null) {
-//                                if (query.isNotAdvisedUser() && query.isHoldingFull()) {
-//                                    if (time < timeUser) {
-//                                        String whiteKey = query.getWhiteKey();
-//                                        if (!whiteKeySet.contains(whiteKey)) {
-//                                            if (query.adviseUserHOLD(time)) {
-//                                                whiteKeySet.add(whiteKey);
-//                                            } else if (query.adviseAdminHOLD(time)) {
-//                                                whiteKeySet.add(whiteKey);
-//                                            }
-//                                        }
-//                                    } else if (!query.adviseSenderHOLD(time)) {
-//                                        if (time < timeAdmin) {
-//                                            query.adviseAdminHOLD(time);
-//                                        }
-//                                    }
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//            } finally {
-//                warningSemaphore.release();
-//            }
-//        }
-//    }
+    private static final HoldThread HOLD = new HoldThread();
     
-    public static void sendHoldingWarning() {
-        if (warningSemaphore.tryAcquire()) {
-            try {
-                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                long deferTimeHOLD = Core.getDeferTimeHOLD() * 60000L;
-                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-                long timeUser = System.currentTimeMillis() - deferTimeRED;
-                long timeBegin = System.currentTimeMillis() - deferTimeHOLD;
-                TreeMap<String,TreeMap<Long,Query>> keyMap = new TreeMap<>();
-                for (User user : getSet()) {
-                    if (!Core.isRunning()) {
-                        break;
-                    } else if (user.isUsingHeader()) {
-                        for (long time : user.getTimeSet(timeBegin, timeEnd)) {
-                            Query query = user.getQuery(time);
-                            if (!Core.isRunning()) {
-                                break;
-                            } else if (query != null && query.isHoldingFull()) {
-                                if (query.isNotAdvisedUser()) {
-                                    if (time < timeUser) {
-                                        query.adviseUserHOLD(time);
-                                    } else {
-                                        query.adviseSenderHOLD(time);
+    public static void startThread() {
+        HOLD.start();
+    }
+    
+    public static void startIndex() {
+        long time = System.currentTimeMillis();
+        User.getHistoryByTime(time, false);
+        User.getHistoryByTime(time = time - Server.DAY_TIME, false);
+        User.getHistoryByTime(time = time - Server.DAY_TIME, false);
+        User.getHistoryByTime(time = time - Server.DAY_TIME, false);
+        User.getHistoryByTime(time = time - Server.DAY_TIME, false);
+        User.getHistoryByTime(time - Server.DAY_TIME, false);
+    }
+    
+    public static void terminateThread() {
+        HOLD.terminate();
+    }
+    
+    private static long NOTIFY_TIME = 10 * MINUTE_TIME;
+
+    public static void setNotifyTime(long time) {
+        NOTIFY_TIME = time;
+    }
+        
+    private static class HoldThread extends Thread {
+        
+        private HoldThread() {
+            super("HOLDTHRED");
+            setPriority(Thread.MIN_PRIORITY);
+        }
+        
+        private boolean keepRunning = true;
+        
+        private synchronized boolean keepRunning() {
+            return keepRunning;
+        }
+        
+        public synchronized void terminate() {
+            keepRunning = false;
+            notify();
+            interrupt();
+        }
+        
+        public synchronized void waitNotify() throws InterruptedException {
+            wait(NOTIFY_TIME);
+        }
+        
+        private final TreeMap<String,TreeMap<Long,Query>> adminKeyMap = new TreeMap<>();
+        
+        private synchronized void clearAdminKeyMap() {
+            adminKeyMap.clear();
+        }
+        
+        private synchronized TreeSet<String> getAdminKeySet() {
+            TreeSet<String> keySet = new TreeSet<>();
+            keySet.addAll(adminKeyMap.keySet());
+            return keySet;
+        }
+        
+        private synchronized TreeMap<Long,Query> getAdminTreeMap(String key) {
+            return adminKeyMap.get(key);
+        }
+        
+        private synchronized void putAdminTreeMap(
+                String key, long time, Query query
+        ) {
+            TreeMap<Long,Query> queryMap = adminKeyMap.get(key);
+            if (queryMap == null) {
+                queryMap = new TreeMap<>();
+                adminKeyMap.put(key, queryMap);
+            }
+            queryMap.put(time, query);
+        }
+        
+        private final TreeMap<String,TreeMap<Long,Query>> recipientKeyMap = new TreeMap<>();
+        
+        private synchronized void clearRecipientKeyMap() {
+            recipientKeyMap.clear();
+        }
+        
+        private synchronized TreeSet<String> getRecipientKeySet() {
+            TreeSet<String> keySet = new TreeSet<>();
+            keySet.addAll(recipientKeyMap.keySet());
+            return keySet;
+        }
+        
+        private synchronized TreeMap<Long,Query> getRecipientTreeMap(String key) {
+            return recipientKeyMap.get(key);
+        }
+        
+        private synchronized void putRecipientTreeMap(
+                String key, long time, Query query
+        ) {
+            TreeMap<Long,Query> queryMap = recipientKeyMap.get(key);
+            if (queryMap == null) {
+                queryMap = new TreeMap<>();
+                recipientKeyMap.put(key, queryMap);
+            }
+            queryMap.put(time, query);
+        }
+        
+        @Override
+        public void run() {
+            Server.logInfo("started hold thread.");
+            while (Core.isRunning() && keepRunning()) {
+                try {
+                    waitNotify();
+                    if (keepRunning()) {
+                        Server.logInfo("started hold process.");
+                        long timeUser = System.currentTimeMillis() - 2 * Server.HOUR_TIME;
+                        long timeAdmin = System.currentTimeMillis() - 22 * Server.HOUR_TIME;
+                        long timeBegin = System.currentTimeMillis() - Server.MINUTE_TIME;
+                        clearAdminKeyMap();
+                        clearRecipientKeyMap();
+                        int threadCount = 2 * Runtime.getRuntime().availableProcessors();
+                        final LinkedList<User> userQueue = new LinkedList<>();
+                        for (User user : getUserList()) {
+                            if (user.usingHeader()) {
+                                userQueue.add(user);
+                            }
+                        }
+                        if (threadCount > 32) {
+                            threadCount = 32;
+                        } else if (threadCount > userQueue.size()) {
+                            threadCount = userQueue.size();
+                        }
+                        if (threadCount > 0) {
+                            final Semaphore semaphore = new Semaphore(threadCount);
+                            while (semaphore.tryAcquire()) {
+                                final int threadID = threadCount - semaphore.availablePermits();
+                                Thread thread = new Thread("HOLDTH" + Core.formatCentena(threadID)) {
+                                    @Override
+                                    public void run() {
+                                        try {
+                                            User user;
+                                            while (Core.isRunning() && (user = userQueue.poll()) != null) {
+                                                TreeMap<String,TreeMap<Long,Query>> userKeyMap = new TreeMap<>();
+                                                for (long time : user.getTimeHead(timeBegin)) {
+                                                    Query query;
+                                                    if (!Core.isRunning()) {
+                                                        break;
+                                                    } else if (!keepRunning()) {
+                                                        break;
+                                                    } else if ((query = user.getQuery(time)) == null) {
+                                                        continue;
+                                                    } else if (query.isSenderHijacked()) {
+                                                        query.adviseFromHIJACK(time);
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isResult("BLOCK")) {
+                                                        Block.offer(time, query);
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isResult("FLAG")) {
+                                                        if (!query.hasHeaderInformation()) {
+                                                            query.setResult("GREYLIST");
+                                                            storeDB(time, query);
+                                                        }
+                                                    } else if (query.isResult("HOLD")) {
+                                                        if (query.hasMalwareNotIgnored()) {
+                                                            query.banOrBlockForAdmin(time, "MALWARE");
+                                                            query.banOrBlock(time, "MALWARE");
+                                                        } else if (query.hasExecutableBlocked()) {
+                                                            query.banOrBlockForAdmin(time, "EXECUTABLE");
+                                                            query.banOrBlock(time, "EXECUTABLE");
+                                                        } else if (query.hasPhishingBlocked()) {
+                                                            query.banOrBlock(time, "PHISHING");
+                                                        }
+                                                        if (isExpiredHOLD(time)) {
+                                                            processExpired(time, query);
+                                                            storeDB(time, query);
+                                                            user.dropQuery(time);
+                                                        } else if (query.hasHeaderInformation()) {
+                                                            if (query.hasDefinedKey()) {
+                                                                query.adviseMailerDaemonHOLDING(time);
+                                                            } else {
+                                                                if (query.isNotAdvisedUser()) {
+                                                                    String key = query.getWhiteKey() + " " + query.getBlockKey();
+                                                                    TreeMap<Long,Query> queryMap = userKeyMap.get(key);
+                                                                    if (queryMap == null) {
+                                                                        queryMap = new TreeMap<>();
+                                                                        userKeyMap.put(key, queryMap);
+                                                                    }
+                                                                    queryMap.put(time, query);
+                                                                }
+                                                                String key = query.getBlockKey();
+                                                                putRecipientTreeMap(key, time, query);
+                                                                if (!query.isAdminAdvised()) {
+                                                                    putAdminTreeMap(key, time, query);
+                                                                }
+                                                            }
+                                                            storeDB(time, query);
+                                                        } else {
+                                                            query.setResult("GREYLIST");
+                                                            storeDB(time, query);
+                                                        }
+                                                    } else if (isExpiredRED(time)) {
+                                                        boolean changed1 = query.setResult("LISTED", "REJECT");
+                                                        boolean changed2 = query.setResult("GREYLIST", "REJECT");
+                                                        if (changed1 || changed2) {
+                                                            storeDB(time, query);
+                                                            query.addUnacceptable();
+                                                        }
+                                                        if (hasHistory() || Core.hasMySQL()) {
+                                                            user.dropQuery(time);
+                                                        }
+                                                    } else if (query.isResult("ACCEPT") && query.isBlockKey() && !query.isWhiteKey()) {
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isResult("INEXISTENT") && query.isBlockKey() && !query.isWhiteKey()) {
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isResult("REJECT") && query.isBlockKey()) {
+                                                        Abuse.offer(time, query);
+                                                    } else if (query.isResult("REJECT") && query.hasMalwareNotIgnored()) {
+                                                        Abuse.offer(time, query);
+                                                    }
+                                                }
+                                                if (keepRunning()) {
+                                                    int maxSize = 0;
+                                                    long timeKey = Long.MAX_VALUE;
+                                                    TreeMap<Long,Query> resultMap = null;
+                                                    for (String key : userKeyMap.keySet()) {
+                                                        TreeMap<Long,Query> queryMap = userKeyMap.get(key);
+                                                        long firstTime = queryMap.firstKey();
+                                                        if (firstTime < timeUser) {
+                                                            int size = queryMap.size();
+                                                            if (queryMap.size() > 32) {
+                                                                user.adviseUserHOLD(queryMap);
+                                                            } else if ((System.currentTimeMillis() - firstTime) > Server.DAY_TIME) {
+                                                                user.adviseUserHOLD(queryMap);
+                                                            } else if (maxSize < size) {
+                                                                maxSize = size;
+                                                                timeKey = firstTime;
+                                                                resultMap = queryMap;
+                                                            } else if (maxSize == size && timeKey > firstTime) {
+                                                                timeKey = firstTime;
+                                                                resultMap = queryMap;
+                                                            }
+                                                        }
+                                                    }
+                                                    user.adviseUserHOLD(resultMap);
+                                                }
+                                            }
+                                        } finally {
+                                            semaphore.release();
+                                        }
+                                    }
+                                };
+                                thread.start();
+                            }
+                            semaphore.acquire(threadCount);
+                        }
+                        if (keepRunning()) {
+                            int maxSize = 0;
+                            long timeKey = Long.MAX_VALUE;
+                            TreeMap<Long,Query> resultMap = null;
+                            for (String key : getAdminKeySet()) {
+                                if (!Core.isRunning()) {
+                                    break;
+                                } else {
+                                    TreeMap<Long,Query> queryMap = getAdminTreeMap(key);
+                                    if (queryMap != null) {
+                                        long firstTime = queryMap.firstKey();
+                                        long lastTime = queryMap.lastKey();
+                                        if (queryMap.size() > 32) {
+                                            User.adviseAdminHOLD(queryMap);
+                                        } else if ((System.currentTimeMillis() - firstTime) > 3 * Server.DAY_TIME) {
+                                            User.adviseAdminHOLD(queryMap);
+                                        } else if (lastTime < timeAdmin) {
+                                            int size = queryMap.size();
+                                            if (maxSize < size) {
+                                                maxSize = size;
+                                                timeKey = firstTime;
+                                                resultMap = queryMap;
+                                            } else if (maxSize == size && timeKey > firstTime) {
+                                                timeKey = firstTime;
+                                                resultMap = queryMap;
+                                            }
+                                        }
                                     }
                                 }
-                                if (query.isNotAdvisedAdmin()) {
-                                    String key = query.getWhiteKey() + " " + query.getBlockKey();
-                                    TreeMap<Long,Query> queryMap = keyMap.get(key);
-                                    if (queryMap == null) {
-                                        queryMap = new TreeMap<>();
-                                        keyMap.put(key, queryMap);
+                            }
+                            if (resultMap != null && maxSize > 0) {
+                                User.adviseAdminHOLD(resultMap);
+                            }
+                        }
+                        if (keepRunning()) {
+                            for (String key : getRecipientKeySet()) {
+                                if (!Core.isRunning()) {
+                                    break;
+                                } else {
+                                    TreeMap<Long,Query> queryMap = getRecipientTreeMap(key);
+                                    if (queryMap != null) {
+                                        int max = (int) ((System.currentTimeMillis() - queryMap.firstKey()) / Server.HOUR_TIME);
+                                        int count = 0;
+                                        for (long time : queryMap.keySet()) {
+                                            User.Query query = queryMap.get(time);
+                                            if (query.adviseRecipientHOLD(time)) {
+                                                count++;
+                                            } else if (query.adviseSenderHOLD(time)) {
+                                                count++;
+                                            }
+                                            if (count > max) {
+                                                break;
+                                            }
+                                        }
                                     }
-                                    queryMap.put(time, query);
                                 }
                             }
                         }
+                        Server.logInfo("finished hold process.");
                     }
-                }
-//                int maxSize = 0;
-//                long timeKey = Long.MAX_VALUE;
-//                for (String key : keyMap.keySet()) {
-//                    TreeMap<Long,Query> queryMap = keyMap.get(key);
-//                    int size = queryMap.size();
-//                    long firstTime = queryMap.firstKey();
-//                    if (maxSize < size) {
-//                        maxSize = size;
-//                        timeKey = firstTime;
-//                    } else if (maxSize == size && timeKey > firstTime) {
-//                        timeKey = firstTime;
-//                    }
-//                }
-//                for (String key : keyMap.keySet()) {
-//                    TreeMap<Long,Query> queryMap = keyMap.get(key);
-//                    long firstTime = queryMap.firstKey();
-//                    if (!Core.isRunning()) {
-//                        break;
-//                    } else if (timeKey == firstTime) {
-//                        User.adviseAdminHOLD(queryMap);
-//                        break;
-//                    }
-//                }
-                
-                int maxSize = 0;
-                long timeKey = Long.MAX_VALUE;
-                TreeMap<Long,Query> resultMap = null;
-                for (String key : keyMap.keySet()) {
-                    TreeMap<Long,Query> queryMap = keyMap.get(key);
-                    long lastTime = queryMap.lastKey();
-                    if (lastTime < timeUser) {
-                        int size = queryMap.size();
-                        long firstTime = queryMap.firstKey();
-                        if (maxSize < size) {
-                            maxSize = size;
-                            timeKey = firstTime;
-                            resultMap = queryMap;
-                        } else if (maxSize == size && timeKey > firstTime) {
-                            timeKey = firstTime;
-                            resultMap = queryMap;
-                        }
-                    }
-                }
-                if (resultMap != null && maxSize > 2 && Core.isRunning()) {
-                    User.adviseAdminHOLD(resultMap);
-                }
-            } finally {
-                warningSemaphore.release();
-            }
-        }
-    }
-    
-    public static void sendWarningMessages() {
-        for (User user : getSet()) {
-            if (!Core.isRunning()) {
-                break;
-            } else {
-                long deferTimeYELLOW = Core.getDeferTimeYELLOW() * 60000L;
-                long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                long timeEnd = System.currentTimeMillis() - deferTimeYELLOW;
-                long timeBegin = System.currentTimeMillis() - deferTimeRED;
-                for (long time : user.getTimeSet(timeBegin, timeEnd)) {
-                    Query query = user.getQuery(time);
-                    if (!Core.isRunning()) {
-                        break;
-                    } else if (query != null) {
-                        boolean drop = Core.hasMySQL();
-                        if (query.isResult("HOLD")) {
-                            drop = false;
-                        } else if (query.isResult("GREYLIST")) {
-                            drop = false;
-                        } else if (query.isResult("LISTED")) {
-                            drop = false;
-                        } else if (query.isResult("ACCEPT")) {
-                            if (query.hasSubject()) {
-                                drop = false;
-    //                            if (query.isSuspectFull()) {
-    //                                query.adviseRecipientSPAM(time);
-    //                            }
-                            }
-                        } else if (query.isResult("BLOCK")) {
-                            query.adviseSenderBLOCK(time);
-                            query.reportAbuse(time);
-                        }
-    //                    if (drop) {
-    //                        // Drop from memory because 
-    //                        // it was stored in MySQL.
-    //                        user.dropQuery(time);
-    //                    }
-                    }
-                }
-            }
-        }
-    }
-    
-    public static void storeAndDropFinished() {
-        if (Core.hasMySQL()) {
-            for (User user : getSet()) {
-                if (!Core.isRunning()) {
+                } catch (InterruptedException ex) {
+                    Server.logWarning("interrupted hold thread.");
                     break;
-                } else {
-                    long deferTimeRED = Core.getDeferTimeRED() * 60000L;
-                    long timeBegin = System.currentTimeMillis() - deferTimeRED;
-                    for (long time : user.getTimeHead(timeBegin)) {
-                        Query query = user.getQuery(time);
-                        if (!Core.isRunning()) {
-                            break;
-                        } else if (query != null) {
-                            boolean store = true;
-                            if (query.isResult("HOLD")) {
-                                store = false;
-                            } else if (query.isResult("LISTED")) {
-                                store = query.setResult("LISTED", "REJECT");
-                            } else if (query.isResult("GREYLIST")) {
-                                store = query.setResult("GREYLIST", "REJECT");
-                            }
-                            if (store && query.storeDB(time)) {
-                                // Drop from memory because 
-                                // it was stored in MySQL.
-                                user.dropQuery(time);
-                            }
-                        }
-                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
                 }
             }
+            Server.logInfo("terminated hold thread.");
         }
     }
     
     public boolean sendTOTP() {
+        otp_fail = 0;
         return ServerHTTP.enviarOTP(locale, this);
     }
-    
-    private static final String MYSQL_STORE_COMMAND_2_7_6 =
-            "INSERT INTO user_query "
-            + "(time, user, client, ip, helo, hostname, "
-            + "sender, qualifier, recipient, tokenSet, "
-            + "complainKey, whiteKey, blockKey, "
-            + "result, mailFrom, replyto, subject, "
-            + "messageID, unsubscribe, linkMap, malware, "
-            + "adminAdvised, senderAdvised, recipientAdvised)\n"
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n"
-            + "ON DUPLICATE KEY UPDATE "
-            + "whiteKey = ?, blockKey = ?, "
-            + "result = ?, mailFrom = ?, "
-            + "replyto = ?, subject = ?, messageID = ?, "
-            + "unsubscribe = ?, linkMap = ?, malware = ?, "
-            + "adminAdvised = ?, senderAdvised = ?, "
-            + "recipientAdvised = ?";
     
     private static final String MYSQL_STORE_COMMAND_2_8_0 =
             "INSERT INTO user_query "
@@ -2127,46 +3209,24 @@ public class User implements Serializable, Comparable<User> {
     
     public static boolean storeDB() {
         try {
-            long time2 = System.currentTimeMillis();
-            Connection connection = Core.aquireConnectionMySQL();
-            if (connection != null) {
-                try {
+            if (Core.isRunning()) {
+                long time2 = System.currentTimeMillis();
+                Connection connection = Core.aquireConnectionMySQL();
+                if (connection != null) {
                     try {
-                        PreparedStatement statement
-                                = connection.prepareStatement(
-                                        MYSQL_STORE_COMMAND_2_9_0
-                                );
                         try {
-                            statement.setQueryTimeout(60);
-                            for (User user : getSet()) {
-                                for (long time : user.getTimeSet()) {
-                                    Query query = user.getQuery(time);
-                                    if (query != null) {
-                                        if (query.storeDB_2_9_0(statement, time)) {
-                                            connection.commit();
-                                        } else {
-                                            return false;
-                                        }
-                                    }
-                                }
-                            }
-                            Server.logMySQL(time2, "user_query stored");
-                        } finally {
-                            statement.close();
-                        }
-                    } catch (SQLException ex1) {
-                        try {
-                            PreparedStatement statement
-                                    = connection.prepareStatement(
-                                            MYSQL_STORE_COMMAND_2_8_0
-                                    );
-                            try {
+                            try (PreparedStatement statement = connection.prepareStatement(
+                                    MYSQL_STORE_COMMAND_2_9_0
+                            )) {
                                 statement.setQueryTimeout(60);
-                                for (User user : getSet()) {
-                                    for (long time : user.getTimeSet()) {
+                                for (User user : getUserList()) {
+                                    for (long time : user.getTimeKeySet()) {
                                         Query query = user.getQuery(time);
-                                        if (query != null) {
-                                            if (query.storeDB_2_8_0(statement, time)) {
+                                        if (!Core.isRunning()) {
+                                            return false;
+                                        } else if (query != null) {
+                                            if (query.storeDB_2_9_0(statement, time)) {
+                                                query.storeHistory(time);
                                                 connection.commit();
                                             } else {
                                                 return false;
@@ -2175,20 +3235,20 @@ public class User implements Serializable, Comparable<User> {
                                     }
                                 }
                                 Server.logMySQL(time2, "user_query stored");
-                            } finally {
-                                statement.close();
                             }
-                        } catch (SQLException ex2) {
-                            PreparedStatement statement
-                                    = connection.prepareStatement(
-                                            MYSQL_STORE_COMMAND_2_7_6
-                                    );
-                            try {
-                                for (User user : getSet()) {
-                                    for (long time : user.getTimeSet()) {
+                        } catch (SQLException ex1) {
+                            try (PreparedStatement statement = connection.prepareStatement(
+                                    MYSQL_STORE_COMMAND_2_8_0
+                            )) {
+                                statement.setQueryTimeout(60);
+                                for (User user : getUserList()) {
+                                    for (long time : user.getTimeKeySet()) {
                                         Query query = user.getQuery(time);
-                                        if (query != null) {
-                                            if (query.storeDB_2_7_6(statement, time)) {
+                                        if (!Core.isRunning()) {
+                                            return false;
+                                        } else if (query != null) {
+                                            if (query.storeDB_2_8_0(statement, time)) {
+                                                query.storeHistory(time);
                                                 connection.commit();
                                             } else {
                                                 return false;
@@ -2197,16 +3257,16 @@ public class User implements Serializable, Comparable<User> {
                                     }
                                 }
                                 Server.logMySQL(time2, "user_query stored");
-                            } finally {
-                                statement.close();
                             }
                         }
+                    } finally {
+                        Core.releaseConnectionMySQL();
                     }
-                } finally {
-                    Core.releaseConnectionMySQL();
                 }
+                return true;
+            } else {
+                return false;
             }
-            return true;
         } catch (SQLException ex) {
             Server.logError(ex);
             return false;
@@ -2216,21 +3276,32 @@ public class User implements Serializable, Comparable<User> {
     private static StoreThread STORE_THREAD = null;
     
     private static synchronized StoreThread getStoreThread() {
-        if (Core.hasMySQL()) {
-            if (STORE_THREAD == null) {
-                STORE_THREAD = new StoreThread();
-                STORE_THREAD.start();
-            }
-            return STORE_THREAD;
-        } else {
-            return null;
+        if (STORE_THREAD == null) {
+            STORE_THREAD = new StoreThread();
+            STORE_THREAD.start();
         }
+        return STORE_THREAD;
     }
     
     public static void storeDB(long time, Query query) {
-        if (!query.STORED) {
-            StoreThread storeThread = getStoreThread();
-            if (storeThread != null) {
+        if (query != null && !query.STORED) {
+            StoreThread storeThread = Core.hasMySQL() ? getStoreThread() : null;
+            if (storeThread == null) {
+                query.storeHistory(time);
+            } else {
+                storeThread.put(time, query);
+            }
+        }
+    }
+    
+    public static void storeDB2(long time, Query query) {
+        if (query != null) {
+            User user = query.getUser();
+            user.putQuery(time, query);
+            StoreThread storeThread = Core.hasMySQL() ? getStoreThread() : null;
+            if (storeThread == null) {
+                query.storeHistory(time);
+            } else {
                 storeThread.put(time, query);
             }
         }
@@ -2254,8 +3325,6 @@ public class User implements Serializable, Comparable<User> {
         private synchronized Query put(long time, Query query) {
             if (query == null) {
                 return null;
-            } else if (query.STORED) {
-                return null;
             } else {
                 return QUEUE.put(time, query);
             }
@@ -2278,57 +3347,37 @@ public class User implements Serializable, Comparable<User> {
                 while (continueRun()) {
                     try {
                         while (continueRun() && (entry = pollFirstEntry()) != null) {
-//                            Server.logTrace("pollFirstEntry()");
                             Query query = entry.getValue();
                             long time = entry.getKey();
-//                            Server.logTrace(time + " waitHeader()");
                             query.waitHeader();
-//                            Server.logTrace(time + " aquireConnectionMySQL()");
+                            query.storeHistory(time);
                             Connection connection = Core.aquireConnectionMySQL();
                             if (connection == null) {
-//                                Server.logTrace(time + " retryMap.put(time, query)");
                                 put(time, query);
                             } else {
                                 try {
                                     try {
                                         try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_9_0)) {
                                             statement.setQueryTimeout(60);
-    //                                        Server.logTrace(time + " storeDB_2_9_0(statement, time)");
                                             if (query.storeDB_2_9_0(statement, time)) {
                                                 connection.commit();
                                             }
                                         }
                                     } catch (SQLException ex1) {
                                         Server.logError(ex1);
-                                        try {
-                                            try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_8_0)) {
-                                                statement.setQueryTimeout(60);
-    //                                            Server.logTrace(time + " storeDB_2_8_0(statement, time)");
-                                                if (query.storeDB_2_8_0(statement, time)) {
-                                                    connection.commit();
-                                                }
-                                            }
-                                        } catch (SQLException ex2) {
-                                            Server.logError(ex2);
-                                            try {
-                                                try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_7_6)) {
-    //                                                Server.logTrace(time + " storeDB_2_7_6(statement, time)");
-                                                    if (query.storeDB_2_7_6(statement, time)) {
-                                                        connection.commit();
-                                                    }
-                                                }
-                                            } catch (SQLException ex3) {
-                                                Server.logError(ex3);
+                                        try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_8_0)) {
+                                            statement.setQueryTimeout(60);
+                                            if (query.storeDB_2_8_0(statement, time)) {
+                                                connection.commit();
                                             }
                                         }
                                     }
                                 } finally {
-//                                    Server.logTrace(time + " releaseConnectionMySQL()");
                                     Core.releaseConnectionMySQL();
                                 }
                             }
                         }
-//                        Server.logTrace("sleep(1000)");
+                        Server.logTrace("queue finished.");
                         Thread.sleep(1000);
                     } catch (Exception ex) {
                         Server.logError(ex);
@@ -2340,7 +3389,15 @@ public class User implements Serializable, Comparable<User> {
         }
     }
     
-    public class Query implements Serializable {
+    private Query cloneQuery(Query other) {
+        if (other == null) {
+            return null;
+        } else {
+            return new Query(other);
+        }
+    }
+        
+    public class Query extends Filterable implements Serializable {
         
         private static final long serialVersionUID = 1L;
         
@@ -2351,6 +3408,8 @@ public class User implements Serializable, Comparable<User> {
         private String sender;
         private SPF.Qualifier qualifier;
         private String recipient;
+        private String subaddress = null;
+        private boolean inexistent = false;
         private final TreeSet<String> tokenSet = new TreeSet<>();
         private TreeSet<String> signerSet = null;
         private String result;
@@ -2358,19 +3417,29 @@ public class User implements Serializable, Comparable<User> {
         private String replyto = null;
         private String subject = null;
         private String messageID = null;
+        private String queueID = null;
         private Timestamp date = null;
         private URL unsubscribe = null;
         private TreeMap<String,Boolean> linkMap = null;
         private TreeSet<String> executableSet = null;
         private String malware = null;
         private byte[] body = null;
+        private String charset = null;
         
         private boolean adminAdvised = false;
         private boolean senderAdvised = false;
         private boolean recipientAdvised = false;
         private boolean userAdvised = false;
         private boolean abuseAdvised = false;
+        private String abuseEmail = null;
         
+        private String filter = null;
+        
+        private transient String inreplyto = null;
+        private transient boolean forgedFrom = false;
+        private transient boolean spoofedRecipient = false;
+        private transient Date arrival = null;
+
         private boolean STORED = false; // Obsoleto.
         private BinarySemaphore CHANGED; // Mudar para final depois da transição.
         
@@ -2382,6 +3451,7 @@ public class User implements Serializable, Comparable<User> {
             this.sender = other.sender;
             this.qualifier = other.qualifier;
             this.recipient = other.recipient;
+            this.subaddress = other.subaddress;
             this.loadTokenSet(Core.getSequence(other.tokenSet, ";"));
             this.loadSignerSet(Core.getSequence(other.signerSet, ";"));
             this.result = other.result;
@@ -2389,17 +3459,21 @@ public class User implements Serializable, Comparable<User> {
             this.replyto = other.replyto;
             this.subject = other.subject;
             this.messageID = other.messageID;
+            this.queueID = other.queueID;
             this.date = other.date;
-            this.unsubscribe = other.unsubscribe;
+            this.unsubscribe = other.cloneUnsubscribe();
             this.loadLinkMap(Core.getSequence(other.linkMap, ";", 65535));
             this.loadExecutableSet(Core.getSequence(other.executableSet, ";"));
             this.malware = other.malware;
-            this.body = other.body;
+            this.body = other.cloneBody();
+            this.charset = other.charset;
             this.adminAdvised = other.adminAdvised;
             this.senderAdvised = other.senderAdvised;
             this.recipientAdvised = other.recipientAdvised;
             this.userAdvised = other.userAdvised;
             this.abuseAdvised = other.abuseAdvised;
+            this.abuseEmail = other.abuseEmail;
+            this.filter = other.filter;
             this.STORED = other.STORED;
             this.CHANGED = other.CHANGED.duplicate();
         }
@@ -2424,7 +3498,6 @@ public class User implements Serializable, Comparable<User> {
             this.loadLinkMap(rs.getString("linkMap"));
             this.loadExecutableSet(rs.getString("executableSet"));
             this.malware = rs.getString("malware");
-//            this.body = rs.getBytes("body");
             this.adminAdvised = rs.getBoolean("adminAdvised");
             this.senderAdvised = rs.getBoolean("senderAdvised");
             this.recipientAdvised = rs.getBoolean("recipientAdvised");
@@ -2434,6 +3507,164 @@ public class User implements Serializable, Comparable<User> {
             this.CHANGED = new BinarySemaphore(false);
         }
         
+        public boolean equals(Query other) {
+            if (other == null) {
+                return false;
+            } else if (!Objects.deepEquals(this.client, other.client)) {
+                return false;
+            } else if (!Objects.deepEquals(this.ip, other.ip)) {
+                return false;
+            } else if (!Objects.deepEquals(this.helo, other.helo)) {
+                return false;
+            } else if (!Objects.deepEquals(this.hostname, other.hostname)) {
+                return false;
+            } else if (!Objects.deepEquals(this.sender, other.sender)) {
+                return false;
+            } else if (!Objects.deepEquals(this.qualifier, other.qualifier)) {
+                return false;
+            } else if (!Objects.deepEquals(this.recipient, other.recipient)) {
+                return false;
+            } else if (!Objects.deepEquals(this.subaddress, other.subaddress)) {
+                return false;
+            } else if (!Objects.deepEquals(this.inexistent, other.inexistent)) {
+                return false;
+            } else if (!Objects.deepEquals(this.tokenSet, other.tokenSet)) {
+                return false;
+            } else if (!Objects.deepEquals(this.signerSet, other.signerSet)) {
+                return false;
+            } else if (!Objects.deepEquals(this.result, other.result)) {
+                return false;
+            } else if (!Objects.deepEquals(this.from, other.from)) {
+                return false;
+            } else if (!Objects.deepEquals(this.replyto, other.replyto)) {
+                return false;
+            } else if (!Objects.deepEquals(this.subject, other.subject)) {
+                return false;
+            } else if (!Objects.deepEquals(this.messageID, other.messageID)) {
+                return false;
+            } else if (!Objects.deepEquals(this.queueID, other.queueID)) {
+                return false;
+            } else if (!Objects.deepEquals(this.date, other.date)) {
+                return false;
+            } else if (!Objects.deepEquals(this.unsubscribe, other.unsubscribe)) {
+                return false;
+            } else if (!Objects.deepEquals(this.linkMap, other.linkMap)) {
+                return false;
+            } else if (!Objects.deepEquals(this.executableSet, other.executableSet)) {
+                return false;
+            } else if (!Objects.deepEquals(this.malware, other.malware)) {
+                return false;
+            } else if (!Objects.deepEquals(this.adminAdvised, other.adminAdvised)) {
+                return false;
+            } else if (!Objects.deepEquals(this.senderAdvised, other.senderAdvised)) {
+                return false;
+            } else if (!Objects.deepEquals(this.recipientAdvised, other.recipientAdvised)) {
+                return false;
+            } else if (!Objects.deepEquals(this.userAdvised, other.userAdvised)) {
+                return false;
+            } else if (!Objects.deepEquals(this.abuseAdvised, other.abuseAdvised)) {
+                return false;
+            } else if (!Objects.deepEquals(this.abuseEmail, other.abuseEmail)) {
+                return false;
+            } else if (!Objects.deepEquals(this.filter, other.filter)) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        
+        public Query(byte version, DataInput input) throws Exception {
+            int length = input.readInt();
+            byte[] data = new byte[length];
+            input.readFully(data);
+            ByteArrayInputStream bais = new ByteArrayInputStream(data);
+            try (GZIPInputStream gzis = new GZIPInputStream(bais)) {
+                try (DataInputStream dis =  new DataInputStream(gzis)) {
+                    this.client = Core.readUTF(dis);
+                    this.ip = Core.readUTF(dis);
+                    this.helo = Core.readUTF(dis);
+                    this.hostname = Core.readUTF(dis);
+                    this.sender = Core.readUTF(dis);
+                    this.qualifier = Core.readQualifier(dis);
+                    this.recipient = Core.readUTF(dis);
+                    this.subaddress = Core.readUTF(dis);
+                    this.tokenSet.addAll(Core.readSmallSetUTF(dis));
+                    this.result = Core.readUTF(dis);
+                    this.malware = Core.readUTF(dis);
+                    this.abuseEmail = Core.readUTF(dis);
+                    this.filter = Core.readUTF(dis);
+                    boolean[] b = Core.readBooleanArray(dis);
+                    this.inexistent = b[0];
+                    this.adminAdvised = b[1];
+                    this.senderAdvised = b[2];
+                    this.recipientAdvised = b[3];
+                    this.userAdvised = b[4];
+                    this.abuseAdvised = b[5];
+                    boolean hasHeader = b[6];
+                    boolean hasBody = b[7];
+                    if (hasHeader) {
+                        this.from = Core.readUTF(dis);
+                        this.replyto = Core.readUTF(dis);
+                        this.subject = Core.readUTF(dis);
+                        this.messageID = Core.readUTF(dis);
+                        this.queueID = Core.readUTF(dis);
+                        this.date = Core.readTimestamp(dis);
+                        this.unsubscribe = Core.readURL(dis);
+                    }
+                    if (hasBody) {
+                        this.signerSet = Core.readSmallSetUTF(dis);
+                        this.linkMap = Core.readMapBooleanUTF(dis);
+                        this.executableSet = Core.readSmallSetUTF(dis);
+                    }
+                    this.STORED = true;
+                    this.CHANGED = new BinarySemaphore(false);
+                }
+            }
+        }
+                
+        private byte[] toByteArray() throws Exception {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (GZIPOutputStream gzos = new GZIPOutputStream(baos)) {
+                try (DataOutputStream dos =  new DataOutputStream(gzos)) {
+                    Core.writeUTF(dos, client);
+                    Core.writeUTF(dos, ip);
+                    Core.writeUTF(dos, helo);
+                    Core.writeUTF(dos, hostname);
+                    Core.writeUTF(dos, sender);
+                    Core.writeQualifier(dos, qualifier);
+                    Core.writeUTF(dos, recipient);
+                    Core.writeUTF(dos, subaddress);
+                    Core.writeSmallUTF(dos, tokenSet);
+                    Core.writeUTF(dos, result);
+                    Core.writeUTF(dos, malware);
+                    Core.writeUTF(dos, abuseEmail);
+                    Core.writeUTF(dos, filter);
+                    boolean hasHeader = hasHeaderInformation();
+                    boolean hasBody = hasBodyInformation();
+                    Core.writeBooleanArray(
+                            dos, inexistent, adminAdvised, senderAdvised,
+                            recipientAdvised, userAdvised, abuseAdvised,
+                            hasHeader, hasBody
+                    );
+                    if (hasHeader) {
+                        Core.writeUTF(dos, from);
+                        Core.writeUTF(dos, replyto);
+                        Core.writeUTF(dos, subject);
+                        Core.writeUTF(dos, messageID);
+                        Core.writeUTF(dos, queueID);
+                        Core.writeTimestamp(dos, date);
+                        Core.writeURL(dos, unsubscribe);
+                    }
+                    if (hasBody) {
+                        Core.writeSmallUTF(dos, signerSet);
+                        Core.writeUTF(dos, linkMap);
+                        Core.writeSmallUTF(dos, executableSet);
+                    }
+                }
+            }
+            return baos.toByteArray();
+        }
+                
         private boolean loadTokenSet(String text) {
             TreeSet<String> set = Core.getTreeSet(text, ";");
             if (set == null) {
@@ -2474,7 +3705,7 @@ public class User implements Serializable, Comparable<User> {
             TreeMap<String,Boolean> map = Core.getTreeMapBoolean(text, ";");
             if (map == null) {
                 return false;
-            } else if(linkMap == null) {
+            } else if (linkMap == null) {
                 linkMap = map;
                 return true;
             } else {
@@ -2483,145 +3714,8 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-//        public String createComplainTicket(long time) throws ProcessException {
-//            String ticket = "complain " + getUserEmail();
-//            byte[] byteArray = Core.encodeHuffmanPlus(ticket, 8);
-//            byteArray[0] = (byte) (time & 0xFF);
-//            byteArray[1] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[2] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[3] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[4] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[5] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[6] = (byte) ((time = time >>> 8) & 0xFF);
-//            byteArray[7] = (byte) ((time >>> 8) & 0xFF);
-//            return Server.encryptURLSafe(byteArray);
-//        }
-        
-        private boolean storeDB(long time) {
-            try {
-                Connection connection = Core.aquireConnectionMySQL();
-                if (connection == null) {
-                    return false;
-                } else {
-                    try {
-                        try {
-                            try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_9_0)) {
-                                statement.setQueryTimeout(60);
-                                if (storeDB_2_9_0(statement, time)) {
-                                    connection.commit();
-                                    return true;
-                                } else {
-                                    return false;
-                                }
-                            }
-                        } catch (SQLException ex1) {
-                            try {
-                                try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_8_0)) {
-                                    statement.setQueryTimeout(60);
-                                    if (storeDB_2_8_0(statement, time)) {
-                                        connection.commit();
-                                        return true;
-                                    } else {
-                                        return false;
-                                    }
-                                }
-                            } catch (SQLException ex2) {
-                                try (PreparedStatement statement = connection.prepareStatement(MYSQL_STORE_COMMAND_2_7_6)) {
-                                    if (storeDB_2_7_6(statement, time)) {
-                                        connection.commit();
-                                        return true;
-                                    } else {
-                                        return false;
-                                    }
-                                }
-                            }
-                        }
-                    } finally {
-                        Core.releaseConnectionMySQL();
-                    }
-                }
-            } catch (SQLException ex) {
-                Server.logError(ex);
-                return false;
-            }
-        }
-        
-        private boolean storeDB_2_7_6(PreparedStatement statement, long time) {
-            if (this.CHANGED.acquireIf(true)) {
-//                Server.logTrace(time + " storing.");
-                long start = System.currentTimeMillis();
-                try {
-                    String whiteKey = getWhiteKey();
-                    String blockKey = getBlockKey();
-                    statement.setLong(1, time);
-                    statement.setString(2, getEmail());
-                    statement.setString(3, client);
-                    statement.setString(4, ip);
-                    statement.setString(5, helo);
-                    statement.setString(6, hostname);
-                    statement.setString(7, sender);
-                    statement.setString(8, SPF.Qualifier.name(qualifier));
-                    statement.setString(9, recipient);
-                    statement.setString(10, Core.getSequence(tokenSet, ";"));
-                    statement.setString(11, getComplainKey());
-                    statement.setString(12, whiteKey);
-                    statement.setString(13, blockKey);
-                    statement.setString(14, result);
-                    statement.setString(15, from);
-                    statement.setString(16, replyto);
-                    statement.setString(17, subject);
-                    statement.setString(18, messageID);
-                    statement.setString(19, getUnsubscribeString());
-                    statement.setString(20, Core.getSequence(linkMap, ";", 65535));
-                    statement.setString(21, malware);
-                    statement.setBoolean(22, adminAdvised);
-                    statement.setBoolean(23, senderAdvised);
-                    statement.setBoolean(24, recipientAdvised);
-                    statement.setString(25, whiteKey);
-                    statement.setString(26, blockKey);
-                    statement.setString(27, result);
-                    statement.setString(28, from);
-                    statement.setString(29, replyto);
-                    statement.setString(30, subject);
-                    statement.setString(31, messageID);
-                    statement.setString(32, getUnsubscribeString());
-                    statement.setString(33, Core.getSequence(linkMap, ";", 65535));
-                    statement.setString(34, malware);
-                    statement.setBoolean(35, adminAdvised);
-                    statement.setBoolean(36, senderAdvised);
-                    statement.setBoolean(37, recipientAdvised);
-                    statement.setQueryTimeout(60);
-//                    Server.logTrace(time + " executing.");
-                    int update = statement.executeUpdate();
-                    this.STORED = true;
-                    this.CHANGED.release(false);
-                    User.CHANGED = true;
-                    if (update == 0) {
-                        Server.logMySQL(start, statement, "NOT UPDATED");
-                    } else {
-                        Server.logMySQL(start, statement, "UPDATED");
-                    }
-                    return true;
-                } catch (SQLException ex) {
-                    this.STORED = false;
-                    this.CHANGED.release(true);
-                    Server.logMySQL(start, statement, ex);
-                    return false;
-                } catch (Exception ex) {
-                    this.STORED = false;
-                    this.CHANGED.release(true);
-                    Server.logError(ex);
-                    return false;
-                }
-            } else {
-//                Server.logTrace(time + " not stored.");
-                return true;
-            }
-        }
-        
         private boolean storeDB_2_8_0(PreparedStatement statement, long time) {
             if (this.CHANGED.acquireIf(true)) {
-//                Server.logTrace(time + " storing.");
                 long start = System.currentTimeMillis();
                 try {
                     String whiteKey = getWhiteKey();
@@ -2639,7 +3733,7 @@ public class User implements Serializable, Comparable<User> {
                     statement.setString(11, getComplainKey());
                     statement.setString(12, whiteKey);
                     statement.setString(13, blockKey);
-                    statement.setString(14, result);
+                    statement.setString(14, result.equals("QUEUE") ? "HOLD" : result);
                     statement.setString(15, from);
                     statement.setString(16, replyto);
                     statement.setString(17, subject);
@@ -2648,13 +3742,13 @@ public class User implements Serializable, Comparable<User> {
                     statement.setString(20, getUnsubscribeString());
                     statement.setString(21, Core.getSequence(linkMap, ";", 65535));
                     statement.setString(22, malware);
-                    statement.setBytes(23, body);
+                    statement.setNull(23, Types.BLOB);
                     statement.setBoolean(24, adminAdvised);
                     statement.setBoolean(25, senderAdvised);
                     statement.setBoolean(26, recipientAdvised);
                     statement.setString(27, whiteKey);
                     statement.setString(28, blockKey);
-                    statement.setString(29, result);
+                    statement.setString(29, result.equals("QUEUE") ? "HOLD" : result);
                     statement.setString(30, from);
                     statement.setString(31, replyto);
                     statement.setString(32, subject);
@@ -2663,12 +3757,11 @@ public class User implements Serializable, Comparable<User> {
                     statement.setString(35, getUnsubscribeString());
                     statement.setString(36, Core.getSequence(linkMap, ";", 65535));
                     statement.setString(37, malware);
-                    statement.setBytes(38, body);
+                    statement.setNull(38, Types.BLOB);
                     statement.setBoolean(39, adminAdvised);
                     statement.setBoolean(40, senderAdvised);
                     statement.setBoolean(41, recipientAdvised);
                     statement.setQueryTimeout(60);
-//                    Server.logTrace(time + " executing.");
                     int update = statement.executeUpdate();
                     this.STORED = true;
                     this.CHANGED.release(false);
@@ -2691,14 +3784,12 @@ public class User implements Serializable, Comparable<User> {
                     return false;
                 }
             } else {
-//                Server.logTrace(time + " not stored.");
                 return true;
             }
         }
         
         private boolean storeDB_2_9_0(PreparedStatement statement, long time) {
             if (this.CHANGED.acquireIf(true)) {
-//                Server.logTrace(time + " storing.");
                 long start = System.currentTimeMillis();
                 try {
                     String whiteKey = getWhiteKey();
@@ -2706,7 +3797,7 @@ public class User implements Serializable, Comparable<User> {
                     statement.setLong(1, time);
                     statement.setString(2, getEmail());
                     statement.setString(3, client);
-                    statement.setString(4, ip);
+                    statement.setString(4, ip == null ? "" : ip);
                     statement.setString(5, helo);
                     statement.setString(6, hostname);
                     statement.setString(7, sender);
@@ -2716,11 +3807,17 @@ public class User implements Serializable, Comparable<User> {
                     statement.setString(11, Core.getSequence(signerSet, ";"));
                     statement.setString(12, whiteKey);
                     statement.setString(13, blockKey);
-                    statement.setString(14, result);
+                    statement.setString(14, result.equals("QUEUE") ? "HOLD" : result);
                     statement.setString(15, from);
                     statement.setString(16, replyto);
                     statement.setString(17, subject);
-                    statement.setString(18, messageID);
+                    if (messageID == null) {
+                        statement.setString(18, null);
+                    } else if (messageID.length() > 512) {
+                        statement.setString(18, null);
+                    } else {
+                        statement.setString(18, messageID);
+                    }
                     statement.setTimestamp(19, date);
                     statement.setString(20, getUnsubscribeString());
                     statement.setString(21, Core.getSequence(linkMap, ";", 65535));
@@ -2734,11 +3831,17 @@ public class User implements Serializable, Comparable<User> {
                     statement.setString(29, Core.getSequence(signerSet, ";"));
                     statement.setString(30, whiteKey);
                     statement.setString(31, blockKey);
-                    statement.setString(32, result);
+                    statement.setString(32, result.equals("QUEUE") ? "HOLD" : result);
                     statement.setString(33, from);
                     statement.setString(34, replyto);
                     statement.setString(35, subject);
-                    statement.setString(36, messageID);
+                    if (messageID == null) {
+                        statement.setString(36, null);
+                    } else if (messageID.length() > 512) {
+                        statement.setString(36, null);
+                    } else {
+                        statement.setString(36, messageID);
+                    }
                     statement.setTimestamp(37, date);
                     statement.setString(38, getUnsubscribeString());
                     statement.setString(39, Core.getSequence(linkMap, ";", 65535));
@@ -2772,8 +3875,52 @@ public class User implements Serializable, Comparable<User> {
                     return false;
                 }
             } else {
-//                Server.logTrace(time + " not stored.");
                 return true;
+            }
+        }
+        
+        private Query(
+                String clientFQDN,
+                Client client,
+                String ip,
+                String helo,
+                String hostname,
+                String sender,
+                SPF.Qualifier qualifier,
+                String recipient,
+                String subaddress,
+                TreeSet<String> tokenSet,
+                String result,
+                String filter
+        ) throws ProcessException {
+            if (client == null) {
+                throw new ProcessException("INVALID CLIENT");
+            } else if (!isValidIP(ip)) {
+                throw new ProcessException("INVALID IP");
+            } else if (sender != null && !sender.isEmpty() && !sender.contains("@")) {
+                throw new ProcessException("INVALID SENDER");
+            } else if (recipient != null && !isValidRecipient(recipient)) {
+                throw new ProcessException("INVALID RECIPIENT");
+            } else if (tokenSet == null) {
+                throw new ProcessException("INVALID TOKEN SET");
+            } else if (result == null) {
+                throw new ProcessException("INVALID RESULT");
+            } else {
+               this.client = clientFQDN == null ? client.getDomain() : clientFQDN;
+               this.ip = Subnet.normalizeIP(ip);
+               this.helo = helo == null ? null : helo.toLowerCase();
+               this.hostname = Domain.normalizeHostname(hostname, false);
+               this.hostname = this.hostname == null ? "" : this.hostname;
+               this.sender = (sender == null || sender.isEmpty() ? null : sender);
+               this.qualifier = qualifier;
+               this.recipient = recipient;
+               this.subaddress = subaddress;
+               this.tokenSet.addAll(tokenSet);
+               this.result = result;
+               this.filter = filter;
+               this.STORED = false;
+               this.CHANGED = new BinarySemaphore(true);
+               User.CHANGED = true;
             }
         }
         
@@ -2785,16 +3932,18 @@ public class User implements Serializable, Comparable<User> {
                 String sender,
                 SPF.Qualifier qualifier,
                 String recipient,
+                String subaddress,
                 TreeSet<String> tokenSet,
-                String result
+                String result,
+                String filter
         ) throws ProcessException {
-            if (!Domain.isHostname(client)) {
+            if (!Regex.isHostname(client)) {
                 throw new ProcessException("INVALID CLIENT");
-            } else if (!Subnet.isValidIP(ip)) {
+            } else if (!isValidIP(ip)) {
                 throw new ProcessException("INVALID IP");
-            } else if (sender != null && !sender.contains("@")) {
+            } else if (sender != null && !sender.isEmpty() && !sender.contains("@")) {
                 throw new ProcessException("INVALID SENDER");
-            } else if (recipient != null && !Domain.isValidEmail(recipient)) {
+            } else if (recipient != null && !isValidRecipient(recipient)) {
                 throw new ProcessException("INVALID RECIPIENT");
             } else if (tokenSet == null) {
                 throw new ProcessException("INVALID TOKEN SET");
@@ -2806,19 +3955,154 @@ public class User implements Serializable, Comparable<User> {
                this.helo = helo == null ? null : helo.toLowerCase();
                this.hostname = Domain.normalizeHostname(hostname, false);
                this.hostname = this.hostname == null ? "" : this.hostname;
-               this.sender = sender;
+               this.sender = (sender == null || sender.isEmpty() ? null : sender);
                this.qualifier = qualifier;
                this.recipient = recipient;
+               this.subaddress = subaddress;
                this.tokenSet.addAll(tokenSet);
                this.result = result;
+               this.filter = filter;
                this.STORED = false;
                this.CHANGED = new BinarySemaphore(true);
                User.CHANGED = true;
             }
         }
         
+        private Query(
+                String client,
+                String ip,
+                String helo,
+                String hostname,
+                String sender,
+                SPF.Qualifier qualifier,
+                String recipient,
+                String subaddress,
+                TreeSet<String> tokenSet,
+                String result,
+                String from,
+                String replyTo,
+                Date date,
+                URL unsubscribe,
+                TreeSet<String> signerSet,
+                String subject,
+                String messageID,
+                String queueID,
+                Date arrival
+        ) {
+           this.client = Domain.normalizeHostname(client, false);
+           this.ip = Subnet.normalizeIP(ip);
+           this.helo = helo == null ? null : helo.toLowerCase();
+           this.hostname = Domain.normalizeHostname(hostname, false);
+           this.hostname = this.hostname == null ? "" : this.hostname;
+           this.sender = (sender == null || sender.isEmpty() ? null : sender);
+           this.qualifier = qualifier;
+           this.recipient = recipient;
+           this.subaddress = subaddress;
+           this.tokenSet.addAll(tokenSet);
+           this.result = result;
+           this.from = from;
+           this.replyto = replyTo;
+           this.date = (date == null ? null : new Timestamp(date.getTime()));
+           this.unsubscribe = unsubscribe;
+           if (signerSet != null && !signerSet.isEmpty()) {
+               this.signerSet = new TreeSet<>();
+               this.signerSet.addAll(signerSet);
+           }
+           this.subject = subject;
+           this.messageID = messageID;
+           this.queueID = queueID;
+           this.arrival = arrival;
+           User.this.usingHeader = true;
+           this.STORED = false;
+           this.CHANGED = new BinarySemaphore(true);
+           User.CHANGED = true;
+        }
+        
+        public boolean storeHistory(long timeKey) {
+            if (hasHistory()) {
+                try {
+                    Long position = null;
+                    History history = getHistoryByTime(timeKey, true);
+                    if (history != null) {
+                        position = history.store(timeKey, this);
+                    }
+                    if (position == null) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        
+        @Override
         public String getClient() {
             return client;
+        }
+        
+        public Client getClientObj() {
+            TreeSet<Client> clientSet = Client.getClientSet(client);
+            if (clientSet == null) {
+                return null;
+            } else if (clientSet.size() == 1) {
+                return clientSet.first();
+            } else {
+                return null;
+            }
+        }
+        
+        @Override
+        public Locale getLocale() {
+            return locale;
+        }
+        
+        public Locale getBodyLocale() {
+            if (body == null) {
+                return locale;
+            } else if (client.equals(Core.getHostname())) {
+                return locale;
+            } else {
+                try {
+                    ByteArrayOutputStream baOS = new ByteArrayOutputStream();
+                    ByteArrayInputStream baIS = new ByteArrayInputStream(body);
+                    try (GZIPInputStream gzipIS = new GZIPInputStream(baIS)) {
+                        int code;
+                        while ((code = gzipIS.read()) != -1) {
+                            baOS.write(code);
+                        }
+                    }
+                    String html = baOS.toString(getSupportedCharsetToString());
+                    Document document = Jsoup.parse(html);
+                    Elements elements = document.getElementsByAttribute("lang");
+                    Element element = elements == null ? null : elements.first();
+                    String lang = element == null ? null : element.attr("lang");
+                    if (lang == null || lang.isEmpty()) {
+                        return locale;
+                    } else if (lang.equals("pt-br")) {
+                        return LocaleUtils.toLocale("pt_BR");
+                    } else {
+                        return LocaleUtils.toLocale(lang);
+                    }
+                } catch (ZipException ex) {
+                    body = null;
+                    charset = null;
+                    return locale;
+                } catch (EOFException ex) {
+                    body = null;
+                    charset = null;
+                    return locale;
+                } catch (IllegalArgumentException ex) {
+                    return locale;
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return locale;
+                }
+            }
         }
         
         public TreeSet<String> getClientEmailSet() {
@@ -2832,16 +4116,24 @@ public class User implements Serializable, Comparable<User> {
             return emailSet;
         }
 
+        @Override
         public String getIP() {
             return ip;
         }
         
-        public boolean hasDynamicIP() {
-            return Generic.isDynamicIP(ip);
+        public boolean hasActiveAbuseEmail() {
+            String email = getAbuseSender();
+            if (email == null) {
+                return false;
+            } else if (Trap.containsAnythingExact(email)) {
+                return false;
+            } else {
+                return NoReply.isSubscribed(email);
+            }
         }
         
-        public boolean hasQualifiedIP() {
-            return Generic.isQualifiedIP(ip);
+        public boolean hasDynamicIP() {
+            return Generic.isDynamicIP(ip);
         }
         
         public String getCIDR() {
@@ -2852,6 +4144,7 @@ public class User implements Serializable, Comparable<User> {
             }
         }
 
+        @Override
         public String getHELO() {
             if (helo == null) {
                 return "";
@@ -2861,7 +4154,7 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public String getOrigin(boolean pontuacao) {
-            String host = getValidHostname();
+            String host = getFQDN();
             if (host == null) {
                 return ip;
             } else {
@@ -2869,14 +4162,11 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String getOriginDomain(boolean pontuacao) {
-            String host = getValidHostname();
-            if (host == null) {
-                host = helo;
-            }
+        public String getUnblockURLSafe() {
             try {
-                return Domain.extractDomain(host, pontuacao);
-            } catch (ProcessException ex) {
+                return getUnblockURL();
+            } catch (Exception ex) {
+                Server.logError(ex);
                 return null;
             }
         }
@@ -2885,8 +4175,8 @@ public class User implements Serializable, Comparable<User> {
             return Core.getUnblockURL(
                     getEmail(),
                     getIP(),
-                    getMailFrom(),
-                    getValidHostname(),
+                    getSender(),
+                    getFQDN(),
                     getRecipient()
             );
         }
@@ -2926,7 +4216,7 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public String getMailFromHostname(boolean pontuacao) {
-            String senderLocal = getMailFrom();
+            String senderLocal = getSender();
             if (senderLocal == null) {
                 return null;
             } else {
@@ -2936,8 +4226,8 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String getFromHostname(boolean pontuacao) {
-            String fromLocal = getHeaderFrom();
+        public String getHeaderFromHostname(boolean pontuacao) {
+            String fromLocal = getFrom();
             if (fromLocal == null) {
                 return null;
             } else {
@@ -2947,8 +4237,8 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private String getFromHostnameSafe(boolean pontuacao) {
-            String hostnameLocal = getFromHostname(pontuacao);
+        private String getHeaderFromHostnameSafe(boolean pontuacao) {
+            String hostnameLocal = getHeaderFromHostname(pontuacao);
             if (hostnameLocal == null) {
                 return "";
             } else {
@@ -2976,26 +4266,6 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private String getRecipientHostnameSafe(boolean pontuacao) {
-            String hostnameLocal = getRecipientHostname(pontuacao);
-            if (hostnameLocal == null) {
-                return null;
-            } else {
-                return hostnameLocal;
-            }
-        }
-        
-        public String getRecipientHostname(boolean pontuacao) {
-            String recipientLocal = getRecipient();
-            if (recipientLocal == null) {
-                return null;
-            } else {
-                int index = recipientLocal.indexOf('@');
-                String host = recipientLocal.substring(index + 1);
-                return Domain.normalizeHostname(host, pontuacao);
-            }
-        }
-        
         public String getRecipientDomain(boolean pontuacao) {
             String recipientLocal = getRecipient();
             if (recipientLocal == null) {
@@ -3010,8 +4280,10 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public String getSenderHostname(boolean pontuacao) {
-            String trueSender = getSender();
+            String trueSender = getTrueSender();
             if (trueSender == null) {
+                return null;
+            } else if (trueSender.isEmpty()) {
                 return null;
             } else {
                 int index = trueSender.indexOf('@');
@@ -3020,203 +4292,242 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String getSenderDomain(boolean pontuacao) {
-            String trueSender = getSender();
-            if (trueSender == null) {
-                return null;
-            } else {
-                int index = trueSender.indexOf('@');
-                try {
-                    String host = trueSender.substring(index + 1);
-                    return Domain.extractDomain(host, pontuacao);
-                } catch (ProcessException ex) {
-                    if (pontuacao) {
-                        return '.' + trueSender.substring(index);
-                    } else {
-                        return trueSender.substring(index);
-                    }
-                }
-            }
+        @Override
+        public boolean isInvitation() {
+            return User.this.isInvitation(recipient, subaddress);
         }
         
-        public String getMailFrom() {
+        @Override
+        public String getSender() {
             return sender;
         }
         
-        private boolean containsSigner(String domain) {
-            if (domain == null) {
-                return false;
-            } else if (signerSet == null) {
+        public boolean isFromFreemail() {
+            if (from == null) {
                 return false;
             } else {
-                return signerSet.contains(domain);
+                return Provider.isFreeMail(from) && isSigned(from);
             }
         }
         
-        private boolean isSigned(String address) {
-            if (address == null) {
+        public boolean isSpoofingFrom() {
+            return getSpoofingFrom() != null;
+        }
+        
+        public boolean isFromBlocked() {
+            return getFromBlocked() != null;
+        }
+        
+        public boolean isNotComplianceFQDN() {
+            if (hostname == null) {
                 return false;
             } else {
-                int index = address.indexOf('@');
-                String domain = address.substring(index + 1);
-                if (containsSigner(domain)) {
-                    return true;
-                } else if (isPass() && getMailFrom().endsWith('@' + domain)) {
-                    return true;
-                } else if ((domain = Domain.extractDomainSafe(domain, false)) == null) {
-                    return false;
-                } else {
-                    return containsSigner(domain);
-                }
+                return NoReply.containsFQDN(hostname);
+            }
+        }
+        
+        public boolean isEmptyPTR() {
+            if (hostname == null) {
+                return Reverse.getPointerSetSafe(ip).isEmpty();
+            } else {
+                return false;
             }
         }
         
         public String getReplyToValid() {
-            if (isSigned(replyto) && Domain.isValidEmail(replyto) && !NoReply.contains(replyto, true)) {
+            if (isSenderMailerDeamon()) {
+                return null;
+            } else if (isSigned(replyto) && isValidEmail(replyto) && !NoReply.contains(replyto, true)) {
                 return replyto;
-            } else if (isSigned(from) && Domain.isValidEmail(from) && !NoReply.contains(from, true)) {
+            } else if (isSigned(from, true) && isValidEmail(from) && !NoReply.contains(from, true)) {
                 return from;
-            } else if (isPass() && Domain.isValidEmail(sender) && !NoReply.contains(sender, true)) {
-                return sender;
-            } else if (isSigned(sender) && Domain.isValidEmail(sender) && !NoReply.contains(sender, true)) {
+            } else if (isSigned(sender) && isValidEmail(sender) && !NoReply.contains(sender, true)) {
                 return sender;
             } else {
                 return null;
             }
         }
         
-        public String getSender() {
-            if (isSigned(from) && Domain.isValidEmail(from)) {
-                return from;
-            } else if (isSigned(replyto) && Domain.isValidEmail(replyto)) {
-                return replyto;
-            } else if (sender == null) {
-                return from == null ? replyto : from;
-            } else if (Provider.containsMX(sender) && Domain.isValidEmail(sender)) {
-                return sender;
-            } else if (Provider.containsDomain(getValidHostname()) && Domain.isValidEmail(sender) && !Provider.containsDomain(sender)) {
-                return sender;
-            } else if (Provider.containsDomain(getValidHostname()) && Domain.isValidEmail(from) && !Provider.containsDomain(from)) {
-                return from;
-            } else if (Provider.containsDomain(getValidHostname()) && Domain.isValidEmail(replyto) && !Provider.containsDomain(replyto)) {
-                return replyto;
-            } else if (Domain.isValidEmail(sender)) {
-                return sender;
-            } else if (Domain.isValidEmail(from)) {
-                return from;
-            } else if (Domain.isValidEmail(replyto)) {
-                return replyto;
-            } else if (Domain.isMailFrom(sender)) {
-                return sender;
-            } else if (Domain.isMailFrom(from)) {
-                return from;
-            } else if (Domain.isMailFrom(replyto)) {
-                return replyto;
-            } else {
-                return sender;
+        public void addHarmful(long timeKey) {
+            SPF.setSpam(timeKey, tokenSet);
+            Abuse.addHarmful(getAbuseOrigin());
+            CIDR.addHarmful(ip);
+            String fqdn = getFQDN();
+            Generic.addHarmful(helo);
+            FQDN.addHarmful(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addHarmful(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addHarmful(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addHarmful(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addHarmful(link);
+                    }
+                }
             }
-        }
-        
-        public String getSenderSimplified(boolean byDomain, boolean pontuacao) {
-            String trueSender = getSender();
-            if (trueSender == null) {
-                return null;
-            } else if (trueSender.startsWith("mailer-daemon@")) {
-                return trueSender;
-            } else if (Provider.containsMX(trueSender)) {
-                if (Domain.isValidEmail(trueSender)) {
-                    return trueSender;
-                } else {
-                    int index = trueSender.indexOf('@');
-                    return trueSender.substring(index);
-                }
-            } else if (byDomain) {
-                int index = trueSender.indexOf('@');
-                try {
-                    String host = trueSender.substring(index + 1);
-                    return Domain.extractDomain(host, pontuacao);
-                } catch (ProcessException ex) {
-                    return trueSender.substring(index);
-                }
-            } else {
-                int index = trueSender.indexOf('@');
-                return trueSender.substring(index);
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addHarmful(email, recipient);
             }
         }
 
-        public String getQualifierName() {
-            String trueSender = getSender();
-            if (trueSender == null) {
-                return "NONE";
-            } else if (isSigned(trueSender)) {
-                return "PASS";
-            } else if (qualifier == null) {
-                return "NONE";
-            } else if (trueSender.equals(sender)) {
-                return qualifier.name();
-            } else {
-                return "NONE";
+        public void addUndesirable(long timeKey) {
+            SPF.setSpam(timeKey, tokenSet);
+            Abuse.addUndesirable(getAbuseOrigin());
+            CIDR.addUndesirable(ip);
+            String fqdn = getFQDN();
+            Generic.addUndesirable(helo);
+            FQDN.addUndesirable(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addUndesirable(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addUndesirable(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addUndesirable(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addUndesirable(link);
+                    }
+                }
+            }
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addUndesirable(email, recipient);
+            }
+        }
+
+        public void addUnacceptable() {
+            Abuse.addUnacceptable(getAbuseOrigin());
+            CIDR.addUnacceptable(ip);
+            String fqdn = getFQDN();
+            Generic.addUnacceptable(helo);
+            FQDN.addUnacceptable(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addUnacceptable(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addUnacceptable(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addUnacceptable(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addUnacceptable(link);
+                    }
+                }
+            }
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addUnacceptable(email, recipient);
+            }
+        }
+
+        public void addAcceptable() {
+            Abuse.addAcceptable(getAbuseOrigin());
+            CIDR.addAcceptable(ip);
+            String fqdn = getFQDN();
+            Generic.addAcceptable(helo);
+            FQDN.addAcceptable(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addAcceptable(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addAcceptable(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addAcceptable(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addAcceptable(link);
+                    }
+                }
+            }
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addAcceptable(email, recipient);
+            }
+        }
+
+        public void addDesirable(long timeKey) {
+            SPF.setHam(timeKey, tokenSet);
+            Abuse.addDesirable(getAbuseOrigin());
+            CIDR.addDesirable(ip);
+            String fqdn = getFQDN();
+            Generic.addDesirable(helo);
+            FQDN.addDesirable(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addDesirable(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addDesirable(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addDesirable(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addDesirable(link);
+                    }
+                }
+            }
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addDesirable(email, recipient);
+            }
+        }
+
+        public void addBeneficial(long timeKey) {
+            SPF.setHam(timeKey, tokenSet);
+            Abuse.addBeneficial(getAbuseOrigin());
+            CIDR.addBeneficial(ip);
+            String fqdn = getFQDN();
+            Generic.addBeneficial(helo);
+            FQDN.addBeneficial(fqdn);
+            if (!isSenderMailerDeamon()) {
+                net.spfbl.data.SPF.addBeneficial(sender, qualifier);
+                if (signerSet != null) {
+                    for (String signer : signerSet) {
+                        DKIM.addBeneficial(signer);
+                    }
+                }
+                if (!isBounceMessage()) {
+                    Dictionary.addBeneficial(subject, locale, recipient);
+                    for (String link : getLinkKeySet()) {
+                        URI.addBeneficial(link);
+                    }
+                }
+            }
+            if (!isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING)) {
+                Recipient.addBeneficial(email, recipient);
             }
         }
         
-        private String getValidHostnameSafe() {
-            if (hostname != null) {
-                return hostname;
-            } else if (SPF.matchHELO(ip, helo)) {
-                return hostname = helo;
-            } else {
-                String host = Reverse.getValidHostname(ip);
-                if (host == null) {
-                    return hostname = "";
-                } else if (Generic.containsGenericDomain(host)) {
-                    return hostname = "";
-                } else {
-                    return hostname = Domain.normalizeHostname(host, false);
-                }
-            } 
+        @Override
+        public Qualifier getQualifier() {
+            return qualifier;
         }
-        
-        public String getValidHostname() {
+
+        @Override
+        public String getFQDN() {
             if (hostname != null) {
                 return hostname.length() == 0 ? null : hostname;
-            } else if (SPF.matchHELO(ip, helo)) {
+            } else if (FQDN.addFQDN(ip, helo, true)) {
                 return hostname = helo;
             } else {
-                String host = Reverse.getValidHostname(ip);
-                if (host == null) {
-                    hostname = "";
-                    return null;
-                } else if (Generic.containsGenericDomain(host)) {
-                    hostname = "";
-                    return null;
-                } else {
-                    return hostname = Domain.normalizeHostname(host, false);
-                }
+                return hostname = "";
             } 
         }
         
-        public String getValidHostDomain() {
-            try {
-                String host = getValidHostname();
-                return Domain.extractDomain(host, false);
-            } catch (ProcessException ex) {
-                return null;
-            }
+        public String getValidHostDomainSafe() {
+            return getValidHostDomainSafe(false);
         }
         
-        public String getValidator(boolean authentic) {
-            String senderLocal = getSender();
-            if (senderLocal == null) {
+        public String getValidHostDomainSafe(boolean pontuation) {
+            try {
+                String host = getFQDN();
+                return Domain.extractDomain(host, pontuation);
+            } catch (ProcessException ex) {
                 return null;
-            } else if (authentic && getQualifierName().equals("PASS")) {
-                return "PASS";
-            } else {
-                String domain = getValidHostDomain();
-                if (domain == null) {
-                    return ip;
-                } else {
-                    return domain;
-                }
             }
         }
         
@@ -3224,12 +4535,35 @@ public class User implements Serializable, Comparable<User> {
             return User.this;
         }
         
+        public Properties[] getSessionProperties() {
+            return User.this.getSessionProperties();
+        }
+        
+        @Override
         public String getUserEmail() {
             return User.this.getEmail();
+        }
+        
+        public TreeSet<String> getRecipientSet() {
+            if (recipient == null) {
+                return null;
+            } else {
+                TreeSet<String> recipientSet = new TreeSet<>();
+                recipientSet.add(recipient);
+                return recipientSet;
+            }
         }
 
         public String getRecipient() {
             return recipient;
+        }
+        
+        public String getRecipientNotNull() {
+            if (recipient == null) {
+                return "";
+            } else {
+                return recipient;
+            }
         }
 
         public String getResult() {
@@ -3238,6 +4572,10 @@ public class User implements Serializable, Comparable<User> {
         
         public boolean isResult(String result) {
             return this.result.equals(result);
+        }
+        
+        public boolean wasAccepted() {
+            return result.equals("WHITE") || result.equals("ACCEPT");
         }
         
         public boolean isClient(Client client) {
@@ -3256,7 +4594,7 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean isHostname(String hostname) {
+        public boolean isFQDN(String hostname) {
             if (hostname == null) {
                 return false;
             } else {
@@ -3264,11 +4602,45 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        public boolean isHELO(String helo) {
+            if (helo == null) {
+                return false;
+            } else {
+                return helo.equals(this.helo);
+            }
+        }
+        
+        public boolean isQueueID(String queueID) {
+            if (queueID == null) {
+                return false;
+            } else {
+                return queueID.equals(this.queueID);
+            }
+        }
+        
+        public boolean isQueueID(String client, String queueID) {
+            if (client == null) {
+                return false;
+            } else if (queueID == null) {
+                return false;
+            } else {
+                return client.equals(this.client) && queueID.equals(this.queueID);
+            }
+        }
+        
+        public boolean isMessageID(String messageID) {
+            if (messageID == null) {
+                return false;
+            } else {
+                return messageID.equals(this.messageID);
+            }
+        }
+        
         public boolean isOrigin(String ip, String hostname) {
             if (hostname == null) {
                 return isIP(ip);
             } else {
-                return isHostname(hostname);
+                return Regex.isHostname(hostname);
             }
         }
         
@@ -3277,6 +4649,14 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else {
                 return sender.equals(this.sender);
+            }
+        }
+        
+        public boolean isFrom(String from) {
+            if (from == null) {
+                return false;
+            } else {
+                return from.equals(this.from);
             }
         }
         
@@ -3293,6 +4673,63 @@ public class User implements Serializable, Comparable<User> {
                 return this.from == null;
             } else {
                 return from.equals(this.from);
+            }
+        }
+        
+        public boolean isFromBlockedTLD() {
+            if (from == null) {
+                return false;
+            } else {
+                int index = from.indexOf('@') + 1;
+                String domain = from.substring(index);
+                String tld = Domain.extractTLDSafe(domain, true);
+                return Block.containsExact(User.this, tld);
+            }
+        }
+        
+        public boolean isFromNotComplaince() {
+            if (from == null) {
+                return false;
+            } else {
+                int index = from.indexOf('@') + 1;
+                String domain = from.substring(index);
+                if (domain.length() == 0) {
+                    return true;
+                } else {
+                    return NoReply.containsFQDN(domain);
+                }
+            }
+        }
+        
+        public boolean headerFromIsInvalid() {
+            if (from == null) {
+                return false;
+            } else if (isSigned(from)) {
+                return false;
+            } else {
+                int index = from.indexOf('@') + 1;
+                String domain = from.substring(index);
+                if (domain.length() == 0) {
+                    return true;
+                } else {
+                    try {
+                        ArrayList<String> mxSet = Reverse.getMXSet(domain);
+                        if (mxSet == null) {
+                            return true;
+                        } else {
+                            return mxSet.isEmpty();
+                        }
+                    } catch (CommunicationException ex) {
+                        return false;
+                    } catch (ServiceUnavailableException ex) {
+                        return false;
+                    } catch (NameNotFoundException ex) {
+                        return true;
+                    } catch (NamingException ex) {
+                        Server.logError(ex);
+                        return false;
+                    }
+                }
             }
         }
         
@@ -3346,33 +4783,32 @@ public class User implements Serializable, Comparable<User> {
         }
         
         public boolean isBlockSMTP() {
-            String blockKey = Block.keySMTP(
-                    User.this.getEmail(), getIP(), getMailFrom(),
-                    getValidHostname(), getQualifierName(), getRecipient()
+            String blockKey = Block.keyBlockKey(User.this.getEmail(), getIP(), getHELO(), getSender(),
+                    getFQDN(), getQualifierName(), getRecipient()
             );
             if (Block.containsExact(blockKey)) {
                 return true;
             } else {
-                blockKey = Block.keySMTP(
-                        User.this.getEmail(), getIP(),
-                        getValidHostname(), getRecipientDomain(true)
+                blockKey = Block.getBlockKey(User.this.getEmail(), getIP(),
+                        getFQDN(), getRecipientDomain(true)
                 );
                 return Block.containsExact(blockKey);
             }
         }
         
-        public boolean isBlockKey() {
-            String blockKey = getBlockKey();
-            return Block.containsExact(User.this, blockKey);
-        }
-        
-        public boolean isBlockKeyByAdmin() {
-            String email = Core.getAdminEmail();
-            if (email == null) {
-                return false;
+        public boolean hasDefinedKey() {
+            if (isWhiteKey()) {
+                return true;
+            } else if (isBlockKey()) {
+                return true;
+            } else if (isWhiteKeyByAdmin()) {
+                return true;
+            } else if (isBlockKeyByAdmin()) {
+                return true;
+            } else if (isBanned()) {
+                return true;
             } else {
-                String blockKey = getBlockKey();
-                return Block.containsExact(email, blockKey);
+                return false;
             }
         }
         
@@ -3390,76 +4826,25 @@ public class User implements Serializable, Comparable<User> {
                     // Do nothing.
                 } else if (Core.isSignatureURL(link)) {
                     keySet.add(link);
-                } else if (Domain.isHostname(link)) {
+                } else if (Regex.isHostname(link)) {
                     keySet.add("HREF=." + link);
                 } else {
                     keySet.add("HREF=" + link);
                 }
             }
-            keySet.addAll(getExecutableSet());
+            keySet.addAll(getExecutableSetNN());
             return keySet;
-        }
-        
-        public String getBlockKey() {
-            String key = getBlockSender();
-            if (key == null) {
-                key = getValidHostDomain();
-                if (key == null) {
-                    key = getValidHostname();
-                    if (key == null) {
-                        key = "mailer-daemon@;" + getIP();
-                    } else {
-                        key = "mailer-daemon@" + key;
-                    }
-                } else {
-                    key = "mailer-daemon@" + key;
-                }
-            }
-            return key;
-        }
-        
-        public boolean isWhiteKey() {
-            String whiteKey = getWhiteKey();
-            return White.containsExtact(User.this, whiteKey);
-        }
-        
-        public boolean isWhiteKeyByAdmin() {
-            String email = Core.getAdminEmail();
-            if (email == null) {
-                return false;
-            } else {
-                String whiteKey = getWhiteKey();
-                return White.containsExtact(email, whiteKey);
-            }
-        }
-        
-        public String getWhiteKey() {
-            String key = getWhiteSender();
-            if (key == null) {
-                key = getValidHostDomain();
-                if (key == null) {
-                    key = getValidHostname();
-                    if (key == null) {
-                        key = "mailer-daemon@;" + getIP();
-                    } else {
-                        key = "mailer-daemon@" + key;
-                    }
-                } else {
-                    key = "mailer-daemon@" + key;
-                }
-            }
-            return key;
         }
         
         public void processComplainForWhite() {
             String whiteKey = getWhiteKey();
-            for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuerySafe(time);
+            for (long timeKey : getTimeKeySet().descendingSet()) {
+                Query query = getQuerySafe(timeKey);
                 if (query != null && whiteKey.equals(query.getWhiteKey())) {
                     if (query.isWhite()) {
-                        query.clearBlock();
+                        query.clearBlock(timeKey);
                         if (!query.hasMalware()) {
-                            SPF.setHam(time, query.getTokenSet());
+                            query.setHam(timeKey);
                         }
                     }
                 }
@@ -3468,21 +4853,30 @@ public class User implements Serializable, Comparable<User> {
         
         public void processComplainForBlock() {
             String blockKey = getBlockKey();
-            for (long time : getTimeSet().descendingSet()) {
-                Query query = getQuerySafe(time);
+            for (long timeKey : getTimeKeySet().descendingSet()) {
+                Query query = getQuerySafe(timeKey);
                 if (query != null && blockKey.equals(query.getBlockKey())) {
                     if (query.isBlock()) {
-                        query.clearWhite();
-                        complain(time);
+                        query.clearWhite(timeKey);
+                        setSpam(timeKey);
                     }
                 }
             }
         }
         
-        public void clearWhite() {
-            if (!isToAbuse()) {
+        public void clearWhite(long timeKey) {
+            if (!isRecipientAbuse()) {
                 try {
-                    String mailFrom = getMailFrom();
+                    String whitekey = getWhiteKey();
+                    White.dropExact(getUserEmail() + ":" + whitekey);
+                    if (Core.hasAdminEmail()) {
+                        White.dropExact(Core.getAdminEmail() + ":" + whitekey);
+                    }
+                } catch (ProcessException ex) {
+                    Server.logError(ex);
+                }
+                try {
+                    String mailFrom = getSender();
                     String qualifierLocal = qualifier == null ? "NONE" : qualifier.name();
                     if (mailFrom == null) {
                         String domain = this.getOriginDomain(false);
@@ -3494,70 +4888,94 @@ public class User implements Serializable, Comparable<User> {
                             qualifierLocal = "NONE";
                         }
                     }
-                    White.clear(null, User.this, ip, mailFrom, getValidHostname(), qualifierLocal, recipient);
+                    White.clear(timeKey, null, User.this, ip, mailFrom, getFQDN(), qualifierLocal, recipient);
                 } catch (ProcessException ex) {
                     Server.logError(ex);
                 }
                 if (sender == null) {
                     try {
-                        White.clear(null, User.this, ip, null, getValidHostname(), "NONE", recipient);
+                        White.clear(timeKey, null, User.this, ip, null, getFQDN(), "NONE", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 } else {
                     try {
-                        White.clear(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
+                        White.clear(timeKey, null, User.this, ip, sender, getFQDN(), qualifier == null ? "NONE" : qualifier.name(), recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(sender)) {
                     try {
-                        White.clear(null, User.this, ip, sender, getValidHostname(), "PASS", recipient);
+                        White.clear(timeKey, null, User.this, ip, sender, getFQDN(), "PASS", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (from != null) {
                     try {
-                        White.clear(null, User.this, ip, from, getValidHostname(), "NONE", recipient);
+                        White.clear(timeKey, null, User.this, ip, from, getFQDN(), "NONE", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(from)) {
                     try {
-                        White.clear(null, User.this, ip, from, getValidHostname(), "PASS", recipient);
+                        White.clear(timeKey, null, User.this, ip, from, getFQDN(), "PASS", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (replyto != null) {
                     try {
-                        White.clear(null, User.this, ip, replyto, getValidHostname(), "NONE", recipient);
+                        White.clear(timeKey, null, User.this, ip, replyto, getFQDN(), "NONE", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(replyto)) {
                     try {
-                        White.clear(null, User.this, ip, replyto, getValidHostname(), "PASS", recipient);
+                        White.clear(timeKey, null, User.this, ip, replyto, getFQDN(), "PASS", recipient);
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 try {
-                    White.clear(null, User.this, ip, null, getValidHostname(), "NONE", recipient);
+                    White.clear(timeKey, null, User.this, ip, null, getFQDN(), "NONE", recipient);
                 } catch (ProcessException ex) {
                     Server.logError(ex);
                 }
             }
         }
         
-        public void clearBlock() {
-            if (canClearBLOCK() && !isFromReserved() && !isToReserved() && !NoReply.contains(getSender(), true)) {
+        public void clearBlock(long timeKey) {
+            if (CIDR.isDesirable(getIP())) {
+                Block.clearCIDR(timeKey, getIP(), getUserEmail());
+            }
+            if (FQDN.isDesirable(getValidHostDomainSafe())) {
+                Block.clearFQDN(timeKey, getValidHostDomainSafe(), getUserEmail());
+            }
+            if (canClearBLOCK() && !isFromReserved() && !isToReserved() && !NoReply.contains(getTrueSender(), true)) {
                 try {
-                    String mailFrom = getMailFrom();
+                    String blockKey = getBlockKey();
+                    Block.dropExact(getUserEmail() + ":" + blockKey);
+                    if (Core.hasAdminEmail()) {
+                        Block.dropExact(Core.getAdminEmail() + ":" + blockKey);
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+                try {
+                    String banKey = getBannedKey();
+                    Block.dropExact(getUserEmail() + ":" + banKey + ">@");
+                    if (Core.hasAdminEmail()) {
+                        Block.dropExact(Core.getAdminEmail() + ":" + banKey + ">@");
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+                try {
+                    String mailFrom = getSender();
                     String qualifierLocal = qualifier == null ? "NONE" : qualifier.name();
                     if (mailFrom == null) {
                         String domain = this.getOriginDomain(false);
@@ -3569,54 +4987,54 @@ public class User implements Serializable, Comparable<User> {
                             qualifierLocal = "NONE";
                         }
                     }
-                    Block.clear(null, User.this, ip, mailFrom, getValidHostname(), qualifierLocal, recipient);
+                    Block.clear(timeKey, null, User.this, ip, helo, mailFrom, getFQDN(), qualifierLocal, recipient, "WHITE");
                 } catch (ProcessException ex) {
                     Server.logError(ex);
                 }
                 if (sender == null) {
                     try {
-                        Block.clear(null, User.this, ip, null, getValidHostname(), "NONE", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, null, getFQDN(), "NONE", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 } else {
                     try {
-                        Block.clear(null, User.this, ip, sender, getValidHostname(), qualifier == null ? "NONE" : qualifier.name(), recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, sender, getFQDN(), qualifier == null ? "NONE" : qualifier.name(), recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(sender)) {
                     try {
-                        Block.clear(null, User.this, ip, sender, getValidHostname(), "PASS", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, sender, getFQDN(), "PASS", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (from != null) {
                     try {
-                        Block.clear(null, User.this, ip, from, getValidHostname(), "NONE", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, from, getFQDN(), "NONE", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(from)) {
                     try {
-                        Block.clear(null, User.this, ip, from, getValidHostname(), "PASS", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, from, getFQDN(), "PASS", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (replyto != null) {
                     try {
-                        Block.clear(null, User.this, ip, replyto, getValidHostname(), "NONE", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, replyto, getFQDN(), "NONE", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
                 }
                 if (isSigned(replyto)) {
                     try {
-                        Block.clear(null, User.this, ip, replyto, getValidHostname(), "PASS", recipient);
+                        Block.clear(timeKey, null, User.this, ip, helo, replyto, getFQDN(), "PASS", recipient, "WHITE");
                     } catch (ProcessException ex) {
                         Server.logError(ex);
                     }
@@ -3627,132 +5045,223 @@ public class User implements Serializable, Comparable<User> {
                             Block.dropExact(link);
                             link = Core.getSignatureHostURL(link);
                         }
-                        Block.clearHREF(User.this, link, email);
+                        Block.clearHREF(timeKey, User.this, link, email);
                     }
                 }
             }
         }
         
-        public String getBlockSender() {
-            Situation situation;
-            String senderLocal = getSender();
-            if (senderLocal == null) {
-                return null;
-            } else if (isSigned(senderLocal)) {
-                situation = Situation.AUTHENTIC;
-            } else if (senderLocal.equals(sender)) {
-                situation = getSituation(true);
-            } else {
-                situation = Situation.NONE;
-            }
-            switch (situation) {
-                case AUTHENTIC:
-                    return getSenderSimplified(true, true);
-                case NONE:
-                    String domain1 = getOriginDomain(false);
-                    if (domain1 == null) {
-                        return getSenderSimplified(true, true) + ";NONE";
-                    } else {
-                        return getSenderSimplified(true, true) + ";" + domain1;
-                    }
-                case ZONE:
-                    String domain2 = getOriginDomain(false);
-                    if (domain2 == null) {
-                        return getSenderDomain(true) + ";NOTPASS";
-                    } else {
-                        return getSenderDomain(true) + ";" + domain2;
-                    }
-                case IP:
-                    return getSenderDomain(true) + ";NOTPASS";
-                case SAME:
-                    String validator = getValidator(false);
-                    if (validator == null) {
-                        return getSenderSimplified(true, true);
-                    } else {
-                        return getSenderSimplified(true, true) + ";" + validator;
-                    }
-                case DOMAIN:
-                    String senderSimplified = getSenderSimplified(true, true);
-                    if (senderSimplified == null) {
-                        return null;
-                    } else {
-                        return senderSimplified;
-                    }
-                case ORIGIN:
-                case ALL:
-                    String domain3 = getOriginDomain(false);
-                    if (domain3 == null) {
-                        return "mailer-daemon@;" + getIP();
-                    } else {
-                        return "mailer-daemon@" + domain3;
-                    }
-                default:
-                    return null;
-            }
-        }
-        
-        public void blockExecutables() {
-            try {
-                if (executableSet != null) {
-                    for (String signature : executableSet) {
-                        if (!Ignore.containsExact(getEmail() + ":" + signature)) {
-                            if (Block.addExact(signature)) {
-                                Server.logDebug("new BLOCK '" + signature + "' added by 'EXECUTABLE'.");
-                                Peer.sendBlockToAll(signature);
-                            }
+        public void blockExecutables(long timeKey) {
+            if (executableSet != null) {
+                for (String signature : executableSet) {
+                    if (!Ignore.containsExact(getEmail() + ":" + signature)) {
+                        if (Block.addExact(signature)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + signature + "' added by 'EXECUTABLE'.");
+                            Peer.sendBlockToAll(signature);
                         }
                     }
                 }
-            } catch (ProcessException ex) {
-                Server.logError(ex);
             }
         }
         
-        public void blockShortnersAndIPs() {
-            try {
-                if (linkMap != null) {
-                    for (String link : linkMap.keySet()) {
-                        if (Subnet.isValidIP(link)) {
-                            if (Block.addExact("HREF=" + link)) {
-                                Server.logDebug("new BLOCK 'HREF=" + link + "' added by 'SUSPECT'.");
-                            }
+        public void blockPhishings(long timeKey) {
+            if (linkMap != null) {
+                for (String link : linkMap.keySet()) {
+                    String domain = null;
+                    Flag flag = URI.getFlag(link);
+                    if (flag == Flag.BENEFICIAL) {
+                        continue;
+                    } else if (flag == Flag.DESIRABLE) {
+                        continue;
+                    } else if (Core.isSignatureURL(link)) {
+                        domain = Core.getSignatureHostnameURL(link);
+                        if (Provider.containsFQDN(domain)) {
+                            continue;
+                        } else if (Ignore.containsFQDN(domain)) {
+                            continue;
+                        }
+                        domain = null;
+                    } else if (isSameRootDomain(link)) {
+                        continue;
+                    } else if (Regex.isHostname(link)) {
+                        link = Domain.normalizeHostname(link, true);
+                        if (Provider.containsFQDN(link)) {
+                            continue;
+                        } else if (Ignore.containsFQDN(link)) {
+                            continue;
                         } else {
-                            String url = Core.getSignatureRootURL(link);
-                            if (Core.isShortenerURL(url)) {
-                                if (Block.addExact(link)) {
-                                    Server.logDebug("new BLOCK '" + link + "' added by 'SUSPECT'.");
-                                    Peer.sendBlockToAll(link);
-                                }
+                            domain = Domain.extractDomainSafe(link, true);
+                        }
+                    } else if (isValidEmail(link)) {
+                        if ((domain = Domain.extractDomainSafe(link, true)) != null) {
+                            if (Ignore.containsExact(domain)) {
+                                continue;
+                            } else if (Ignore.containsFQDN(domain.substring(1))) {
+                                continue;
+                            } else if (getEmail().endsWith(domain)) {
+                                continue;
+                            } else if (getRecipientNotNull().endsWith(domain)) {
+                                continue;
+                            } else if (Provider.containsExact(domain)) {
+                                domain = null;
                             }
                         }
                     }
+                    if (NoReply.containsFQDN(domain)) {
+                        if (Block.addExact("HREF=" + domain)) {
+                            Server.logDebug(timeKey, "new BLOCK 'HREF=" + domain + "' added by 'PHISHING'.");
+                        }
+                        if (Block.addExact(getEmail() + ":HREF=" + domain)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + getEmail() + ":HREF=" + domain + "' added by 'PHISHING'.");
+                        }
+                    } else if (domain == null && isValidIP(link)) {
+                        link = Subnet.normalizeIP(link);
+                        if (Block.addExact("HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK 'HREF=" + link + "' added by 'PHISHING'.");
+                        }
+                    } else if (domain == null && Core.isSignatureURL(link)) {
+                        if (Block.addExact(link)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + link + "' added by 'PHISHING'.");
+                        }
+                    } else if (flag == Flag.HARMFUL) {
+                        if (Block.addExact("HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK 'HREF=" + link + "' added by 'HARMFUL'.");
+                        }
+                        if (Block.addExact(getEmail() + ":HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + getEmail() + ":HREF=" + link + "' added by 'HARMFUL'.");
+                        }
+                    } else if (Generic.containsGenericFQDN(link) || Generic.isGenericEC2(link)) {
+                        if (Block.addExact("HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK 'HREF=" + link + "' added by 'GENERIC'.");
+                        }
+                        if (Block.addExact(getEmail() + ":HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + getEmail() + ":HREF=" + link + "' added by 'GENERIC'.");
+                        }
+                    } else if (flag == Flag.UNDESIRABLE) {
+                        if (Block.addExact(getEmail() + ":HREF=" + link)) {
+                            Server.logDebug(timeKey, "new BLOCK '" + getEmail() + ":HREF=" + link + "' added by 'UNDESIRABLE'.");
+                        }
+                    }
                 }
-            } catch (ProcessException ex) {
-                Server.logError(ex);
             }
         }
         
-        public boolean blockKey(long time) {
-            try {
-                clearWhite();
-                complain(time);
-                blockExecutables();
-                blockShortnersAndIPs();
-                return Block.addExact(getUserEmail() + ":" + getBlockKey());
-            } catch (ProcessException ex) {
-                Server.logError(ex);
+        public boolean blockKey(long timeKey, String cause) {
+            clearWhite(timeKey);
+            setSpam(timeKey);
+            if (Block.addExact(getUserEmail() + ":" + getBlockKey())) {
+                Server.logDebug(timeKey, "new BLOCK '" + getUserEmail() + ":"
+                        + getBlockKey() + "' caused by '"
+                        + cause + "'."
+                );
+                return true;
+            } else {
                 return false;
+            }
+        }
+        
+        public boolean ban(long timeKey, String cause) {
+            blockExecutables(timeKey);
+            blockPhishings(timeKey);
+            String key = Block.keyBlockKey(
+                    User.this, ip, helo, hostname,
+                    sender, qualifier,
+                    getRecipientDomain(true)
+            );
+            if (Block.addExact(key)) {
+                Server.logDebug(timeKey, "new BLOCK '"
+                        + key + "' caused by '"
+                        + cause + "'."
+                );
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean ban(long timeKey, String email, String cause) {
+            if (email == null) {
+                return false;
+            } else if (cause == null) {
+                return false;
+            } else {
+                blockExecutables(timeKey);
+                blockPhishings(timeKey);
+                String key = Block.keyBlockKey(
+                        email, ip, helo, sender,
+                        hostname, qualifier, "@"
+                );
+                if (Block.addExact(key)) {
+                    Server.logDebug(timeKey, "new BLOCK '"
+                            + key + "' caused by '"
+                            + cause + "'."
+                    );
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+        
+        private boolean block(long timeKey, String token, String cause) {
+            if (Block.addExact(token)) {
+                Server.logDebug(timeKey, "new BLOCK '"
+                        + token + "' caused by '"
+                        + cause + "'."
+                );
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean banOrBlockForAdmin(long timeKey, String cause) {
+            String email = Core.getAdminEmail();
+            if (email == null) {
+                return false;
+            } else if (isPass() && Provider.isFreeMail(getSender())) {
+                return ban(timeKey, email, cause);
+            } else if (Ignore.containsFQDN(getFQDN())) {
+                return block(timeKey, email + ':' + getBlockKey(), cause);
+            } else if (Provider.containsFQDN(getFQDN())) {
+                return block(timeKey, email + ':' + getBlockKey(), cause);
+            } else if (isPass() && Ignore.contains(getSender())) {
+                return block(timeKey, email + ':' + getBlockKey(), cause);
+            } else if (isPass() && Provider.containsDomain(getSender())) {
+                return block(timeKey, email + ':' + getBlockKey(), cause);
+            } else if (isSenderMailerDeamon()) {
+                return block(timeKey, email + ':' + getBlockKey(), cause);
+            } else {
+                return ban(timeKey, email, cause);
             }
         }
         
         public boolean blockForRecipient(long time) {
+            return blockForRecipient(time, true);
+        }
+        
+        public boolean blockForRecipient(long time, boolean clear) {
             if (recipient == null) {
                 return false;
             } else {
+                if (clear) {
+                    clearWhite(time);
+                }
+                SPF.setSpam(time, tokenSet);
                 return Block.addSafe(
                         User.this,
                         getBlockKey() + ">" + recipient
                 );
+            }
+        }
+        
+        public boolean blockForAdmin(long time) {
+            String email = Core.getAdminEmail();
+            if (email == null) {
+                return false;
+            } else {
+                String blockKey = getBlockKey();
+                return Block.addExact(email + ':' + blockKey);
             }
         }
         
@@ -3767,28 +5276,37 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean block(long time, String situationName) {
+        public boolean block(long timeKey, String situationName) {
             try {
                 Situation situation = Situation.valueOf(situationName);
-                return block(time, situation);
+                return block(timeKey, situation);
             } catch (Exception ex) {
                 Server.logError(ex);
                 return false;
             }
         }
         
-        public boolean complain(long time) {
+        public boolean setSpam(long time) {
             return SPF.setSpam(time, tokenSet);
         }
         
-        public boolean block(long time, Situation situation) {
+        public boolean setHam(long time) {
+            return SPF.setHam(time, tokenSet);
+        }
+        
+        public boolean block(long timeKey, Situation situation) {
             try {
-                clearWhite();
-                complain(time);
+                clearWhite(timeKey);
+                setSpam(timeKey);
                 switch (situation) {
                     case AUTHENTIC:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         return Block.add(User.this, getSenderSimplified(true, true));
+                    case BULK:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
+                        return Block.add(User.this, getSenderSimplified(true, true) + ";BULK");
                     case NONE:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         String domain1 = this.getOriginDomain(false);
                         if (domain1 == null) {
                             return Block.add(User.this, getSenderSimplified(true, true) + ";NONE");
@@ -3796,6 +5314,7 @@ public class User implements Serializable, Comparable<User> {
                             return Block.add(User.this, getSenderSimplified(true, true) + ";" + domain1);
                         }
                     case ZONE:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         String domain2 = this.getOriginDomain(false);
                         if (domain2 == null) {
                             return Block.add(User.this, getSenderDomain(true) + ";NOTPASS");
@@ -3803,8 +5322,10 @@ public class User implements Serializable, Comparable<User> {
                             return Block.add(User.this, getSenderDomain(true) + ";" + domain2);
                         }
                     case IP:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         return Block.add(User.this, getSenderDomain(true) + ";NOTPASS");
                     case SAME:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         String validator = getValidator(false);
                         if (validator == null) {
                             return false;
@@ -3812,20 +5333,16 @@ public class User implements Serializable, Comparable<User> {
                             return Block.add(User.this, getSenderSimplified(true, true) + ";" + validator);
                         }
                     case DOMAIN:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         String senderSimplified = getSenderSimplified(true, true);
                         if (senderSimplified == null) {
                             return false;
                         } else {
-                            if (SPF.isRed(senderSimplified)) {
-                                if (Block.addExact(senderSimplified)) {
-                                    Server.logDebug("new BLOCK '" + senderSimplified + "' added by '" + email + "'.");
-                                    Peer.sendBlockToAll(senderSimplified);
-                                }
-                            }
                             return Block.add(User.this, senderSimplified);
                         }
                     case ORIGIN:
                     case ALL:
+                        Block.addExact(getUserEmail() + ":" + getBlockKey());
                         String domain3 = this.getOriginDomain(false);
                         if (domain3 == null) {
                             return Block.addExact(getUserEmail() + ":mailer-daemon@;" + getIP());
@@ -3867,95 +5384,71 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String getWhiteSender() {
-            Situation situation;
-            String senderLocal = getSender();
-            if (senderLocal == null) {
-                return null;
-            } else if (isSigned(senderLocal)) {
-                situation = Situation.AUTHENTIC;
-            } else if (senderLocal.equals(sender)) {
-                situation = getSituation(true);
-            } else {
-                situation = getSituation(false);
-            }
-            String domain;
-            switch (situation) {
-                case IP:
-                    return getSenderSimplified(false, true) + ";" + getIP();
-                case ZONE:
-                    domain = getValidHostDomain();
-                    if (domain == null) {
-                        return null;
-                    } else {
-                        return getSenderSimplified(false, true) + ";" + domain;
-                    }
-                case AUTHENTIC:
-                    return getSenderSimplified(false, true) + ";PASS";
-                case SAME:
-                    String validator = getValidator(false);
-                    if (validator == null) {
-                        return null;
-                    } else {
-                        return getSenderSimplified(false, true) + ";" + validator;
-                    }
-                default:
-                    return null;
-            }
+        public boolean whiteKey(long timeKey) {
+            clearBlock(timeKey);
+            SPF.setHam(timeKey, tokenSet);
+            return White.addExact(getUserEmail() + ":" + getWhiteKey());
         }
         
-        public boolean whiteKey(long time) {
-            try {
-                clearBlock();
-                SPF.setHam(time, tokenSet);
-                return White.addExact(getUserEmail() + ":" + getWhiteKey());
-            } catch (ProcessException ex) {
-                Server.logError(ex);
+        public boolean whiteKeyForRecipient(long timeKey) {
+            if (recipient == null) {
                 return false;
+            } else {
+                clearBlock(timeKey);
+                SPF.setHam(timeKey, tokenSet);
+                return White.addExact(
+                        getUserEmail() + ":"
+                                + getWhiteKey()
+                                + ">" + recipient
+                );
             }
         }
         
-//        public boolean whiteSender(long time) {
-//            Situation situation;
-//            String senderLocal = getSender();
-//            if (senderLocal == null) {
-//                situation = Situation.ORIGIN;
-//            } else if (senderLocal.equals(senderLocal)) {
-//                situation = getSituation(true);
-//            } else {
-//                situation = getSituation(false);
-//            }
-//            return white(time, situation);
-//        }
+        public boolean whiteKeyForAdmin() {
+            String email = Core.getAdminEmail();
+            if (email == null) {
+                return false;
+            } else {
+                return White.addExact(email + ":" + getWhiteKey());
+            }
+        }
         
-        public boolean white(long time, Situation situation) {
+        public boolean white(long timeKey, Situation situation) {
             try {
                 if (situation == null) {
                     return false;
                 } else {
                     String domain;
-                    clearBlock();
-                    SPF.setHam(time, tokenSet);
+                    clearBlock(timeKey);
+                    SPF.setHam(timeKey, tokenSet);
                     switch (situation) {
                         case ORIGIN:
-                            domain = getValidHostDomain();
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
+                            domain = getValidHostDomainSafe();
                             if (domain == null) {
                                 return White.addExact(getUserEmail() + ":mailer-daemon@;" + getIP());
                             } else {
                                 return White.addExact(getUserEmail() + ":mailer-daemon@" + domain + ";" + domain);
                             }
                         case IP:
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
                             return White.add(User.this, getSenderSimplified(false, true) + ";" + getIP());
                         case ZONE:
-                            domain = getValidHostDomain();
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
+                            domain = getValidHostDomainSafe();
                             if (domain == null) {
                                 return false;
                             } else {
                                 return White.add(User.this, getSenderSimplified(false, true) + ";" + domain);
                             }
                         case AUTHENTIC:
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
                             return White.add(User.this, getSenderSimplified(false, true) + ";PASS");
+                        case BULK:
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
+                            return White.add(User.this, getSenderSimplified(false, true) + ";BULK");
                         case SAME:
+                            White.addExact(getUserEmail() + ":" + getWhiteKey());
                             String validator = getValidator(false);
                             if (validator == null) {
                                 return false;
@@ -3969,14 +5462,15 @@ public class User implements Serializable, Comparable<User> {
                             } else {
                                 boolean added = addRecipient();
                                 boolean removed = Trap.clear(getClientEmailSet(), User.this, recipientAddr);
-                                return added || removed;
+                                boolean resubscribed = NoReply.resubscribe(recipientAddr);
+                                return added || removed || resubscribed;
                             }
                         case MALWARE:
                             String malwareLocal = getMalware();
                             if (malwareLocal == null) {
                                 return false;
                             } else if (Ignore.addExact(getEmail() + ":MALWARE=" + malwareLocal)) {
-                                Server.logInfo("false positive MALWARE '" + malwareLocal + "' detected by '" + getEmail() + "'.");
+                                Server.logDebug(timeKey, "false positive MALWARE '" + malwareLocal + "' detected by '" + getEmail() + "'.");
                                 return true;
                             } else {
                                 return false;
@@ -4003,12 +5497,76 @@ public class User implements Serializable, Comparable<User> {
             return messageID != null;
         }
         
+        public boolean hasQueueID() {
+            return queueID != null;
+        }
+        
+        public boolean hasClientQueueID() {
+            return client != null && queueID != null;
+        }
+        
+        public String getClientQueueID() {
+            return queueID + "@" + client;
+        }
+        
+        public boolean hasReplyTo() {
+            return replyto != null;
+        }
+        
         public boolean hasHeaderFrom() {
             return from != null;
         }
         
         public boolean hasSubject() {
             return subject != null;
+        }
+        
+        public boolean hasBodyInformation() {
+            if (signerSet != null) {
+                return true;
+            } else if (linkMap != null) {
+                return true;
+            } else if (executableSet != null) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean hasBodyInformation2() {
+            if (signerSet != null) {
+                return true;
+            } else if (linkMap != null) {
+                return true;
+            } else if (executableSet != null) {
+                return true;
+            } else if (malware != null) {
+                return true;
+            } else if (body != null) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean hasHeaderInformation() {
+            if (from != null) {
+                return true;
+            } else if (replyto != null) {
+                return true;
+            } else if (subject != null) {
+                return true;
+            } else if (messageID != null) {
+                return true;
+            } else if (queueID != null) {
+                return true;
+            } else if (date != null) {
+                return true;
+            } else if (unsubscribe != null) {
+                return true;
+            } else {
+                return false;
+            }
         }
         
         public boolean ignoreMalware() {
@@ -4023,18 +5581,22 @@ public class User implements Serializable, Comparable<User> {
             return malware != null;
         }
         
-        public boolean hasMalwareNotIgnored() {
+        public boolean hasMalwareIgnored() {
             if (malware == null) {
                 return false;
             } else if (Ignore.containsExact(getEmail() + ":MALWARE=" + malware)) {
-                return false;
-            } else {
                 return true;
+            } else {
+                return false;
             }
         }
         
         public boolean isHolding() {
             return result.equals("HOLD");
+        }
+        
+        public boolean isFlagged() {
+            return result.equals("FLAG");
         }
         
         public boolean isFinished() {
@@ -4043,42 +5605,6 @@ public class User implements Serializable, Comparable<User> {
         
         public boolean isDelivered() {
             return result.equals("WHITE") || result.equals("ACCEPT");
-        }
-        
-        public boolean isHoldingFull() {
-            if (!isHolding()) {
-                return false;
-            } else if (isWhiteKey()) {
-                return false;
-            } else if (isBlockKey()) {
-                return false;
-            } else if (isAnyLinkBLOCK(true)) {
-                return false;
-            } else if (isUsingHeader()) {
-                return hasSubject();
-            } else {
-                return true;
-            }
-        }
-        
-        public boolean isSuspectFull() {
-            if (!isResult("ACCEPT")) {
-                return false;
-            } else if (!hasSubject()) {
-                return false;
-            } else if (isWhiteKey()) {
-                return false;
-            } else if (isBlockKey()) {
-                return false;
-            } else if (hasTokenRed()) {
-                return true;
-            } else if (isAnyLinkSuspect()) {
-                return true;
-            } else if (isSubjectSuspect()) {
-                return true;
-            } else {
-                return false;
-            }
         }
         
         public boolean isAdminAdvised() {
@@ -4093,12 +5619,23 @@ public class User implements Serializable, Comparable<User> {
             return recipientAdvised;
         }
         
+        public void setRecipientAdvised() {
+            this.CHANGED.acquire();
+            this.recipientAdvised = true;
+            User.CHANGED = true;
+            this.CHANGED.release(true);
+        }
+        
         public boolean isUserAdvised() {
             return userAdvised;
         }
         
         public boolean isAbuseAdvised() {
             return abuseAdvised;
+        }
+        
+        public String getAbuseReported() {
+            return abuseEmail;
         }
         
         public boolean isNotAdvised() {
@@ -4121,53 +5658,19 @@ public class User implements Serializable, Comparable<User> {
             return !abuseAdvised;
         }
         
-        public boolean isWhite() {
-            return getWhite() != null;
-        }
-        
-        public String getWhite() {
-            String white;
-            if (isWhiteKey()) {
-                return getWhiteKey();
-            } else if (sender != null && (white = White.find(null, User.this, ip, sender, getValidHostname(), (isSigned(sender) ? "PASS" : qualifier == null ? "NONE" : qualifier.name()), recipient)) != null) {
-                return white;
-            } else if (from != null && (white = White.find(null, User.this, ip, from, getValidHostname(), (isSigned(from) ? "PASS" : "NONE"), recipient)) != null) {
-                return white;
-            } else if (replyto != null && (white = White.find(null, User.this, ip, replyto, getValidHostname(), (isSigned(replyto) ? "PASS" : "NONE"), recipient)) != null) {
-                return white;
-            } else if (sender == null) {
-                return White.find(null, User.this, ip, null, getValidHostname(), "NONE", recipient);
-            } else {
-                return null;
-            }
-        }
-        
         public boolean isBlock() {
             return getBlock() != null;
         }
         
-        public String getBlock() {
-            String block;
-            if (isBlockKey()) {
-                return getBlockKey();
-            } else if (sender != null && (block = Block.find(null, User.this, ip, sender, getValidHostname(), (isSigned(sender) ? "PASS" : qualifier == null ? "NONE" : qualifier.name()), recipient, false, true, true, true)) != null) {
-                return block;
-            } else if (from != null && (block = Block.find(null, User.this, ip, from, getValidHostname(), (isSigned(from) ? "PASS" : "NONE"), recipient, false, true, true, true)) != null) {
-                return block;
-            } else if (replyto != null && (block = Block.find(null, User.this, ip, replyto, getValidHostname(), (isSigned(replyto) ? "PASS" : "NONE"), recipient, false, true, true, true)) != null) {
-                return block;
-            } else if (sender == null && (block = Block.find(null, User.this, ip, null, getValidHostname(), "NONE", recipient, false, true, true, true)) != null) {
-                return block;
-            } else if (Ignore.containsHost(getValidHostname())) {
-                return null;
-            } else if (Provider.containsDomain(getValidHostname())) {
-                return null;
-            } else {
-                return Block.findDNSBL(ip);
-            }
+        public String getBlockedCIDR() {
+            return Block.findCIDR(ip);
         }
         
-        public boolean isAnyLinkBLOCK(boolean findIP) {
+        public boolean isBlockedCIDR() {
+            return CIDR.containsIP(ip);
+        }
+        
+        public boolean isAnyLinkBLOCK(long tikeKey, boolean findIP) {
             for (String token : getLinkKeySet()) {
                 if (Core.isSignatureURL(token)) {
                     if (Block.containsExact(token)) {
@@ -4176,7 +5679,7 @@ public class User implements Serializable, Comparable<User> {
                         token = Core.getSignatureHostURL(token);
                     }
                 }
-                if (Block.findHREF(User.this, token, findIP) != null) {
+                if (Block.findHREF(tikeKey, User.this, token, findIP) != null) {
                     setLinkBlocked(token);
                     return true;
                 }
@@ -4184,7 +5687,7 @@ public class User implements Serializable, Comparable<User> {
             return false;
         }
         
-        public String getBlockHREF(boolean findIP) {
+        public String getBlockHREF(long timeKey, boolean findIP) {
             String block = null;
             for (String token : getLinkKeySet()) {
                 if (Core.isSignatureURL(token)) {
@@ -4194,7 +5697,7 @@ public class User implements Serializable, Comparable<User> {
                         token = Core.getSignatureHostURL(token);
                     }
                 }
-                if ((block = Block.findHREF(User.this, token, findIP)) != null) {
+                if ((block = Block.findHREF(timeKey, User.this, token, findIP)) != null) {
                     setLinkBlocked(token);
                     break;
                 }
@@ -4202,47 +5705,43 @@ public class User implements Serializable, Comparable<User> {
             return block;
         }
         
-        public boolean isSubjectSuspect() {
-            if (subject == null) {
-                return false;
+        public boolean isSubjectBlockedREGEX() {
+            return Block.matchesWithText(User.this, getSubject());
+        }
+        
+        public boolean isSubjectEmpty() {
+            String subjectLocal = getSubject();
+            if (subjectLocal == null) {
+                return usingHeader();
             } else {
-                return Block.containsSubject(User.this, subject);
+                return subjectLocal.isEmpty();
             }
         }
         
-        public boolean isAnyLinkSuspect() {
-            for (String token : getLinkKeySet()) {
-                if (Core.isSignatureURL(token)) {
-                    token = Core.getSignatureHostURL(token);
-                }
-                if (SPF.isRed(token)) {
-                    Server.logTrace("isAnyLinkSuspect isRed");
-                    return true;
-//                } else if (Subnet.isValidIP(token)) {
-//                    Server.logTrace("isAnyLinkSuspect isValidIP");
-//                    return true;
-//                } else if (Generic.containsGenericSoft(token)) {
-//                    Server.logTrace("isAnyLinkSuspect containsGenericSoft");
-//                    return true;
-//                } else if (Block.find(User.this, token, false, false, false) != null) {
-//                    Server.logTrace("isAnyLinkSuspect BLOCK");
-//                    return true;
-                } else if (Domain.isHostname(token)) {
-//                    if (token.contains(".xn--")) {
-//                       // IDNA encoding.
-//                       Server.logTrace("isAnyLinkSuspect IDNA encoding");
-//                       return true;
-//                    } else {
-                        String listed = Reverse.getListedHost(token, "multi.uribl.com", "127.0.0.2", "127.0.0.4", "127.0.0.8");
-                        if (listed != null) {
-                            Server.logTrace("isAnyLinkSuspect multi.uribl.com");
-                            Server.logDebug("host " + token + " is listed in 'multi.uribl.com;" + listed + "'.");
-                            return true;
-                        }
-//                    }
-                }
+        public boolean isBodySuspect() {
+            return getBodySuspect() != null;
+        }
+        
+        public String getBodySuspect() {
+            String bodyPlain = getTextPlainBody();
+            if (bodyPlain == null) {
+                return null;
+            } else if (sizeLinkKeySet() == 0 && Core.hasBitcoinPattern(bodyPlain)) {
+                // Found a Bitcoin wallet but 
+                // the body don't have just one link.
+                // Suspect to be a fake extortion.
+                return "hasBitcoinPattern";
+            } else {
+                return null;
             }
-            return false;
+        }
+        
+        public boolean hasBitcoinInBody() {
+            return Core.hasBitcoinPattern(getTextPlainBody());
+        }
+        
+        public boolean isAnyLinkSuspect(boolean findIP) {
+            return getAnyLinkSuspect(findIP) != null;
         }
         
         private synchronized Boolean containsRecipient() {
@@ -4286,43 +5785,12 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public synchronized boolean isInexistent(Client client) {
-            if (recipient == null) {
-                return false;
-            } else if (Trap.containsAnything(client, User.this, recipient)) {
-                return true;
-            } else if (recipientSet == null) {
-                return false;
-            } else if (recipientSet.contains(recipient)) {
-                return false;
-            } else {
-                Trap.addInexistentSafe(client, recipient);
-                return true;
-            }
-        }
-        
         public boolean isRoutable() {
             if (recipient == null) {
                 return true;
             } else {
                 return getTrapTime() == null;
             }
-        }
-        
-        public boolean isToPostmaster() {
-            if (recipient == null) {
-                return false;
-            } else {
-                return recipient.startsWith("postmaster@");
-            }
-        }
-        
-        public boolean isToAdmin() {
-            return Core.isAdminEmail(recipient);
-        }
-        
-        public boolean isToAbuse() {
-            return Core.isAbuseEmail(recipient);
         }
         
         public boolean isToReserved() {
@@ -4334,9 +5802,9 @@ public class User implements Serializable, Comparable<User> {
                 return true;
             } else if (recipient.startsWith("mailer-daemon@")) {
                 return true;
-            } else if (isToAdmin()) {
+            } else if (isRecipientAdmin()) {
                 return true;
-            } else if (isToAbuse()) {
+            } else if (isRecipientAbuse()) {
                 return true;
             } else {
                 return false;
@@ -4346,14 +5814,14 @@ public class User implements Serializable, Comparable<User> {
         public boolean isFromReserved() {
             if (sender == null) {
                 return true;
-            } else if (from == null) {
-                return true;
             } else if (sender.startsWith("postmaster@")) {
                 return true;
             } else if (sender.startsWith("abuse@")) {
                 return true;
             } else if (sender.startsWith("mailer-daemon@")) {
                 return true;
+            } else if (from == null) {
+                return hasHeaderInformation();
             } else if (from.startsWith("postmaster@")) {
                 return true;
             } else if (from.startsWith("abuse@")) {
@@ -4402,32 +5870,14 @@ public class User implements Serializable, Comparable<User> {
             return Block.containsExact(User.this, "CIDR=" + getCIDR());
         }
         
-        public boolean isSenderBlock() {
-            if (isSenderBlock(false)) {
-                return true;
-            } else {
-                Situation situation;
-                String senderLocal = getSender();
-                if (senderLocal == null) {
-                    return false;
-                } else if (isSigned(senderLocal)) {
-                    situation = Situation.AUTHENTIC;
-                } else if (senderLocal.equals(sender)) {
-                    situation = getSituation(true);
-                } else {
-                    situation = Situation.NONE;
-                }
-                if (situation == Situation.AUTHENTIC) {
-                    return false;
-                } else {
-                    return isSenderBlock(true);
-                }
-            }
-        }
-        
         public boolean isSenderBlock(boolean validation) {
             if (validation) {
-                return Block.containsExact(User.this, getSenderDomain(true) + ";NOTPASS");
+                String senderLocal = getTrueSender();
+                if (!Provider.isFreeMail(senderLocal) && sentByBULK()) {
+                    return Block.containsExact(User.this, getSenderDomain(true) + ";BULK");
+                } else {
+                    return Block.containsExact(User.this, getSenderDomain(true) + ";NOTPASS");
+                }
             } else {
                 return Block.containsExact(User.this, getSenderSimplified(true, true));
             }
@@ -4442,81 +5892,31 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean isSenderRed() {
-            String tueSender = getSender();
-            if (tueSender == null) {
-                return false;
-            } else if (getQualifierName().equals("PASS")) {
-                String token;
-                if (Provider.containsMX(tueSender)) {
-                    token = tueSender;
-                } else {
-                    int index = tueSender.indexOf('@');
-                    token = tueSender.substring(index);
-                }
-                Distribution distribution = SPF.getDistribution(token);
-                if (distribution == null) {
-                    return false;
-                } else {
-                    return distribution.isRed();
-                }
-            } else {
-                return false;
-            }
-        }
-        
-        public boolean isSenderGreen() {
-            String tueSender = getSender();
-            if (tueSender == null) {
-                return false;
-            } else if (getQualifierName().equals("PASS")) {
-                String token;
-                if (Provider.containsMX(tueSender)) {
-                    token = tueSender;
-                } else {
-                    int index = tueSender.indexOf('@');
-                    token = tueSender.substring(index);
-                }
-                Distribution distribution = SPF.getDistribution(token);
-                if (distribution == null) {
-                    return true;
-                } else {
-                    return distribution.isGreen();
-                }
-            } else {
-                return false;
-            }
+        public boolean isBulkBlock() {
+            return Block.containsExact(User.this, getSenderDomain(true) + ";BULK");
         }
         
         public boolean isSenderTrustable() {
-            String senderLocal = getSender();
-            if (isSigned(senderLocal)) {
+            String senderLocal = getTrueSender();
+            if (senderLocal == null) {
+                return false;
+            } else if (senderLocal.isEmpty()) {
+                return false;
+            } else if (isSigned(senderLocal)) {
                 return true;
             } else if (isPass() && isMailFrom(senderLocal)) {
                 return true;
-            } else if (Provider.containsDomain(getValidHostname())) {
+            } else if (Provider.containsDomain(getFQDN())) {
                 return true;
             } else {
                 String domainSender = getSenderDomain(false);
                 if (domainSender == null) {
                     return false;
                 } else {
-                    String domainHostname = getValidHostDomain();
+                    String domainHostname = getValidHostDomainSafe();
                     return domainSender.equals(domainHostname);
                 }
             }
-        }
-        
-        public boolean isPass() {
-            return qualifier  == SPF.Qualifier.PASS;
-        }
-        
-        public boolean isFail() {
-            return qualifier  == SPF.Qualifier.FAIL;
-        }
-        
-        public boolean isSoftfail() {
-            return qualifier  == SPF.Qualifier.SOFTFAIL;
         }
         
         public boolean isUniqueSender() {
@@ -4529,44 +5929,32 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean hasTokenRed() {
-//            return SPF.hasRed(tokenSet);
-            boolean unique = isUniqueSender();
-            for (String token : tokenSet) {
-                if (unique) {
-                    if (SPF.isRed(token)) {
-                        return true;
-                    }
-                } else if (Subnet.isValidIP(token)) {
-                    if (SPF.isRed(token)) {
-                        return true;
-                    }
-                } else if (!Provider.containsDomain(token)) {
-                    if (SPF.isRed(token)) {
-                        return true;
-                    }
+        public boolean isSenderRecent() {
+            if (sender == null) {
+                return false;
+            } else {
+                SPF spf = SPF.getSPF(sender);
+                if (spf == null) {
+                    return false;
+                } else {
+                    return spf.isRecent();
                 }
             }
-            return false;
         }
         
-        public boolean hasTokenYellow() {
-            return SPF.hasYellow(tokenSet);
-        }
-        
-        public boolean isGreen() {
-            return SPF.isGreen(tokenSet);
-        }
-        
-        public boolean isSenderGood() {
-            if (isPass()) {
-                String mx = Domain.extractHost(sender, true);
-                return SPF.isGood(Provider.containsExact(mx) ? sender : mx);
+        public boolean isBeneficial() {
+            if (isSenderFreemail()) {
+                return Reputation.isBeneficial(
+                        ip, hostname, helo, sender, qualifier, null, null
+                );
             } else {
-                return false;
+                return Reputation.isBeneficial(
+                        ip, hostname, helo, sender, qualifier, from, signerSet
+                );
             }
         }
         
+        @Override
         public TreeSet<String> getLinkSet() {
             if (linkMap == null) {
                 return null;
@@ -4577,14 +5965,98 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        @Override
+        public TreeSet<String> getExecutableSet() {
+            return executableSet;
+        }
+        
+        public TreeSet<String> getExecutableSetNN() {
+            if (executableSet == null) {
+                return new TreeSet<>();
+            } else {
+                return executableSet;
+            }
+        }
+        
         public TreeSet<String> getTokenSet() {
             TreeSet<String> resultSet = new TreeSet<>();
             resultSet.addAll(tokenSet);
             return resultSet;
         }
         
+        public String getFilter() {
+            return filter;
+        }
+        
+        public Filter getFilterEnum() {
+            if (filter == null) {
+                return null;
+            } else {
+                try {
+                    int index = filter.indexOf(';');
+                    if (index == -1) {
+                        return Filter.valueOf(filter);
+                    } else {
+                        return Filter.valueOf(filter.substring(0, index));
+                    }
+                } catch (IllegalArgumentException ex) {
+                    return null;
+                }
+            }
+        }
+        
+        @Override
+        public boolean isFilter(Filter... filterArray) {
+            if (filterArray == null) {
+                return false;
+            } else if (this.filter == null) {
+                return false;
+            } else {
+                for (Filter filter : filterArray) {
+                    if (this.filter.equals(filter.name())) {
+                        return true;
+                    } else if (this.filter.startsWith(filter.name() + ';')) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        
+        public boolean isSenderHijacked() {
+            String malware = getMalware();
+            if (malware == null) {
+                return false;
+            } else if (malware.startsWith("SPFBL.Subject.")) {
+                return true;
+            } else if (malware.startsWith("SPFBL.Encrypted.")) {
+                return true;
+            } else if (malware.startsWith("Porcupine.Malware.")) {
+                return true;
+            } else if (malware.startsWith("Porcupine.Phishing.")) {
+                return true;
+            } else if (malware.startsWith("Sanesecurity.Badmacro.")) {
+                return true;
+            } else if (malware.startsWith("Sanesecurity.Foxhole.")) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        
+        @Override
         public String getMalware() {
             return malware;
+        }
+        
+        public String getMalwareOrExecutable() {
+            if (malware != null) {
+                return malware;
+            } else if (executableSet != null && !executableSet.isEmpty()) {
+                return "SPFBL." + executableSet.first();
+            } else {
+                return null;
+            }
         }
         
         public boolean setResult(String oldResult, String newResult) {
@@ -4616,6 +6088,48 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        private transient String instance = null;
+        
+        public boolean isInstance(String instance) {
+            if (instance == null) {
+                return false;
+            } else if (instance.trim().length() == 0) {
+                return false;
+            } else {
+                return instance.trim().equals(this.instance);
+            }
+        }
+        
+        public boolean setPostfixHOLD(String instance) {
+            if (instance == null) {
+                return false;
+            } else if (instance.trim().length() == 0) {
+                return false;
+            } else {
+                this.CHANGED.acquire();
+                this.result = "HOLD";
+                this.instance = instance.trim();
+                this.STORED = false;
+                this.CHANGED.release(true);
+                return User.CHANGED = true;
+            }
+        }
+        
+        public boolean setPostfixFLAG(String instance) {
+            if (instance == null) {
+                return false;
+            } else if (instance.trim().length() == 0) {
+                return false;
+            } else {
+                this.CHANGED.acquire();
+                this.result = "FLAG";
+                this.instance = instance.trim();
+                this.STORED = false;
+                this.CHANGED.release(true);
+                return User.CHANGED = true;
+            }
+        }
+        
         public boolean setResult(String result) {
             if (result == null) {
                 return false;
@@ -4629,6 +6143,35 @@ public class User implements Serializable, Comparable<User> {
             } else if (!result.equals(this.result)) {
                 this.CHANGED.acquire();
                 this.result = result;
+                this.STORED = false;
+                this.CHANGED.release(true);
+                return User.CHANGED = true;
+            } else {
+                return false;
+            }
+        }
+        
+        public boolean setResultFilter(String result, String filter) {
+            if (result == null && filter == null) {
+                return false;
+            } else if (result == null) {
+                this.CHANGED.acquire();
+                this.filter = filter;
+                this.STORED = false;
+                this.CHANGED.release(true);
+                return User.CHANGED = true;
+            } else if (result.equals("MALWARE")) {
+                this.CHANGED.acquire();
+                this.malware = "FOUND";
+                this.result = "REJECT";
+                this.filter = filter;
+                this.STORED = false;
+                this.CHANGED.release(true);
+                return User.CHANGED = true;
+            } else if (!result.equals(this.result)) {
+                this.CHANGED.acquire();
+                this.result = result;
+                this.filter = filter;
                 this.STORED = false;
                 this.CHANGED.release(true);
                 return User.CHANGED = true;
@@ -4732,6 +6275,14 @@ public class User implements Serializable, Comparable<User> {
                 return true;
             } else if (filter.equals("insuspeitos") && isResult("ACCEPT")) {
                 return true;
+            } else if (filter.equals("aceita") && isResult("ACCEPT")) {
+                return true;
+            } else if (filter.equals("aceitas") && isResult("ACCEPT")) {
+                return true;
+            } else if (filter.equals("aceito") && isResult("ACCEPT")) {
+                return true;
+            } else if (filter.equals("aceitos") && isResult("ACCEPT")) {
+                return true;
             } else if (filter.equals("confiavel") && isResult("WHITE")) {
                 return true;
             } else if (filter.equals("confiaveis") && isResult("WHITE")) {
@@ -4742,43 +6293,97 @@ public class User implements Serializable, Comparable<User> {
                 return true;
             } else if (filter.equals("confiáveis") && isResult("WHITE")) {
                 return true;
-            } else if (SubnetIPv4.isValidIPv4(filter)) {
+            } else if (filter.equals("suspected") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspect") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspects") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspeito") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspeita") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspeitos") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("suspeitas") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("flagged") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("junk") && isResult("FLAG")) {
+                return true;
+            } else if (filter.equals("trap") && isResult("TRAP")) {
+                return true;
+            } else if (filter.equals("spamtrap") && isResult("TRAP")) {
+                return true;
+            } else if (filter.equals("malware") && hasMalware()) {
+                return true;
+            } else if (filter.equals("virus") && hasMalware()) {
+                return true;
+            } else if (filter.equals("vírus") && hasMalware()) {
+                return true;
+            } else if (isValidIPv4(filter)) {
                 filter = SubnetIPv4.normalizeIPv4(filter);
                 return filter.equals(getIP());
-            } else if (SubnetIPv6.isValidIPv6(filter)) {
+            } else if (isValidIPv6(filter)) {
                 filter = SubnetIPv6.normalizeIPv6(filter);
                 return filter.equals(getIP());
-            } else if (Domain.isValidEmail(filter)) {
-                if (filter.equals(getMailFrom())) {
+            } else if (isValidEmail(filter)) {
+                if (filter.equals(getSender())) {
                     return true;
-                } else if (filter.equals(getHeaderFrom())) {
+                } else if (filter.equals(getFrom())) {
                     return true;
                 } else if (filter.equals(getReplyTo())) {
                     return true;
                 } else if (filter.equals(getRecipient())) {
                     return true;
                 } else {
-                    return false;
+                    TreeSet<String> linkSet = getLinkSet();
+                    if (linkSet == null) {
+                        return false;
+                    } else {
+                        for (String token : linkSet) {
+                            if (filter.equals(token)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
                 }
             } else if (Domain.hasTLD(filter)) {
                 filter = Domain.normalizeHostname(filter, true);
                 if (filter.endsWith("." + getHELO())) {
                     return true;
-                } else if (filter.endsWith("." + getValidHostnameSafe())) {
+                } else if (filter.endsWith("." + getClient())) {
+                    return true;
+                } else if (filter.endsWith("." + getFQDN())) {
                     return true;
                 } else if (filter.endsWith("." + getMailFromHostnameSafe(false))) {
                     return true;
-                } else if (filter.endsWith("." + getFromHostnameSafe(false))) {
+                } else if (filter.endsWith("." + getHeaderFromHostnameSafe(false))) {
                     return true;
                 } else if (filter.endsWith("." + getReplyToHostnameSafe(false))) {
                     return true;
-                } else if (filter.endsWith("." + getRecipientHostnameSafe(false))) {
+                } else if (filter.endsWith("." + getRecipientHostname(false))) {
                     return true;
                 } else {
-                    return false;
+                    TreeSet<String> linkSet = getLinkSet();
+                    if (linkSet == null) {
+                        return false;
+                    } else {
+                        for (String token : linkSet) {
+                            int index = token.indexOf('@') + 1;
+                            if (index > 0) {
+                                token = "." + token.substring(index);
+                            }
+                            if (filter.endsWith(token)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
                 }
             } else {
-                Date date = getDate(filter);
+                Date date = User.this.getDate(filter);
                 if (date == null) {
                     return false;
                 } else if (time < date.getTime()) {
@@ -4789,24 +6394,63 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String getHeaderFrom() {
+        @Override
+        public String getFrom() {
             return from;
         }
         
+        @Override
         public String getReplyTo() {
             return replyto;
         }
         
+        @Override
+        public String getInReplyTo() {
+            return inreplyto;
+        }
+
         public Timestamp getMessageDate() {
             return date;
         }
         
+        public Date getMessageDate(Calendar calendar) {
+            if (date == null) {
+                return null;
+            } else if (calendar == null) {
+                return date;
+            } else {
+                calendar.setTime(date);
+                return calendar.getTime();
+            }
+        }
+        
+        @Override
         public String getSubject() {
             return subject;
         }
         
+        public String getSubjectWordSet(int minimum) {
+            return Dictionary.toString(subject, locale, recipient, minimum);
+        }
+        
+        public String getSubject(int maxLength) {
+            if (subject == null) {
+                return null;
+            } else if (subject.length() > maxLength) {
+                return subject.substring(0, maxLength).trim() + "...";
+            } else {
+                return subject;
+            }
+        }
+        
+        @Override
         public String getMessageID() {
             return messageID;
+        }
+        
+        @Override
+        public String getQueueID() {
+            return queueID;
         }
         
         public URL getUnsubscribeURL() {
@@ -4818,6 +6462,18 @@ public class User implements Serializable, Comparable<User> {
                 return null;
             } else {
                 return unsubscribe.toExternalForm();
+            }
+        }
+        
+        public URL cloneUnsubscribe() {
+            if (unsubscribe == null) {
+                return null;
+            } else {
+                try {
+                    return new URL(unsubscribe.toExternalForm());
+                } catch (MalformedURLException ex) {
+                    return null;
+                }
             }
         }
         
@@ -4855,62 +6511,52 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public boolean hasSuspectReplyTo() {
-            String replyTo = getReplyTo();
-            if (replyTo == null) {
+        public boolean hasSignatureURL() {
+            if (linkMap == null) {
                 return false;
-            } else if (replyTo.endsWith("@yahoo.com")) {
-                return !isSigned(replyTo) && sizeLinkKeySetExcept(replyTo) == 0;
-            } else if (replyTo.endsWith("@gmail.com")) {
-                return !isSigned(replyTo) && sizeLinkKeySetExcept(replyTo) == 0;
-            } else {
-                return false;
-            }
-        }
-        
-        public boolean hasExecutableNotIgnored() {
-            if (executableSet == null) {
-                return false;
-            } else if (executableSet.isEmpty()) {
+            } else if (linkMap.isEmpty()) {
                 return false;
             } else {
-                int count = executableSet.size();
-                for (String signature : executableSet) {
-                    if (Ignore.containsExact(getEmail() + ":" + signature)) {
-                        count--;
-                    }
-                }
-                return count > 0;
-            }
-        }
-        
-        public boolean hasExecutableBlocked() {
-            if (executableSet == null) {
-                return false;
-            } else if (executableSet.isEmpty()) {
-                return false;
-            } else {
-                for (String signature : executableSet) {
-                    if (!Ignore.containsExact(getEmail() + ":" + signature)) {
-                        if (Block.containsExact(signature)) {
-                            return true;
-                        }
+                for (String link : linkMap.keySet()) {
+                    if (Core.isSignatureURL(link)) {
+                        return true;
+                    } else if (isValidIP(link)) {
+                        return true;
                     }
                 }
                 return false;
             }
         }
         
-        public boolean hasMiscellaneousSymbols() {
-            return Core.hasMiscellaneousSymbols(subject);
+        public boolean hasLinkBlocked() {
+            if (linkMap == null) {
+                return false;
+            } else if (linkMap.isEmpty()) {
+                return false;
+            } else {
+                for (String link : linkMap.keySet()) {
+                    Boolean blocked = linkMap.get(link);
+                    if (blocked == true) {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
         
         public boolean isInvalidDate(long time) {
             if (date == null) {
                 return false;
             } else {
-//                return Math.abs(time - date.getTime()) > (3 * Server.DAY_TIME);
                 return Math.abs(time - date.getTime()) > (21 * Server.DAY_TIME);
+            }
+        }
+        
+        private int sizeLinkKeySet() {
+            if (linkMap == null) {
+                return 0;
+            } else {
+                return linkMap.size();
             }
         }
         
@@ -4924,12 +6570,9 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private boolean containsLinkKeySet(String key) {
-            if (linkMap == null) {
-                return false;
-            } else {
-                return linkMap.containsKey(key);
-            }
+        @Override
+        public TreeSet<String> getSignerSet() {
+            return signerSet;
         }
         
         private TreeSet<String> getLinkKeySet() {
@@ -4940,15 +6583,18 @@ public class User implements Serializable, Comparable<User> {
             return keySet;
         }
         
-        private TreeSet<String> getExecutableSet() {
-            TreeSet<String> resultSet = new TreeSet<>();
-            if (executableSet != null) {
-                resultSet.addAll(executableSet);
+        private TreeSet<String> getLinkKeySetSimple() {
+            TreeSet<String> keySet = new TreeSet<>();
+            if (linkMap != null) {
+                for (String link : linkMap.keySet()) {
+                    link = Core.tryGetSignatureRootURL(link);
+                    keySet.add(link);
+                }
             }
-            return resultSet;
+            return keySet;
         }
         
-        public boolean addLink(String link) {
+        public boolean addLink(long timeKey, String link) {
             if ((link = normalizeLink(link)) == null) {
                 return false;
             } else if (link.equals(getUserEmail())) {
@@ -4956,34 +6602,34 @@ public class User implements Serializable, Comparable<User> {
             } else if (link.equals(getRecipient())) {
                 return false;
             } else {
-                boolean blocked;
+                boolean blacklisted;
                 if (isToPostmaster()) {
-                    blocked = false;
-                } else if (isToAdmin()) {
-                    blocked = false;
-                } else if (isToAbuse()) {
-                    blocked = false;
-                } else if (Block.findHREF(User.this, link, false) == null) {
-                    blocked = false;
+                    blacklisted = false;
+                } else if (isRecipientAdmin()) {
+                    blacklisted = false;
+                } else if (isRecipientAbuse()) {
+                    blacklisted = false;
+                } else if (Block.findHREF(timeKey, User.this, link, false) == null) {
+                    blacklisted = false;
                 } else {
-                    blocked = true;
+                    blacklisted = true;
                 }
                 this.CHANGED.acquire();
                 try {
                     if (this.linkMap == null) {
                         this.linkMap = new TreeMap<>();
                     }
-                    this.linkMap.put(link, blocked);
+                    this.linkMap.put(link, blacklisted);
                     this.STORED = false;
                     User.CHANGED = true;
-                    return blocked;
+                    return blacklisted;
                 } finally {
                     this.CHANGED.release(true);
                 }
             }
         }
         
-        public String setLinkSet(TreeSet<String> linkSet) {
+        public String setLinkSet(long timeKey, TreeSet<String> linkSet) {
             if (linkSet == null) {
                 return null;
             } else {
@@ -4998,7 +6644,7 @@ public class User implements Serializable, Comparable<User> {
                     } else if (link.startsWith("MALWARE=")) {
                         int beginIndex = link.indexOf('=') + 1;
                         String malware = link.substring(beginIndex);
-                        setMalware(malware);
+                        setMalware(timeKey, malware);
                     } else if (Core.isExecutableSignature(link)) {
                         addExecutable(link);
                     } else if (Core.isSignatureURL(link)) {
@@ -5011,11 +6657,11 @@ public class User implements Serializable, Comparable<User> {
                     } else if ((link = normalizeLink(link)) != null) {
                         if (isToPostmaster()) {
                             resultMap.put(link, false);
-                        } else if (isToAdmin()) {
+                        } else if (isRecipientAdmin()) {
                             resultMap.put(link, false);
-                        } else if (isToAbuse()) {
+                        } else if (isRecipientAbuse()) {
                             resultMap.put(link, false);
-                        } else if ((block = Block.findHREF(User.this, link, false)) == null) {
+                        } else if ((block = Block.findHREF(timeKey, User.this, link, false)) == null) {
                             resultMap.put(link, false);
                         } else {
                             resultMap.put(link, true);
@@ -5095,14 +6741,15 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public String setMalware(String malware) {
+        public String setMalware(long time, String malware) {
             if (malware == null) {
                 return null;
             } else if ((malware = malware.length() == 0 ? "FOUND" : malware).equals(this.malware)) {
                 return null;
-            } else if (isToAbuse()) {
+            } else if (isRecipientAbuse()) {
                 this.CHANGED.acquire();
                 this.malware = malware;
+                this.filter = "MALWARE_TO_ABUSE";
                 this.STORED = false;
                 this.CHANGED.release(true);
                 User.CHANGED = true;
@@ -5111,25 +6758,61 @@ public class User implements Serializable, Comparable<User> {
                 this.CHANGED.acquire();
                 if (this.malware == null) {
                     this.malware = malware;
-                    this.STORED = false;
-                    User.CHANGED = true;
                 }
+                if (this.filter == null) {
+                    this.filter = "MALWARE_IGNORED";
+                }
+                this.STORED = false;
+                User.CHANGED = true;
                 this.CHANGED.release(true);
                 return "ACCEPT";
             } else {
                 this.CHANGED.acquire();
                 this.malware = malware;
                 this.result = "REJECT";
+                this.filter = "MALWARE_NOT_IGNORED";
                 this.STORED = false;
                 this.CHANGED.release(true);
                 User.CHANGED = true;
+                if (isUndesirable()) {
+                    banOrBlock(time, "MALWARE");
+                }
                 return "REJECT";
             }
+        }
+        
+        public String getTextPlainBody() {
+            return getTextPlainBody(-1);
         }
         
         public String getTextPlainBody(int limit) {
             if (body == null) {
                 return null;
+            } else if (charset == null) {
+                return null;
+            } else if (client.equals(Core.getHostname())) {
+                try {
+                    String text = new String(body, getSupportedCharset());
+                    text = Dictionary.normalizeCharacters(text);
+                    text = text.replaceAll("(^\\h*)|(\\h*$)", "");
+                    text = text.trim();
+                    if (limit == -1) {
+                        return text;
+                    } else if (text.length() < 8) {
+                        text = null;
+                    } else if (text.length() > limit) {
+                        int last = text.lastIndexOf(' ', limit);
+                        if (last > 0) {
+                            limit = last;
+                        }
+                        text = text.substring(0, limit);
+                        text = text.trim() + "...";
+                    }
+                    return text;
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
             } else {
                 try {
                     ByteArrayOutputStream baOS = new ByteArrayOutputStream();
@@ -5140,26 +6823,269 @@ public class User implements Serializable, Comparable<User> {
                             baOS.write(code);
                         }
                     }
-                    String html = baOS.toString();
+                    String html = baOS.toString(getSupportedCharsetToString());
                     Document document = Jsoup.parse(html);
-                    document.normalise();
+                    document = document.normalise();
                     String text = document.text();
-                    text = text.replace('\t', ' ');
-                    text = text.replace('\n', ' ');
-                    text = text.replace('\r', ' ');
+                    text = Dictionary.normalizeCharacters(text);
                     text = text.replaceAll("(^\\h*)|(\\h*$)", "");
-                    while (text.contains("  ")) {
-                        text = text.replace("  ", " ");
-                    }
                     text = text.trim();
-                    if (text.length() < 8) {
+                    if (limit == -1) {
+                        return text;
+                    } else if (text.length() < 8) {
                         text = null;
                     } else if (text.length() > limit) {
-                        limit = text.lastIndexOf(' ', limit);
+                        int last = text.lastIndexOf(' ', limit);
+                        if (last > 0) {
+                            limit = last;
+                        }
                         text = text.substring(0, limit);
                         text = text.trim() + "...";
                     }
                     return text;
+                } catch (ZipException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
+                } catch (EOFException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        }
+        
+        private StringBuilder getStringBuilderHeader() {
+            String encoded = null;
+            try {
+                if (subject != null) {
+                    encoded = MimeUtility.encodeText(subject);
+                }
+            } catch (UnsupportedEncodingException ex) {
+                Server.logError(ex);
+            }
+            StringBuilder builder = new StringBuilder();
+            builder.append("Subject: ");
+            if (encoded != null) {
+                builder.append(encoded);
+            }
+            builder.append("\r\n");
+            builder.append("From: <");
+            if (from != null) {
+                builder.append(from);
+            } else if (sender != null) {
+                builder.append(sender);
+            }
+            builder.append(">\r\n");
+            if (recipient != null) {
+                builder.append("To: <");
+                builder.append(recipient);
+                builder.append(">\r\n");
+            }
+            if (date != null) {
+                builder.append("Date: ");
+                builder.append(Core.getEmailDate(date));
+                builder.append("\r\n");
+            }
+            if (replyto != null) {
+                builder.append("Reply-To: <");
+                builder.append(replyto);
+                builder.append(">\r\n");
+            }
+            if (messageID != null) {
+                builder.append("Message-ID: <");
+                builder.append(messageID);
+                builder.append(">\r\n");
+            }
+            if (unsubscribe != null) {
+                builder.append("List-Unsubscribe: <");
+                builder.append(unsubscribe);
+                builder.append(">\r\n");
+            }
+            return builder;
+        }
+        
+        public MimeMessage getMimeMessageHeader() {
+            if (queueID != null && client != null) {
+                File incomingFile = new File("./incoming/" + queueID + "@" + client);
+                if (incomingFile.exists()) {
+                    try {
+                        MimeMessage message;
+                        try (FileInputStream inputStream = new FileInputStream(incomingFile)) {
+                            message = new MimeMessage(null, inputStream);
+                        }
+                        return message;
+                    } catch (java.io.IOException ex) {
+                        // Do nothing.
+                    } catch (javax.mail.internet.ParseException ex) {
+                        // Do nothing.
+                    } catch (javax.mail.MessagingException ex) {
+                        // Do nothing.
+                    } catch (Exception ex) {
+                        Server.logError(incomingFile.toString());
+                        Server.logError(ex);
+                    }
+                }
+            }
+            if (recipient == null) {
+                return null;
+            } else if (sender == null && from == null) {
+                return null;
+            } else if (subject == null && date == null && messageID == null) {
+                return null;
+            } else if (body == null || charset == null || isSenderMailerDeamon()) {
+                try {
+                    StringBuilder builder = getStringBuilderHeader();
+                    builder.append("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+                    builder.append("<html><body><hr></body></html>");
+                    byte[] bytes = builder.toString().getBytes();
+                    ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                    
+                    Properties props = new Properties();
+                    props.putAll(System.getProperties());
+                    Session session = Session.getInstance(props);
+                    return new MimeMessage(session, inputStream);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            } else if (client.equals(Core.getHostname())) {
+                try {
+                    String text = new String(body, getSupportedCharset());
+                    StringBuilder builder = getStringBuilderHeader();
+                    builder.append("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+                    builder.append(text);
+                    byte[] bytes = builder.toString().getBytes();
+                    ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                    Properties props = new Properties();
+                    props.putAll(System.getProperties());
+                    Session session = Session.getInstance(props);
+                    return new MimeMessage(session, inputStream);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            } else {
+                try {
+                    ByteArrayOutputStream baOS = new ByteArrayOutputStream();
+                    ByteArrayInputStream baIS = new ByteArrayInputStream(body);
+                    try (GZIPInputStream gzipIS = new GZIPInputStream(baIS)) {
+                        int code;
+                        while ((code = gzipIS.read()) != -1) {
+                            baOS.write(code);
+                        }
+                    }
+                    String html = baOS.toString(getSupportedCharsetToString());
+                    Document document = Jsoup.parse(html);
+                    document = document.normalise();
+                    StringBuilder builder = getStringBuilderHeader();
+                    builder.append("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+                    builder.append(document.html());
+                    byte[] bytes = builder.toString().getBytes();
+                    ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                    Properties props = new Properties();
+                    props.putAll(System.getProperties());
+                    Session session = Session.getInstance(props);
+                    return new MimeMessage(session, inputStream);
+                } catch (ZipException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
+                } catch (EOFException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            }
+        }
+        
+        public MimeMessage getMimeMessageBody() {
+            if (queueID != null && client != null) {
+                File incomingFile = new File("./incoming/" + queueID + "@" + client);
+                if (incomingFile.exists()) {
+                    try {
+                        MimeMessage message;
+                        try (FileInputStream inputStream = new FileInputStream(incomingFile)) {
+                            message = new MimeMessage(null, inputStream);
+                        }
+                        if (message.getSize() > 0) {
+                            ServerSMTP.removeDangerousObjects(message);
+                            return message;
+                        }
+                    } catch (javax.mail.internet.ParseException ex) {
+                        // Do nothing.
+                    } catch (javax.mail.MessagingException ex) {
+                        // Do nothing.
+                    } catch (Exception ex) {
+                        Server.logError(incomingFile.toString());
+                        Server.logError(ex);
+                    }
+                }
+            }
+            if (recipient == null) {
+                return null;
+            } else if (sender == null && from == null) {
+                return null;
+            } else if (subject == null && date == null && messageID == null) {
+                return null;
+            } else if (body == null) {
+                return null;
+            } else if (charset == null) {
+                return null;
+            } else if (client.equals(Core.getHostname())) {
+                try {
+                    String text = new String(body, getSupportedCharset());
+                    StringBuilder builder = getStringBuilderHeader();
+                    builder.append("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+                    builder.append(text);
+                    byte[] bytes = builder.toString().getBytes();
+                    ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                    
+                    Properties props = new Properties();
+                    props.putAll(System.getProperties());
+                    Session session = Session.getInstance(props);
+                    return new MimeMessage(session, inputStream);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                    return null;
+                }
+            } else {
+                try {
+                    ByteArrayOutputStream baOS = new ByteArrayOutputStream();
+                    ByteArrayInputStream baIS = new ByteArrayInputStream(body);
+                    try (GZIPInputStream gzipIS = new GZIPInputStream(baIS)) {
+                        int code;
+                        while ((code = gzipIS.read()) != -1) {
+                            baOS.write(code);
+                        }
+                    }
+                    String html = baOS.toString(getSupportedCharsetToString());
+                    Document document = Jsoup.parse(html);
+                    ServerSMTP.removeDangerousObjects(document);
+                    document = document.normalise();
+                    StringBuilder builder = getStringBuilderHeader();
+                    builder.append("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+                    builder.append(document.html());
+                    byte[] bytes = builder.toString().getBytes();
+                    ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                    Properties props = new Properties();
+                    props.putAll(System.getProperties());
+                    Session session = Session.getInstance(props);
+                    return new MimeMessage(session, inputStream);
+                } catch (ZipException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
+                } catch (EOFException ex) {
+                    body = null;
+                    charset = null;
+                    return null;
                 } catch (Exception ex) {
                     Server.logError(ex);
                     return null;
@@ -5171,16 +7097,75 @@ public class User implements Serializable, Comparable<User> {
             return body != null;
         }
         
-        public boolean setBody(byte[] data) {
+        public byte[] cloneBody() {
+            if (body == null) {
+                return null;
+            } else {
+                return Arrays.copyOf(body, body.length);
+            }
+        }
+        
+        public boolean isTextBodyEmpty() {
+            String text = getTextPlainBody();
+            if (text == null) {
+                return true;
+            } else {
+                return text.isEmpty();
+            }
+        }
+        
+        public boolean hasLinkMap() {
+            return linkMap != null;
+        }
+        
+        public boolean setBody(byte[] data, String charsetName) {
             if (data == null) {
+                return false;
+            } else if (charsetName == null) {
                 return false;
             } else {
                 this.CHANGED.acquire();
                 this.body = data;
+                this.charset = charsetName;
                 this.CHANGED.release(true);
                 this.STORED = false;
                 User.CHANGED = true;
                 return true;
+            }
+        }
+        
+        private Charset getSupportedCharset() {
+            String supportedCharset = getSupportedCharsetToString();
+            if (supportedCharset == null) {
+                return null;
+            } else {
+                return Charset.forName(supportedCharset);
+            }
+        }
+        
+        private String getSupportedCharsetToString() {
+            String lower;
+            if (charset == null) {
+                return null;
+            } else if ((lower = charset.toLowerCase()).equals("7bit")) {
+                return "US-ASCII";
+            } else if (lower.contains("8bit")) {
+                return "ISO-8859-1";
+            } else if (Core.isSupportedCharset(charset)) {
+                return charset;
+            } else if (lower.contains("utf-8")) {
+                return "UTF-8";
+            } else if (lower.contains("iso-8859-1")) {
+                return "ISO-8859-1";
+            } else if (lower.contains("iso-2022-jp")) {
+                return "ISO-2022-JP";
+            } else if (lower.contains("cp-850")) {
+                return "CP850";
+            } else if (lower.contains("ansi_x3.110-1983")) {
+                return "ISO-8859-1";
+            } else {
+                Server.logError("not supported charset: " + charset);
+                return "UTF-8";
             }
         }
         
@@ -5189,30 +7174,30 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else if (Boolean.FALSE.equals(containsRecipient())) {
                 return false;
-            } else if (isUsingHeader()) {
-                String hostnameLocal = getValidHostname();
-                String senderLocal = getMailFrom();
-                if (hostnameLocal == null) {
+            } else if (usingHeader()) {
+                String hostnameLocal = getFQDN();
+                String senderLocal = getSender();
+                if (senderLocal == null) {
                     return false;
-                } else if (senderLocal == null) {
+                } else if (isPass() && Provider.isFreeMail(senderLocal)) {
+                    return true;
+                } else if (hostnameLocal == null) {
                     return false;
-                } else if (Provider.containsDomain(hostnameLocal)) {
+                } else if (isBlockSMTP()) {
+                    return false;
+                } else if (Provider.containsFQDN(hostnameLocal)) {
                     return true;
                 } else if (Generic.containsGenericSoft(hostnameLocal)) {
                     return false;
                 } else if (Generic.containsGenericSoft(senderLocal)) {
                     return false;
-                } else if (isSenderRed()) {
-                    return false;
                 } else if (isBlockKey()) {
                     return false;
-                } else if (isBlockSMTP()) {
+                } else if (isBlockKeyByAdmin()) {
                     return false;
                 } else if (isBlockedForRecipient()) {
                     return false;
-                } else if (isSenderBlock()) {
-                    return false;
-                } else if (Block.containsWHOIS(User.this, getSender())) {
+                } else if (Block.containsWHOIS(User.this, getTrueSender())) {
                     return false;
                 } else {
                     return true;
@@ -5241,10 +7226,74 @@ public class User implements Serializable, Comparable<User> {
                 return true;
             } else if (hasMessageID()) {
                 return true;
-            } else if (isUsingHeader()) {
+            } else if (usingHeader()) {
                 waitHeader(10000);
                 return hasSubject() || hasMessageID();
             } else {
+                return false;
+            }
+        }
+        
+        public boolean banOrBlock(long timeKey, String cause) {
+            if (isWhiteKey()) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isRecipientAbuse()) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isPass() && Provider.isFreeMail(getSender())) {
+                ban(timeKey, cause);
+                return false;
+            } else if (Ignore.containsFQDN(getFQDN())) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (Provider.containsFQDN(getFQDN())) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isPass() && Ignore.contains(getSender())) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isPass() && Provider.containsDomain(getSender())) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isSenderMailerDeamon()) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isWhite()) {
+                blockKey(timeKey, cause);
+                return false;
+            } else if (isFail()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isValidIP(getHELO())) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isNotComplianceFQDN()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isFromFreemail()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isSpoofingFrom()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isSpoofingFQDN()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isFromBlocked()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isFromNotComplaince()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (headerFromIsInvalid()) {
+                ban(timeKey, cause);
+                return true;
+            } else if (isEmptyPTR()) {
+                ban(timeKey, cause);
+                return true;
+            } else {
+                blockKey(timeKey, cause);
                 return false;
             }
         }
@@ -5257,287 +7306,353 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
+        public void setHeader(
+                long timeKey,
+                String client,
+                String from,
+                String replyto,
+                String subject,
+                String messageID,
+                String inReplyTo,
+                String queueID,
+                Date date,
+                URL unsubscribe,
+                Date arrival
+        ) {
+            this.CHANGED.acquire();
+            try {
+                this.client = client;
+                this.from = from;
+                this.replyto = replyto;
+                this.subject = subject;
+                this.messageID = messageID;
+                this.queueID = queueID;
+                this.inreplyto = inReplyTo;
+                if (date != null) {
+                    this.date = new Timestamp(date.getTime());
+                }
+                this.unsubscribe = unsubscribe;
+                this.arrival = arrival;
+                this.STORED = false;
+            } finally {
+                this.CHANGED.release(true);
+                this.STORED = false;
+                User.CHANGED = true;
+            }
+        }
+        
         public String setHeader(
-                long time,
+                long timeKey,
                 Client client,
                 String from,
                 String replyto,
                 String subject,
                 String messageID,
+                String inReplyTo,
+                String queueID,
                 String date,
                 String unsubscribe,
-                Action actionGRACE,
                 Action actionBLOCK,
                 Action actionRED
         ) {
-//            try {
-                if (from == null || from.length() == 0) {
+            boolean forgedFrom = false;
+            boolean spoofedRecipient = false;
+            if (from == null || from.isEmpty()) {
+                from = null;
+            } else {
+                from = from.replaceAll("[\\s\\r\\n\\t]+", " ");
+                InternetAddress address = ServerSMTP.extractInternetAddress(from, true);
+                if (address == null) {
                     from = null;
-                } else if (!Domain.isMailFrom(from = from.toLowerCase())) {
-                    from = null;
-                }
-                if (replyto == null || replyto.length() == 0) {
-                    replyto = null;
-                } else if (!Domain.isMailFrom(replyto = replyto.toLowerCase())) {
-                    replyto = null;
-                }
-                if (subject == null || subject.length() == 0) {
-                    subject = null;
                 } else {
-                    try {
-                        subject = MimeUtility.decodeText(subject);
-                        subject = subject.trim();
-                    } catch (UnsupportedEncodingException ex) {
-                    }
-                    while (subject.contains("  ")) {
-                        subject = subject.replace("  ", " ");
-                    }
-                    if (subject.length() == 0) {
-                        subject = null;
-                    }
-                }
-                if (messageID == null || messageID.length() == 0) {
-                    messageID = null;
-                } else {
-                    int index = messageID.indexOf('<');
-                    if (index >= 0) {
-                        messageID = messageID.substring(index + 1);
-                        index = messageID.indexOf('>');
-                        if (index > 0) {
-                            messageID = messageID.substring(0, index);
-                        }
-                    }
-                }
-                boolean reject = false;
-                Timestamp emailDate;
-                if (date == null) {
-                    emailDate = new Timestamp(time);
-                } else if (date.length() == 0) {
-                    emailDate = null;
-                } else {
-                    try {
-                        Date newDate = Core.parseEmailDateSafe(date);
-                        emailDate = new Timestamp(newDate.getTime());
-                        if (Math.abs(time - emailDate.getTime()) > 31104000000L) {
-                            emailDate = null;
-                            reject = true;
-                        }
-                    } catch (ParseException ex) {
-                        emailDate = null;
-                        reject = true;
-                    }
-                }
-                URL unsubscribeURL = null;
-                if (unsubscribe != null && unsubscribe.length() > 0) {
-                    try {
-                        int index = unsubscribe.indexOf('<');
-                        if (index >= 0) {
-                            unsubscribe = unsubscribe.substring(index + 1);
-                            index = unsubscribe.indexOf('>');
-                            if (index > 0) {
-                                unsubscribe = unsubscribe.substring(0, index);
-                                unsubscribeURL = new URL(unsubscribe);
-                                if (addLink(unsubscribeURL.getHost())) {
-                                    reject = true;
+                    String fqdn;
+                    String fromAddress = address.getAddress();
+                    String personal = Core.tryToDecodeMIME(address.getPersonal());
+                    if (isValidEmail(fromAddress)) {
+                        from = Domain.normalizeEmail(fromAddress);
+                        if (Core.equals(from, recipient) && isNotSigned(from)) {
+                            spoofedRecipient = true;
+                        } else if (personal != null && !personal.isEmpty()) {
+                            if (personal.contains("@")) {
+                                personal = personal.replaceAll("[\\s\\r\\n\\t]+", " ");
+                                address = ServerSMTP.extractInternetAddress(personal, true);
+                                if (address != null) {
+                                    personal = address.getAddress().toLowerCase();
+                                    String domain1 = Domain.extractDomainSafe(from, false);
+                                    String domain2 = Domain.extractDomainSafe(personal, false);
+                                    if (!Objects.equals(domain1, domain2)) {
+                                        forgedFrom = true;
+                                    }
+                                    if (personal.equals(recipient) && isNotSigned(personal)) {
+                                        spoofedRecipient = true;
+                                    }
                                 }
                             }
+                            if (personal.contains(getRecipientHostname(false)) && isNotSigned(personal)) {
+                                spoofedRecipient = true;
+                            }
                         }
-                    } catch (MalformedURLException ex) {
-                        Server.logTrace("malformed unsubscribe URL: " + unsubscribe);
-                    } catch (Exception ex) {
-                        Server.logError(ex);
+                    } else if (fromAddress.equals("MAILER-DAEMON") && (fqdn = getFQDN()) != null) {
+                        from = "mailer-daemon@" + fqdn;
+                    } else {
+                        from = null;
                     }
                 }
-                this.CHANGED.acquire();
-                try {
-                    this.from = from;
-                    this.replyto = replyto;
-                    this.subject = subject;
-                    this.messageID = messageID;
-                    this.date = emailDate;
-                    this.unsubscribe = unsubscribeURL;
-                    this.STORED = false;
-                } finally {
-                    this.CHANGED.release(true);
-                    User.this.usingHeader = true;
-                    this.STORED = false;
-                    User.CHANGED = true;
+            }
+            if (replyto == null || replyto.length() == 0) {
+                replyto = null;
+            } else if (!Domain.isMailFrom(replyto = replyto.toLowerCase())) {
+                replyto = null;
+            }
+            if (messageID == null || messageID.length() == 0) {
+                messageID = null;
+            } else {
+                int index = messageID.indexOf('<');
+                if (index >= 0) {
+                    messageID = messageID.substring(index + 1);
+                    index = messageID.indexOf('>');
+                    if (index > 0) {
+                        messageID = messageID.substring(0, index);
+                    }
                 }
-                String resultReturn;
-                if (isWhiteKey()) {
-                    if (hasMalwareNotIgnored()) {
-                        resultReturn = "REJECT";
-                    } else {
-                        resultReturn = "WHITE";
-                    }
-                } else if (isWhite()) {
-                    if (hasMalwareNotIgnored()) {
-                        resultReturn = "REJECT";
-                    } else {
-                        whiteKey(time);
-                        resultReturn = "WHITE";
-                    }
-                } else if (isToAbuse()) {
-                    resultReturn = null;
-                } else if (hasMalwareNotIgnored()) {
-                    blockKey(time);
-                    resultReturn = "BLOCK";
-                } else if (isToPostmaster()) {
-                    resultReturn = null;
-                } else if (isInexistent(client)) {
-                    blockKey(time);
-                    resultReturn = "BLOCK";
-                } else if (isBlockKey()) {
-                    if (actionBLOCK == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionBLOCK == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        resultReturn = "BLOCK";
-                    }
-                } else if (isWhiteKeyByAdmin()) {
-                    if (hasMalwareNotIgnored()) {
-                        resultReturn = "REJECT";
-                    } else {
-                        whiteKey(time);
-                        resultReturn = "WHITE";
-                    }
-                } else if (hasDynamicIP()) {
-                    Analise.processToday(getIP());
-                    blockKey(time);
-                    resultReturn = "BLOCK";
-                 } else if (isBlockKeyByAdmin() || isSenderBlock() || isBlockCIDR() || hasExecutableBlocked() || isAnyLinkBLOCK(false) || Block.containsWHOIS(User.this, getSender())) {
-                    if (actionBLOCK == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionBLOCK == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        blockKey(time);
-                        resultReturn = "BLOCK";
-                    }
-                } else if (isToAdmin()) {
-                    resultReturn = null;
-                } else if ((resultReturn = getBlock()) != null) {
-                    Server.logTrace("HEADER isBlock " + resultReturn);
-                    if (actionBLOCK == Action.REJECT && !hasQualifiedIP()) {
-                        Analise.processToday(getIP());
-                        blockKey(time);
-                        resultReturn = "BLOCK";
-                    } else if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (reject) {
-                    this.complain(time);
-                    resultReturn = "REJECT";
-                } else if (!hasMailFrom() && !hasHeaderFrom()) {
-                    this.complain(time);
-                    resultReturn = "REJECT";
-                } else if (hasSuspectReplyTo()) {
-                    Server.logTrace("HEADER hasSuspectReplyTo");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (hasExecutableNotIgnored()) {
-                    Server.logTrace("HEADER hasExecutableNotIgnored");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (hasTokenRed()) {
-                    Server.logTrace("HEADER hasTokenRed");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (isAnyLinkSuspect()) {
-                    Server.logTrace("HEADER isAnyLinkSuspect");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (isInvalidDate(time)) {
-                    Server.logTrace("HEADER isInvalidDate");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (hasMiscellaneousSymbols()) {
-                    Server.logTrace("HEADER hasMiscellaneousSymbols");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (isSubjectSuspect()) {
-                    Server.logTrace("HEADER isSubjectSuspect");
-                    if (actionRED == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionRED == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
-                } else if (Domain.isGraceTime(getMailFrom()) || Domain.isGraceTime(getHeaderFrom()) || Domain.isGraceTime(getValidHostname())) {
-                    Server.logTrace("HEADER isGraceTime");
-                    if (actionGRACE == Action.FLAG) {
-                        resultReturn = "FLAG";
-                    } else if (actionGRACE == Action.HOLD) {
-                        resultReturn = "HOLD";
-                    } else {
-                        this.complain(time);
-                        resultReturn = "REJECT";
-                    }
+            }
+            Timestamp emailDate;
+            if (date == null) {
+                emailDate = new Timestamp(timeKey);
+            } else if (date.length() == 0) {
+                emailDate = null;
+            } else {
+                Date newDate = Core.parseEmailDateSafe(date);
+                if (newDate == null) {
+                    emailDate = null;
                 } else {
-                    resultReturn = null;
+                    emailDate = new Timestamp(newDate.getTime());
+                    if (Math.abs(timeKey - emailDate.getTime()) > 31104000000L) {
+                        emailDate = null;
+                    }
                 }
-                Analise.processToday(getSender());
-                setResult(resultReturn);
-                return resultReturn;
-                
-//                this.CHANGED.acquire();
-//                try {
-//                    if (resultReturn != null) {
-//                        this.result = resultReturn;
-//                    }
-//                    User.CHANGED = true;
-//                    this.STORED = false;
-//                    return resultReturn;
-//                } finally {
-//                    this.CHANGED.release(true);
-//                }
-//            } finally {
-//                this.notifyHeader();
-//            }
+            }
+            URL unsubscribeURL = null;
+            if (unsubscribe != null && unsubscribe.length() > 0) {
+                try {
+                    int index = unsubscribe.indexOf('<');
+                    if (index >= 0) {
+                        unsubscribe = unsubscribe.substring(index + 1);
+                        index = unsubscribe.indexOf('>');
+                        if (index > 0) {
+                            unsubscribe = unsubscribe.substring(0, index);
+                            unsubscribeURL = new URL(unsubscribe);
+                            String protocol = unsubscribeURL.getProtocol();
+                            if (protocol.matches("^https?$")) {
+//                                addLink(timeKey, unsubscribeURL.getHost());
+                            } else {
+                                unsubscribeURL = null;
+                            }
+                        }
+                    }
+                } catch (MalformedURLException ex) {
+                    Server.logTrace("malformed unsubscribe URL: " + unsubscribe);
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+            this.CHANGED.acquire();
+            try {
+                this.from = from;
+                this.replyto = replyto;
+                this.subject = subject;
+                this.messageID = messageID;
+                this.queueID = queueID;
+                this.inreplyto = inReplyTo;
+                this.date = emailDate;
+                this.unsubscribe = unsubscribeURL;
+                this.spoofedRecipient = spoofedRecipient;
+                this.forgedFrom = forgedFrom;
+                this.STORED = false;
+            } finally {
+                this.CHANGED.release(true);
+                User.this.usingHeader = true;
+                this.STORED = false;
+                User.CHANGED = true;
+            }
+            putIdentification(messageID, timeKey);
+            putIdentification(queueID, getClient(), timeKey);
+            return processFilter(timeKey, client, actionRED);
+        }
+        
+        public String processFilter(long timeKey, Client client, Action actionRED) {
+            String resultReturn;
+            String resultFilter = getFilter();
+            Filter filter = Filterable.tryToGetFilter(resultFilter);
+            SimpleImmutableEntry<Filter,String> resultEntry = processFilter(client, filter);
+            if (resultEntry != null) {
+                filter = resultEntry.getKey();
+                if (resultFilter == null || !resultFilter.startsWith(filter + ";")) {
+                    String reason = resultEntry.getValue();
+                    resultFilter = filter.name() + (reason == null ? "" : ';' + reason);
+                }
+            }
+            if (filter == null) {
+                addAcceptable();
+                resultReturn = null;
+                resultFilter = null;
+            } else {
+                Server.logDebug(timeKey, "FILTER " + resultFilter);
+                switch (filter) {
+                    case IN_REPLY_TO_DESIRABLE: // 100,00%
+                    case ENVELOPE_BENEFICIAL: // 99,90%
+                    case ORIGIN_WHITELISTED: // 99,88%
+                    case RECIPIENT_BENEFICIAL: // 99,68%
+                        whiteKeyForAdmin();
+                    case SENDER_MAILER_DEAMON_TRUSTED: // 99,64%
+                    case DKIM_BENEFICIAL: // 99,82%
+                    case SUBJECT_BENEFICIAL: // 99,74%
+                    case IN_REPLY_TO_EXISTENT: // 99,71%
+                    case ORIGIN_WHITE_KEY_ADMIN: // 99,68%
+                    case CIDR_BENEFICIAL: // 99,67%
+                    case SPF_DESIRABLE: // 99,65%
+                    case ABUSE_BENEFICIAL: // 99,64%
+                    case FQDN_BENEFICIAL: // 99,58%
+                    case RECIPIENT_DESIRABLE: // 99,55%
+                    case SPF_BENEFICIAL: // 99,53%
+                    case FQDN_DESIRABLE: // 99,38%
+                    case ENVELOPE_DESIRABLE: // 50,00%
+                        whiteKey(timeKey);
+                    case BULK_BOUNCE: // 99,91%
+                        addBeneficial(timeKey);
+                        resultReturn = "WHITE";
+                        break;
+                    case SENDER_MAILER_DEAMON: // 99,87%
+                    case BULK_BENEFICIAL: // 98,41%
+                    case RECIPIENT_ABUSE: // 96,59%
+                    case FQDN_PROVIDER: // 96,65%
+                    case SUBJECT_DESIRABLE: // 91,89%
+                    case DKIM_DESIRABLE: // 95,58%
+                    case RECIPIENT_POSTMASTER: // 96,40%
+                    case SENDER_ESSENTIAL: // 90,75%
+                    case FQDN_ESSENTIAL: // 60,59%
+                    case ORIGIN_WHITE_KEY_USER: // 50,00%
+                    case MALWARE_IGNORED: // 50,00%
+                    case RECIPIENT_HACKED: // 50,00%
+                    case FROM_ESSENTIAL: // 20,09%
+                        addAcceptable();
+                        resultReturn = null;
+                        break;
+                    case FROM_SPOOFED_SENDER: // 99,88%
+                    case IP_DYNAMIC: // 95,96%
+                    case HELO_ANONYMOUS: // 75,00%
+                    case SENDER_SPOOFING: // 75,00%
+                        ban(timeKey, Core.getAdminEmail(), filter.name());
+                        ban(timeKey, filter.name());
+                        addHarmful(timeKey);
+                        resultReturn = "BLOCK";
+                        break;
+                    case ORIGIN_BANNED: // 50,00%
+                        addHarmful(timeKey);
+                        resultReturn = "BLOCK";
+                        break;
+                    case MALWARE_NOT_IGNORED: // 99,99%
+                    case HREF_UNDESIRABLE: // 99,98%
+                    case EXECUTABLE_UNDESIRABLE: // 99,60%
+                    case FROM_NOT_SIGNED: // 99,56%
+                    case FROM_UNROUTABLE: // 99,21%
+                    case FROM_SPOOFED_RECIPIENT: // 99,13%
+                    case EXECUTABLE_BLOCKED: // 97,96%
+                    case PHISHING_BLOCKED: // 97,73%
+                        banOrBlockForAdmin(timeKey, filter.name());
+                    case ABUSE_HARMFUL: // 99,98%
+                    case SUBJECT_HARMFUL: // 99,86%
+                    case FROM_NXDOMAIN: // 50,00%
+                    case SENDER_NXDOMAIN: // 50,00%
+                    case ENVELOPE_HARMFUL: // 50,00%
+                    case RECIPIENT_SPOOFING: // 50,00%
+                        banOrBlock(timeKey, filter.name());
+                        addHarmful(timeKey);
+                        resultReturn = "BLOCK";
+                        break;
+                    case RECIPIENT_UNDESIRABLE: // 99,96%
+                    case ABUSE_BLOCKED: // 99,95%
+                    case SUBJECT_UNDESIRABLE: // 99,82%
+                    case FROM_BLOCKED: // 99,69%
+                    case FROM_FORGED: // 99,40%
+                    case RECIPIENT_HARMFUL: // 99,40%
+                    case ORIGIN_BLOCK_KEY_ADMIN: // 99,38%
+                    case DKIM_HARMFUL: // 98,84%
+                    case RECIPIENT_PRIVATE: // 98,31%
+                    case FROM_ABSENT: // 97,00%
+                    case DOMAIN_INEXISTENT: // 96,97%
+                    case ORIGIN_HARMFUL: // 50,00%
+                        blockKey(timeKey, filter.name());
+                    case ORIGIN_BLOCK_KEY_USER: // 50,00%
+                        addUndesirable(timeKey);
+                        resultReturn = "BLOCK";
+                        break;
+                    case FQDN_SPOOFED: // 87,50%
+                    case SPF_HARMFUL: // 83,24%
+                    case ENVELOPE_BLOCKED: // 82,95%
+                    case ORIGIN_BLOCKED: // 78,70%
+                    case FQDN_RED: // 77,48%
+                    case EXECUTABLE_NOT_IGNORED: // 67,79%
+                    case SPF_UNDESIRABLE: // 66,64%
+                    case RECIPIENT_RESTRICT: // 66,34%
+                    case SENDER_RED: // 65,23%
+                    case ENVELOPE_INVALID: // 63,14%
+                    case FROM_FREEMAIL: // 58,82%
+                    case FQDN_UNDESIRABLE: // 57,38%
+                    case SPF_FAIL: // 51,29%
+                    case SPF_SPOOFING: // 50,00%
+                    case ENVELOPE_UNDESIRABLE: // 50,00%
+                    case ORIGIN_UNDESIRABLE: // 50,00%
+                    case CIDR_HARMFUL: // 50,00%
+                    case FQDN_HARMFUL: // 50,00%
+                    case SENDER_INVALID: // 50,00%
+                    case DKIM_UNDESIRABLE: // 50,00%
+                    case SPF_NXDOMAIN: // 50,00%
+                    case HREF_SUSPECT: // 47,96%
+                    case SPF_SOFTFAIL: // 35,38%
+                    case FROM_SUSPECT: // 34,73%
+                    case DOMAIN_EMERGED: // 26,63%
+                        if (actionRED == Action.FLAG) {
+                            resultReturn = "FLAG";
+                        } else if (actionRED == Action.HOLD) {
+                            resultReturn = "HOLD";
+                        } else {
+                            addUndesirable(timeKey);
+                            resultReturn = "REJECT";
+                        }
+                        break;                            
+                    default:
+                        Server.logError("filter not defined: " + resultFilter);
+                        addAcceptable();
+                        resultReturn = null;
+                }
+            }
+            setResultFilter(resultReturn, resultFilter);
+            return resultReturn;
+        }
+        
+        @Override
+        public boolean isForgedFrom() {
+            return forgedFrom;
+        }
+        
+        @Override
+        public boolean isSpoofedRecipient() {
+            return spoofedRecipient;
+        }
+        
+        @Override
+        public URL getUnsubscribe() {
+            return unsubscribe;
+        }
+        
+        @Override
+        public Date getDate() {
+            return date;
+        }
+        
+        public Date getArrival() {
+            return arrival;
         }
         
         public synchronized void notifyHeader() {
@@ -5554,29 +7669,6 @@ public class User implements Serializable, Comparable<User> {
             return false;
         }
         
-        public Situation getSituation(boolean authentic) {
-            String validator = getValidator(true);
-            if (validator == null) {
-                return Situation.ORIGIN;
-            } else if (authentic && validator.equals("PASS")) {
-                return Situation.AUTHENTIC;
-            } else if (Subnet.isValidIP(validator)) {
-                return Situation.IP;
-            } else {
-                return Situation.ZONE;
-            }
-        }
-        
-        public Situation getOriginWhiteSituation() {
-            if (isOriginWhite()) {
-                return Situation.ORIGIN;
-            } else if (isWhite()) {
-                return Situation.SAME;
-            } else {
-                return Situation.NONE;
-            }
-        }
-        
         public Situation getSenderWhiteSituation() {
             if (isWhiteKey()) {
                 String validator = getValidator(true);
@@ -5584,7 +7676,9 @@ public class User implements Serializable, Comparable<User> {
                     return Situation.ORIGIN;
                 } else if (validator.equals("PASS")) {
                     return Situation.AUTHENTIC;
-                } else if (Subnet.isValidIP(validator)) {
+                } else if (validator.equals("BULK")) {
+                    return Situation.BULK;
+                } else if (isValidIP(validator)) {
                     return Situation.IP;
                 } else {
                     return Situation.ZONE;
@@ -5615,7 +7709,9 @@ public class User implements Serializable, Comparable<User> {
             } else if (isSenderBlock(false)) {
                 return Situation.DOMAIN;
             } else if (isSenderBlock(true)) {
-                if (Subnet.isValidIP(validator)) {
+                if (validator.equals("BULK")) {
+                    return Situation.BULK;
+                } else if (isValidIP(validator)) {
                     return Situation.IP;
                 } else {
                     return Situation.ZONE;
@@ -5629,22 +7725,26 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        public synchronized boolean adviseRecipientHOLD(long time) {
-            String senderLocal = getSender();
+        public boolean requestReleaseToRecipient(long time) {
+            String senderLocal = getTrueSender();
             String recipientLocal = getRecipient();
+            String unholdURL;
+            String blockURL;
             if (recipientAdvised) {
                 return true;
+            } else if (inexistent) {
+                return false;
             } else if (senderLocal == null) {
+                return false;
+            } else if (senderLocal.isEmpty()) {
                 return false;
             } else if (recipientLocal == null) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
-            } else if (!Domain.isValidEmail(senderLocal)) {
+            } else if (!Core.isRunning()) {
                 return false;
-            } else if (!Domain.isValidEmail(recipientLocal)) {
-                return false;
-            } else if (NoReply.contains(recipientLocal, true)) {
+            } else if (!isValidEmail(senderLocal)) {
                 return false;
             } else if (isWhiteKey()) {
                 return false;
@@ -5654,114 +7754,93 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else if (isBlockKeyByAdmin()) {
                 return false;
+            } else if ((unholdURL = Core.getUnholdURL(User.this, time)) == null) {
+                return false;
+            } else if ((blockURL = Core.getBlockURL(User.this, time)) == null) {
+                return false;
             } else {
                 try {
-                    String url = Core.getUnholdURL(User.this, time);
-                    if (url == null) {
+                    Locale locale = User.this.getLocale();
+                    InternetAddress[] recipients;
+                    InternetAddress[] replyTo;
+                    if (NoReply.isUnsubscribed(recipientLocal)) {
+                        recipients = InternetAddress.parse(getUserEmail());
+                        replyTo = InternetAddress.parse(senderLocal);
+                    } else {
+                        recipients = InternetAddress.parse(recipientLocal);
+                        replyTo = User.this.getInternetAddresses();
+                    }
+                    MimeMessage forwardMessage;
+                    Document templateHTML;
+                    File logoFile;
+                    String subjectLocal;
+                    Element linkSender;
+                    Element btnRelease;
+                    Element btnBlock;
+                    Element btnUnsubscribe;
+                    String unsubscribeURL;
+                    if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
+                        return false;
+                    } else if ((forwardMessage = getMimeMessageBody()) == null) {
+                        return false;
+                    } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                        return false;
+                    } else if ((templateHTML = Core.getTemplateWarningRetentionRecipient(User.this, locale)) == null) {
+                        return false;
+                    } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                        return false;
+                    } else if ((linkSender = templateHTML.getElementById("sender")) == null) {
+                        return false;
+                    } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                        return false;
+                    } else if ((btnBlock = templateHTML.getElementById("urlBlock")) == null) {
+                        return false;
+                    } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
                         return false;
                     } else {
-                        Server.logDebug("sending retention release by e-mail.");
-                        String subjectLocal = getSubject();
-                        if (subjectLocal == null) {
-                            if (recipientLocal.endsWith(".br") || recipientLocal.endsWith(".pt")) {
-                                subjectLocal = "Aviso de retenção de mensagem";
-                            } else {
-                                subjectLocal = "Message retention warning";
-                            }
-                        }
-                        Locale locale = User.this.getLocale();
-//                        String qualifierLocal = getQualifierName();
-                        String messageidLocal = getMessageID();
-                        InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-                        MimeMessage message = Core.newMessage();
+                        linkSender.attr("href", "mailto:" + senderLocal);
+                        linkSender.text(senderLocal);
+                        btnRelease.attr("href", unholdURL);
+                        btnBlock.attr("href", blockURL);
+                        btnUnsubscribe.attr("href", unsubscribeURL);
+                        templateHTML = templateHTML.normalise();
+                        
+                        MimeMessage message = Core.newMessage(true);
                         message.addRecipients(Message.RecipientType.TO, recipients);
-                        message.setReplyTo(User.this.getInternetAddresses());
-                        message.setSubject(subjectLocal);
-                        if (messageidLocal != null) {
-                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-                        }
-                        // Corpo da mensagem.
-                        StringBuilder builder = new StringBuilder();
-                        builder.append("<!DOCTYPE html>\n");
-                        builder.append("<html lang=\"");
-                        builder.append(locale.getLanguage());
-                        builder.append("\">\n");
-                        builder.append("  <head>\n");
-                        builder.append("    <meta charset=\"UTF-8\">\n");
-                        builder.append("    <title>");
-                        builder.append(subject);
-                        builder.append("</title>\n");
-                        ServerHTTP.loadStyleCSS(builder);
-                        builder.append("  </head>\n");
-                        builder.append("  <body>\n");
-                        builder.append("    <div id=\"container\">\n");
-                        builder.append("      <div id=\"divlogo\">\n");
-                        builder.append("        <img src=\"cid:logo\">\n");
-                        builder.append("      </div>\n");
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-                            ServerHTTP.buildText(builder, "Uma mensagem enviada por " + senderLocal + " foi retida por suspeita de SPAM.");
-                            if (!isSenderTrustable()) {
-                                ServerHTTP.buildText(builder, "<b>Atenção! Este remetente não pôde ser autenticado. Isso significa que não há garantia desta mensagem ser genuína!</b>");
-                                String hostDomain = getValidHostDomain();
-                                if (hostDomain == null) {
-                                    ServerHTTP.buildText(builder, "<b>Não é possível determinar com segurança qual servidor disparou esta mensagem.</b>");
-                                } else {
-                                    ServerHTTP.buildText(builder, "A mensagem foi disparada por um servidor no domínio " + hostDomain + ".");
-                                }
-                            }
-                            if (hasExecutableNotIgnored()) {
-                                ServerHTTP.buildText(builder, "<b>Atenção! Esta mensagem contém arquivos executáveis com potencial de danificar o computador!</b>");
-                            }
-                            ServerHTTP.buildText(builder, "Se você considera esta mensagem legítima, acesse esta URL para efetivar a sua liberação:");
-                        } else {
-                            ServerHTTP.buildMessage(builder, "Message retention warning");
-                            ServerHTTP.buildText(builder, "A message sent from " + senderLocal + " was retained under suspicion of SPAM.");
-                            if (!isSenderTrustable()) {
-                                ServerHTTP.buildText(builder, "<b>Warning! This sender could not be authenticated. This means that there is no guarantee that this message will be genuine!");
-                                String hostDomain = getValidHostDomain();
-                                if (hostDomain == null) {
-                                    ServerHTTP.buildText(builder, "<b>It is not possible to determine with certainty which server fired this message.</b>");
-                                } else {
-                                    ServerHTTP.buildText(builder, "The message was fired by a server in domain " + hostDomain + ".");
-                                }
-                            }
-                            if (hasExecutableNotIgnored()) {
-                                ServerHTTP.buildText(builder, "<b>Warning! This message contains executable files that could potentially damage the computer!</b>");
-                            }
-                            ServerHTTP.buildText(builder, "If you consider this message legitimate, access this URL to complete its release:");
-                        }
-                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                        if (!User.this.isEmail(recipientLocal)) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
-                            } else {
-                                ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
-                            }
-                        }
-                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-                        builder.append("    </div>\n");
-                        builder.append("  </body>\n");
-                        builder.append("</html>\n");
-                        // Making HTML part.
+                        message.setReplyTo(replyTo);
+                        message.setSubject(subjectLocal + " #" + Long.toString(time, 32));
+                        // Build warning part.
                         MimeBodyPart htmlPart = new MimeBodyPart();
-                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                        // Making logo part.
+                        htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                        htmlPart.setDisposition(MimeBodyPart.INLINE);
+                        // Build logo part.
                         MimeBodyPart logoPart = new MimeBodyPart();
-                        File logoFile = ServerHTTP.getWebFile("logo.png");
                         logoPart.attachFile(logoFile);
                         logoPart.setContentID("<logo>");
                         logoPart.addHeader("Content-Type", "image/png");
-                        logoPart.setDisposition(MimeBodyPart.INLINE);
-                        // Join both parts.
-                        MimeMultipart content = new MimeMultipart("related");
-                        content.addBodyPart(htmlPart);
-                        content.addBodyPart(logoPart);
-                        // Set multiplart content.
-                        message.setContent(content);
+                        // Join all parts.
+                        MimeMultipart contentRelated = new MimeMultipart("related");
+                        contentRelated.addBodyPart(htmlPart);
+                        contentRelated.addBodyPart(logoPart);
+                        MimeBodyPart contentPart = new MimeBodyPart();
+                        contentPart.setContent(contentRelated);
+                        MimeMultipart contentMixed = new MimeMultipart("mixed");
+                        contentMixed.addBodyPart(contentPart);
+                        // Build hold part.
+                        if (forwardMessage.getSize() == 0) {
+                            forwardMessage.setContent("Body unavailable.", "text/plain");
+                        }
+                        forwardMessage.saveChanges();
+                        MimeBodyPart forwardPart = new MimeBodyPart();
+                        forwardPart.setContent(forwardMessage, "message/rfc822");
+                        forwardPart.setDisposition(MimeBodyPart.INLINE);
+//                        forwardPart.setFileName(Long.toString(time, 32) + ".eml");
+                        contentMixed.addBodyPart(forwardPart);
+                        // Set multiplart contentRelated.
+                        message.setContent(contentMixed);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (Core.sendMessage(locale, message, 30000)) {
+                        if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
                             this.CHANGED.acquire();
                             this.recipientAdvised = true;
                             this.STORED = false;
@@ -5777,12 +7856,20 @@ public class User implements Serializable, Comparable<User> {
                     return false;
                 } catch (MailConnectException ex) {
                     return false;
-                } catch (SendFailedException ex) {
-                    if (ex.getCause() instanceof SMTPAddressFailedException) {
-                        if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
-                            Trap.addInexistentSafe(User.this, recipientLocal);
-                        }
+                } catch (SocketTimeoutException ex) {
+                    return false;
+                } catch (SMTPAddressFailedException afex) {
+                    if (afex.getReturnCode() == 551 || afex.getMessage().contains(" 5.1.1 ")) {
+                        this.CHANGED.acquire();
+                        this.inexistent = true;
+                        this.STORED = false;
+                        User.CHANGED = true;
+                        this.CHANGED.release(true);
                     }
+                    return false;
+                } catch (SendFailedException ex) {
+                    return false;
+                } catch (MessagingException ex) {
                     return false;
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -5791,270 +7878,99 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-//        public synchronized boolean adviseRecipientSPAM(long time) {
-//            String senderLocal = getSender();
-//            String recipientLocal = getRecipient();
-//            String subjectLocal = getSubject();
-//            String messageidLocal = getMessageID();
-//            if (recipientAdvised) {
-//                return true;
-//            } else if (senderLocal == null) {
-//                return false;
-//            } else if (recipientLocal == null) {
-//                return false;
-//            } else if (subjectLocal == null) {
-//                return false;
-//            } else if (messageidLocal == null) {
-//                return false;
-//            } else if (isToPostmaster()) {
-//                return false;
-//            } else if (isToAdmin()) {
-//                return false;
-//            } else if (isToAbuse()) {
-//                return false;
-//            } else if (!Core.hasOutputSMTP()) {
-//                return false;
-//            } else if (!Domain.isValidEmail(recipientLocal)) {
-//                return false;
-//            } else if (NoReply.contains(recipientLocal, true)) {
-//                return false;
-//            } else if (isWhiteKey()) {
-//                return false;
-//            } else if (isBlockKey()) {
-//                return false;
-//            } else if (isAnyLinkBLOCK(true)) {
-//                return false;
-//            } else {
-//                try {
-//                    String url = Core.getBlockURL(User.this, time);
-//                    if (url == null) {
-//                        return false;
-//                    } else {
-//                        Server.logDebug("sending suspect alert by e-mail.");
-//                        Locale locale = User.this.getLocale();
-//                        InternetAddress[] recipients = InternetAddress.parse(recipientLocal);
-//                        MimeMessage message = Core.newMessage();
-//                        message.addRecipients(Message.RecipientType.TO, recipients);
-//                        message.setReplyTo(User.this.getInternetAddresses());
-//                        message.setSubject(subjectLocal);
-//                        message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-//                        // Corpo da mensagem.
-//                        StringBuilder builder = new StringBuilder();
-//                        builder.append("<!DOCTYPE html>\n");
-//                        builder.append("<html lang=\"");
-//                        builder.append(locale.getLanguage());
-//                        builder.append("\">\n");
-//                        builder.append("  <head>\n");
-//                        builder.append("    <meta charset=\"UTF-8\">\n");
-//                        builder.append("    <title>");
-//                        builder.append(subject);
-//                        builder.append("</title>\n");
-//                        ServerHTTP.loadStyleCSS(builder);
-//                        builder.append("  </head>\n");
-//                        builder.append("  <body>\n");
-//                        builder.append("  <body>\n");
-//                        builder.append("    <div id=\"container\">\n");
-//                        builder.append("      <div id=\"divlogo\">\n");
-//                        builder.append("        <img src=\"cid:logo\">\n");
-//                        builder.append("      </div>\n");
-//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                            ServerHTTP.buildMessage(builder, "Alerta de suspeita de SPAM");
-//                            ServerHTTP.buildText(builder, "Esta mensagem, cujo assunto foi preservado e havia sido enviada por " + senderLocal + ", foi entregue em sua caixa postal por haver nenhuma suspeita sobre ela.");
-//                            ServerHTTP.buildText(builder, "Informações mais recentes levantam forte suspeita de que esta mensagem seria SPAM.");
-//                            ServerHTTP.buildText(builder, "Se você concorda com esta nova interpretação, acesse esta URL para bloquear o remetente e para contribuir para o combate de SPAM na Internet:");
-//                        } else {
-//                            ServerHTTP.buildMessage(builder, "SPAM suspected alert");
-//                            ServerHTTP.buildText(builder, "This message, whose subject was preserved and sent by " + senderLocal + ", was delivered to your mailbox because there was no suspicion about it.");
-//                            ServerHTTP.buildText(builder, "More recent information raises strong suspicion that this message would be SPAM.");
-//                            ServerHTTP.buildText(builder, "If you agree with this new interpretation, access this URL to block the sender and contribute to the fight against spam on the Internet:");
-//                        }
-//                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-//                        if (!User.this.isEmail(recipientLocal)) {
-//                            String abuseEmail = Core.getAbuseEmail();
-//                            if (abuseEmail != null) {
-//                                if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                                    ServerHTTP.buildText(builder, "Se você receber qualquer mensagem de SPAM, poderá encaminhar a mensagem de SPAM para " + abuseEmail + ".");
-//                                    ServerHTTP.buildText(builder, "Este remetente poderá ser bloqueado automaticamente no caso de recebermos muitas denuncias contra ele.");
-//                                } else {
-//                                    ServerHTTP.buildText(builder, "If you receive any SPAM message, you can forward the SPAM message to " + abuseEmail + ".");
-//                                    ServerHTTP.buildText(builder, "This sender may be automatically blocked if we receive too many complaints against him.");
-//                                }
-//                            }
-//                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                                ServerHTTP.buildText(builder, "Para maiores informações, entre em contato com o seu setor de TI.");
-//                            } else {
-//                                ServerHTTP.buildText(builder, "For more information, contact your post administrator.");
-//                            }
-//                        }
-//                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-//                        builder.append("    </div>\n");
-//                        builder.append("  </body>\n");
-//                        builder.append("</html>\n");
-//                        // Making HTML part.
-//                        MimeBodyPart htmlPart = new MimeBodyPart();
-//                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-//                        // Making logo part.
-//                        MimeBodyPart logoPart = new MimeBodyPart();
-//                        File logoFile = ServerHTTP.getWebFile("logo.png");
-//                        logoPart.attachFile(logoFile);
-//                        logoPart.setContentID("<logo>");
-//                        logoPart.addHeader("Content-Type", "image/png");
-//                        logoPart.setDisposition(MimeBodyPart.INLINE);
-//                        // Join both parts.
-//                        MimeMultipart content = new MimeMultipart("related");
-//                        content.addBodyPart(htmlPart);
-//                        content.addBodyPart(logoPart);
-//                        // Set multiplart content.
-//                        message.setContent(content);
-//                        message.saveChanges();
-//                        // Enviar mensagem.
-//                        if (Core.sendMessage(locale, message, 30000)) {
-//                            Server.logDebug("suspect warning sent by e-mail.");
-//                            this.CHANGED.acquire();
-//                            this.recipientAdvised = true;
-//                            this.STORED = false;
-//                            User.CHANGED = true;
-//                            this.CHANGED.release(true);
-//                            User.storeDB(time, this);
-//                            return true;
-//                        } else {
-//                            return false;
-//                        }
-//                    }
-//                } catch (NameNotFoundException ex) {
-//                    return false;
-//                } catch (MailConnectException ex) {
-//                    return false;
-//                } catch (SendFailedException ex) {
-//                    if (ex.getCause() instanceof SMTPAddressFailedException) {
-//                        if (ex.getCause().getMessage().contains(" 5.1.1 ")) {
-//                            Trap.addInexistentSafe(User.this, recipientLocal);
-//                        }
-//                    }
-//                    return false;
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                    return false;
-//                }
-//            }
-//        }
-        
-        private synchronized boolean adviseSenderHOLD(long time) {
+        private boolean adviseSenderHOLD(long time) {
             String mailFrom;
             String recipientLocal;
             if (senderAdvised) {
                 return true;
+            } else if (inexistent) {
+                return false;
+            } else if (recipientAdvised) {
+                return false;
             } else if ((mailFrom = getReplyToValid()) == null) {
                 return false;
             } else if ((recipientLocal = getRecipient()) == null) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
-            } else if (NoReply.contains(mailFrom, true)) {
+            } else if (!Core.isRunning()) {
                 return false;
-            } else if (NoReply.contains(recipientLocal, true)) {
+            } else if (Trap.containsAnything(User.this, mailFrom)) {
                 return false;
-            } else if (!Domain.isValidEmail(recipientLocal)) {
+            } else if (NoReply.contains(mailFrom, false)) {
+                return false;
+            } else if (NoReply.isUnsubscribed(recipientLocal) && NoReply.isUnsubscribed(getUserEmail())) {
                 return false;
             } else if (isWhiteKey()) {
                 return false;
-            } else if (isBlock()) {
-                if (hasTokenRed()) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";RED'.");
-                    }
-                } else if (!Reverse.hasMX(mailFrom)) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";NXDOMAIN'.");
-                    }
-                }
+            } else if (isBlockKey()) {
                 return false;
-            } else if (isAnyLinkBLOCK(true)) {
-                if (blockKey(time)) {
-                    Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";HREF'.");
-                }
+            } else if (isWhiteKeyByAdmin()) {
                 return false;
-            } else if (hasDynamicIP()) {
-                if (blockKey(time)) {
-                    Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by '" + mailFrom + ";DYNAMIC'.");
-                }
+            } else if (isBlockKeyByAdmin()) {
                 return false;
             } else {
                 try {
-                    String url = Core.getHoldingURL(User.this, time);
-                    if (url == null) {
+                    Locale locale = getBodyLocale();
+                    InternetAddress[] recipients = InternetAddress.parse(mailFrom);
+                    String holdingURL;
+                    String unsubscribeURL;
+                    Document templateHTML;
+                    File logoFile;
+                    String subjectLocal;
+                    Element linkRecipient;
+                    Element btnRelease;
+                    Element btnUnsubscribe;
+                    if ((holdingURL = Core.getHoldingURL(User.this, time)) == null) {
+                        return false;
+                    } else if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
+                        return false;
+                    } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                        return false;
+                    } else if ((templateHTML = Core.getTemplateWarningRetentionSender(User.this, locale)) == null) {
+                        return false;
+                    } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                        return false;
+                    } else if ((linkRecipient = templateHTML.getElementById("recipient")) == null) {
+                        return false;
+                    } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                        return false;
+                    } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
                         return false;
                     } else {
-                        Server.logDebug("sending retention warning by e-mail.");
-                        Locale locale = User.this.getLocale();
-                        String subjectLocal = getSubject();
-                        if (subjectLocal == null) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                subjectLocal = "Aviso de retenção de mensagem";
-                            } else {
-                                subjectLocal = "Message retention warning";
-                            }
-                        }
-                        String messageidLocal = getMessageID();
-                        InternetAddress[] recipients = InternetAddress.parse(mailFrom);
-                        MimeMessage message = Core.newMessage();
+                        linkRecipient.attr("href", "mailto:" + recipientLocal);
+                        linkRecipient.text(recipientLocal);
+                        btnRelease.attr("href", holdingURL);
+                        btnUnsubscribe.attr("href", unsubscribeURL);
+                        templateHTML = templateHTML.normalise();
+                        
+                        MimeMessage message = Core.newMessage(false);
                         message.addRecipients(Message.RecipientType.TO, recipients);
-                        message.setReplyTo(User.this.getInternetAddresses());
-                        message.setSubject(subjectLocal);
+                        message.setSubject(subjectLocal + " #" + Long.toString(time, 32));
+                        // Reply to original message ID.
+                        String messageidLocal = getMessageID();
                         if (messageidLocal != null) {
                             message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
                         }
-                        // Corpo da mensagem.
-                        StringBuilder builder = new StringBuilder();
-                        builder.append("<!DOCTYPE html>\n");
-                        builder.append("<html lang=\"");
-                        builder.append(locale.getLanguage());
-                        builder.append("\">\n");
-                        builder.append("  <head>\n");
-                        builder.append("    <meta charset=\"UTF-8\">\n");
-                        builder.append("    <title>");
-                        builder.append(subject);
-                        builder.append("</title>\n");
-                        ServerHTTP.loadStyleCSS(builder);
-                        builder.append("  </head>\n");
-                        builder.append("  <body>\n");
-                        builder.append("    <div id=\"container\">\n");
-                        builder.append("      <div id=\"divlogo\">\n");
-                        builder.append("        <img src=\"cid:logo\">\n");
-                        builder.append("      </div>\n");
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-                            ServerHTTP.buildText(builder, "Esta mensagem, que foi enviada para " + recipientLocal + " foi retida por suspeita de SPAM.");
-                            ServerHTTP.buildText(builder, "Se você considera isto um engano, acesse esta URL para solicitar a sua liberação:");
-                        } else {
-                            ServerHTTP.buildMessage(builder, "Message retention warning");
-                            ServerHTTP.buildText(builder, "This message, which was sent to " + recipientLocal + " was retained under suspicion of SPAM.");
-                            ServerHTTP.buildText(builder, "If you consider this a mistake, access this URL to request its release:");
-                        }
-                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-                        builder.append("    </div>\n");
-                        builder.append("  </body>\n");
-                        builder.append("</html>\n");
-                        // Making HTML part.
+                        // Build warning part.
                         MimeBodyPart htmlPart = new MimeBodyPart();
-                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                        // Making logo part.
+                        htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                        htmlPart.setDisposition(MimeBodyPart.INLINE);
+                        // Build logo part.
                         MimeBodyPart logoPart = new MimeBodyPart();
-                        File logoFile = ServerHTTP.getWebFile("logo.png");
                         logoPart.attachFile(logoFile);
                         logoPart.setContentID("<logo>");
                         logoPart.addHeader("Content-Type", "image/png");
-                        logoPart.setDisposition(MimeBodyPart.INLINE);
-                        // Join both parts.
+                        // Join all parts.
                         MimeMultipart content = new MimeMultipart("related");
                         content.addBodyPart(htmlPart);
                         content.addBodyPart(logoPart);
-                        // Set multiplart content.
+                        // Set multiplart contentRelated.
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (Core.sendMessage(locale, message, 30000)) {
+                        if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
+                            Defer.end(Core.getAdminEmail() + ">" + mailFrom);
                             this.CHANGED.acquire();
                             this.senderAdvised = true;
                             this.STORED = false;
@@ -6066,28 +7982,67 @@ public class User implements Serializable, Comparable<User> {
                             return false;
                         }
                     }
-                } catch (ServiceUnavailableException ex) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'ServiceUnavailableException'.");
-                    }
-                    return false;
                 } catch (NameNotFoundException ex) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'NameNotFoundException'.");
-                    }
+                    blockForAdmin(time);
+                    return false;
+                } catch (ServiceUnavailableException ex) {
+                    NoReply.addSafe(mailFrom);
                     return false;
                 } catch (CommunicationException ex) {
+                    NoReply.addSafe(mailFrom);
                     return false;
                 } catch (MailConnectException ex) {
+                    NoReply.addSafe(mailFrom);
                     return false;
-                } catch (SendFailedException ex) {
-                    if (ex.getCause() instanceof SMTPAddressFailedException) {
-                        if (blockKey(time)) {
-                            Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'SendFailedException'.");
+                } catch (SocketTimeoutException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (SocketConnectException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (SocketException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (SMTPAddressFailedException afex) {
+                    String message = afex.getMessage().toLowerCase();
+                    if (afex.getReturnCode() / 100 == 4) {
+                        if (!Defer.defer(Core.getAdminEmail() + ">" + mailFrom, Core.getDeferTimeRED())) {
+                            NoReply.addSafe(mailFrom);
                         }
+                    } else if (afex.getReturnCode() == 541 || message.contains(" 5.4.1 ")) {
+                        NoReply.addSafe(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("mailbox not found")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("unavailable")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("no such user")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("address rejected")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("unrouteable address")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("currently available")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("relay not permitted")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("invalide recipients")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 553 && message.contains("allowed rcpthosts")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 551 || message.contains(" 5.1.1 ")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getMessage().contains(" 5.7.1 ")) {
+                        NoReply.addSafe(mailFrom);
                     }
                     return false;
+                } catch (SendFailedException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
                 } catch (MessagingException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (NullPointerException ex) {
+                    Server.logError("adviseSenderHOLD " + time);
                     return false;
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -6096,146 +8051,185 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-        private synchronized boolean adviseSenderBLOCK(long time) {
+        public boolean adviseSenderBLOCK(long time) {
             String mailFrom;
             String recipientLocal;
+            String unblockURL;
             if (senderAdvised) {
                 return true;
+            } else if (!Core.hasOutputSMTP()) {
+                return false;
+            } else if (!Core.isRunning()) {
+                return false;
+            } else if (isWhiteKey()) {
+                return false;
+            } else if (isInexistent()) {
+                return false;
+            } else if (isBanned()) {
+                return false;
+            } else if (isBlockKeyByAdmin()) {
+                return false;
             } else if ((mailFrom = getReplyToValid()) == null) {
+                return false;
+            } else if (mailFrom.contains("+")) {
                 return false;
             } else if ((recipientLocal = getRecipient()) == null) {
                 return false;
-            } else if (!Core.hasOutputSMTP()) {
+            } else if (Core.isAdminEmail(recipientLocal)) {
                 return false;
-            } else if (Trap.containsAnything(null, User.this, recipientLocal)) {
+            } else if (Core.isAbuseEmail(recipientLocal)) {
                 return false;
-            } else if (NoReply.contains(recipientLocal, false)) {
+            } else if (hasMalware()) {
                 return false;
-            } else if (!Domain.isValidEmail(recipientLocal)) {
+            } else if (hasExecutableBlocked()) {
+                return false;
+            } else if (hasPhishingBlocked()) {
                 return false;
             } else if (isBlockedForRecipient()) {
                 return false;
-            } else if (isWhiteKey()) {
+            } else if (!Domain.isRootDomain(mailFrom)) {
                 return false;
-            } else if (isBlockKey()) {
+            } else if (NoReply.contains(mailFrom, true)) {
                 return false;
-            } else if (isWhiteKeyByAdmin()) {
+            } else if (NoReply.isUnsubscribed(recipientLocal) && NoReply.isUnsubscribed(getUserEmail())) {
                 return false;
-            } else if (isBlockKeyByAdmin()) {
+            } else if ((unblockURL = getUnblockURLSafe()) == null) {
                 return false;
-            } else {
+             } else {
                 try {
-                    String url = getUnblockURL();
-                    if (url == null) {
+                    Locale locale = getBodyLocale();
+                    InternetAddress[] recipients = InternetAddress.parse(mailFrom);
+                    String unsubscribeURL;
+                    Document templateHTML;
+                    File logoFile;
+                    String subjectLocal;
+                    Element linkRecipient;
+                    Element btnRelease;
+                    Element btnUnsubscribe;
+                    if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
+                        return false;
+                    } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                        return false;
+                    } else if ((templateHTML = Core.getTemplateWarningRejectionSender(User.this, locale)) == null) {
+                        return false;
+                    } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                        return false;
+                    } else if ((linkRecipient = templateHTML.getElementById("recipient")) == null) {
+                        return false;
+                    } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                        return false;
+                    } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
                         return false;
                     } else {
-                        Server.logDebug("sending blocked warning by e-mail.");
-                        Locale locale = User.this.getLocale();
-                        String subjectLocal = getSubject();
-                        if (subjectLocal == null) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                subjectLocal = "Aviso de rejeição de mensagem";
-                            } else {
-                                subjectLocal = "Message rejection warning";
-                            }
-                        }
-                        String messageidLocal = getMessageID();
-                        InternetAddress[] recipients = InternetAddress.parse(mailFrom);
-                        MimeMessage message = Core.newMessage();
+                        linkRecipient.attr("href", "mailto:" + recipientLocal);
+                        linkRecipient.text(recipientLocal);
+                        btnRelease.attr("href", unblockURL);
+                        btnUnsubscribe.attr("href", unsubscribeURL);
+                        templateHTML = templateHTML.normalise();
+                        
+                        MimeMessage message = Core.newMessage(false);
                         message.addRecipients(Message.RecipientType.TO, recipients);
-                        message.setReplyTo(User.this.getInternetAddresses());
-                        message.setSubject(subjectLocal);
+                        message.setSubject(subjectLocal + " <" + recipientLocal + ">");
+                        // Reply to original message ID.
+                        String messageidLocal = getMessageID();
                         if (messageidLocal != null) {
                             message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
                         }
-                        // Corpo da mensagem.
-                        StringBuilder builder = new StringBuilder();
-                        builder.append("<!DOCTYPE html>\n");
-                        builder.append("<html lang=\"");
-                        builder.append(locale.getLanguage());
-                        builder.append("\">\n");
-                        builder.append("  <head>\n");
-                        builder.append("    <meta charset=\"UTF-8\">\n");
-                        builder.append("    <title>");
-                        builder.append(subjectLocal);
-                        builder.append("</title>\n");
-                        ServerHTTP.loadStyleCSS(builder);
-                        builder.append("  </head>\n");
-                        builder.append("  <body>\n");
-                        builder.append("    <div id=\"container\">\n");
-                        builder.append("      <div id=\"divlogo\">\n");
-                        builder.append("        <img src=\"cid:logo\">\n");
-                        builder.append("      </div>\n");
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            ServerHTTP.buildMessage(builder, "Aviso de bloqueio de mensagem");
-                            ServerHTTP.buildText(builder, "A mensagem, que foi enviada para " + recipientLocal + ", foi rejeitada por bloqueio manual.");
-                            ServerHTTP.buildText(builder, "Se você considera isto um engano, acesse esta URL para solicitar o desbloqueio:");
-                        } else {
-                            ServerHTTP.buildMessage(builder, "Message block warning");
-                            ServerHTTP.buildText(builder, "The message, which was sent to " + recipientLocal + ", was rejected by manual block.");
-                            ServerHTTP.buildText(builder, "If you consider this a mistake, access this URL to request unblock:");
-                        }
-                        ServerHTTP.buildText(builder, "<a href=\"" + url + "\">" + url + "</a>");
-                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-                        builder.append("    </div>\n");
-                        builder.append("  </body>\n");
-                        builder.append("</html>\n");
-                        // Making HTML part.
+                        // Build warning part.
                         MimeBodyPart htmlPart = new MimeBodyPart();
-                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                        // Making logo part.
+                        htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                        htmlPart.setDisposition(MimeBodyPart.INLINE);
+                        // Build logo part.
                         MimeBodyPart logoPart = new MimeBodyPart();
-                        File logoFile = ServerHTTP.getWebFile("logo.png");
                         logoPart.attachFile(logoFile);
                         logoPart.setContentID("<logo>");
                         logoPart.addHeader("Content-Type", "image/png");
-                        logoPart.setDisposition(MimeBodyPart.INLINE);
-                        // Join both parts.
+                        // Join all parts.
                         MimeMultipart content = new MimeMultipart("related");
                         content.addBodyPart(htmlPart);
                         content.addBodyPart(logoPart);
-                        // Set multiplart content.
+                        // Set multiplart contentRelated.
                         message.setContent(content);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (Core.sendMessage(locale, message, 30000)) {
+                        if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
                             this.CHANGED.acquire();
                             this.senderAdvised = true;
                             this.STORED = false;
                             User.CHANGED = true;
                             this.CHANGED.release(true);
-                            this.blockForRecipient(time);
+                            this.blockForRecipient(time, false);
                             User.storeDB(time, this);
-                            Server.logDebug("reject warning sent by e-mail.");
                             return true;
                         } else {
                             return false;
                         }
                     }
-                } catch (ServiceUnavailableException ex) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'ServiceUnavailableException'.");
-                    }
-                    return false;
                 } catch (NameNotFoundException ex) {
-                    if (blockKey(time)) {
-                        Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'NameNotFoundException'.");
-                    }
+                    blockForAdmin(time);
+                    return false;
+                } catch (SocketException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (ServiceUnavailableException ex) {
+                    NoReply.addSafe(mailFrom);
                     return false;
                 } catch (CommunicationException ex) {
-                    blockForRecipient(time);
+                    NoReply.addSafe(mailFrom);
                     return false;
                 } catch (MailConnectException ex) {
-                    blockForRecipient(time);
+                    NoReply.addSafe(mailFrom);
                     return false;
-                } catch (SendFailedException ex) {
-                    if (ex.getCause() instanceof SMTPAddressFailedException) {
-                        if (blockKey(time)) {
-                            Server.logDebug("new BLOCK '" + getUserEmail() + ":" + getBlockKey() + "' added by 'SendFailedException'.");
+                } catch (SocketTimeoutException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (SocketConnectException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (SMTPAddressFailedException afex) {
+                    String message = afex.getMessage().toLowerCase();
+                    if (afex.getReturnCode() / 100 == 4) {
+                        if (!Defer.defer(Core.getAdminEmail() + ">" + mailFrom, Core.getDeferTimeRED())) {
+                            NoReply.addSafe(mailFrom);
                         }
+                    } else if (afex.getReturnCode() / 10 == 55 && message.contains("relay not permitted")) {
+                        blockForAdmin(time);
+                    } else if (afex.getReturnCode() / 10 == 55 && message.contains("relay access denied")) {
+                        blockForAdmin(time);
+                    } else if (afex.getReturnCode() / 10 == 55 && message.contains("allowed rcpthosts")) {
+                        blockForAdmin(time);
+                    } else if (afex.getReturnCode() == 541 || message.contains(" 5.4.1 ")) {
+                        NoReply.addSafe(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("mailbox not found")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("unavailable")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("no such user")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("address rejected")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("unrouteable address")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("unknown user")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("currently available")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 550 && message.contains("invalide recipients")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (afex.getReturnCode() == 551 || message.contains(" 5.1.1 ")) {
+                        Trap.addInexistentForever(mailFrom);
+                    } else if (message.contains(" 5.7.1 ")) {
+                        NoReply.addSafe(mailFrom);
                     }
                     return false;
+                } catch (SendFailedException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
                 } catch (MessagingException ex) {
+                    NoReply.addSafe(mailFrom);
+                    return false;
+                } catch (NullPointerException ex) {
+                    Server.logError("adviseSenderHOLD " + time);
                     return false;
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -6243,19 +8237,52 @@ public class User implements Serializable, Comparable<User> {
                 }
             }
         }
-
-        private synchronized boolean adviseUserHOLD(long time) {
-            String senderLocal = getSender();
-            String userEmail = getEmail();
-            if (userAdvised) {
+        
+        private boolean adviseFromHIJACK(long time) {
+            String from;
+            if (!Core.hasOutputSMTP()) {
+                return false;
+            } else if (!Core.isRunning()) {
+                return false;
+            } else if (isBounceMessage()) {
+                return false;
+            } else if (!isSenderHijacked()) {
+                return false;
+            } else if (!Core.hasAdminEmail()) {
+                return false;
+            } else if ((from = getFrom()) == null) {
+                return false;
+            } else if (from.startsWith("mailer-daemon@")) {
+                return false;
+            } else if (NoReply.isUnsubscribed(from)) {
+                return false;
+            } else if (NoReply.contains(from, true)) {
+                return false;
+            } else if (!isSigned(from)) {
+                return false;
+            } else {
+                return User.adviseFromHIJACK(time, from, getLocale());
+            }
+        }
+        
+        public boolean adviseRecipientHOLD(long timeKey) {
+            String fromLocal = getFrom();
+            String recipientEmail = getRecipient();
+            String unholdURL;
+            String blockURL;
+            if (recipientAdvised) {
                 return true;
-            } else if (senderLocal == null) {
+            } else if (inexistent) {
                 return false;
-            } else if (userEmail == null) {
+            } else if (senderAdvised) {
                 return false;
-            } else if (NoReply.contains(userEmail, true)) {
+            } else if (fromLocal == null) {
+                return false;
+            } else if (recipientEmail == null) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
+                return false;
+            } else if (!Core.isRunning()) {
                 return false;
             } else if (isWhiteKey()) {
                 return false;
@@ -6265,185 +8292,135 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } else if (isBlockKeyByAdmin()) {
                 return false;
-            } else if (isAnyLinkBLOCK(true)) {
+            } else if (isBanned()) {
+                return false;
+            } else if (isFromUnroutable()) {
+                String domain = getHeaderFromHostname(false);
+                Server.logDebug(timeKey, "FILTER FROM_UNROUTABLE;@" + domain);
+                setFilter("FROM_UNROUTABLE;@" + getHeaderFromHostname(false));
+                blockKey(timeKey, "NOTROUTEABLE");
+                adviseMailerDaemonHOLDING(timeKey);
+                return false;
+            } else if (isSubjectEmpty()) {
+                return false;
+            } else if (isFromBlockedTLD()) {
+                return false;
+            } else if (isFromNotComplaince()) {
+                return false;
+            } else if (isSenderMailerDeamon()) {
+                return false;
+            } else if (isNotSigned(fromLocal, true)) {
+                return false;
+            } else if (NoReply.contains(recipientEmail, false)) {
+                return false;
+            } else if (hasMalware()) {
+                return false;
+            } else if (hasExecutable()) {
+                return false;
+            } else if (isSpoofingFrom()) {
+                return false;
+            } else if (isSpoofingFQDN()) {
+                return false;
+            } else if (isFromBlocked()) {
+                return false;
+            } else if (hasSignatureURL()) {
+                return false;
+            } else if (hasLinkBlocked()) {
+                return false;
+            } else if (isAnyLinkSuspect(true)) {
+                return false;
+            } else if (hasBitcoinInBody()) {
+                return false;
+            } else if (isSubjectBlockedREGEX()) {
+                return false;
+            } else if ((unholdURL = Core.getUnholdURL(User.this, timeKey)) == null) {
+                return false;
+            } else if ((blockURL = Core.getBlockURL(User.this, timeKey)) == null) {
                 return false;
             } else {
                 try {
-                    String unholdURL = Core.getUnholdURL(User.this, time);
-                    String blockURL = Core.getBlockURL(User.this, time);
-                    if (unholdURL == null) {
+                    Locale locale = User.this.getLocale();
+                    InternetAddress[] recipients = InternetAddress.parse(recipientEmail);
+                    MimeMessage forwardMessage;
+                    Document templateHTML;
+                    File logoFile;
+                    String subjectLocal;
+                    Element linkSender;
+                    Element btnRelease;
+                    Element btnBlock;
+                    Element btnUnsubscribe;
+                    String unsubscribeURL;
+                    if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
                         return false;
-                    } else if (blockURL == null) {
+                    } else if ((forwardMessage = getMimeMessageBody()) == null) {
+                        return false;
+                    } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                        return false;
+                    } else if ((templateHTML = Core.getTemplateWarningRetentionRecipient(User.this, locale)) == null) {
+                        return false;
+                    } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                        return false;
+                    } else if ((linkSender = templateHTML.getElementById("sender")) == null) {
+                        return false;
+                    } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                        return false;
+                    } else if ((btnBlock = templateHTML.getElementById("urlBlock")) == null) {
+                        return false;
+                    } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
                         return false;
                     } else {
-                        Server.logDebug("sending retention warning by e-mail.");
-                        Locale locale = User.this.getLocale();
-                        String subjectLocal = getSubject();
-                        if (subjectLocal == null) {
-                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-                                subjectLocal = "Aviso de rejeição de mensagem";
-                            } else {
-                                subjectLocal = "Message retention warning";
-                            }
-                        }
-//                        String qualifierLocal = getQualifierName();
-                        String recipientLocal = getRecipient();
-                        String messageidLocal = getMessageID();
-                        String textBody = getTextPlainBody(256);
-                        TreeSet<String> linkSet = getLinkSet();
-                        InternetAddress[] recipients = User.this.getInternetAddresses();
-                        MimeMessage message = Core.newMessage();
+                        linkSender.attr("href", "mailto:" + fromLocal);
+                        linkSender.text(fromLocal);
+                        btnRelease.attr("href", unholdURL);
+                        btnBlock.attr("href", blockURL);
+                        btnUnsubscribe.attr("href", unsubscribeURL);
+                        templateHTML = templateHTML.normalise();
+                        
+                        MimeMessage message = Core.newMessage(true);
                         message.addRecipients(Message.RecipientType.TO, recipients);
-                        if (Domain.isValidEmail(senderLocal)) {
-                            message.setReplyTo(InternetAddress.parse(senderLocal));
-                        }
-                        message.setSubject(subjectLocal);
-                        if (messageidLocal != null) {
-                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-                        }
-                        // Corpo da mensagem.
-                        StringBuilder builder = new StringBuilder();
-                        builder.append("<!DOCTYPE html>\n");
-                        builder.append("<html lang=\"");
-                        builder.append(locale.getLanguage());
-                        builder.append("\">\n");
-                        builder.append("  <head>\n");
-                        builder.append("    <meta charset=\"UTF-8\">\n");
-                        builder.append("    <title>");
-                        builder.append(subjectLocal);
-                        builder.append("</title>\n");
-                        ServerHTTP.loadStyleCSS(builder);
-                        builder.append("  </head>\n");
-                        builder.append("  <body>\n");
-                        builder.append("    <div id=\"container\">\n");
-                        builder.append("      <div id=\"divlogo\">\n");
-                        builder.append("        <img src=\"cid:logo\">\n");
-                        builder.append("      </div>\n");
-                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-                            ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-                            ServerHTTP.buildText(builder, "Uma mensagem enviada de " + senderLocal + " para "  + recipientLocal + " foi retida por suspeita de SPAM.");
-                            if (recipientAdvised) {
-                                ServerHTTP.buildText(builder, "O destinatário já foi avisado sobre a retenção, porém ele não liberou a mensagem ainda.");
-                            } else if (senderAdvised) {
-                                ServerHTTP.buildText(builder, "O remetente já foi avisado sobre a retenção, porém ele não solicitou a liberação da mensagem ainda.");
-                            }
-                            if (!isSenderTrustable()) {
-                                ServerHTTP.buildText(builder, "<b>Atenção! Este remetente não pôde ser autenticado. Isso significa que a mensagem pode ser uma fraude!</b>");
-                                String hostDomain = getValidHostDomain();
-                                if (hostDomain == null) {
-                                    ServerHTTP.buildText(builder, "<b>Não é possível determinar com segurança qual servidor disparou esta mensagem.</b>");
-                                } else {
-                                    ServerHTTP.buildText(builder, "A mensagem foi disparada por um servidor no domínio " + hostDomain + ".");
-                                }
-                            }
-                            if (hasExecutableNotIgnored()) {
-                                ServerHTTP.buildText(builder, "<b>Atenção! Esta mensagem contém arquivos executáveis com potencial de danificar o computador!</b>");
-                            }
-                            if (textBody != null || (linkSet != null && !linkSet.isEmpty())) {
-                                ServerHTTP.buildText(builder, "Os seguintes elementos foram encontrados no corpo da mensagem retida:");
-                                builder.append("    <ul>\n");
-                                if (textBody != null) {
-                                    builder.append("    <li>");
-                                    builder.append(StringEscapeUtils.escapeHtml4(textBody));
-                                    builder.append("</li>\n");
-                                }
-                                if (linkSet != null) {
-                                    for (String link : linkSet) {
-                                        builder.append("    <li>");
-                                        if (isLinkBlocked(link)) {
-                                            builder.append("<b><font color=\"DarkRed\">");
-                                            builder.append(Core.tryGetSignatureRootURL(link));
-                                            builder.append("</font></b>");
-                                        } else {
-                                            builder.append(Core.tryGetSignatureRootURL(link));
-                                        }
-                                        builder.append("</li>\n");
-                                    }
-                                }
-                                builder.append("    </ul>\n");
-                            }
-                            ServerHTTP.buildText(builder, "Se você considera esta mensagem legítima, acesse esta URL para solicitar a sua liberação:");
-                            ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
-                            ServerHTTP.buildText(builder, "Se você considera esta mensagem SPAM, acesse esta URL para bloquear o remetente:");
-                            ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
-                        } else {
-                            ServerHTTP.buildMessage(builder, "Message retention warning");
-                            ServerHTTP.buildText(builder, "A message sent from " + senderLocal + " to " + recipientLocal + " was retained under suspicion of SPAM.");
-                            if (recipientAdvised) {
-                                ServerHTTP.buildText(builder, "The recipient has been warned about retention, but he did not release the message yet.");
-                            } else if (senderAdvised) {
-                                ServerHTTP.buildText(builder, "The sender has already been advised of the retention, but he has not requested to release the message yet.");
-                            }
-                            if (!isSenderTrustable()) {
-                                ServerHTTP.buildText(builder, "<b>Warning! This sender could not be authenticated. That means the message can be a fraud!</b>");
-                                String hostDomain = getValidHostDomain();
-                                if (hostDomain == null) {
-                                    ServerHTTP.buildText(builder, "<b>It is not possible to determine with certainty which server fired this message.</b>");
-                                } else {
-                                    ServerHTTP.buildText(builder, "<p>The message was fired by a server in domain " + hostDomain + ".");
-                                }
-                            }
-                            if (hasExecutableNotIgnored()) {
-                                ServerHTTP.buildText(builder, "<b>Warning! This message contains executable files that could potentially damage the computer!</b>");
-                            }
-                            if (textBody != null || (linkSet != null && !linkSet.isEmpty())) {
-                                ServerHTTP.buildText(builder, "The following elements have been found in message body:");
-                                builder.append("    <ul>\n");
-                                if (textBody != null) {
-                                    builder.append("    <li>");
-                                    builder.append(StringEscapeUtils.escapeHtml4(textBody));
-                                    builder.append("</li>\n");
-                                }
-                                if (linkSet != null) {
-                                    for (String link : linkSet) {
-                                        builder.append("    <li>");
-                                        if (isLinkBlocked(link)) {
-                                            builder.append("<b><font color=\"DarkRed\">");
-                                            builder.append(link);
-                                            builder.append("</font></b>");
-                                        } else {
-                                            builder.append(link);
-                                        }
-                                        builder.append("</li>\n");
-                                    }
-                                }
-                                builder.append("    </ul>\n");
-                            }
-                            ServerHTTP.buildText(builder, "If you consider this message legitimate, access this URL to request its release:");
-                            ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
-                            ServerHTTP.buildText(builder, "If you consider this SPAM message, access this URL to block the sender:");
-                            ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
-                        }
-
-                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-                        builder.append("    </div>\n");
-                        builder.append("  </body>\n");
-                        builder.append("</html>\n");
-                        // Making HTML part.
+                        message.setReplyTo(User.this.getInternetAddresses());
+                        message.setSubject(subjectLocal + " #" + Long.toString(timeKey, 32));
+                        // Build warning part.
                         MimeBodyPart htmlPart = new MimeBodyPart();
-                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-                        // Making logo part.
+                        htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                        htmlPart.setDisposition(MimeBodyPart.INLINE);
+                        // Build logo part.
                         MimeBodyPart logoPart = new MimeBodyPart();
-                        File logoFile = ServerHTTP.getWebFile("logo.png");
                         logoPart.attachFile(logoFile);
                         logoPart.setContentID("<logo>");
                         logoPart.addHeader("Content-Type", "image/png");
-                        logoPart.setDisposition(MimeBodyPart.INLINE);
-                        // Join both parts.
-                        MimeMultipart content = new MimeMultipart("related");
-                        content.addBodyPart(htmlPart);
-                        content.addBodyPart(logoPart);
-                        // Set multiplart content.
-                        message.setContent(content);
+                        // Join all parts.
+                        MimeMultipart contentRelated = new MimeMultipart("related");
+                        contentRelated.addBodyPart(htmlPart);
+                        contentRelated.addBodyPart(logoPart);
+                        MimeBodyPart contentPart = new MimeBodyPart();
+                        contentPart.setContent(contentRelated);
+                        MimeMultipart contentMixed = new MimeMultipart("mixed");
+                        contentMixed.addBodyPart(contentPart);
+                        // Build hold part.
+                        if (forwardMessage.getSize() == 0) {
+                            forwardMessage.setContent("Body unavailable.", "text/plain");
+                        }
+                        forwardMessage.saveChanges();
+                        MimeBodyPart forwardPart = new MimeBodyPart();
+                        forwardPart.setContent(forwardMessage, "message/rfc822");
+                        forwardPart.setDisposition(MimeBodyPart.INLINE);
+//                        forwardPart.setFileName(Long.toString(timeKey, 32) + ".eml");
+                        contentMixed.addBodyPart(forwardPart);
+                        // Set multiplart contentRelated.
+                        message.setContent(contentMixed);
                         message.saveChanges();
                         // Enviar mensagem.
-                        if (Core.sendMessage(locale, message, 30000)) {
+                        if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
                             this.CHANGED.acquire();
-                            this.userAdvised = true;
+                            this.recipientAdvised = true;
+                            if (User.this.isEmail(recipientEmail)) {
+                                this.userAdvised = true;
+                            }
                             this.STORED = false;
                             User.CHANGED = true;
                             this.CHANGED.release(true);
-                            User.storeDB(time, this);
+                            User.storeDB(timeKey, this);
                             return true;
                         } else {
                             return false;
@@ -6453,9 +8430,20 @@ public class User implements Serializable, Comparable<User> {
                     return false;
                 } catch (CommunicationException ex) {
                     return false;
+                } catch (IOException ex) {
+                    return false;
                 } catch (ServiceUnavailableException ex) {
                     return false;
                 } catch (MailConnectException ex) {
+                    return false;
+                } catch (SMTPAddressFailedException afex) {
+                    if (afex.getReturnCode() == 551 || afex.getMessage().contains(" 5.1.1 ")) {
+                        this.CHANGED.acquire();
+                        this.inexistent = true;
+                        this.STORED = false;
+                        User.CHANGED = true;
+                        this.CHANGED.release(true);
+                    }
                     return false;
                 } catch (MessagingException ex) {
                     return false;
@@ -6466,306 +8454,306 @@ public class User implements Serializable, Comparable<User> {
             }
         }
         
-//        private synchronized boolean adviseAdminHOLD(long time) {
-//            String adminEmail = Core.getAdminEmail();
-//            if (adminAdvised) {
-//                return true;
-//            } else if (adminEmail == null) {
-//                return false;
-//            } else if (NoReply.contains(adminEmail, true)) {
-//                return false;
-//            } else if (!Core.hasOutputSMTP()) {
-//                return false;
-//            } else if (isWhiteKey()) {
-//                return false;
-//            } else if (isBlockKey()) {
-//                return false;
-//            } else if (isWhiteKeyByAdmin()) {
-//                return false;
-//            } else if (isBlockKeyByAdmin()) {
-//                return false;
-//            } else if (isAnyLinkBLOCK(true)) {
-//                return false;
-//            } else {
-//                try {
-//                    String unholdURL = Core.getUnholdURL(User.this, time);
-//                    String blockURL = Core.getBlockURL(User.this, time);
-//                    if (unholdURL == null) {
-//                        return false;
-//                    } else if (blockURL == null) {
-//                        return false;
-//                    } else {
-//                        Server.logDebug("sending retention warning by e-mail.");
-//                        Locale locale = User.this.getLocale();
-//                        String subjectLocal = getSubject();
-//                        if (subjectLocal == null) {
-//                            if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                                subjectLocal = "Aviso de retenção de mensagem";
-//                            } else {
-//                                subjectLocal = "Message retention warning";
-//                            }
-//                        }
-//                        subjectLocal += " [" + Long.toHexString(time) + "]";
-//                        String recipientMail = getRecipient();
-//                        String requestURL;
-//                        if (recipientMail == null) {
-//                            requestURL = null;
-//                        } else if (NoReply.contains(recipientMail, true)) {
-//                            requestURL = null;
-//                        } else {
-//                            requestURL = Core.getHoldingURL(User.this, time);
-//                        }
-////                        String qualifierLocal = getQualifierName();
-//                        String recipientLocal = getRecipient();
-//                        String messageidLocal = getMessageID();
-//                        String textBody = getTextPlainBody(256);
-//                        TreeSet<String> linkSet = getLinkSet();
-//                        InternetAddress[] recipients = {Core.getAdminInternetAddress()};
-//                        MimeMessage message = Core.newMessage();
-//                        message.addRecipients(Message.RecipientType.TO, recipients);
-//                        String senderLocal = getSender();
-//                        String hostDomain = getValidHostDomain();
-//                        if (senderLocal == null) {
-//                            if (hostDomain == null) {
-//                                senderLocal = "mailer-daemon";
-//                            } else {
-//                                senderLocal = "mailer-daemon@" + hostDomain;
-//                            }
-//                        } else if (Domain.isValidEmail(senderLocal)) {
-//                            message.setReplyTo(InternetAddress.parse(senderLocal));
-//                        }
-//                        message.setSubject(subjectLocal);
-//                        if (messageidLocal != null) {
-//                            message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
-//                        }
-//                        // Corpo da mensagem.
-//                        StringBuilder builder = new StringBuilder();
-//                        builder.append("<!DOCTYPE html>\n");
-//                        builder.append("<html lang=\"");
-//                        builder.append(locale.getLanguage());
-//                        builder.append("\">\n");
-//                        builder.append("  <head>\n");
-//                        builder.append("    <meta charset=\"UTF-8\">\n");
-//                        builder.append("    <title>");
-//                        builder.append(subjectLocal);
-//                        builder.append("</title>\n");
-//                        ServerHTTP.loadStyleCSS(builder);
-//                        builder.append("  </head>\n");
-//                        builder.append("  <body>\n");
-//                        builder.append("    <div id=\"container\">\n");
-//                        builder.append("      <div id=\"divlogo\">\n");
-//                        builder.append("        <img src=\"cid:logo\">\n");
-//                        builder.append("      </div>\n");
-//                        if (locale.getLanguage().toLowerCase().equals("pt")) {
-//                            ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagem");
-//                            ServerHTTP.buildText(builder, "Uma mensagem enviada de " + senderLocal + " para "  + recipientLocal + " foi retida por suspeita de SPAM.");
-//                            if (!isSenderTrustable()) {
-//                                ServerHTTP.buildText(builder, "<b>Atenção! Este remetente não pôde ser autenticado. Isso significa que a mensagem pode ser uma fraude!</b>");
-//                                if (hostDomain == null) {
-//                                    ServerHTTP.buildText(builder, "<b>Não é possível determinar com segurança qual servidor disparou esta mensagem.</b>");
-//                                } else {
-//                                    ServerHTTP.buildText(builder, "A mensagem foi disparada por um servidor no domínio " + hostDomain + ".");
-//                                }
-//                            }
-//                            if (hasExecutableNotIgnored()) {
-//                                ServerHTTP.buildText(builder, "<b>Atenção! Esta mensagem contém arquivos executáveis com potencial de danificar o computador!</b>");
-//                            }
-//                            if (textBody != null || (linkSet != null && !linkSet.isEmpty())) {
-//                                ServerHTTP.buildText(builder, "Os seguintes elementos foram encontrados no corpo da mensagem retida:");
-//                                builder.append("    <ul>\n");
-//                                if (textBody != null) {
-//                                    builder.append("    <li>");
-//                                    builder.append(StringEscapeUtils.escapeHtml4(textBody));
-//                                    builder.append("</li>\n");
-//                                }
-//                                if (linkSet != null) {
-//                                    for (String link : linkSet) {
-//                                        builder.append("    <li>");
-//                                        if (isLinkBlocked(link)) {
-//                                            builder.append("<b><font color=\"DarkRed\">");
-//                                            builder.append(Core.tryGetSignatureRootURL(link));
-//                                            builder.append("</font></b>");
-//                                        } else {
-//                                            builder.append(Core.tryGetSignatureRootURL(link));
-//                                        }
-//                                        builder.append("</li>\n");
-//                                    }
-//                                }
-//                                builder.append("    </ul>\n");
-//                            }
-//                            ServerHTTP.buildText(builder, "Se você considera esta mensagem legítima, acesse esta URL para solicitar a sua liberação:");
-//                            ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
-//                            ServerHTTP.buildText(builder, "Se você considera esta mensagem SPAM, acesse esta URL para bloquear o remetente:");
-//                            ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
-//                            if (requestURL != null) {
-//                                ServerHTTP.buildText(builder, "Se você não tiver certeza do que essa mensagem seja, acesse esta URL para passar esta liberação ao destinatário:");
-//                                ServerHTTP.buildText(builder, "<a href=\"" + requestURL + "\">" + requestURL + "</a>");
-//                            }
-//                        } else {
-//                            ServerHTTP.buildMessage(builder, "Message retention warning");
-//                            ServerHTTP.buildText(builder, "A message sent from " + senderLocal + " to " + recipientLocal + " was retained under suspicion of SPAM.");
-//                            if (!isSenderTrustable()) {
-//                                ServerHTTP.buildText(builder, "<b>Warning! This sender could not be authenticated. That means the message can be a fraud!</b>");
-//                                if (hostDomain == null) {
-//                                    ServerHTTP.buildText(builder, "<b>It is not possible to determine with certainty which server fired this message.</b>");
-//                                } else {
-//                                    ServerHTTP.buildText(builder, "<p>The message was fired by a server in domain " + hostDomain + ".");
-//                                }
-//                            }
-//                            if (hasExecutableNotIgnored()) {
-//                                ServerHTTP.buildText(builder, "<b>Warning! This message contains executable files that could potentially damage the computer!</b>");
-//                            }
-//                            if (textBody != null || (linkSet != null && !linkSet.isEmpty())) {
-//                                ServerHTTP.buildText(builder, "The following elements have been found in message body:");
-//                                builder.append("    <ul>\n");
-//                                if (textBody != null) {
-//                                    builder.append("    <li>");
-//                                    builder.append(StringEscapeUtils.escapeHtml4(textBody));
-//                                    builder.append("</li>\n");
-//                                }
-//                                if (linkSet != null) {
-//                                    for (String link : linkSet) {
-//                                        builder.append("    <li>");
-//                                        if (isLinkBlocked(link)) {
-//                                            builder.append("<b><font color=\"DarkRed\">");
-//                                            builder.append(link);
-//                                            builder.append("</font></b>");
-//                                        } else {
-//                                            builder.append(link);
-//                                        }
-//                                        builder.append("</li>\n");
-//                                    }
-//                                }
-//                                builder.append("    </ul>\n");
-//                            }
-//                            ServerHTTP.buildText(builder, "If you consider this message legitimate, access this URL to request its release:");
-//                            ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
-//                            ServerHTTP.buildText(builder, "If you consider this SPAM message, access this URL to block the sender:");
-//                            ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
-//                            if (requestURL != null) {
-//                                ServerHTTP.buildText(builder, "If you're not sure what this message is, visit this URL to pass this release to the recipient:");
-//                                ServerHTTP.buildText(builder, "<a href=\"" + requestURL + "\">" + requestURL + "</a>");
-//                            }
-//                        }
-//                        ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
-//                        builder.append("    </div>\n");
-//                        builder.append("  </body>\n");
-//                        builder.append("</html>\n");
-//                        // Making HTML part.
-//                        MimeBodyPart htmlPart = new MimeBodyPart();
-//                        htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
-//                        // Making logo part.
-//                        MimeBodyPart logoPart = new MimeBodyPart();
-//                        File logoFile = ServerHTTP.getWebFile("logo.png");
-//                        logoPart.attachFile(logoFile);
-//                        logoPart.setContentID("<logo>");
-//                        logoPart.addHeader("Content-Type", "image/png");
-//                        logoPart.setDisposition(MimeBodyPart.INLINE);
-//                        // Join both parts.
-//                        MimeMultipart content = new MimeMultipart("related");
-//                        content.addBodyPart(htmlPart);
-//                        content.addBodyPart(logoPart);
-//                        // Set multiplart content.
-//                        message.setContent(content);
-//                        message.saveChanges();
-//                        // Enviar mensagem.
-//                        if (Core.sendMessage(locale, message, 30000)) {
-//                            this.CHANGED.acquire();
-//                            this.adminAdvised = true;
-//                            this.STORED = false;
-//                            User.CHANGED = true;
-//                            this.CHANGED.release(true);
-//                            User.storeDB(time, this);
-//                            return true;
-//                        } else {
-//                            return false;
-//                        }
-//                    }
-//                } catch (Exception ex) {
-//                    Server.logError(ex);
-//                    return false;
-//                }
-//            }
-//        }
-    
-        public synchronized boolean reportAbuse(long time) {
-            String abuseEmail;
+        public boolean adviseUserHOLD(long time) {
+            if (userAdvised) {
+                return true;
+            } else {
+                TreeMap<Long,Query> queryMap = new TreeMap<>();
+                queryMap.put(time, this);
+                return User.this.adviseUserHOLD(queryMap);
+            }
+        }
+        
+        public boolean adviseAdminHOLD(long time) {
+            if (adminAdvised) {
+                return true;
+            } else {
+                TreeMap<Long,Query> queryMap = new TreeMap<>();
+                queryMap.put(time, this);
+                return User.adviseAdminHOLD(queryMap);
+            }
+        }
+        
+        public boolean reportAbuse(long time, String email) throws Exception {
             if (abuseAdvised) {
                 return true;
+            } else if (email == null) {
+                return false;
             } else if (!Core.hasAdminEmail()) {
                 return false;
             } else if (!Core.hasOutputSMTP()) {
                 return false;
-            } else if ((abuseEmail = Abuse.getEmail(getIP(), true)) == null) {
+            } else if (Trap.containsAnythingExact(email)) {
+                Abuse.dropAllEmail(email);
                 return false;
-            } else if (NoReply.contains(abuseEmail, true)) {
-                Abuse.dropEmail(getIP(), abuseEmail);
+            } else if (NoReply.isUnsubscribed(email)) {
                 return false;
-            } else if (!isBlock()) {
+            } else {
+                MimeMessage original = getMimeMessageHeader();
+                boolean sendUnblockURL = !isFilter(ABUSE_SUBMISSION, USER_SPAM, USER_PHISHING);
+                MimeMessage message = newAbuseReportMessage(
+                        time, email, original, sendUnblockURL
+                );
+                if (ServerSMTP.sendMessage(Locale.US, message, email, null)) {
+                    setAbuseAdvised(email);
+                    User.storeDB(time, this);
+                    setSpam(time);
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+        
+        public void setAbuseAdvised(String email) {
+            this.CHANGED.acquire();
+            this.abuseAdvised = true;
+            this.abuseEmail = email;
+            this.STORED = false;
+            User.CHANGED = true;
+            this.CHANGED.release(true);
+        }
+        
+        public void setFilter(String filter) {
+            this.CHANGED.acquire();
+            this.filter = filter;
+            this.STORED = false;
+            User.CHANGED = true;
+            this.CHANGED.release(true);
+        }
+        
+        public MimeMessage newAbuseReportMessage(
+                long time,
+                String email,
+                MimeMessage original,
+                boolean sendUnblockURL
+        ) throws Exception {
+            String arrivalDate = Core.getEmailDate(getArrival());
+            if (arrivalDate == null) {
+                if (original != null) {
+                    arrivalDate = Core.getEmailDate(original.getReceivedDate());
+                }
+                if (arrivalDate == null) {
+                    arrivalDate = Core.getEmailDate(new Date(time));
+                }
+            }
+            InternetAddress[] recipients = InternetAddress.parse(email);
+            boolean removalRequest = isBlockKey() || isBlockedForRecipient() || isBlockSMTP();
+            String unblockURL = !sendUnblockURL || isInexistent() || isBlockedForRecipient() ? null : getUnblockURL();
+            MimeMessage message = Abuse.newAbuseReportMessage(
+                    time,
+                    recipients,
+                    User.this.getEmail(),
+                    getClient(),
+                    getMalwareOrExecutable(),
+                    getSender(),
+                    getRecipient(),
+                    arrivalDate,
+                    getIP(),
+                    getFQDN(),
+                    getQualifierName(),
+                    getMessageID(),
+                    getLinkKeySetSimple(),
+                    getFilterEnum(),
+                    removalRequest,
+                    unblockURL,
+                    original
+            );
+            return message;
+        }
+        
+        public String getQueueRelease32(long timeKey) {
+            String ticket = "release";
+            try {
+                ticket += ' ' + getUserEmail();
+                ticket = encrypt32(timeKey, ticket);
+                ticket = ticket.replace("=", "");
+                return ticket.toLowerCase();
+            } catch (Exception ex) {
+                Server.logError(new Exception("compress fail: " + ticket, ex));
+                return null;
+            }
+        }
+        
+        public String getQueueRemove32(long timeKey) {
+            String ticket = "remove";
+            try {
+                ticket += ' ' + getUserEmail();
+                ticket = encrypt32(timeKey, ticket);
+                ticket = ticket.replace("=", "");
+                return ticket.toLowerCase();
+            } catch (Exception ex) {
+                Server.logError(new Exception("compress fail: " + ticket, ex));
+                return null;
+            }
+        }
+        
+        public boolean adviseMailerDaemonHOLDING(long timeKey) {
+            InternetAddress adminMail = Core.getAdminInternetAddress();
+            String mailerClient = getClient();
+            String queueMessageID = getQueueID();
+            if (Core.isMyHostname(mailerClient)) {
+                return Core.processDelivery(timeKey);
+            } else if (adminMail == null) {
+                return false;
+            } else if (queueMessageID == null || queueMessageID.length() == 0) {
+                return false;
+            } else if (!Core.isDirectSMTP()) {
+                return false;
+            } else if (!Core.isRunning()) {
                 return false;
             } else {
                 try {
-                    Server.logDebug("sending abuse report by e-mail.");
-                    String messageidLocal = getMessageID();
-                    String subjectLocal = getSubject();
-                    String arrivalDate = Core.getEmailDate(new Date(time));
-                    InternetAddress[] recipients = InternetAddress.parse(abuseEmail);
-//                    InternetAddress[] bcc = {Core.getAdminInternetAddress()};
-                    boolean removalRequest = isBlockKey() || isBlockedForRecipient();
-                    String unblockURL = isBlockedForRecipient() ? null : getUnblockURL();
-                    MimeMessage message = Abuse.newAbuseReportMessage(
-                            User.this,
-                            getMalware(),
-                            getMailFrom(),
-                            getRecipient(),
-                            arrivalDate,
-                            getIP(),
-                            getLinkKeySet(),
-                            removalRequest,
-                            unblockURL
-                    );
-                    message.addRecipients(Message.RecipientType.TO, recipients);
-//                    message.addRecipients(Message.RecipientType.BCC, bcc);
-                    message.setReplyTo(User.this.getInternetAddresses());
-                    if (subjectLocal == null) {
-                        message.setSubject("Abuse report");
+                    String command;
+                    if (isWhiteKey()) {
+                        command = "release";
+                    } else if (isBanned()) {
+                        command = "remove";
+                    } else if (isBlockKey()) {
+                        command = "remove";
+                    } else if (isWhiteKeyByAdmin()) {
+                        command = "release";
+                    } else if (isBlockKeyByAdmin()) {
+                        command = "remove";
+                    } else if (isSenderMailerDeamon() && isRecipientHacked()) {
+                        command = "release";
                     } else {
-                        message.setSubject("[ABUSE] " + subjectLocal);
+                        return false;
                     }
+                    String messageidLocal = getMessageID();
+                    InternetAddress sender;
+                    InternetAddress[] recipients = new InternetAddress[1];
+                    recipients[0] = new InternetAddress("mailer-daemon@" + mailerClient);
+                    MimeMessage message = Core.newMessage(false);
+                    message.addRecipients(Message.RecipientType.TO, recipients);
                     if (messageidLocal != null) {
                         message.addHeader("In-Reply-To", '<' + messageidLocal + '>');
                     }
+                    if (command.equals("release")) {
+                        String ticket = getQueueRelease32(timeKey);
+                        sender = new InternetAddress(ticket + "@" + Core.getHostname());
+                        message.setSubject(queueMessageID);
+                        message.setContent(
+                                "The message frozen in queue as " + queueMessageID + " "
+                                        + "must be released by user order.",
+                                "text/plain;charset=US-ASCII"
+                        );
+                    } else if (command.equals("remove")) {
+                        String ticket = getQueueRemove32(timeKey);
+                        sender = new InternetAddress(ticket + "@" + Core.getHostname());
+                        message.setSubject(queueMessageID);
+                        message.setContent(
+                                "The message frozen in queue as " + queueMessageID + " "
+                                        + "must be remove by user order.",
+                                "text/plain;charset=US-ASCII"
+                        );
+                    } else {
+                        return false;
+                    }
                     message.saveChanges();
                     // Enviar mensagem.
-                    if (Core.sendMessage(Locale.US, message, 30000)) {
-                        this.CHANGED.acquire();
-                        this.abuseAdvised = true;
-                        this.STORED = false;
-                        User.CHANGED = true;
-                        this.CHANGED.release(true);
-                        User.storeDB(time, this);
-                        Server.logDebug("abuse report sent by e-mail.");
+                    Properties props = ServerSMTP.newProperties(mailerClient, 25, false);
+                    if (ServerSMTP.sendMessage(props, message, sender, recipients)) {
+                        TreeSet<Long> timeKeySet = getTimeKeySet();
+                        timeKeySet.add(timeKey);
+                        for (long timeKey2 : timeKeySet) {
+                            Query query2 = getQuerySafe(timeKey2);
+                            if (query2.isResult("HOLD") && query2.isQueueID(queueMessageID)) {
+                                if (query2.isWhiteKey()) {
+                                    query2.setResult("WHITE");
+                                    query2.addBeneficial(timeKey);
+                                } else if (query2.isBanned()) {
+                                    query2.setResultFilter("BLOCK", "ORIGIN_BANNED;" + getBannedKey());
+                                    query2.addHarmful(timeKey);
+                                } else if (query2.isBlockKey()) {
+                                    query2.setResult("BLOCK");
+                                    query2.addUndesirable(timeKey);
+                                } else if (query2.isWhiteKeyByAdmin()) {
+                                    query2.whiteKey(timeKey);
+                                    query2.setResultFilter("WHITE", "ORIGIN_WHITE_KEY_ADMIN");
+                                    query2.addBeneficial(timeKey);
+                                } else if (query2.isBlockKeyByAdmin()) {
+                                    query2.blockKey(timeKey, "ORIGIN_BLOCK_KEY_ADMIN");
+                                    query2.setResultFilter("BLOCK", "ORIGIN_BLOCK_KEY_ADMIN;" + getBlockKey());
+                                    query2.addUndesirable(timeKey);
+                                } else if (command.equals("release")) {
+                                    query2.setResult("ACCEPT");
+                                    query2.addAcceptable();
+                                } else if (command.equals("remove")) {
+                                    query2.setResult("REJECT");
+                                    query2.addUnacceptable();
+                                }
+                                User.storeDB2(timeKey2, query2);
+                            }
+                        }
                         return true;
                     } else {
                         return false;
                     }
-                } catch (CommunicationException ex) {
+                } catch (MailConnectException ex) {
                     return false;
-                } catch (NameNotFoundException | ServiceUnavailableException ex) {
-                    Abuse.dropEmail(getIP(), abuseEmail);
+                } catch (SocketConnectException ex) {
+                    return false;
+                } catch (SocketTimeoutException ex) {
                     return false;
                 } catch (SMTPSendFailedException ex) {
-                    Abuse.dropEmail(getIP(), abuseEmail);
-                    return false;
-                } catch (SendFailedException ex) {
-                    if (ex.getCause() instanceof SMTPAddressFailedException) {
-                        Abuse.dropEmail(getIP(), abuseEmail);
+                    if (ex.getReturnCode() / 100 == 5) {
+                        String message = ex.getMessage();
+                        boolean inexistent = message.matches("(?s).*\\b5\\.1\\.1\\b.*");
+                        if (inexistent) {
+                            Recipient.set(
+                                    getUserEmail(), getRecipient(),
+                                    INEXISTENT
+                            );
+                        }
+                        // Message ID not found.
+                        if (isResult("HOLD")) {
+                            String reason;
+                            if (isWhiteKey()) {
+                                if (inexistent) {
+                                    setResult("INEXISTENT");
+                                    addUnacceptable();
+                                } else {
+                                    setResult("WHITE");
+                                    addBeneficial(timeKey);
+                                }
+                            } else if ((reason = getWhiteReason()) != null) {
+                                if (inexistent) {
+                                    setResult("INEXISTENT");
+                                    addUnacceptable();
+                                } else {
+                                    whiteKey(timeKey);
+                                    setResultFilter("WHITE", "ORIGIN_WHITELISTED");
+                                    addBeneficial(timeKey);
+                                }
+                            } else if (isBanned()) {
+                                setResultFilter("BLOCK", "ORIGIN_BANNED;" + getBannedKey());
+                                addHarmful(timeKey);
+                            } else if (isBlockKey()) {
+                                setResult("BLOCK");
+                                addUndesirable(timeKey);
+                            } else if (inexistent) {
+                                setResult("INEXISTENT");
+                                addUnacceptable();
+                            } else if (isWhiteKeyByAdmin()) {
+                                whiteKey(timeKey);
+                                setResultFilter("WHITE", "ORIGIN_WHITE_KEY_ADMIN");
+                                addBeneficial(timeKey);
+                            } else if (isBlockKeyByAdmin()) {
+                                blockKey(timeKey, "ORIGIN_BLOCK_KEY_ADMIN");
+                                setResultFilter("BLOCK", "ORIGIN_BLOCK_KEY_ADMIN;" + getBlockKey());
+                                addUndesirable(timeKey);
+                            } else if (message.matches("(?s).*\\b5\\.6\\.6\\b.*")) {
+                                setResult("FLAG");
+                                addUnacceptable();
+                            }
+                            User.storeDB2(timeKey, this);
+                        }
+                        return true;
                     } else {
-                        Server.logError(ex);
+                        return false;
                     }
-                    return false;
                 } catch (MessagingException ex) {
-                    Abuse.dropEmail(getIP(), abuseEmail);
                     return false;
                 } catch (Exception ex) {
                     Server.logError(ex);
@@ -6777,8 +8765,115 @@ public class User implements Serializable, Comparable<User> {
         @Override
         public String toString() {
             return email + ": " + (helo == null ? ip : helo + " [" + ip + "]")
-                    + (getSender() == null ? "" : " " + getSender())
+                    + (getTrueSender() == null ? "" : " " + getTrueSender())
                     + " " + getQualifierName() + " > " + recipient + " = " + result;
+        }
+
+        public SimpleImmutableEntry<Filter, String> processFilter(Object object) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+    }
+    
+    public boolean adviseRecipientBLOCK(
+            String sender,
+            String recipient,
+            String unblockURL
+    ) {
+        if (sender == null) {
+            return false;
+        } else if (recipient == null) {
+            return false;
+        } else if (unblockURL == null) {
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
+            return false;
+        } else if (!Core.isRunning()) {
+            return false;
+        } else {
+            try {
+                Locale locale = User.this.getLocale();
+                InternetAddress[] recipients;
+                InternetAddress[] replyTo;
+                String userEmail = getEmail();
+                if (NoReply.isUnsubscribed(recipient)) {
+                    recipients = InternetAddress.parse(userEmail);
+                    replyTo = InternetAddress.parse(sender);
+                } else if (Trap.containsAnything(userEmail, recipient)) {
+                    recipients = InternetAddress.parse(userEmail);
+                    replyTo = InternetAddress.parse(sender);
+                } else {
+                    recipients = InternetAddress.parse(recipient);
+                    replyTo = User.this.getInternetAddresses();
+                }
+                String unsubscribeURL;
+                Document templateHTML;
+                File logoFile;
+                String subjectLocal;
+                Element linkSender;
+                Element btnRelease;
+                Element btnUnsubscribe;
+                if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
+                    return false;
+                } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                    return false;
+                } else if ((templateHTML = Core.getTemplateWarningRejectionRecipient(User.this, locale)) == null) {
+                    return false;
+                } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                    return false;
+                } else if ((linkSender = templateHTML.getElementById("sender")) == null) {
+                    return false;
+                } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                    return false;
+                } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
+                    return false;
+                } else {
+                    linkSender.attr("href", "mailto:" + sender);
+                    linkSender.text(sender);
+                    btnRelease.attr("href", unblockURL);
+                    btnUnsubscribe.attr("href", unsubscribeURL);
+                    templateHTML = templateHTML.normalise();
+
+                    MimeMessage message = Core.newMessage(true);
+                    message.addRecipients(Message.RecipientType.TO, recipients);
+                    message.setReplyTo(replyTo);
+                    message.setSubject(subjectLocal + " <" + sender + ">");
+                    // Build warning part.
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                    htmlPart.setDisposition(MimeBodyPart.INLINE);
+                    // Build logo part.
+                    MimeBodyPart logoPart = new MimeBodyPart();
+                    logoPart.attachFile(logoFile);
+                    logoPart.setContentID("<logo>");
+                    logoPart.addHeader("Content-Type", "image/png");
+                    // Join all parts.
+                    MimeMultipart content = new MimeMultipart("related");
+                    content.addBodyPart(htmlPart);
+                    content.addBodyPart(logoPart);
+                    // Set multiplart contentRelated.
+                    message.setContent(content);
+                    message.saveChanges();
+                    // Enviar mensagem.
+                    return ServerSMTP.sendMessage(locale, message, recipients, null);
+                }
+            } catch (NameNotFoundException ex) {
+                return false;
+            } catch (CommunicationException ex) {
+                return false;
+            } catch (SocketConnectException ex) {
+                return false;
+            } catch (SocketTimeoutException ex) {
+                return false;
+            } catch (ServiceUnavailableException ex) {
+                return false;
+            } catch (MailConnectException ex) {
+                return false;
+            } catch (MessagingException ex) {
+                return false;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
         }
     }
     
@@ -6792,56 +8887,165 @@ public class User implements Serializable, Comparable<User> {
             return false;
         } else if (queryMap.isEmpty()) {
             return false;
-        } else if (NoReply.contains(adminEmail, true)) {
-            return false;
         } else if (!Core.hasOutputSMTP()) {
             return false;
-//        } else if (queryMap.size() == 1) {
-//            long time = queryMap.firstKey();
-//            Query query = queryMap.get(time);
-//            return query.adviseAdminHOLD(time);
+        } else if (!Core.isRunning()) {
+            return false;
+        } else if (NoReply.contains(adminEmail, true)) {
+            return false;
         } else {
+            long timeKey = queryMap.lastKey();
             try {
-                long timeKey = queryMap.lastKey();
-                String unholdURL = Core.getUnholdURL(timeKey, adminEmail);
+                Query lastQuery = queryMap.get(timeKey);
+                String trueSender = lastQuery.getTrueSender();
+                String senderDomain = Domain.extractHost(trueSender, false);
+                String senderTLD = Domain.extractTLD(senderDomain, true);
+                String userEmail = lastQuery.getUserEmail();
+                String blockKey = lastQuery.getBlockKey();
+                String unholdURL = Core.getUnholdAdminURL(timeKey, userEmail, blockKey);
                 String blockURL = Core.getBlockURL(timeKey, adminEmail);
+                String banURL = Core.getBanURL(timeKey, adminEmail);
+                String banSubjectURL = Core.getBanBySubjectURL(timeKey, adminEmail);
                 if (unholdURL == null) {
                     return false;
                 } else if (blockURL == null) {
                     return false;
+                } else if (banURL == null) {
+                    return false;
+                } else if (banSubjectURL == null) {
+                    return false;
+                } else if (Block.containsExact(adminEmail, senderTLD)) {
+                    Server.logDebug(timeKey, "FILTER TLD_BLOCKED;" + senderTLD);
+                    lastQuery.setFilter("TLD_BLOCKED;" + senderTLD);
+                    lastQuery.banOrBlockForAdmin(timeKey, "TLD_BLOCKED");
+                    lastQuery.adviseMailerDaemonHOLDING(timeKey);
+                    return false;
                 } else {
-                    Server.logDebug("sending retention warning by e-mail.");
                     User user = User.get(adminEmail);
                     Locale locale = user == null ? Core.getDefaultLocale(adminEmail) : user.getLocale();
-                    Query lastQuery = queryMap.get(timeKey);
-                    String key = lastQuery.getWhiteKey() + " " + lastQuery.getBlockKey();
+                    
                     String subject;
                     if (locale.getLanguage().toLowerCase().equals("pt")) {
-                        subject = queryMap.size() + " retenções agrupadas por '" + key + "'";
+                        subject = queryMap.size() + " retenções agrupadas por '" + blockKey + "'";
                     } else {
-                        subject = queryMap.size() + " retentions grouped for '" + key + "'";
+                        subject = queryMap.size() + " retentions grouped by '" + blockKey + "'";
                     }
+                    TreeSet<String> userSet = new TreeSet<>();
                     TreeSet<String> subjectSet = new TreeSet<>();
+                    TreeSet<String> subjectWordSet = new TreeSet<>();
                     TreeSet<String> senderSet = new TreeSet<>();
+                    TreeSet<String> fromSet = new TreeSet<>();
                     TreeSet<String> recipientSet = new TreeSet<>();
                     TreeSet<String> bodySet = new TreeSet<>();
                     TreeSet<String> linkSet = new TreeSet<>();
                     TreeSet<String> executableSet = new TreeSet<>();
+                    TreeSet<String> ipSet = new TreeSet<>();
+                    TreeSet<String> abuseSet = new TreeSet<>();
+                    LinkedList<MimeMessage> messageList = new LinkedList<>();
                     for (long time : queryMap.keySet()) {
                         Query query = queryMap.get(time);
-                        subjectSet.add(query.getSubject());
-                        senderSet.add(query.getSender());
-                        recipientSet.add(query.getRecipient());
+                        userEmail = query.getUserEmail();
+                        String sender = query.getSender();
+                        Qualifier qualifier = query.getQualifier();
+                        TreeSet<String> signerSet = query.getSignerSet();
+                        String from = query.getFrom();
+                        String recipient = query.getRecipient();
+                        String subject2 = query.getSubject(256);
+                        String subject3 = query.getSubjectWordSet(2);
                         String textBody = query.getTextPlainBody(256);
+                        String abuse = query.getAbuseOrigin();
+                        if (userEmail != null) {
+                            Flag flag = Recipient.getFlag(userEmail);
+                            userSet.add("[" + flag + "] " + userEmail);
+                        }
+                        if (sender != null) {
+                            Flag flag = query.getFlagSPF(sender, qualifier);
+                            senderSet.add("[" + flag + "] " + sender);
+                        }
+                        if (from != null) {
+                            Flag flag = query.getFlagDKIM(from, signerSet);
+                            fromSet.add("[" + flag + "] " + from);
+                        }
+                        if (recipient != null) {
+                            Flag flag = query.getRecipientFlag();
+                            recipientSet.add("[" + flag + "] " + recipient);
+                        }
+                        if (subject2 != null) {
+                            Flag flag = query.getSubjectFlag();
+                            subjectSet.add("[" + flag + "] " + subject2);
+                        }
+                        Flag flag = query.getSubjectFlag();
+                        if (flag == BENEFICIAL) {
+                            banSubjectURL = null;
+                        } else if (flag == DESIRABLE) {
+                            banSubjectURL = null;
+                        } else if (query.isBounceMessage()) {
+                            banSubjectURL = null;
+                        } else if (query.isSenderMailerDeamon()) {
+                            banSubjectURL = null;
+                        } else if (subject3 != null) {
+                            subjectWordSet.add(subject3);
+                        }
                         if (textBody != null) {
                             bodySet.add(textBody);
                         }
-                        linkSet.addAll(query.getLinkKeySet());
-                        executableSet.addAll(query.getExecutableSet());
+                        if (abuse == null) {
+                            ipSet.add(query.getIP());
+                        } else {
+                            flag = Abuse.getFlag(abuse);
+                            if (NoReply.isSubscribed(abuse)) {
+                                abuseSet.add("[" + flag + "] " + abuse);
+                            } else {
+                                abuseSet.add("[" + flag + "] <strike>" + abuse + "</strike>");
+                            }
+                            
+                        }
+                        for (String link : query.getLinkKeySetSimple()) {
+                            flag = URI.getFlag(link);
+                            linkSet.add("[" + flag + "] " + link);
+                        }
+                        MimeMessage message = query.getMimeMessageHeader();
+                        if (message != null) {
+                            messageList.add(message);
+                        }
+                        executableSet.addAll(query.getExecutableSetNN());
+                    }
+                    while (userSet.size() > 32) {
+                        userSet.pollLast();
+                    }
+                    while (subjectSet.size() > 32) {
+                        subjectSet.pollLast();
+                    }
+                    while (subjectWordSet.size() > 32) {
+                        subjectWordSet.pollLast();
+                    }
+                    while (senderSet.size() > 32) {
+                        senderSet.pollLast();
+                    }
+                    while (fromSet.size() > 32) {
+                        fromSet.pollLast();
+                    }
+                    while (recipientSet.size() > 32) {
+                        recipientSet.pollLast();
+                    }
+                    while (bodySet.size() > 32) {
+                        bodySet.pollLast();
+                    }
+                    while (linkSet.size() > 32) {
+                        linkSet.pollLast();
+                    }
+                    while (executableSet.size() > 32) {
+                        executableSet.pollLast();
+                    }
+                    while (ipSet.size() > 32) {
+                        ipSet.pollLast();
+                    }
+                    while (abuseSet.size() > 32) {
+                        abuseSet.pollLast();
                     }
 
                     InternetAddress[] recipients = {Core.getAdminInternetAddress()};
-                    MimeMessage message = Core.newMessage();
+                    MimeMessage message = Core.newMessage(true);
                     message.addRecipients(Message.RecipientType.TO, recipients);
                     message.setSubject(subject);
                     // Corpo da mensagem.
@@ -6862,18 +9066,26 @@ public class User implements Serializable, Comparable<User> {
                     builder.append("      <div id=\"divlogo\">\n");
                     builder.append("        <img src=\"cid:logo\">\n");
                     builder.append("      </div>\n");
-    //                if (locale.getLanguage().toLowerCase().equals("pt"))
-                    {
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
                         ServerHTTP.buildMessage(builder, "Aviso de retenção de mensagens");
                         ServerHTTP.buildText(builder, "Algumas mensagens foram retidas com os assuntos:");
-                        builder.append("    <ul>\n");
-                        for (String subjectItem : subjectSet) {
-                            builder.append("    <li>");
-                            builder.append(subjectItem);
-                            builder.append("</li>\n");
+                    } else {
+                        ServerHTTP.buildMessage(builder, "Message retention notice");
+                        ServerHTTP.buildText(builder, "Some messages were retained with the subjects:");
+                    }
+                    builder.append("    <ul>\n");
+                    for (String subjectItem : subjectSet) {
+                        builder.append("    <li>");
+                        builder.append(StringEscapeUtils.escapeHtml4(subjectItem));
+                        builder.append("</li>\n");
+                    }
+                    builder.append("    </ul>\n");
+                    if (!senderSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "As mensagens foram enviadas pelos seguintes remetentes de envelope:");
+                        } else {
+                            ServerHTTP.buildText(builder, "Messages have been sent from the following envelope senders:");
                         }
-                        builder.append("    </ul>\n");
-                        ServerHTTP.buildText(builder, "As mensagens foram enviadas pelos seguintes remetentes:");
                         builder.append("    <ul>\n");
                         for (String sender : senderSet) {
                             builder.append("    <li>");
@@ -6881,48 +9093,145 @@ public class User implements Serializable, Comparable<User> {
                             builder.append("</li>\n");
                         }
                         builder.append("    </ul>\n");
-                        ServerHTTP.buildText(builder, "Os destinatários destas mensagens são:");
+                    }
+                    if (!fromSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "As mensagens foram enviadas pelos seguintes remetentes de cabeçalho:");
+                        } else {
+                            ServerHTTP.buildText(builder, "Messages have been sent from the following header senders:");
+                        }
                         builder.append("    <ul>\n");
-                        for (String recipient : recipientSet) {
+                        for (String from : fromSet) {
                             builder.append("    <li>");
-                            builder.append(recipient);
+                            builder.append(from);
                             builder.append("</li>\n");
                         }
                         builder.append("    </ul>\n");
-                        if (!executableSet.isEmpty()) {
+                    }
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        ServerHTTP.buildText(builder, "Os destinatários das mensagens são:");
+                    } else {
+                        ServerHTTP.buildText(builder, "The recipients of the messages are:");
+                    }
+                    builder.append("    <ul>\n");
+                    for (String recipient : recipientSet) {
+                        builder.append("    <li>");
+                        builder.append(recipient);
+                        builder.append("</li>\n");
+                    }
+                    builder.append("    </ul>\n");
+                    if (!executableSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
                             ServerHTTP.buildText(builder, "<b>Atenção! As seguintes assinaturas de executáveis foram encontradas no corpo das mensagens:</b>");
-                            builder.append("    <ul>\n");
-                            for (String signature : executableSet) {
-                                builder.append("    <li>");
-                                builder.append(signature);
-                                builder.append("</li>\n");
-                            }
-                            builder.append("    </ul>\n");
+                        } else {
+                            ServerHTTP.buildText(builder, "<b>Attention! The following executable signatures were found in the message body:</b>");
                         }
-                        if (!bodySet.isEmpty()) {
+                        builder.append("    <ul>\n");
+                        for (String signature : executableSet) {
+                            builder.append("    <li>");
+                            builder.append(signature);
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    }
+                    if (!bodySet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
                             ServerHTTP.buildText(builder, "Os seguintes textos foram encontrados nos corpos das mensagens:");
-                            builder.append("    <ul>\n");
-                            for (String text : bodySet) {
-                                builder.append("    <li>");
-                                builder.append(StringEscapeUtils.escapeHtml4(text));
-                                builder.append("</li>\n");
-                            }
-                            builder.append("    </ul>\n");
+                        } else {
+                            ServerHTTP.buildText(builder, "The following texts were found in the message bodies:");
                         }
-                        if (!linkSet.isEmpty()) {
+                        builder.append("    <ul>\n");
+                        for (String text : bodySet) {
+                            builder.append("    <li>");
+                            builder.append(StringEscapeUtils.escapeHtml4(text));
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    }
+                    if (!linkSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
                             ServerHTTP.buildText(builder, "Os seguintes links foram encontrados no corpo das mensagens:");
-                            builder.append("    <ul>\n");
-                            for (String link : linkSet) {
-                                builder.append("    <li>");
-                                builder.append(Core.tryGetSignatureRootURL(link));
-                                builder.append("</li>\n");
-                            }
-                            builder.append("    </ul>\n");
+                        } else {
+                            ServerHTTP.buildText(builder, "The following links have been found in the message body:");
                         }
-                        ServerHTTP.buildText(builder, "Se você considera estas mensagens legítimas, acesse esta URL para solicitar a liberação:");
+                        builder.append("    <ul>\n");
+                        for (String link : linkSet) {
+                            builder.append("    <li>");
+                            builder.append(link);
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    }
+                    if (!userSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "Estas mensagens foram processadas pelos seguintes usuários:");
+                        } else {
+                            ServerHTTP.buildText(builder, "These messages were processed by the following users:");
+                        }
+                        builder.append("    <ul>\n");
+                        for (String email : userSet) {
+                            builder.append("    <li>");
+                            builder.append(email);
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    }
+                    if (!ipSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "Os seguintes IPs não tem registro de FBL:");
+                        } else {
+                            ServerHTTP.buildText(builder, "The following IPs have no FBL registration:");
+                        }
+                        builder.append("    <ul>\n");
+                        for (String ip : ipSet) {
+                            builder.append("    <li>");
+                            builder.append(ip);
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    } else if (!abuseSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "Equipes abuse encontrados:");
+                        } else {
+                            ServerHTTP.buildText(builder, "Abuse teams found:");
+                        }
+                        builder.append("    <ul>\n");
+                        for (String abuse : abuseSet) {
+                            builder.append("    <li>");
+                            builder.append(abuse);
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                    }
+                    if (locale.getLanguage().toLowerCase().equals("pt")) {
+                        ServerHTTP.buildText(builder, "Se você considera essas mensagens legítimas, acessar esta URL para solicitar a liberação:");
                         ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
-                        ServerHTTP.buildText(builder, "Se você considera estas mensagens SPAM, acesse esta URL para bloquear o remetente:");
+                        ServerHTTP.buildText(builder, "Se você considera essas mensagens SPAM, acessar esta URL para bloquear o remetente:");
                         ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
+                        ServerHTTP.buildText(builder, "Se você considera essas mensagens uma ameaça, acessar esta URL para banir o remetente:");
+                        ServerHTTP.buildText(builder, "<a href=\"" + banURL + "\">" + banURL + "</a>");
+                    } else {
+                        ServerHTTP.buildText(builder, "If you consider these messages legitimate, access this URL to request the release:");
+                        ServerHTTP.buildText(builder, "<a href=\"" + unholdURL + "\">" + unholdURL + "</a>");
+                        ServerHTTP.buildText(builder, "If you consider these SPAM messages, access this URL to block the sender:");
+                        ServerHTTP.buildText(builder, "<a href=\"" + blockURL + "\">" + blockURL + "</a>");
+                        ServerHTTP.buildText(builder, "If you consider these threat messages, access this URL to ban the sender:");
+                        ServerHTTP.buildText(builder, "<a href=\"" + banURL + "\">" + banURL + "</a>");
+                    }
+                    if (banSubjectURL != null && !subjectWordSet.isEmpty()) {
+                        if (locale.getLanguage().toLowerCase().equals("pt")) {
+                            ServerHTTP.buildText(builder, "Se você considera essas mensagens uma ameaça, acessar esta URL para banir o assunto:");
+                        } else {
+                            ServerHTTP.buildText(builder, "If you consider these threat messages, access this URL to ban the subject:");
+                        }
+                        builder.append("    <ul>\n");
+                        for (String subjectItem : subjectWordSet) {
+                            builder.append("    <li>");
+                            builder.append(StringEscapeUtils.escapeHtml4(subjectItem));
+                            builder.append("</li>\n");
+                        }
+                        builder.append("    </ul>\n");
+                        ServerHTTP.buildText(builder, "<a href=\"" + banSubjectURL + "\">" + banSubjectURL + "</a>");
                     }
                     ServerHTTP.buildFooter(builder, locale, Core.getListUnsubscribeURL(locale, recipients[0]));
                     builder.append("    </div>\n");
@@ -6933,20 +9242,24 @@ public class User implements Serializable, Comparable<User> {
                     htmlPart.setContent(builder.toString(), "text/html;charset=UTF-8");
                     // Making logo part.
                     MimeBodyPart logoPart = new MimeBodyPart();
-                    File logoFile = ServerHTTP.getWebFile("logo.png");
+                    File logoFile = Core.getLogoFile(null);
                     logoPart.attachFile(logoFile);
                     logoPart.setContentID("<logo>");
                     logoPart.addHeader("Content-Type", "image/png");
                     logoPart.setDisposition(MimeBodyPart.INLINE);
-                    // Join both parts.
-                    MimeMultipart content = new MimeMultipart("related");
-                    content.addBodyPart(htmlPart);
-                    content.addBodyPart(logoPart);
-                    // Set multiplart content.
-                    message.setContent(content);
+                    // Join all parts.
+                    MimeMultipart contentRelated = new MimeMultipart("related");
+                    contentRelated.addBodyPart(htmlPart);
+                    contentRelated.addBodyPart(logoPart);
+                    MimeBodyPart contentPart = new MimeBodyPart();
+                    contentPart.setContent(contentRelated);
+                    MimeMultipart contentMixed = new MimeMultipart("mixed");
+                    contentMixed.addBodyPart(contentPart);
+                    // Set multiplart contentRelated.
+                    message.setContent(contentMixed);
                     message.saveChanges();
                     // Enviar mensagem.
-                    if (Core.sendMessage(locale, message, 30000)) {
+                    if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
                         for (long time : queryMap.keySet()) {
                             Query query = queryMap.get(time);
                             query.CHANGED.acquire();
@@ -6956,10 +9269,10 @@ public class User implements Serializable, Comparable<User> {
                             query.CHANGED.release(true);
                             User.storeDB(time, query);
                         }
+                        return true;
                     } else {
                         return false;
                     }
-                    return true;
                 }
             } catch (NameNotFoundException ex) {
                 return false;
@@ -6967,9 +9280,741 @@ public class User implements Serializable, Comparable<User> {
                 return false;
             } catch (MailConnectException ex) {
                 return false;
+            } catch (SocketConnectException ex) {
+                return false;
+            } catch (SocketTimeoutException ex) {
+                return false;
             } catch (SendFailedException ex) {
                 return false;
             } catch (MessagingException ex) {
+                return false;
+            } catch (NullPointerException ex) {
+                Server.logError("adviseAdminHOLD " + timeKey);
+                Server.logError(ex);
+                return false;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+    
+    private MimeMessage[] getMimeMessageHeader(
+            TreeMap<Long,Query> queryMap
+    ) {
+        if (queryMap == null) {
+            return null;
+        } else if (queryMap.isEmpty()) {
+            return null;
+        } else {
+            LinkedList<MimeMessage> messageList = new LinkedList<>();
+            for (long time : queryMap.keySet()) {
+                try {
+                    Query query = queryMap.get(time);
+                    MimeMessage message = query.getMimeMessageHeader();
+                    if (message != null) {
+                        if (message.getSize() > 0) {
+                            ServerSMTP.removeDangerousObjects(message);
+                        }
+                        messageList.add(message);
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                }
+            }
+            if (messageList.isEmpty()) {
+                return null;
+            } else {
+                int size = messageList.size();
+                MimeMessage[] messageArray = new MimeMessage[size];
+                for (int index = 0; index < size; index++) {
+                    messageArray[index] = messageList.poll();
+                }
+                return messageArray;
+            }
+        }
+    }
+    
+    private boolean hasExecutableNotIgnored(
+            TreeMap<Long,Query> queryMap
+    ) {
+        if (queryMap == null) {
+            return false;
+        } else if (queryMap.isEmpty()) {
+            return false;
+        } else {
+            for (long time : queryMap.keySet()) {
+                Query query = queryMap.get(time);
+                if (query.hasExecutableNotIgnored()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    private boolean adviseUserHOLD(TreeMap<Long,Query> queryMap) {
+        long timeKey;
+        Query query;
+        String fromLocal;
+        String unholdURL;
+        String blockURL;
+        String banURL;
+        String userEmail = getEmail();
+        if (userEmail == null) {
+            return false;
+        } else if (queryMap == null) {
+            return false;
+        } else if (queryMap.isEmpty()) {
+            return false;
+        } else if ((timeKey = queryMap.lastKey()) == 0) {
+            return false;
+        } else if ((query = queryMap.get(timeKey)) == null) {
+            return false;
+        } else if ((fromLocal = query.getSenderSimplified(false, false)) == null) {
+            return false;
+        } else if (NoReply.containsTLD(fromLocal)) {
+            return false;
+        } else if (NoReply.contains(userEmail, true)) {
+            return false;
+        } else if (!Core.hasOutputSMTP()) {
+            return false;
+        } else if (!Core.isRunning()) {
+            return false;
+        } else if ((unholdURL = Core.getUnholdURL(timeKey, userEmail)) == null) {
+            return false;
+        } else if ((blockURL = Core.getBlockURL(timeKey, userEmail)) == null) {
+            return false;
+        } else if ((banURL = Core.getBanURL(timeKey, userEmail)) == null) {
+            return false;
+        } else {
+            try {
+                Locale locale = User.this.getLocale();
+                InternetAddress[] recipients = InternetAddress.parse(userEmail);
+                MimeMessage[] forwardMessageArray;
+                Document templateHTML;
+                File logoFile;
+                String subjectLocal;
+                Element linkSender;
+                Element executableWarning;
+                Element unsignedWarning;
+                Element advisedWarning;
+                Element btnRelease;
+                Element btnBlock;
+                Element btnBan;
+                Element btnUnsubscribe;
+                String unsubscribeURL;
+                if ((unsubscribeURL = Core.getListUnsubscribeURL(locale, recipients[0])) == null) {
+                    return false;
+                } else if ((forwardMessageArray = getMimeMessageHeader(queryMap)) == null) {
+                    return false;
+                } else if ((logoFile = Core.getLogoFile(User.this)) == null) {
+                    return false;
+                } else if ((templateHTML = Core.getTemplateWarningRetentionUser(User.this, locale)) == null) {
+                    return false;
+                } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                    return false;
+                } else if ((linkSender = templateHTML.getElementById("sender")) == null) {
+                    return false;
+                } else if ((executableWarning = templateHTML.getElementById("executable")) == null) {
+                    return false;
+                } else if ((unsignedWarning = templateHTML.getElementById("unsigned")) == null) {
+                    return false;
+                } else if ((advisedWarning = templateHTML.getElementById("advised")) == null) {
+                    return false;
+                } else if ((btnRelease = templateHTML.getElementById("urlRelease")) == null) {
+                    return false;
+                } else if ((btnBlock = templateHTML.getElementById("urlBlock")) == null) {
+                    return false;
+                } else if ((btnBan = templateHTML.getElementById("urlBan")) == null) {
+                    return false;
+                } else if ((btnUnsubscribe = templateHTML.getElementById("urlUnsubscribe")) == null) {
+                    return false;
+                } else {
+                    TreeSet<String> senderSet = new TreeSet<>();
+                    for (long timeKey2 : queryMap.keySet()) {
+                        Query query2 = queryMap.get(timeKey2);
+                        String sender2 = query2.getTrueSender();
+                        if (sender2 != null && sender2.endsWith(fromLocal)) {
+                            senderSet.add(sender2);
+                        }
+                    }
+                    if (senderSet.size() == 1) {
+                        fromLocal = senderSet.first();
+                    }
+                    linkSender.attr("href", "mailto:" + fromLocal);
+                    linkSender.text(fromLocal);
+                    if (query.isSigned(fromLocal, true)) {
+                        unsignedWarning.remove();
+                    }
+                    if (!hasExecutableNotIgnored(queryMap)) {
+                        executableWarning.remove();
+                    }
+                    for (long time2 : queryMap.keySet()) {
+                        Query query2 = queryMap.get(time2);
+                        if (!query2.isRecipientAdvised()) {
+                            advisedWarning.remove();
+                            break;
+                        }
+                    }
+                    btnRelease.attr("href", unholdURL);
+                    btnBlock.attr("href", blockURL);
+                    btnBan.attr("href", banURL);
+                    btnUnsubscribe.attr("href", unsubscribeURL);
+                    templateHTML = templateHTML.normalise();
+                    MimeMessage message = Core.newMessage(true);
+                    message.addRecipients(Message.RecipientType.TO, recipients);
+                    message.setSubject(subjectLocal + " #" + Long.toString(timeKey, 32));
+                    // Build warning part.
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                    htmlPart.setDisposition(MimeBodyPart.INLINE);
+                    // Build logo part.
+                    MimeBodyPart logoPart = new MimeBodyPart();
+                    logoPart.attachFile(logoFile);
+                    logoPart.setContentID("<logo>");
+                    logoPart.addHeader("Content-Type", "image/png");
+                    // Join all parts.
+                    MimeMultipart contentRelated = new MimeMultipart("related");
+                    contentRelated.addBodyPart(htmlPart);
+                    contentRelated.addBodyPart(logoPart);
+                    MimeBodyPart contentPart = new MimeBodyPart();
+                    contentPart.setContent(contentRelated);
+                    MimeMultipart contentMixed = new MimeMultipart("mixed");
+                    contentMixed.addBodyPart(contentPart);
+                    // Build attachment parts.
+                    int attachmentCount = 0;
+                    int size = htmlPart.getSize() + logoPart.getSize();
+                    for (MimeMessage forwardMessage : forwardMessageArray) {
+                        try {
+                            if (forwardMessage.getSize() == 0) {
+                                forwardMessage.setContent("Body unavailable.", "text/plain");
+                            }
+                            forwardMessage.saveChanges();
+                            MimeBodyPart forwardPart = new MimeBodyPart();
+                            forwardPart.setContent(forwardMessage, "message/rfc822");
+                            forwardPart.setDisposition(MimeBodyPart.INLINE);
+//                            forwardPart.setFileName(Long.toString(timeKey, 32) + ".eml");
+                            contentMixed.addBodyPart(forwardPart);
+                            attachmentCount++;
+                            if ((size += forwardPart.getSize()) > ServerSMTP.SIZE) {
+                                break;
+                            }
+                        } catch (Exception ex) {
+                            Server.logError(ex);
+                        }
+                    }
+                    // Set multiplart contentRelated.
+                    message.setContent(contentMixed);
+                    message.saveChanges();
+                    // Enviar mensagem.
+                    if (attachmentCount == 0) {
+                        return false;
+                    } else if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
+                        for (long time : queryMap.keySet()) {
+                            query = queryMap.get(time);
+                            query.CHANGED.acquire();
+                            query.userAdvised = true;
+                            query.STORED = false;
+                            User.CHANGED = true;
+                            query.CHANGED.release(true);
+                            User.storeDB(time, query);
+                        }
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            } catch (NameNotFoundException ex) {
+                NoReply.addSafe(userEmail);
+                return false;
+            } catch (CommunicationException | MailConnectException | SocketConnectException | SocketTimeoutException ex) {
+                if (!Defer.defer(">" + userEmail, Core.getDeferTimeHOLD())) {
+                    NoReply.addSafe(userEmail);
+                }
+                return false;
+            } catch (SMTPAddressFailedException ex) {
+                if (ex.getReturnCode() == 551) {
+                    NoReply.addSafe(userEmail);
+                } else if (ex.getMessage().matches("(?s).*\\b5\\.1\\.1\\b.*")) {
+                    NoReply.addSafe(userEmail);
+                } else {
+                    Server.logError(ex);
+                }
+                return false;
+//            } catch (IOException ex) {
+//                return false;
+//            } catch (SendFailedException ex) {
+//                return false;
+            } catch (Exception ex) {
+                Server.logError(ex);
+                return false;
+            }
+        }
+    }
+    
+    public static String simplifySender(String sender) {
+        if (sender == null) {
+            return null;
+        } else {
+            int index = sender.indexOf('@');
+            if (index > 0) {
+                String domain = sender.substring(index);
+                if (Provider.containsExact(domain)) {
+                    return sender;
+                } else {
+                    return domain;
+                }
+            } else {
+                return null;
+            }
+        }
+    }
+    
+    private final static TreeMap<Long,History> HISTORY_MAP = new TreeMap<>();
+    
+    private synchronized static TreeSet<Long> historyHeadKeySet(long toKey) {
+        TreeSet<Long> resultSet = new TreeSet<>();
+        SortedMap<Long,History> headMap = HISTORY_MAP.headMap(toKey);
+        resultSet.addAll(headMap.keySet());
+        return resultSet;
+    }
+    
+    private synchronized static History removeHistoryByDay(long dayKey) {
+        return HISTORY_MAP.remove(dayKey);
+    }
+    
+    public static void closeExpiredHistory() {
+        if (Core.isRunning()) {
+            long toKey = (System.currentTimeMillis() / Server.DAY_TIME) - 14;
+            TreeSet<Long> removeSet = historyHeadKeySet(toKey);
+            for (long dayKey : removeSet) {
+                try {
+                    History history = getHistoryByDay(dayKey);
+                    if (history != null) {
+                        history.close();
+                    }
+                } catch (Exception ex) {
+                    Server.logError(ex);
+                } finally {
+                    removeHistoryByDay(dayKey);
+                }
+            }
+        }
+    }
+    
+    public static void removeExpiredHistory() {
+        if (Core.isRunning()) {
+            File folder = new File("./history/");
+            if (folder.isDirectory()) {
+                for (File file : folder.listFiles()) {
+                    if (file.isFile()) {
+                        if ((System.currentTimeMillis() - file.lastModified()) > HISTORY_EXPIRES * Server.DAY_TIME) {
+                            file.delete();
+                        }
+                    } else if (file.isDirectory()) {
+                        Core.deleteFully(file);
+                    }
+                }
+            }
+        }
+    }
+    
+    public static synchronized void closeAllHistory() {
+        for (History history : HISTORY_MAP.values()) {
+            try {
+                history.close();
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        HISTORY_MAP.clear();
+    }
+    
+    private static History getHistoryByTime(long timeKey, boolean create) {
+        long dayKey = timeKey / Server.DAY_TIME;
+        History history = getHistoryByDay(dayKey);
+        if (create && history == null) {
+            history = creatHistoryByDay(dayKey);
+        }
+        return history;
+    }
+    
+    private static History getHistoryByDay(long dayKey) {
+        return HISTORY_MAP.get(dayKey);
+    }
+    
+    private static synchronized History creatHistoryByDay(long dayKey) {
+        History history = HISTORY_MAP.get(dayKey);
+        if (history == null) {
+            try {
+                File folder = new File("./history/");
+                File dataFile = new File(folder, Long.toHexString(dayKey) + ".data");
+                File indexFile = new File(folder, Long.toHexString(dayKey) + ".index");
+                history = new History(dataFile, indexFile);
+                HISTORY_MAP.put(dayKey, history);
+            } catch (Exception ex) {
+                Server.logError(ex);
+            }
+        }
+        return history;
+    }
+    
+    public static TreeMap<Long,Query> getQueriesSubjectWordSetHOLD(
+            TreeSet<String> subjectSet
+    ) throws Exception {
+        if (subjectSet == null) {
+            return null;
+        } else {
+            TreeMap<Long,Query> resultMap = new TreeMap<>();
+            for (User user : User.getUserList()) {
+                for (long timeKey : user.getTimeKeySet()) {
+                    Query query = user.getQuery(timeKey);
+                    if (query != null && query.isHolding()) {
+                        String subject = query.getSubjectWordSet(2);
+                        if (subject != null && subjectSet.contains(subject)) {
+                            resultMap.put(timeKey, query);
+                        }
+                    }
+                }
+            }
+            return resultMap;
+        }
+    }
+    
+    private static final byte HISTORY_VERSION = 1;
+    private static short HISTORY_EXPIRES = 90;
+    
+    public static void setHistoryExpires(String expires) {
+        if (expires != null && expires.length() > 0) {
+            try {
+                setHistoryExpires(Integer.parseInt(expires));
+            } catch (Exception ex) {
+                Server.logError("invalid history expires integer value '" + expires + "'.");
+            }
+        }
+    }
+    
+    public static synchronized void setHistoryExpires(int expires) {
+        if (expires < 1 || expires > Short.MAX_VALUE) {
+            Server.logError("invalid history expires integer value '" + expires + "'.");
+        } else {
+            User.HISTORY_EXPIRES = (short) expires;
+        }
+    }
+    
+    private static class History {
+        
+        private final RandomAccessFile RAF_DATA;
+        private final RandomAccessFile RAF_INDEX;
+        
+        private final TreeMap<Long,Index> MAP_INDEX = new TreeMap<>();
+        
+        private synchronized TreeSet<Long> getTimeKeySet(User user) {
+            if (user == null) {
+                return null;
+            } else {
+                int userHash = user.getEmail().hashCode();
+                TreeSet<Long> resultSet = new TreeSet<>();
+                for (long timeKey : MAP_INDEX.keySet()) {
+                    Index index = MAP_INDEX.get(timeKey);
+                    if (index != null && index.userHash == userHash) {
+                        resultSet.add(timeKey);
+                    }
+                }
+                return resultSet;
+            }
+        }
+        
+        private class Index {
+            
+            private final int userHash;
+            private final long position;
+            
+            private Index(int userHash, long position) {
+                this.userHash = userHash;
+                this.position = position;
+            }
+        }
+        
+        private History(File dataFile, File indexFile) throws Exception {
+            if (dataFile == null) {
+                throw new Exception("history data file not defined.");
+            } else if (indexFile == null) {
+                throw new Exception("history index file not defined.");
+            } else {
+                boolean existsData = dataFile.exists();
+                boolean existsIndex = indexFile.exists();
+                RAF_DATA = new RandomAccessFile(dataFile, "rw");
+                RAF_INDEX = new RandomAccessFile(indexFile, "rw");
+                if (existsData) {
+                    startIndex(existsIndex);
+                }
+            }
+        }
+        
+        private void startIndex(boolean exists) {
+            Thread thread = new Thread() {
+                @Override
+                public void run() {
+                    try {
+                        if (exists) {
+                            History.this.loadIndex();
+                        } else {
+                            History.this.buildIndex();
+                        }
+                    } catch (Exception ex) {
+                        Server.logError(ex);
+                    }
+                }
+            };
+            thread.setName("HISTORYID");
+            thread.setPriority(Thread.NORM_PRIORITY);
+            thread.start();
+        }
+        
+        private synchronized void loadIndex() throws IOException {
+            RAF_INDEX.seek(0);
+            while (true) {                
+                try {
+                    byte version = RAF_INDEX.readByte();
+                    if (version == 1) {
+                        int userHash2 = RAF_INDEX.readInt();
+                        long timeKey2 = RAF_INDEX.readLong();
+                        long position2 = RAF_INDEX.readLong();
+                        MAP_INDEX.put(timeKey2, new Index(userHash2, position2));
+                    } else {
+                        Server.logError("data version undefined: " + version);
+                        break;
+                    }
+                } catch (EOFException ex) {
+                    break;
+                }
+            }
+        }
+        
+        private synchronized void buildIndex() throws Exception {
+            RAF_DATA.seek(0);
+            while (true) {
+                try {
+                    long position = RAF_DATA.getFilePointer();
+                    byte version = RAF_DATA.readByte();
+                    if (version == 1) {
+                        String userEmail = Core.readUTF(RAF_DATA);
+                        if (userEmail != null) {
+                            int userHash = userEmail.hashCode();
+                            long timeKey = RAF_DATA.readLong();
+                            int length = RAF_DATA.readInt();
+                            RAF_DATA.skipBytes(length);
+                            RAF_INDEX.writeByte(HISTORY_VERSION);
+                            RAF_INDEX.writeInt(userHash);
+                            RAF_INDEX.writeLong(timeKey);
+                            RAF_INDEX.writeLong(position);
+                            MAP_INDEX.put(timeKey, new Index(userHash, position));
+                        }
+                    } else {
+                        Server.logError("data version undefined: " + version);
+                        break;
+                    }
+                } catch (EOFException ex) {
+                    break;
+                }
+            }
+        }
+        
+        private synchronized void close() throws IOException {
+            RAF_DATA.close();
+            RAF_INDEX.close();
+            MAP_INDEX.clear();
+        }
+        
+        private Long store(long timeKey, Query query) throws Exception {
+            if (query == null) {
+                return null;
+            } else {
+                String userEmail = query.getUserEmail();
+                int userHash = userEmail.hashCode();
+                byte[] data = query.toByteArray();
+                long position = storeData(userEmail, timeKey, data);
+                Index index = new Index(userHash, position);
+                storeIndex(timeKey, index);
+                return position;
+            }
+        }
+        
+        private synchronized long storeData(
+                String userEmail, long timeKey, byte[] data
+        ) throws Exception {
+            long positionData = RAF_DATA.length();
+            RAF_DATA.seek(positionData);
+            RAF_DATA.writeByte(HISTORY_VERSION);
+            Core.writeUTF(RAF_DATA, userEmail);
+            RAF_DATA.writeLong(timeKey);
+            RAF_DATA.writeInt(data.length);
+            RAF_DATA.write(data);
+            return positionData;
+        }
+        
+        private synchronized void storeIndex(
+                long timeKey, Index index
+        ) throws Exception {
+            RAF_INDEX.seek(RAF_INDEX.length());
+            RAF_INDEX.writeByte(HISTORY_VERSION);
+            RAF_INDEX.writeInt(index.userHash);
+            RAF_INDEX.writeLong(timeKey);
+            RAF_INDEX.writeLong(index.position);
+            MAP_INDEX.put(timeKey, index);
+        }
+        
+        private synchronized Index getIndex(Long timeKey) {
+            return MAP_INDEX.get(timeKey);
+        }
+        
+        private Query load(User user, long timeKey) throws Exception {
+            if (user == null) {
+                return null;
+            } else {
+                int userHash = user.getEmail().hashCode();
+                Index index = getIndex(timeKey);
+                if (index == null) {
+                    return null;
+                } else if (index.userHash != userHash) {
+                    return null;
+                } else {
+                    return load(user, timeKey, index.position);
+                }
+            }
+        }
+        
+        private synchronized Query load(
+                User user, long timeKey, long position
+        ) throws Exception {
+            try {
+                RAF_DATA.seek(position);
+                byte version = RAF_DATA.readByte();
+                if (version == 1) {
+                    String email = Core.readUTF(RAF_DATA);
+                    long time = RAF_DATA.readLong();
+                    if (time == timeKey && user.isEmail(email)) {
+                        return user.getQuery(version, RAF_DATA);
+                    } else {
+                        return null;
+                    }
+                } else {
+                    throw new Exception("data version undefined: " + version);
+                }
+            } catch (EOFException ex) {
+                return null;
+            }
+        }
+        
+        private synchronized TreeMap<Long,Query> getAll() throws Exception {
+            TreeMap<Long,Query> resultMap = new TreeMap<>();
+            RAF_DATA.seek(0);
+            while (true) {                
+                try {
+                    byte version = RAF_DATA.readByte();
+                    if (version == 1) {
+                        String email = Core.readUTF(RAF_DATA);
+                        long time = RAF_DATA.readLong();
+                        User user = User.getExact(email);
+                        if (user == null) {
+                            user = User.create(email, "Anonymous");
+                        }
+                        Query query = user.getQuery(version, RAF_DATA);
+                        resultMap.put(time, query);
+                    } else {
+                        throw new Exception("data version undefined: " + version);
+                    }
+                } catch (EOFException ex) {
+                    break;
+                }
+            }
+            return resultMap;
+        }
+    }
+    
+    private static synchronized boolean adviseFromHIJACK(
+            long time, String from, Locale locale
+    ) {
+        if (from == null) {
+            return false;
+        } else if (NoReply.isUnsubscribed(from)) {
+            return false;
+        } else {
+            try {
+                InternetAddress[] recipients = InternetAddress.parse(from);
+                Document templateHTML;
+                File logoFile;
+                String subjectLocal;
+                if ((logoFile = Core.getLogoFile(null)) == null) {
+                    Server.logError("hijacked warning failed: logo.png not found");
+                    return false;
+                } else if ((templateHTML = Core.getTemplateWarningHijackedSender(locale)) == null) {
+                    Server.logError("hijacked warning failed: warning.hijacked.sender.en.html not found");
+                    return false;
+                } else if ((subjectLocal = templateHTML.getElementsByTag("title").text()) == null) {
+                    Server.logError("hijacked warning failed: HTML title not found");
+                    return false;
+                } else {
+                    templateHTML = templateHTML.normalise();
+
+                    MimeMessage message = Core.newMessage(false);
+                    message.addRecipients(Message.RecipientType.TO, recipients);
+                    message.setSubject(subjectLocal + " #" + Long.toString(time, 32));
+                    // Build warning part.
+                    MimeBodyPart htmlPart = new MimeBodyPart();
+                    htmlPart.setContent(templateHTML.html(), "text/html;charset=UTF-8");
+                    htmlPart.setDisposition(MimeBodyPart.INLINE);
+                    // Build logo part.
+                    MimeBodyPart logoPart = new MimeBodyPart();
+                    logoPart.attachFile(logoFile);
+                    logoPart.setContentID("<logo>");
+                    logoPart.addHeader("Content-Type", "image/png");
+                    // Join all parts.
+                    MimeMultipart content = new MimeMultipart("related");
+                    content.addBodyPart(htmlPart);
+                    content.addBodyPart(logoPart);
+                    // Set multiplart contentRelated.
+                    message.setContent(content);
+                    message.saveChanges();
+                    // Enviar mensagem.
+                    if (ServerSMTP.sendMessage(locale, message, recipients, null)) {
+                        NoReply.addSafe(from);
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            } catch (NameNotFoundException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (SocketException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (ServiceUnavailableException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (CommunicationException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (MailConnectException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (SocketTimeoutException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (SocketConnectException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (SMTPAddressFailedException afex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (SendFailedException ex) {
+                NoReply.addSafe(from);
+                return false;
+            } catch (MessagingException ex) {
+                NoReply.addSafe(from);
                 return false;
             } catch (Exception ex) {
                 Server.logError(ex);
