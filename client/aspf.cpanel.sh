@@ -29,16 +29,12 @@ install() {
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.pl -O /usr/local/bin/spfbl.pl
     chmod +x /usr/local/bin/spfbl.pl
     
-    rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl 2> /dev/null
-    
-    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/custom_end_mail_spfbl -O /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/spfbl_end_mail
+    wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_end_mail -O /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/spfbl_end_mail
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
 }
 
 uninstall() {
-    rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/custom_end_mail_spfbl 2> /dev/null
-    
     rm /usr/local/cpanel/etc/exim/acls/ACL_MAIL_BLOCK/spfbl_end_mail 2> /dev/null
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
