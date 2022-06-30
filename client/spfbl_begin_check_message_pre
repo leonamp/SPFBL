@@ -48,7 +48,7 @@
   warn
     condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
     condition = ${if < {$message_size}{1m}{true}{false}}
-    spam = $message_exim_id:true / tmo=60s
+    spam = $message_exim_id:true / tmo=10s
   drop
     condition = ${if eq {$spam_score}{4.0}{true}{false}}
     message = 5.7.1 SPFBL this message was detected as possible malware. See http://spfbl.net/en/feedback
