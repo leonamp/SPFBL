@@ -95,6 +95,10 @@ while ( my $line = <STDIN> ) {
         STDOUT->print(
             "action=451 4.7.2 SPFBL you are temporarily blocked on this server. See http://spfbl.net/en/feedback\n\n"
         );
+    } elsif ( $result =~ /^FLAG / ) {
+        STDOUT->print(
+             "action=PREPEND Received-SPFBL: $result\n\n"
+        );
     } elsif ( $result =~ /^FLAG/ ) {
         STDOUT->print(
              "action=PREPEND X-Spam-Flag: YES\n\n"
