@@ -6,7 +6,7 @@
 
 start() {
     cd /opt/spfbl/
-    /usr/bin/java -jar -Xms512m -Xmx1536m /opt/spfbl/SPFBL.jar 2>&1 &
+    /usr/bin/java -jar -Xms1024m -Xmx2048m /opt/spfbl/SPFBL.jar 2>&1 &
 }
 
 stop() {
