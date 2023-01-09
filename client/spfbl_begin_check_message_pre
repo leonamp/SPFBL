@@ -7,15 +7,19 @@
   accept
     condition = ${if eq {$acl_c_spfbl_result}{15}{true}{false}}
   warn
-    set acl_c_spfbl = ${run{/usr/local/bin/spfbl header \
+   set acl_c_header_from = ${tr{$h_From:}{;'\r\n\t}{:´   }}
+   set acl_c_header_replyto = ${address:$h_Reply-To:}
+   set acl_c_header_unsubscribe = ${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}
+   set acl_c_header_subject = ${rfc2047:${tr{$h_Subject:}{'\r\n\t}{´   }}}
+   set acl_c_spfbl = ${run{/usr/local/bin/spfbl header \
                                '$acl_c_spfblticketset DKIM:$acl_c_dkim_domain_set' \
-                               'From:${tr{$h_From:}{;'\r\n\t}{:´   }}' \
-                               'Reply-To:${address:$h_Reply-To:}' \
+                               'From:$acl_c_header_from' \
+                               'Reply-To:$acl_c_header_replyto' \
                                'Message-ID:$h_Message-ID: In-Reply-To:$h_In-Reply-To:' \
                                'Queue-ID:$message_exim_id' \
                                'Date:$h_Date:' \
-                               'List-Unsubscribe:${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}'\
-                               'Subject:${rfc2047:${tr{$h_Subject:}{'\r\n\t}{´   }}}' \
+                               'List-Unsubscribe:$acl_c_header_unsubscribe'\
+                               'Subject:$acl_c_header_subject' \
                           }{$value}{$value}}
     set acl_c_spfbl_result = $runrc
   deny
