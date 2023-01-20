@@ -17,6 +17,10 @@
   warn
     logwrite = RECIPIENT VERIFY $local_part@$domain $address_data
   warn
+    set acl_c_spfbl = "NULL"
+    set acl_c_spfbl_result = 0
+  warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl query '$sender_host_address' \
                                                        '$sender_address' \
                                                        '$sender_helo_name' \
