@@ -1,0 +1,25 @@
+### BEGIN INIT INFO
+# Provides:          spfbl
+# Required-Start:    $all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: spfbl
+### END INIT INFO
+
+[Unit]
+Description=SPFBL
+Wants=network.target
+After=syslog.target network-online.target
+
+[Service]
+Type=simple
+ExecStart=/etc/init.d/spfbl-init.sh start
+ExecStop=/etc/init.d/spfbl-init.sh stop
+ExecReload=/etc/init.d/spfbl-init.sh restart
+Restart=on-failure
+RestartSec=10
+KillMode=process
+
+[Install]
+WantedBy=multi-user.targe
