@@ -3,7 +3,7 @@
 # An SPFBL Cheker installer for cPanel.
 #
 # Usage as root:
-#    ./spfbl.cpanel.sh [install|uninstall] 
+#    ./spfbl.cpanel.sh [install|update|uninstall] 
 #    
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.2
+# Version: 1.3
 
 install() {
     # Install netcat
@@ -101,6 +101,23 @@ install() {
     fi
 }
 
+update() {
+    if [ -f "/usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient" ]; then
+        # Replace SPFBL client script
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
+        # Replace SPFBL configuration files
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_end_recipient -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_smtp_dkim -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
+        wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
+        # Restart cPanel service
+        /usr/local/cpanel/scripts/buildeximconf
+        /usr/local/cpanel/scripts/restartsrv_exim
+    else
+        echo "The SPFBL Checker was not installed yet."
+        exit 1;
+    fi
+}
+
 uninstall() {
     /usr/local/bin/clamav-unofficial-sigs.sh --remove-script
 
@@ -121,11 +138,15 @@ case "$1" in
         echo "[install] Installing SPFBL Checker powered by SPFBL.net"
         install
     ;;
+    update)
+        echo "[update] Updating SPFBL Checker powered by SPFBL.net"
+        update
+    ;;
     uninstall)
         echo "[uninstall] Uninstalling SPFBL Checker powered by SPFBL.net"
         uninstall
     ;;
     *)
-        echo "*** Usage: $0 [install|uninstall]"
+        echo "*** Usage: $0 [install|update|uninstall]"
         exit 1
 esac
