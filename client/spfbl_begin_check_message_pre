@@ -22,6 +22,8 @@
                                'Subject:$acl_c_header_subject' \
                           }{$value}{$value}}
     set acl_c_spfbl_result = $runrc
+    set acl_c_spfblticketset =
+    set acl_c_dkim_domain_set =
   deny
     condition = ${if eq {$acl_c_spfbl_result}{1}{true}{false}}
     condition = ${if match {$value}{^BLOCKED https?://}{true}{false}}
