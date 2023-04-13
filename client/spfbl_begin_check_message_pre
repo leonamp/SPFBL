@@ -39,10 +39,11 @@
     log_message = SPFBL check reject.
   deny
     malware = * / defer_ok / tmo=10s
-    condition = ${if eq {${run{/usr/local/bin/spfbl malware \
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl malware \
                                '$acl_c_spfblticketset' \
                                '$malware_name'\
-                          }{$runrc}{$runrc}}}{7}{false}{true}}
+                          }{$value}{$value}}
+    condition = ${if eq {$runrc}{7}{false}{true}}
     message = 5.7.1 SPFBL this message was detected as possible malware. See http://spfbl.net/en/feedback
     log_message = SPFBL check malware.
   accept
