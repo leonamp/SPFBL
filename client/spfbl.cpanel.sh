@@ -23,8 +23,19 @@
 #
 # Version: 1.3
 
-install() {
-    # Install netcat
+function exim_configuration() {
+    # Change parameters in Exim Configuration Manager interface.
+    option_name=$1
+    option_value=$2
+    if grep -q "^${option_name}=" /etc/exim.conf.localopts; then
+        sed -i "s/^${option_name}=.*/${option_name}=${option_value}/" /etc/exim.conf.localopts
+    else
+        echo "${option_name}=${option_value}" >> /etc/exim.conf.localopts
+    fi
+}
+
+function install() {
+    # Install netcat.
     if command -v apt-get >/dev/null; then
         apt-get install nmap ncat
     elif command -v yum >/dev/null; then
@@ -35,15 +46,16 @@ install() {
         echo "https://spfbl.net/en/contact"
         exit 1
     fi
-    # Install SPFBL client script
+    # Install SPFBL client script.
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
     /usr/local/bin/spfbl version
     if [ $? -eq 0 ]; then
-        # Enable Clamav
+        # Enable Clamav.
         /usr/local/cpanel/scripts/update_local_rpm_versions --edit target_settings.clamav installed
         /usr/local/cpanel/scripts/check_cpanel_rpms --fix --targets=clamav
-        # Install clamav-unofficial-sigs
+        
+        # Install clamav-unofficial-sigs.
         mkdir -p /etc/clamav-unofficial-sigs/
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
@@ -80,15 +92,26 @@ install() {
         chmod 755 /usr/local/bin/clamav-unofficial-sigs.sh
         /usr/local/bin/clamav-unofficial-sigs.sh --force
         /usr/local/bin/clamav-unofficial-sigs.sh --install-cron --install-logrotate
-        # Remove old SPFBL configuration files
-        rm /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl 2> /dev/null
-        rm /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl 2> /dev/null
-        rm /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl 2> /dev/null
-        # Install SPFBL configuration files
+        
+        # Install SPFBL configuration files.
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_end_recipient -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_smtp_dkim -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
-        # Restart cPanel service
+        
+        # Config Exim Configuration Manager interface.
+        exim_configuration "acl_delay_unknown_hosts" "0"
+        exim_configuration "acl_dkim_disable" "0"
+        exim_configuration "acl_dkim_bl" "0"
+        exim_configuration "acl_spam_scan_secondarymx" "0"
+        exim_configuration "acl_outgoing_spam_scan" "0"
+        exim_configuration "acl_default_exiscan" "0"
+        exim_configuration "acl_default_spam_scan" "0"
+        exim_configuration "acl_default_spam_scan_check" "0"
+        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+        
+        # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
     else
@@ -102,15 +125,17 @@ install() {
     fi
 }
 
-update() {
+function update() {
     if [ -f "/usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient" ]; then
-        # Replace SPFBL client script
+        # Replace SPFBL client script.
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
+        
         # Replace SPFBL configuration files
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_end_recipient -O /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_smtp_dkim -O /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
-        # Restart cPanel service
+        
+        # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
     else
@@ -119,17 +144,28 @@ update() {
     fi
 }
 
-uninstall() {
+function uninstall() {
+    # Disable Clamav.
     /usr/local/bin/clamav-unofficial-sigs.sh --remove-script
 
-    rm /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/custom_end_recipient_spfbl 2> /dev/null
-    rm /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/custom_begin_smtp_dkim_spfbl 2> /dev/null
-    rm /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/custom_end_check_message_pre_spfbl 2> /dev/null
-    
+    # Remove SPFBL configuration files
     rm /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient 2> /dev/null
     rm /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim 2> /dev/null
     rm /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre 2> /dev/null
     
+    # Config Exim Configuration Manager interface.
+    exim_configuration "acl_delay_unknown_hosts" "1"
+    exim_configuration "acl_dkim_disable" "1"
+    exim_configuration "acl_dkim_bl" "0"
+    exim_configuration "acl_spam_scan_secondarymx" "1"
+    exim_configuration "acl_outgoing_spam_scan" "0"
+    exim_configuration "acl_default_exiscan" "0"
+    exim_configuration "acl_default_spam_scan" "1"
+    exim_configuration "acl_default_spam_scan_check" "1"
+    sed -i '/timeout_frozen_after = 7d/d' /etc/exim.conf.local
+    sed -i '/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/d' /etc/exim.conf.local
+    sed -i '/smtp_accept_max = 250/d' /etc/exim.conf.local
+        
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
 }
