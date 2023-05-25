@@ -16,7 +16,7 @@ else
     # Caso não exista, vamos adicionar agora o atalho para o cron
     ln -s /usr/local/bin/spfbl-firewall /etc/cron.hourly/spfbl-firewall-update
     # Aplicando permissão
-    chmod +x /usr/local/bin/spfbl-firewall-update
+    chmod +x /etc/cron.hourly/spfbl-firewall-update
 fi
 # Verificando se o cliente possui CSF
 if [ -d "/etc/csf/" ]; then
