@@ -14,7 +14,7 @@ if [ -e "/etc/cron.hourly/spfbl-firewall-update" ]; then
     :
 else
     # Caso não exista, vamos adicionar agora o atalho para o cron
-    ln -s /usr/local/bin/spfbl-firewall /etc/cron.hourly/spfbl-firewall-update
+    ln -s /usr/local/bin/spfbl-firewall-update /etc/cron.hourly/spfbl-firewall-update
     # Aplicando permissão 
     chmod +x /etc/cron.hourly/spfbl-firewall-update
 fi
