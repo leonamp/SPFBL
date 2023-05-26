@@ -194,6 +194,9 @@ function uninstall() {
     # Remove firewall files
     rm -f /usr/local/bin/spfbl-firewall-update
     rm -f /etc/cron.hourly/spfbl-firewall-update
+    if [ -e "/etc/csf/csfpost.sh" ]; then
+        sed -i '/usr/local/bin/spfbl-firewall/d' /etc/csf/csfpost.sh
+    fi
 }
 
 function firewall() {
