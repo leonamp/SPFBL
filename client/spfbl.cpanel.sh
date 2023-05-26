@@ -127,7 +127,7 @@ function install() {
                 firewall
             ;;
 	    *)
-                echo "SPFBL Firewall solution was not instaled."
+                echo "SPFBL Firewall solution was not installed."
             ;;
         esac
     else
