@@ -192,11 +192,11 @@ function uninstall() {
     /usr/local/cpanel/scripts/restartsrv_exim
     
     # Remove firewall files
-    rm -f /usr/local/bin/spfbl-firewall-update
-    rm -f /etc/cron.hourly/spfbl-firewall-update
     if [ -e "/etc/csf/csfpost.sh" ]; then
         sed -i '/usr/local/bin/spfbl-firewall/d' /etc/csf/csfpost.sh
     fi
+    rm -f /usr/local/bin/spfbl-firewall-update
+    rm -f /etc/cron.hourly/spfbl-firewall-update
 }
 
 function firewall() {
