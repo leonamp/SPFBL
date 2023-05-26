@@ -140,6 +140,12 @@ function update() {
         # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
+        
+        if [ -e "/etc/cron.hourly/spfbl-firewall-update" ]; then
+            # Update firewall files.
+            rm -f /etc/cron.hourly/spfbl-firewall-update
+            firewall
+        fi
     else
         echo "The SPFBL Checker was not installed yet."
         exit 1;
@@ -170,6 +176,10 @@ function uninstall() {
         
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
+    
+    # Remove firewall files
+    rm -f /usr/local/bin/spfbl-firewall-update
+    rm -f /etc/cron.hourly/spfbl-firewall-update
 }
 
 function firewall() {
@@ -193,7 +203,7 @@ case "$1" in
     ;;
     firewall)
         echo "[firewall] Installing SPFBL Firewall powered by SPFBL.net"
-        install
+        firewall
     ;;
     *)
         echo "*** Usage: $0 [install|update|uninstall|firewall]"
