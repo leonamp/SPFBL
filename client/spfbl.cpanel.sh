@@ -3,7 +3,7 @@
 # An SPFBL Cheker installer for cPanel.
 #
 # Usage as root:
-#    ./spfbl.cpanel.sh [install|update|uninstall] 
+#    ./spfbl.cpanel.sh [install|update|uninstall|firewall] 
 #    
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -179,10 +179,6 @@ function firewall() {
 }
 
 case "$1" in
-    firewall)
-        echo "[firewall] Installing SPFBL Firewall powered by SPFBL.net"
-        install
-    ;;
     install)
         echo "[install] Installing SPFBL Checker powered by SPFBL.net"
         install
@@ -195,7 +191,11 @@ case "$1" in
         echo "[uninstall] Uninstalling SPFBL Checker powered by SPFBL.net"
         uninstall
     ;;
+    firewall)
+        echo "[firewall] Installing SPFBL Firewall powered by SPFBL.net"
+        install
+    ;;
     *)
-        echo "*** Usage: $0 [install|update|uninstall]"
+        echo "*** Usage: $0 [install|update|uninstall|firewall]"
         exit 1
 esac
