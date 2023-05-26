@@ -172,7 +172,17 @@ function uninstall() {
     /usr/local/cpanel/scripts/restartsrv_exim
 }
 
+function firewall() {
+    curl -s https://raw.githubusercontent.com/leonamp/SPFBL/master/client/firewall.cpanel.sh > /usr/local/bin/spfbl-firewall-update
+    chmod +x /usr/local/bin/spfbl-firewall-update
+    /usr/local/bin/spfbl-firewall-update
+}
+
 case "$1" in
+    firewall)
+        echo "[firewall] Installing SPFBL Firewall powered by SPFBL.net"
+        install
+    ;;
     install)
         echo "[install] Installing SPFBL Checker powered by SPFBL.net"
         install
