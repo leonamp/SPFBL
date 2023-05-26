@@ -122,11 +122,11 @@ function install() {
         
         read -p "Do you want to install the SPFBL Firewall solution too? (yes/no) " yn
         case $yn in 
-	        yes)
+	    yes)
                 echo "Installing SPFBL Firewall solution..."
                 firewall
             ;;
-	        *)
+	    *)
                 echo "SPFBL Firewall solution was not instaled."
             ;;
         esac
