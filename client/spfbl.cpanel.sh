@@ -116,6 +116,20 @@ function install() {
         # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
+        
+        echo "SPFBL Checker was successfully installed!"
+        echo ""
+        
+        read -p "Do you want to install the SPFBL Firewall solution too? (yes/no) " yn
+        case $yn in 
+	        yes)
+                echo "Installing SPFBL Firewall solution..."
+                firewall
+            ;;
+	        *)
+                echo "SPFBL Firewall solution was not instaled."
+            ;;
+        esac
     else
         myIP=$(curl -s http://checkip.amazonaws.com/)
         myHOST=$(hostname)
@@ -186,6 +200,8 @@ function firewall() {
     curl -s https://raw.githubusercontent.com/leonamp/SPFBL/master/client/firewall.cpanel.sh > /usr/local/bin/spfbl-firewall-update
     chmod +x /usr/local/bin/spfbl-firewall-update
     /usr/local/bin/spfbl-firewall-update
+    
+    echo "SPFBL Firewall was successfully installed!"
 }
 
 case "$1" in
