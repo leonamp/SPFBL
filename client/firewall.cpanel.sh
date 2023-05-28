@@ -27,7 +27,7 @@ if [ -d "/etc/csf/" ]; then
             :
 	else
             # Adicionando a linha ao arquivo csfpost.sh
-            echo '/usr/local/bin/spfbl-firewall' >> "/etc/csf/csfpost.sh"
+	    sed -i -e '$a\'"/usr/local/bin/spfbl-firewall" "/etc/csf/csfpost.sh"
         fi
     else
         # Caso não existir, vamos cria-lo
