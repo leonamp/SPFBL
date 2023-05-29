@@ -200,6 +200,8 @@ function uninstall() {
 }
 
 function firewall() {
+    rm -f /etc/cron.hourly/spfbl-firewall-update
+    
     curl -s https://raw.githubusercontent.com/leonamp/SPFBL/master/client/firewall.cpanel.sh > /usr/local/bin/spfbl-firewall-update
     chmod +x /usr/local/bin/spfbl-firewall-update
     /usr/local/bin/spfbl-firewall-update
