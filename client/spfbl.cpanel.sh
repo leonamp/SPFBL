@@ -109,9 +109,9 @@ function install() {
         exim_configuration "acl_default_exiscan" "0"
         exim_configuration "acl_default_spam_scan" "0"
         exim_configuration "acl_default_spam_scan_check" "0"
-        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+#        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+#        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+#        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
         
         # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
@@ -185,9 +185,9 @@ function uninstall() {
     exim_configuration "acl_default_exiscan" "0"
     exim_configuration "acl_default_spam_scan" "1"
     exim_configuration "acl_default_spam_scan_check" "1"
-    sed -i '/timeout_frozen_after = 7d/d' /etc/exim.conf.local
-    sed -i '/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/d' /etc/exim.conf.local
-    sed -i '/smtp_accept_max = 250/d' /etc/exim.conf.local
+#    sed -i '/timeout_frozen_after = 7d/d' /etc/exim.conf.local
+#    sed -i '/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/d' /etc/exim.conf.local
+#    sed -i '/smtp_accept_max = 250/d' /etc/exim.conf.local
         
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
