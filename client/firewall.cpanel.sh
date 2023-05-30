@@ -43,4 +43,4 @@ else
     :
 fi
 # Executa o Firewall para atualização
-/usr/local/bin/spfbl-firewall
+/usr/local/bin/spfbl-firewall > /dev/null 2>&1
