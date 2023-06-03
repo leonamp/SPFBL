@@ -119,10 +119,7 @@ function install() {
         
         echo "SPFBL Checker was successfully installed!"
         echo ""
-	echo "Press ENTER to continue"
-        
-	while read -r -t 0; do read -r; done
-	echo ""
+	
         read -p "Do you want to install the SPFBL Firewall solution too? (yes/no) " yn
         case $yn in 
 	    yes)
