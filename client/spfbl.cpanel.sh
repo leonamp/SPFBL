@@ -123,6 +123,7 @@ function install() {
 
         read -p "Você deseja continuar? (yes/no): " resposta
 
+
         # Verifica a resposta
         if [ "$resposta" = "yes" ]; then
            echo "Você escolheu 'yes'."
