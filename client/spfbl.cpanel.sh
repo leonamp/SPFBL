@@ -122,7 +122,17 @@ function install() {
 	
 
         echo "Do you want to install the SPFBL Firewall solution too? (Yes/No) "
-
+	select yn in "Yes" "No"; do
+            case $yn in
+                Yes )
+		    echo "Installing SPFBL Firewall solution..."
+                    firewall
+		;;
+                No ) exit
+		    echo "SPFBL Firewall solution was not installed."
+		;;
+            esac
+	done
 	
 #    else
 #        myIP=$(curl -s http://checkip.amazonaws.com/)
