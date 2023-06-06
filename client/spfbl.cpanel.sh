@@ -119,17 +119,29 @@ function install() {
 #        
 #        echo "SPFBL Checker was successfully installed!"
 #        echo ""
+
+
+        read -p "Você deseja continuar? (yes/no): " resposta
+
+        # Verifica a resposta
+        if [ "$resposta" = "yes" ]; then
+           echo "Você escolheu 'yes'."
+        elif [ "$resposta" = "no" ]; then
+           echo "Você escolheu 'no'."
+        else
+           echo "Resposta inválida."
+        fi
 	
-	read -p "Do you want to install the SPFBL Firewall solution too? (Yes/No) " resposta
-	case $resposta in
-	    [Yy]* )
-	        echo "Installing SPFBL Firewall solution..."
-                firewall
-	    ;;
-	    * )
-	        echo "SPFBL Firewall solution was not installed."
-	    ;;
-	esac
+#	read -p "Do you want to install the SPFBL Firewall solution too? (Yes/No) " resposta
+#	case $resposta in
+#	    [Yy]* )
+#	        echo "Installing SPFBL Firewall solution..."
+#                firewall
+#	    ;;
+#	    * )
+#	        echo "SPFBL Firewall solution was not installed."
+#	    ;;
+#	esac
 	
 #    else
 #        myIP=$(curl -s http://checkip.amazonaws.com/)
