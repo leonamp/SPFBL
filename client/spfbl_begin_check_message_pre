@@ -7,12 +7,16 @@
   accept
     condition = ${if eq {$acl_c_spfbl_result}{15}{true}{false}}
   warn
-   set acl_c_header_from = ${tr{$h_From:}{;'\r\n\t}{:´   }}
-   set acl_c_header_replyto = ${address:$h_Reply-To:}
-   set acl_c_header_unsubscribe = ${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}
-   set acl_c_header_subject = ${rfc2047:${tr{$h_Subject:}{'\r\n\t}{´   }}}
-   set acl_c_spfbl = ${run{/usr/local/bin/spfbl header \
-                               '$acl_c_spfblticketset DKIM:$acl_c_dkim_domain_set' \
+    set acl_c_header_from = ${tr{$h_From:}{;'\r\n\t}{:´   }}
+    set acl_c_header_replyto = ${address:$h_Reply-To:}
+    set acl_c_header_unsubscribe = ${tr{$h_List-Unsubscribe:}{;'\r\n\t}{:´   }}
+    set acl_c_header_subject = ${rfc2047:${tr{$h_Subject:}{'\r\n\t}{´   }}}
+    set acl_c_spfblticketset_local = $acl_c_spfblticketset
+    set acl_c_dkim_domain_set_local = $acl_c_dkim_domain_set
+    set acl_c_spfblticketset =
+    set acl_c_dkim_domain_set =
+    set acl_c_spfbl = ${run{/usr/local/bin/spfbl header \
+                               '$acl_c_spfblticketset_local DKIM:$acl_c_dkim_domain_set_local' \
                                'From:$acl_c_header_from' \
                                'Reply-To:$acl_c_header_replyto' \
                                'Message-ID:$h_Message-ID: In-Reply-To:$h_In-Reply-To:' \
@@ -40,8 +44,8 @@
   deny
     malware = * / defer_ok / tmo=10s
     set acl_c_spfbl = ${run{/usr/local/bin/spfbl malware \
-                               '$acl_c_spfblticketset' \
-                               '$malware_name'\
+                               '$acl_c_spfblticketset_local' \
+                               '$malware_name' \
                           }{$value}{$value}}
     condition = ${if eq {$runrc}{7}{false}{true}}
     message = 5.7.1 SPFBL this message was detected as possible malware. See http://spfbl.net/en/feedback
