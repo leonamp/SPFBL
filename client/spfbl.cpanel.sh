@@ -131,7 +131,6 @@ function install() {
 		    echo "SPFBL Firewall solution was not installed."
 		;;
         esac
-done
 	
 	
 #    else
