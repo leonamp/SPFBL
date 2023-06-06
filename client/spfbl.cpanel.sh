@@ -121,7 +121,8 @@ function install() {
 #        echo ""
 	
 
-	
+        echo "Do you want to install the SPFBL Firewall solution too? (Yes/No) "
+
 	
 #    else
 #        myIP=$(curl -s http://checkip.amazonaws.com/)
