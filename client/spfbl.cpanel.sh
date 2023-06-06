@@ -130,7 +130,8 @@ function install() {
                 No ) exit
 		    echo "SPFBL Firewall solution was not installed."
 		;;
-        esac
+            esac
+	done
 	
 	
 #    else
