@@ -120,9 +120,8 @@ function install() {
 #        echo "SPFBL Checker was successfully installed!"
 #        echo ""
 	
-        local yn
-	read -p "Do you want to install the SPFBL Firewall solution too? (Yes/No) " yn
-	case $yn in
+	read -p "Do you want to install the SPFBL Firewall solution too? (Yes/No) " resposta
+	case $resposta in
 	    [Yy]* )
 	        echo "Installing SPFBL Firewall solution..."
                 firewall
