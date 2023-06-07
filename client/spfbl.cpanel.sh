@@ -188,6 +188,9 @@ function uninstall() {
     fi
     rm -f /usr/local/bin/spfbl-firewall-update
     rm -f /etc/cron.hourly/spfbl-firewall-update
+    iptables -w -D INPUT -p tcp -m tcp --dport 25 --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j SPFBL
+    iptables -w -F SPFBL
+    iptables -w -X SPFBL
 }
 
 function firewall() {
