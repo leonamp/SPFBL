@@ -109,10 +109,22 @@ function install() {
         exim_configuration "acl_default_exiscan" "0"
         exim_configuration "acl_default_spam_scan" "0"
         exim_configuration "acl_default_spam_scan_check" "0"
-#        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-#        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-#        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        
+	if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
+	    sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
+	else
+	    sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+	fi
+	if grep -q "spamd_address" /etc/exim.conf.local; then
+	    sed -i 's/spamd_address = .*/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/' /etc/exim.conf.local
+	else
+	    sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+	fi
+	if grep -q "smtp_accept_max" /etc/exim.conf.local; then
+	    sed -i 's/smtp_accept_max = .*/smtp_accept_max = 250/' /etc/exim.conf.local
+	else
+	    sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+	fi
+	
         # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
@@ -175,9 +187,21 @@ function uninstall() {
     exim_configuration "acl_default_exiscan" "0"
     exim_configuration "acl_default_spam_scan" "1"
     exim_configuration "acl_default_spam_scan_check" "1"
-#    sed -i '/timeout_frozen_after = 7d/d' /etc/exim.conf.local
-#    sed -i '/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/d' /etc/exim.conf.local
-#    sed -i '/smtp_accept_max = 250/d' /etc/exim.conf.local
+    if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
+        sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
+    else
+        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+    fi
+    if grep -q "spamd_address" /etc/exim.conf.local; then
+        sed -i 's/spamd_address = .*/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/' /etc/exim.conf.local
+    else
+        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+    fi
+    if grep -q "smtp_accept_max" /etc/exim.conf.local; then
+        sed -i 's/smtp_accept_max = .*/smtp_accept_max = 250/' /etc/exim.conf.local
+    else
+        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+    fi
         
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
