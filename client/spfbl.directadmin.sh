@@ -64,9 +64,9 @@ function install() {
         printf "\ndeclare -a additional_dbs=(\n\thttps://matrix.spfbl.net/spfbl.hsb\n\thttps://matrix.spfbl.net/spfbl.ign2\n) #END ADDITIONAL DATABASES\n\n" >> /etc/clamav-unofficial-sigs/user.conf
         DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|almalinux-8|cloudlinux server release 6|centos release 6)' | uniq)
         if [ "$DISTRO" = "centos-7" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-atomic.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "centos-8" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-atomic.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "centos-6" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "cloudlinux server release 6" ]; then
@@ -76,11 +76,11 @@ function install() {
         elif [ "$DISTRO" = "ubuntu" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.ubuntu.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "cloudlinux 7" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-atomic.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "cloudlinux 8" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-atomic.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "almalinux-8" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-atomic.conf" -O /etc/clamav-unofficial-sigs/os.conf
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         else
             echo "Linux distro not identified."
             echo "Please contact us to update this installation script to it works for your distro."
