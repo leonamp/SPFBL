@@ -35,6 +35,14 @@ function exim_configuration() {
 }
 
 function install() {
+
+    # Check if cPanel is installed.
+    /usr/local/cpanel/cpanel -V > /dev/null
+    if [ $? -ne 0 ]; then
+        echo "cPanel is not installed in this host yet."
+        exit 1
+    fi
+
     # Install netcat.
     if command -v apt-get >/dev/null; then
         apt-get install nmap ncat
