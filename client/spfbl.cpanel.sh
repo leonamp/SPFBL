@@ -133,6 +133,8 @@ function install() {
         echo "SPFBL Checker was successfully installed!"
         echo ""
         echo "Installing SPFBL Firewall solution..."
+	
+	# Install firewall solution
 	firewall
     else
         myIP=$(curl -s http://checkip.amazonaws.com/)
@@ -159,11 +161,9 @@ function update() {
         /usr/local/cpanel/scripts/buildeximconf
         /usr/local/cpanel/scripts/restartsrv_exim
         
-        if [ -e "/etc/cron.hourly/spfbl-firewall-update" ]; then
-            # Update firewall files.
-            rm -f /etc/cron.hourly/spfbl-firewall-update
-            firewall
-        fi
+        # Reinstall firewall solution
+        rm -f /etc/cron.hourly/spfbl-firewall-update
+	firewall
     else
         echo "The SPFBL Checker was not installed yet."
         exit 1;
