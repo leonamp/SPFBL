@@ -60,6 +60,7 @@ function install() {
         # Install clamav-unofficial-sigs.
         mkdir -p /etc/clamav-unofficial-sigs/
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
+        sed -i 's/^#clamd_restart_opt="service clamd restart"/clamd_restart_opt="service clamd@scan restart"/' /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
         printf "\ndeclare -a additional_dbs=(\n\thttps://matrix.spfbl.net/spfbl.hsb\n\thttps://matrix.spfbl.net/spfbl.ign2\n) #END ADDITIONAL DATABASES\n\n" >> /etc/clamav-unofficial-sigs/user.conf
         DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|almalinux-8|cloudlinux server release 6|centos release 6)' | uniq)
@@ -89,6 +90,7 @@ function install() {
         fi
         sed -i 's/^clam_user="clam"/clam_user="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
 	sed -i 's/^clam_group="clam"/clam_group="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
+	sed -i 's/^clamd_restart_opt="/sbin/service clamd reload"/clamd_restart_opt="service clamd@scan reload"/' /etc/clamav-unofficial-sigs/os.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/clamav-unofficial-sigs.sh -O /usr/local/bin/clamav-unofficial-sigs.sh
         chmod 755 /usr/local/bin/clamav-unofficial-sigs.sh
         /usr/local/bin/clamav-unofficial-sigs.sh --force
