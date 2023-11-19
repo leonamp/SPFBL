@@ -77,9 +77,9 @@ function resetTimeout() {
 }
 
 if [[ $SECURED == "true" ]]; then
-	NCAT="ncat -w 3 -i $QUERY_TIMEOUT --ssl-verify"
+	NCAT="ncat -w 3 --ssl-verify"
 else
-	NCAT="ncat -w 3 -i $QUERY_TIMEOUT"
+	NCAT="ncat -w 3"
 fi
 
 case $1 in
@@ -3683,7 +3683,7 @@ case $1 in
 			recipient=$5
 			exists=$6
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $NCAT -w 3 -i $QUERY_TIMEOUT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $NCAT -w 3 $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				$(incrementTimeout)
