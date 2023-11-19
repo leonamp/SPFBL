@@ -21,7 +21,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 1.3
+# Version: 1.4
 
 function exim_configuration() {
     # Change parameters in Exim Configuration Manager interface.
