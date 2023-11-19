@@ -93,6 +93,7 @@ function install() {
         /usr/local/bin/clamav-unofficial-sigs.sh --install-cron --install-logrotate
         
         # Install SPFBL configuration files.
+        mkdir -p /etc/exim.easy_spam_fighter/
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
@@ -124,6 +125,7 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
         
         # Replace SPFBL configuration files
+        mkdir -p /etc/exim.easy_spam_fighter/
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
@@ -161,9 +163,8 @@ function uninstall() {
 
     # Remove SPFBL configuration files
     rm /etc/exim.acl_check_recipient.pre.conf
-    rm /etc/exim.easy_spam_fighter/check_dkim.conf
+    rm -r /etc/exim.easy_spam_fighter/
     rm /etc/exim.acl_check_message.pre.conf
-    rm /etc/exim.easy_spam_fighter/variables.conf
     
     # Restart DirectAdmin service.
     service exim restart
