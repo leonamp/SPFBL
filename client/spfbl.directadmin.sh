@@ -90,7 +90,7 @@ function install() {
         fi
         sed -i 's/^clam_user="clam"/clam_user="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
 	sed -i 's/^clam_group="clam"/clam_group="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
-	sed -i 's/^clamd_restart_opt="/sbin/service clamd reload"/clamd_restart_opt="service clamd@scan reload"/' /etc/clamav-unofficial-sigs/os.conf
+	sed -i 's/^clamd_restart_opt="\/sbin\/service clamd reload"/clamd_restart_opt="\/sbin\/service clamd@scan reload"/' /etc/clamav-unofficial-sigs/os.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/clamav-unofficial-sigs.sh -O /usr/local/bin/clamav-unofficial-sigs.sh
         chmod 755 /usr/local/bin/clamav-unofficial-sigs.sh
         /usr/local/bin/clamav-unofficial-sigs.sh --force
