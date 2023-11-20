@@ -174,6 +174,7 @@ function uninstall() {
     rm -r /etc/exim.easy_spam_fighter/
     rm /etc/exim.acl_check_message.pre.conf
     rm /etc/exim.strings.conf.custom
+    rm /etc/exim.variables.conf.custom
     
     # Restart DirectAdmin service.
     service exim restart
