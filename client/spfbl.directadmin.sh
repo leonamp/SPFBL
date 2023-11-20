@@ -101,7 +101,7 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
-        echo "av_scanner = clamd:/var/run/clamav/clamd" > /etc/exim.variables.conf.custom
+        echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
 	echo "spamd_address = 54.233.253.229 9877" >> /etc/exim.variables.conf.custom
 	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
@@ -135,7 +135,7 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
-        echo "av_scanner = clamd:/var/run/clamav/clamd" > /etc/exim.variables.conf.custom
+        echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
 	echo "spamd_address = 54.233.253.229 9877" >> /etc/exim.variables.conf.custom
 	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
