@@ -102,6 +102,7 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
         echo "spamd_address = 54.233.253.229 9877" > /etc/exim.easy_spam_fighter/variables.conf
+	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart DirectAdmin service.
         service exim restart
@@ -134,6 +135,7 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
         echo "spamd_address = 54.233.253.229 9877" > /etc/exim.easy_spam_fighter/variables.conf
+	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart cPanel service.
         service exim restart
@@ -169,6 +171,7 @@ function uninstall() {
     rm /etc/exim.acl_check_recipient.pre.conf
     rm -r /etc/exim.easy_spam_fighter/
     rm /etc/exim.acl_check_message.pre.conf
+    rm /etc/exim.strings.conf.custom
     
     # Restart DirectAdmin service.
     service exim restart
