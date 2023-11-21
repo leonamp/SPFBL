@@ -56,6 +56,8 @@ function install() {
 	/usr/local/directadmin/custombuild/build set clamav yes
 	/usr/local/directadmin/custombuild/build set easy_spam_fighter no
         /usr/local/directadmin/custombuild/build clamav
+	usermod -aG mail clamscan
+        usermod -aG virusgroup mail
         
         # Install clamav-unofficial-sigs.
         mkdir -p /etc/clamav-unofficial-sigs/
