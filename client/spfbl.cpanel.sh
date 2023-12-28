@@ -68,7 +68,7 @@ function install() {
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/master.conf -O /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
         printf "\ndeclare -a additional_dbs=(\n\thttps://matrix.spfbl.net/spfbl.hsb\n\thttps://matrix.spfbl.net/spfbl.ign2\n\thttps://matrix.spfbl.net/cpanel.ign2\n) #END ADDITIONAL DATABASES\n\n" >> /etc/clamav-unofficial-sigs/user.conf
-        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|almalinux-8|cloudlinux server release 6|centos release 6|debian gnu/linux 7|debian gnu/linux 8|debian gnu/linux 10|debian gnu/linux 11)' | uniq)
+        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|almalinux-8|cloudlinux server release 6|centos release 6|debian gnu/linux 7|debian gnu/linux 8|debian gnu/linux 10|debian gnu/linux 11)' | sort | uniq)
         if [ "$DISTRO" = "centos-7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
