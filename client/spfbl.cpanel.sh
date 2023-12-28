@@ -83,9 +83,11 @@ function install() {
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "ubuntu" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.ubuntu.conf" -O /etc/clamav-unofficial-sigs/os.conf
-        elif [ "$DISTRO" = "debian gnu/linux 10" ]; then
-            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.debian.conf" -O /etc/clamav-unofficial-sigs/os.conf
-        elif [ "$DISTRO" = "debian gnu/linux 11" ]; then
+        elif [ "$DISTRO" = "debian gnu/linux 7" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.debian7.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        elif [ "$DISTRO" = "debian gnu/linux 8" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.debian8.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        elif [ "$DISTRO" = "debian" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.debian.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "cloudlinux 7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
