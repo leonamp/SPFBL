@@ -102,8 +102,10 @@ function install() {
             echo 'clamscan_bin="/usr/local/cpanel/3rdparty/bin/clamscan"' >> /etc/clamav-unofficial-sigs/os.conf
         else
             echo "Linux distro not identified."
-            echo "Please contact us to update this installation script to it works for your distro."
+            echo "Please contact us to update this installation script to it works for your distro and send the information bellow."
             echo "https://spfbl.net/en/contact"
+            echo ""
+	    cat /etc/*-release
             exit 1;
         fi
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/clamav-unofficial-sigs.sh -O /usr/local/bin/clamav-unofficial-sigs.sh
