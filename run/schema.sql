@@ -12,7 +12,7 @@ CREATE TABLE `user_query` (
   `signerSet` text,
   `whiteKey` varchar(128) NOT NULL,
   `blockKey` varchar(128) NOT NULL,
-  `result` enum('WHITE','ACCEPT','GREYLIST','LISTED','HOLD','INEXISTENT','FLAG','TRAP','REJECT','FAIL','NXDOMAIN','INVALID','BLOCK') NOT NULL,
+  `result` enum('WHITE','ACCEPT','GREYLIST','LISTED','HOLD','INEXISTENT','FLAG','TRAP','REJECT','FAIL','NXDOMAIN','INVALID','BLOCK','BANNED') NOT NULL,
   `mailFrom` varchar(256) CHARACTER SET utf8 DEFAULT NULL,
   `replyto` varchar(256) CHARACTER SET utf8 DEFAULT NULL,
   `subject` text CHARACTER SET utf8mb4,
