@@ -137,6 +137,7 @@ function install() {
         exim_configuration "acl_default_exiscan" "0"
         exim_configuration "acl_default_spam_scan" "0"
         exim_configuration "acl_default_spam_scan_check" "0"
+        exim_configuration "acl_slow_fail_block" "0"
         if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
             sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
         else
@@ -217,6 +218,7 @@ function uninstall() {
     exim_configuration "acl_default_exiscan" "0"
     exim_configuration "acl_default_spam_scan" "1"
     exim_configuration "acl_default_spam_scan_check" "1"
+    exim_configuration "acl_slow_fail_block" "1"
     if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
         sed -i '/timeout_frozen_after/d' /etc/exim.conf.local
     fi
