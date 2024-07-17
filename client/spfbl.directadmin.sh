@@ -127,8 +127,8 @@ function install() {
         service exim restart
         
         # Creating holding routine.
-	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-rounting-check
-        chmod +x /etc/cron.hourly/spfbl-rounting-check
+	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+        chmod +x /etc/cron.hourly/spfbl-holding-check
         
         echo "SPFBL Checker was successfully installed!"
         echo ""
