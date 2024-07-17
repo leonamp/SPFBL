@@ -126,6 +126,10 @@ function install() {
         # Restart DirectAdmin service.
         service exim restart
         
+        # Creating holding routine.
+	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-rounting-check
+        chmod +x /etc/cron.hourly/spfbl-rounting-check
+        
         echo "SPFBL Checker was successfully installed!"
         echo ""
         echo "Installing SPFBL Firewall solution..."
@@ -160,6 +164,10 @@ function update() {
         
         # Restart cPanel service.
         service exim restart
+        
+ 	# Reinstall holding routine
+        echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+        chmod +x /etc/cron.hourly/spfbl-holding-check
         
         # Reinstall firewall solution
         rm -f /etc/cron.hourly/spfbl-firewall-update
@@ -198,6 +206,9 @@ function uninstall() {
     # Restart DirectAdmin service.
     service exim restart
 
+    # Remove holding rountine
+    rm -f /etc/cron.hourly/spfbl-holding-check
+    
     # Remove firewall files
     if grep -q "/usr/local/bin/spfbl-firewall" /etc/csf/csfpost.sh; then
         sed -i '/\/usr\/local\/bin\/spfbl-firewall/d' /etc/csf/csfpost.sh
