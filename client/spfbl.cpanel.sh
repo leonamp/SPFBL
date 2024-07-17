@@ -166,8 +166,8 @@ function install() {
         /usr/local/cpanel/scripts/restartsrv_exim
 
         # Creating holding routine.
-	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-rounting-check
-        chmod +x /etc/cron.hourly/spfbl-rounting-check
+	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+        chmod +x /etc/cron.hourly/spfbl-holding-check
         
         echo "SPFBL Checker was successfully installed!"
         echo ""
@@ -202,8 +202,8 @@ function update() {
         /usr/local/cpanel/scripts/restartsrv_exim
 
  	# Reinstall holding routine
-        echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-rounting-check
-        chmod +x /etc/cron.hourly/spfbl-rounting-check
+        echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+        chmod +x /etc/cron.hourly/spfbl-holding-check
         
         # Reinstall firewall solution
         rm -f /etc/cron.hourly/spfbl-firewall-update
@@ -247,11 +247,13 @@ function uninstall() {
     /usr/local/cpanel/scripts/buildeximconf
     /usr/local/cpanel/scripts/restartsrv_exim
     
+    # Remove holding rountine
+    rm -f /etc/cron.hourly/spfbl-holding-check
+    
     # Remove firewall files
     if grep -q "/usr/local/bin/spfbl-firewall" /etc/csf/csfpost.sh; then
         sed -i '/\/usr\/local\/bin\/spfbl-firewall/d' /etc/csf/csfpost.sh
     fi
-    rm -f /etc/cron.hourly/spfbl-rounting-check
     rm -f /usr/local/bin/spfbl-firewall-update
     rm -f /etc/cron.hourly/spfbl-firewall-update
     iptables -w -D INPUT -p tcp -m tcp --dport 25 --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j SPFBL
