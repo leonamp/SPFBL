@@ -56,7 +56,7 @@
     add_header = X-Spam-Status: Yes
   warn
     condition = ${if eq {$acl_c_spfbl_result}{7}{true}{false}}
-    condition = ${if < {$message_size}{1m}{true}{false}}
+    condition = ${if < {$message_size}{2m}{true}{false}}
     spam = $message_exim_id:true / tmo=10s
   drop
     condition = ${if eq {$spam_score}{4.0}{true}{false}}
