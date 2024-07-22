@@ -127,7 +127,7 @@ function install() {
         service exim restart
         
         # Creating holding routine.
-	echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+	echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
         chmod +x /etc/cron.hourly/spfbl-holding-check
         
         echo "SPFBL Checker was successfully installed!"
@@ -166,7 +166,7 @@ function update() {
         service exim restart
         
  	# Reinstall holding routine
-        echo -e '#!/bin/bash\nspfbl holding' > /etc/cron.hourly/spfbl-holding-check
+        echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
         chmod +x /etc/cron.hourly/spfbl-holding-check
         
         # Reinstall firewall solution
