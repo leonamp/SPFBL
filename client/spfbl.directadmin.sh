@@ -32,7 +32,6 @@ function install() {
         exit 1
     fi
     
-
     # Install netcat.
     if command -v apt-get >/dev/null; then
         apt-get install nmap ncat
@@ -50,7 +49,13 @@ function install() {
     chmod +x /usr/local/bin/spfbl
     /usr/local/bin/spfbl version
     if [ $? -eq 0 ]; then
-    
+    	# Install Clamav
+        if command -v apt-get >/dev/null; then
+            apt-get install clamav clamav-daemon
+        elif command -v yum >/dev/null; then
+            yum install clamav clamav-update
+        if
+	
         # Enable Clamav.
 	/usr/local/directadmin/custombuild/build update
 	/usr/local/directadmin/custombuild/build set clamav yes
