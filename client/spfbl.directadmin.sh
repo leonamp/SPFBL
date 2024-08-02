@@ -54,7 +54,7 @@ function install() {
             apt-get install clamav clamav-daemon
         elif command -v yum >/dev/null; then
             yum install clamav clamav-update
-        if
+        fi
 	
         # Enable Clamav.
 	/usr/local/directadmin/custombuild/build update
