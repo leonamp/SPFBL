@@ -70,7 +70,7 @@ function install() {
         sed -i 's/^#clamd_restart_opt="service clamd restart"/clamd_restart_opt="service clamd@scan restart"/' /etc/clamav-unofficial-sigs/master.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/user.conf -O /etc/clamav-unofficial-sigs/user.conf
         printf "\ndeclare -a additional_dbs=(\n\thttps://matrix.spfbl.net/spfbl.hsb\n\thttps://matrix.spfbl.net/spfbl.ign2\n) #END ADDITIONAL DATABASES\n\n" >> /etc/clamav-unofficial-sigs/user.conf
-        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos stream 8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|cloudlinux 9|almalinux-8|almalinux-9|cloudlinux server release 6|centos release 6|debian gnu/linux 7|debian gnu/linux 8|debian gnu/linux 10|debian gnu/linux 11)' | sort | uniq)
+        DISTRO=$(cat /etc/*-release | tr [:upper:] [:lower:] | grep -Poi '(centos-8|centos stream 8|centos-7|centos-6|ubuntu|cloudlinux 7|cloudlinux 8|cloudlinux 9|almalinux-8|almalinux-9|cloudlinux server release 6|centos release 6|debian gnu/linux 7|debian gnu/linux 8|debian gnu/linux 10|debian gnu/linux 11|rocky linux 9)' | sort | uniq)
         if [ "$DISTRO" = "centos-7" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos7-cpanel.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "centos-8" ]; then
@@ -102,6 +102,8 @@ function install() {
         elif [ "$DISTRO" = "almalinux-8" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         elif [ "$DISTRO" = "almalinux-9" ]; then
+            wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
+        elif [ "$DISTRO" = "rocky linux 9" ]; then
             wget "https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/config/os/os.centos6.conf" -O /etc/clamav-unofficial-sigs/os.conf
         else
             echo "Linux distro not identified."
