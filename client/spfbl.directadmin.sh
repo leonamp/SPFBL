@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 #
 # The SPFBL Cheker installer for DirectAdmin.
 #
