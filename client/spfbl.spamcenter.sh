@@ -45,7 +45,7 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
 
         if [[ $COUNT < 2 ]]; then
             printf "\ndeclare -a additional_dbs=(\n\thttps://api.spam.center/download/clamav/$1/spamcenter.ndb\n\thttps://api.spam.center/download/clamav/$1/spamcenter.hsb\n)\n\n" >> /etc/clamav-unofficial-sigs/user.conf
-            /usr/local/bin/clamav-unofficial-sigs.sh
+#            /usr/local/bin/clamav-unofficial-sigs.sh
             echo "Spamcenter data was successfully installed."
         else
             echo "This API key was already set."
