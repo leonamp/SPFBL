@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 #
 # An SPFBL Cheker installer for cPanel.
 #
