@@ -51,7 +51,8 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
             echo "This API key was already set."
         fi
     else
-        echo "This API key has not permission to access spamcenter data."
+        IP=$(curl -s https://matrix.spfbl.net/whatsmyip/)
+        echo "This API key has not permission to access Spamcenter data using IP $IP"
     fi
 else
     echo "This is not a valid API key."
