@@ -44,7 +44,8 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
         COUNT=$(grep -c "$1" /etc/clamav-unofficial-sigs/user.conf)
 
         if [[ $COUNT < 2 ]]; then
-            printf "\ndeclare -a additional_dbs=(\n\thttps://api.spam.center/download/clamav/$1/spamcenter.ndb\n\thttps://api.spam.center/download/clamav/$1/spamcenter.hsb\n)\n\n" >> /etc/clamav-unofficial-sigs/user.conf
+#            printf "\ndeclare -a additional_dbs=(\n\thttps://api.spam.center/download/clamav/$1/spamcenter.ndb\n\thttps://api.spam.center/download/clamav/$1/spamcenter.hsb\n)\n\n" >> /etc/clamav-unofficial-sigs/user.conf            
+            sed -i '/)#END ADDITIONAL DATABASES/i\   https://api.spam.center/download/clamav/$1/spamcenter.ndb\n   https://api.spam.center/download/clamav/$1/spamcenter.hsb' /etc/clamav-unofficial-sigs/user.conf
             /usr/local/bin/clamav-unofficial-sigs.sh --force
             echo "Spamcenter data was successfully installed."
         else
