@@ -54,6 +54,13 @@ function install() {
         echo "https://spfbl.net/en/contact"
         exit 1
     fi
+    if ! command -v nmap >/dev/null; then
+        echo "The nmap was not correcly installed."
+        echo "Please contact us to resolve this issue."
+        echo "https://spfbl.net/en/contact"
+        exit 1
+    fi
+    
     # Install SPFBL client script.
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
