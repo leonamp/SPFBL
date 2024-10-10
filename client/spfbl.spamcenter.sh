@@ -45,10 +45,14 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
 
         if [[ $COUNT < 2 ]]; then
             sed -i "/^) #END ADDITIONAL DATABASES$/i \ \ \ https://api.spam.center/download/clamav/${1}/spamcenter.ndb\n\ \ \ https://api.spam.center/download/clamav/${1}/spamcenter.hsb" /etc/clamav-unofficial-sigs/user.conf
-            /usr/local/bin/clamav-unofficial-sigs.sh --force
-            echo "Spamcenter data was successfully installed."
         else
             echo "This API key was already set."
+        fi
+        /usr/local/bin/clamav-unofficial-sigs.sh --force
+        if [ $? -eq 0 ]; then
+            echo "Spamcenter data was successfully installed."
+        else
+            echo "Spamcenter data instalaton has failed."
         fi
     else
         IP=$(curl -s https://matrix.spfbl.net/whatsmyip/)
