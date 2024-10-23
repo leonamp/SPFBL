@@ -140,9 +140,9 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
         
         # Config Exim Configuration Manager interface.
-        exim_configuration "spfbl_end_recipient" "1"
-        exim_configuration "spfbl_begin_smtp_dkim" "1"
-        exim_configuration "spfbl_begin_check_message_pre" "1"
+        #exim_configuration "spfbl_end_recipient" "1"
+        #exim_configuration "spfbl_begin_smtp_dkim" "1"
+        #exim_configuration "spfbl_begin_check_message_pre" "1"
         exim_configuration "acl_delay_unknown_hosts" "0"
         exim_configuration "acl_dkim_disable" "0"
         exim_configuration "acl_dkim_bl" "0"
