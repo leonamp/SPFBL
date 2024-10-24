@@ -1,31 +1,42 @@
   accept
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     authenticated = *
   accept
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     hosts = +recent_authed_mail_ips
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     condition = ${if def:acl_c_begin_time {false}{true}}
     set acl_c_begin_time = $tod_epoch
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     set acl_c_session_time = ${eval:$tod_epoch - $acl_c_begin_time}
   defer
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     condition = ${if > {$acl_c_session_time}{120}}
     message = 421 4.4.2 SMTP session timeout. Please start a new SMTP session to finish this send.
     log_message = SPFBL session timeout.
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     set acl_c_existent = null
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     domains = +local_domains
     set acl_c_existent = false
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     domains = +local_domains
     verify = recipient
     set acl_c_existent = true
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     condition = ${if eq {$address_data}{router\=virtual_aliases_nostar redirect\=""}{true}{false}}
     set acl_c_existent = true
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     logwrite = RECIPIENT VERIFY $local_part@$domain $address_data
   warn
+    condition = ${if eq {$interface_port}{25}{true}{false}}
     set acl_c_spfbl = "NULL"
     set acl_c_spfbl_result = 0
   warn
@@ -37,8 +48,6 @@
                             }{ERROR: $value}{$value}}
     set acl_c_spfbl = ${sg{$acl_c_spfbl}{^(.+)\\n}{\$1}}
     set acl_c_spfbl_result = $runrc
-  accept
-    condition = ${if eq {$acl_c_spfbl_result}{15}{true}{false}}
   deny
     condition = ${if eq {$acl_c_spfbl_result}{3}{true}{false}}
     message = 5.7.1 SPFBL $sender_host_address is not allowed to send mail from $sender_address. See http://spfbl.net/en/feedback
