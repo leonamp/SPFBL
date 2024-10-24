@@ -114,7 +114,7 @@
     condition = ${if eq {$acl_c_spfbl_result}{20}{true}{false}}
     message = 4.3.1 SPFBL temporarily out of service. See http://spfbl.net/en/feedback
     log_message = SPFBL out of service.
-  accept
+  warn
     condition = ${if match {$acl_c_spfbl}{^(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |FLAG |WHITE |HOLD )}{true}{false}}
     set acl_c_spfblticket = ${sg{$acl_c_spfbl}{(PASS |SOFTFAIL |NEUTRAL |NONE |FAIL |FLAG |WHITE |HOLD )}{}}
     set acl_c_spfblticket = ${sg{$acl_c_spfblticket}{https?://.+/([0-9a-zA-Z_-]+)\$}{\$1}}
