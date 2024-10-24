@@ -140,41 +140,41 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl_begin_check_message_pre -O /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
         
         # Config Exim Configuration Manager interface.
-        #exim_configuration "spfbl_end_recipient" "1"
-        #exim_configuration "spfbl_begin_smtp_dkim" "1"
-        #exim_configuration "spfbl_begin_check_message_pre" "1"
-        #exim_configuration "acl_delay_unknown_hosts" "0"
-        #exim_configuration "acl_dkim_disable" "0"
-        #exim_configuration "acl_dkim_bl" "0"
-        #exim_configuration "acl_spam_scan_secondarymx" "0"
-        #exim_configuration "acl_outgoing_spam_scan" "0"
-        #exim_configuration "acl_outgoing_spam_scan_over_int" "0"
-        #exim_configuration "acl_default_exiscan" "0"
-        #exim_configuration "acl_default_spam_scan" "0"
-        #exim_configuration "acl_default_spam_scan_check" "0"
-        #exim_configuration "acl_slow_fail_block" "0"
+        exim_configuration "spfbl_end_recipient" "1"
+        exim_configuration "spfbl_begin_smtp_dkim" "1"
+        exim_configuration "spfbl_begin_check_message_pre" "1"
+        exim_configuration "acl_delay_unknown_hosts" "0"
+        exim_configuration "acl_dkim_disable" "0"
+        exim_configuration "acl_dkim_bl" "0"
+        exim_configuration "acl_spam_scan_secondarymx" "0"
+        exim_configuration "acl_outgoing_spam_scan" "0"
+        exim_configuration "acl_outgoing_spam_scan_over_int" "0"
+        exim_configuration "acl_default_exiscan" "0"
+        exim_configuration "acl_default_spam_scan" "0"
+        exim_configuration "acl_default_spam_scan_check" "0"
+        exim_configuration "acl_slow_fail_block" "0"
 
- 	#if [ -f /etc/exim.conf.local ]; then
-        #    if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
-        #        sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
-        #    else
-        #        sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        #    fi
-        #    if grep -q "spamd_address" /etc/exim.conf.local; then
-        #        sed -i 's/spamd_address = .*/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/' /etc/exim.conf.local
-        #    else
-        #        sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        #    fi
-        #    if grep -q "smtp_accept_max" /etc/exim.conf.local; then
-        #        sed -i 's/smtp_accept_max = .*/smtp_accept_max = 250/' /etc/exim.conf.local
-        #    else
-        #        sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
-        #    fi
-        #else
-	#    echo "timeout_frozen_after = 7d" > /etc/exim.conf.local
-        #    echo "spamd_address = 54.233.253.229 9877 retry=30s tmo=3m" >> /etc/exim.conf.local
-        #    echo "smtp_accept_max = 250" >> /etc/exim.conf.local
-	#fi
+ 	if [ -f /etc/exim.conf.local ]; then
+            if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
+                sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
+            else
+                sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+            fi
+            if grep -q "spamd_address" /etc/exim.conf.local; then
+                sed -i 's/spamd_address = .*/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/' /etc/exim.conf.local
+            else
+                sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+            fi
+            if grep -q "smtp_accept_max" /etc/exim.conf.local; then
+                sed -i 's/smtp_accept_max = .*/smtp_accept_max = 250/' /etc/exim.conf.local
+            else
+                sed '/@CONFIG@/a smtp_accept_max = 250' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+            fi
+        else
+	    echo "timeout_frozen_after = 7d" > /etc/exim.conf.local
+            echo "spamd_address = 54.233.253.229 9877 retry=30s tmo=3m" >> /etc/exim.conf.local
+            echo "smtp_accept_max = 250" >> /etc/exim.conf.local
+	fi
 	
         # Restart cPanel service.
         /usr/local/cpanel/scripts/buildeximconf
