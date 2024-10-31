@@ -4,12 +4,12 @@
   accept
     condition = ${if eq {$interface_port}{25}{true}{false}}
     hosts = +recent_authed_mail_ips
-  drop
-    condition = ${if eq {$interface_port}{25}{true}{false}}
-    condition = ${if match_domain{$sender_address_domain}{+local_domains}{false}{true}}
-    !domains = +local_domains
-    log_message = SPFBL relay not permitted.
-    message = ${run{/usr/local/bin/spfbl abuse $sender_host_address}{5.7.1 SPFBL relay not permitted}{relay not permitted}}
+#  drop
+#    condition = ${if eq {$interface_port}{25}{true}{false}}
+#    condition = ${if match_domain{$sender_address_domain}{+local_domains}{false}{true}}
+#    !domains = +local_domains
+#    log_message = SPFBL relay not permitted.
+#    message = ${run{/usr/local/bin/spfbl abuse $sender_host_address}{5.7.1 SPFBL relay not permitted}{relay not permitted}}
   warn
     condition = ${if eq {$interface_port}{25}{true}{false}}
     condition = ${if def:acl_c_begin_time {false}{true}}
