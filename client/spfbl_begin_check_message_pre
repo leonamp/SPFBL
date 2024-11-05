@@ -3,6 +3,11 @@
     condition = ${if < {$message_size}{2m}{true}{false}}
     malware = * / defer_ok / tmo=10s
     message = 5.7.1 This message was detected as possible malware.
+ drop
+    hosts = +recent_authed_mail_ips
+    condition = ${if < {$message_size}{2m}{true}{false}}
+    malware = * / defer_ok / tmo=10s
+    message = 5.7.1 This message was detected as possible malware.
  accept
     condition = ${if eq {$interface_port}{25}{true}{false}}
     authenticated = *
