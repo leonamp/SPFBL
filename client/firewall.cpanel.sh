@@ -5,6 +5,7 @@
 # Contribuição de Luciano Zanita <lucianozanita@advenhost.com.br>
 
 # Gerando lista de Firewall
+rm -rf /usr/local/bin/spfbl-firewall
 echo "FIREWALL" | nc -w 60 54.233.253.229 9877 > /usr/local/bin/spfbl-firewall
 # Aplicando permissão
 chmod +x /usr/local/bin/spfbl-firewall
