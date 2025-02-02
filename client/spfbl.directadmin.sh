@@ -34,7 +34,7 @@ function install() {
     
     # Install netcat.
     if command -v apt-get >/dev/null; then
-        apt-get install nmap ncat
+        apt-get install --yes nmap ncat
     elif command -v yum >/dev/null; then
         yum install -y nmap nc
     else
