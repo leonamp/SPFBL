@@ -50,6 +50,7 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
         fi
         /usr/local/bin/clamav-unofficial-sigs.sh --force
         if [ $? -eq 0 ]; then
+            sed -i 's/^additional_update_hours="[0-9]\+"/additional_update_hours="1"/' /etc/clamav-unofficial-sigs/master.conf
             echo "Spamcenter data was successfully installed."
         else
             echo "Spamcenter data instalaton has failed."
