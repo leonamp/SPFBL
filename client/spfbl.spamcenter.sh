@@ -48,6 +48,19 @@ elif [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]];
         else
             echo "This API key was already set."
         fi
+
+        # Install rsync.
+        if command -v apt-get >/dev/null; then
+            apt-get install --yes rsync
+        elif command -v yum >/dev/null; then
+            yum install -y rsync
+        else
+            echo "Linux installation tool not identified."
+            echo "Please contact us to update this installation script to it works for your distro."
+            echo "https://spfbl.net/en/contact"
+            exit 1
+        fi
+    
         /usr/local/bin/clamav-unofficial-sigs.sh --force
         if [ $? -eq 0 ]; then
             sed -i 's/^additional_update_hours="[0-9]\+"/additional_update_hours="1"/' /etc/clamav-unofficial-sigs/master.conf
