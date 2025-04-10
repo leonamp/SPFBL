@@ -55,11 +55,13 @@ function install() {
         elif command -v yum >/dev/null; then
             yum install clamav clamav-update
         fi
-	
-        # Enable Clamav.
+
+        # Enable Clamav and disable spam filters.
 	/usr/local/directadmin/custombuild/build update
 	/usr/local/directadmin/custombuild/build set clamav yes
 	/usr/local/directadmin/custombuild/build set easy_spam_fighter no
+	/usr/local/directadmin/custombuild/build set spamassassin no
+	[ -f /etc/mail/spamassassin.cf ] && mv /etc/mail/spamassassin.cf /etc/mail/spamassassin.cf.back
         /usr/local/directadmin/custombuild/build clamav
 	usermod -aG mail clamscan
         usermod -aG virusgroup mail
@@ -190,7 +192,7 @@ function update() {
 
 function uninstall() {
 
-    # Disable Clamav.
+    # Disable Clamav and enable spam filters.
     /usr/local/directadmin/custombuild/build set clamav no
     /usr/local/directadmin/custombuild/build set clamav_exim no
     /usr/local/directadmin/custombuild/build set proftpd_uploadscan no
@@ -204,7 +206,13 @@ function uninstall() {
     /usr/local/directadmin/custombuild/build clean
     /usr/local/directadmin/custombuild/build php_ini
     /usr/local/directadmin/custombuild/build rewrite_confs
-
+    if [ -f /etc/mail/spamassassin.cf.back ]; then
+        mv /etc/mail/spamassassin.cf.back /etc/mail/spamassassin.cf
+        /usr/local/directadmin/custombuild/build set spamassassin yes
+        /usr/local/directadmin/custombuild/build update
+        /usr/local/directadmin/custombuild/build spamassassin
+    fi
+    
     # Remove SPFBL configuration files
     rm /etc/exim.acl_check_recipient.pre.conf
     rm -r /etc/exim.easy_spam_fighter/
