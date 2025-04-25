@@ -32,16 +32,24 @@ function install() {
         exit 1
     fi
     
-    # Install netcat.
-    if command -v apt-get >/dev/null; then
-        apt-get install --yes nmap ncat
-    elif command -v yum >/dev/null; then
-        yum install -y nmap nc
-    else
-        echo "Linux installation tool not identified."
-        echo "Please contact us to update this installation script to it works for your distro."
-        echo "https://spfbl.net/en/contact"
-        exit 1
+    if ! command -v nmap >/dev/null; then
+        # Install netcat.
+        if command -v apt-get >/dev/null; then
+            apt-get install --yes nmap ncat
+        elif command -v yum >/dev/null; then
+            yum install -y nmap nc
+        else
+            echo "Linux installation tool not identified."
+            echo "Please contact us to update this installation script to it works for your distro."
+            echo "https://spfbl.net/en/contact"
+            exit 1
+        fi
+        if ! command -v nmap >/dev/null; then
+            echo "The nmap was not correcly installed."
+            echo "Please contact us to resolve this issue."
+            echo "https://spfbl.net/en/contact"
+            exit 1
+        fi
     fi
     
     # Install SPFBL client script.
