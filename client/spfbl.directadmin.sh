@@ -33,11 +33,11 @@ function install() {
     fi
     
     if ! command -v nmap >/dev/null; then
-        # Install netcat.
+        # Install netcat and wget.
         if command -v apt-get >/dev/null; then
-            apt-get install --yes nmap ncat
+            apt-get install --yes nmap ncat wget
         elif command -v yum >/dev/null; then
-            yum install -y nmap nc
+            yum install -y nmap nc wget
         else
             echo "Linux installation tool not identified."
             echo "Please contact us to update this installation script to it works for your distro."
