@@ -71,7 +71,7 @@ function install() {
 	/usr/local/directadmin/custombuild/build set spamassassin no
 	[ -f /etc/mail/spamassassin.cf ] && mv /etc/mail/spamassassin.cf /etc/mail/spamassassin.cf.back
         /usr/local/directadmin/custombuild/build clamav
-	usermod -aG mail clamscan
+	    usermod -aG mail clamscan
         usermod -aG virusgroup mail
         
         # Install clamav-unofficial-sigs.
