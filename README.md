@@ -321,7 +321,7 @@ Palestra GTER 42:<br>
 [![GTER42](https://img.youtube.com/vi/7OAL9ulMEy4/0.jpg)](https://www.youtube.com/watch?v=7OAL9ulMEy4)
 
 Lojas:<br>
-<a href="https://www.montink.com.br/loja/spfbl">Camisetas SPFBL.net</a>
+<a href="https://www.amazon.com/dp/B07X6BVWTR">Camisetas SPFBL.net</a>
 
 
 ### Noticias sobre o SPFBL
@@ -348,3 +348,4 @@ Lojas:<br>
 ### Grupo de discussão no Telegram
 
 <https://t.me/joinchat/OVmFzhCawB5iYjk5>
+
