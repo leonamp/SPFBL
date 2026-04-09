@@ -38,6 +38,14 @@
                                'Subject:$acl_c_header_subject' \
                           }{$value}{$value}}
     set acl_c_spfbl_result = $runrc
+  defer
+    condition = ${if eq {$acl_c_spfbl_result}{2}{true}{false}}
+    message = 4.3.1 SPFBL temporarily out of service. See http://spfbl.net/en/feedback
+    log_message = SPFBL check timeout.
+  defer
+    condition = ${if eq {$acl_c_spfbl_result}{4}{true}{false}}
+    message = 4.3.1 SPFBL temporarily out of service. See http://spfbl.net/en/feedback
+    log_message = SPFBL out of service.
   deny
     condition = ${if eq {$acl_c_spfbl_result}{1}{true}{false}}
     condition = ${if match {$value}{^BLOCKED https?://}{true}{false}}
