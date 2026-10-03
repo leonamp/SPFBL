@@ -64,6 +64,7 @@ function install() {
     fi
     
     # Install SPFBL client script.
+	matrix4=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
     /usr/local/bin/spfbl version
@@ -161,7 +162,7 @@ function install() {
         exim_configuration "acl_default_spam_scan_check" "0"
         exim_configuration "acl_slow_fail_block" "0"
 
- 	if [ -f /etc/exim.conf.local ]; then
+ 	    if [ -f /etc/exim.conf.local ]; then
             if grep -q "timeout_frozen_after" /etc/exim.conf.local; then
                 sed -i 's/timeout_frozen_after = .*/timeout_frozen_after = 7d/' /etc/exim.conf.local
             else
