@@ -143,7 +143,7 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
         echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
-	echo "spamd_address = 54.233.253.229 9877" >> /etc/exim.variables.conf.custom
+	echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
 	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart DirectAdmin service.
@@ -160,13 +160,14 @@ function install() {
         # Install firewall solution
 	firewall
     else
+	    matrixIP=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
         myIP=$(curl -s http://checkip.amazonaws.com/)
         myHOST=$(hostname)
         echo "Your DirectAdmin doesn't have permission to access matrix.spfbl.net server yet."
         echo "Please contact us to get your permission for the host $myHOST [$myIP]."
         echo "https://spfbl.net/en/contact"
         echo "If this host has already it, open the port 9877 TCP OUT in your firewall"
-        echo "and add the IP 54.233.253.229 in its whitelist."
+        echo "and add the IP $matrixIP in its whitelist."
         exit 1;
     fi
 }
@@ -182,7 +183,7 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
         echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
-	echo "spamd_address = 54.233.253.229 9877" >> /etc/exim.variables.conf.custom
+	echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
 	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart cPanel service.
