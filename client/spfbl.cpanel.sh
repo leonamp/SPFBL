@@ -64,7 +64,7 @@ function install() {
     fi
     
     # Install SPFBL client script.
-	matrix4=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
+    matrix4=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
     wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/spfbl.sh -O /usr/local/bin/spfbl
     chmod +x /usr/local/bin/spfbl
     /usr/local/bin/spfbl version
@@ -169,9 +169,9 @@ function install() {
                 sed '/@CONFIG@/a timeout_frozen_after = 7d' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
             fi
             if grep -q "spamd_address" /etc/exim.conf.local; then
-                sed -i 's/spamd_address = .*/spamd_address = 54.233.253.229 9877 retry=30s tmo=3m/' /etc/exim.conf.local
+                sed -i 's/spamd_address = .*/spamd_address = matrix4.spfbl.net 9877 retry=30s tmo=3m/' /etc/exim.conf.local
             else
-                sed '/@CONFIG@/a spamd_address = 54.233.253.229 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
+                sed '/@CONFIG@/a spamd_address = matrix4.spfbl.net 9877 retry=30s tmo=3m' /etc/exim.conf.local > spfbltemp && mv -f spfbltemp /etc/exim.conf.local
             fi
             if grep -q "smtp_accept_max" /etc/exim.conf.local; then
                 sed -i 's/smtp_accept_max = .*/smtp_accept_max = 250/' /etc/exim.conf.local
@@ -180,7 +180,7 @@ function install() {
             fi
         else
 	    echo "timeout_frozen_after = 7d" > /etc/exim.conf.local
-            echo "spamd_address = 54.233.253.229 9877 retry=30s tmo=3m" >> /etc/exim.conf.local
+            echo "spamd_address = matrix4.spfbl.net 9877 retry=30s tmo=3m" >> /etc/exim.conf.local
             echo "smtp_accept_max = 250" >> /etc/exim.conf.local
 	fi
 	
@@ -199,13 +199,14 @@ function install() {
 	# Install firewall solution
 	firewall
     else
+	    matrixIP=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
         myIP=$(curl -s http://checkip.amazonaws.com/)
         myHOST=$(hostname)
         echo "Your cPanel doesn't have permission to access matrix.spfbl.net server yet."
         echo "Please contact us to get your permission for the host $myHOST [$myIP]."
         echo "https://spfbl.net/en/contact"
         echo "If this host has already it, open the port 9877 TCP OUT in your firewall"
-        echo "and add the IP 54.233.253.229 in its whitelist."
+        echo "and add the IP $matrixIP in its whitelist."
         exit 1;
     fi
 }
