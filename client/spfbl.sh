@@ -3370,6 +3370,10 @@ case $1 in
 		fi
 	;;
 	'holding')
+	     # Queue ID do Exim: formato antigo (ate 4.96, 16 caracteres, ex.: 1aBcDe-FgHiJk-Lm)
+	     # e formato novo (4.97+, 23 caracteres, ex.: 16VDhn-000000001bo-D342).
+	     QUEUE_ID_RE='^[0-9a-zA-Z]{6}-([0-9a-zA-Z]{11}-[0-9a-zA-Z]{4}|[0-9a-zA-Z]{6}-[0-9a-zA-Z]{2})$'
+		 
 	     if [ $# -eq 1 ]; then
 	     
 	            run=0;
@@ -3388,7 +3392,7 @@ case $1 in
 	
 			if [ $? -eq 0 ]; then
 	
-				list=$(exiqgrep -z | egrep -o "([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}")
+				list=$(exiqgrep -z | egrep -o "$QUEUE_ID_RE")
 	
 				if [ $? -eq 0 ]; then
 	
@@ -3447,7 +3451,7 @@ case $1 in
 	          
 	     elif [ $# -eq 2 ]; then
 	     
-	          if [[ $2 =~ ^([0-9a-zA-Z]{6}-){2}[0-9a-zA-Z]{2}$ ]]; then
+	          if [[ $2 =~ $QUEUE_ID_RE ]]; then
 	          
 	          	message=$2
 	          	ticket=$(exim -Mvh $message | grep -Pom 1 "^(PASS|SOFTFAIL|NEUTRAL|NONE|WHITE|HOLD|FLAG) (https?://.+/)?\K([0-9a-zA-Z_-]{44,})$")
