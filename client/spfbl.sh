@@ -3392,7 +3392,7 @@ case $1 in
 	
 			if [ $? -eq 0 ]; then
 	
-				list=$(exiqgrep -z -i | egrep -o "$QUEUE_ID_RE")
+				list=$(exiqgrep -z -i | egrep "$QUEUE_ID_RE")
 	
 				if [ $? -eq 0 ]; then
 	
