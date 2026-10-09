@@ -3388,11 +3388,11 @@ case $1 in
 	            if [ $run -eq 1 ]; then
 	
 	                touch /var/tmp/SPFBL_HOLDING
-			which exigrep > /dev/null
+			which exiqgrep > /dev/null
 	
 			if [ $? -eq 0 ]; then
 	
-				list=$(exiqgrep -z | egrep -o "$QUEUE_ID_RE")
+				list=$(exiqgrep -z -i | egrep -o "$QUEUE_ID_RE")
 	
 				if [ $? -eq 0 ]; then
 	
