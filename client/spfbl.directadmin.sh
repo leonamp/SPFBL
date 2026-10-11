@@ -147,7 +147,7 @@ function install() {
 	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart DirectAdmin service.
-        service exim restart
+        restart_exim || exit 1
         
         # Creating holding routine.
 	echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
