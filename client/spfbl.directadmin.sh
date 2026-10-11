@@ -183,13 +183,13 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
         echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
-	echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
-	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
+	    echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
+	    echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
         
         # Restart cPanel service.
-        service exim restart
+        restart_exim || exit 1
         
- 	# Reinstall holding routine
+ 	    # Reinstall holding routine
         echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
         chmod +x /etc/cron.hourly/spfbl-holding-check
         
@@ -200,6 +200,21 @@ function update() {
     else
         echo "The SPFBL Checker was not installed yet."
         exit 1;
+    fi
+}
+
+function restart_exim() {
+    if command -v systemctl >/dev/null 2>&1 &&
+       [ -d /run/systemd/system ] &&
+       systemctl cat exim.service >/dev/null 2>&1; then
+        systemctl restart exim.service
+    elif [ -x /etc/init.d/exim ]; then
+        /etc/init.d/exim restart
+    elif command -v service >/dev/null 2>&1; then
+        service exim restart
+    else
+        echo "ERROR: Exim service manager not found." >&2
+        return 1
     fi
 }
 
