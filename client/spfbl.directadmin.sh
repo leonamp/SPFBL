@@ -26,8 +26,7 @@
 function install() {
 
     # Check if DirectAdmin is installed.
-    /usr/local/directadmin/directadmin c > /dev/null
-    if [ $? -ne 0 ]; then
+    if [ ! -x /usr/local/directadmin/custombuild/build ]; then
         echo "DirectAdmin is not installed in this host yet."
         exit 1
     fi
