@@ -36,7 +36,7 @@ function install() {
         if command -v apt-get >/dev/null; then
             apt-get install --yes nmap ncat wget coreutils dnsutils
         elif command -v yum >/dev/null; then
-            yum install -y nmap nc wget coreutils bind-utils
+            yum install -y nmap nc wget bind-utils
         else
             echo "Linux installation tool not identified."
             echo "Please contact us to update this installation script to it works for your distro."
