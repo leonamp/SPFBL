@@ -43,8 +43,19 @@ QUERY_TIMEOUT="10"
 MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
+if [[ $SECURED == "true" ]]; then
+	NCAT="ncat -w 3 --ssl-verify"
+else
+	NCAT="ncat -w 3"
+fi
+
+# Canal das consultas ao servidor SPFBL (porta de consulta).
+# Para consultar via HTTPS, troque por:
+# COMMAND="curl -s -f -m 3 --data-binary @- https://matrix.spfbl.net/spfbl/"
+COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
+
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="2.17"
+version="3.00"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -63,10 +74,12 @@ function incrementTimeout() {
 	else
 		local COUNT=`cat /tmp/SPFBL_TIMEOUT_COUNT`
 	fi
-	local COUNT=`expr ${COUNT} + 1`
+	local COUNT=`expr ${COUNT:-0} + 1`
 	echo "${COUNT}" > /tmp/SPFBL_TIMEOUT_COUNT
 
-	return ${COUNT}
+	# Devolve a contagem pela saída padrão: o "return" do bash
+	# só vai até 255 e daria a volta, nunca passando de MAX_TIMEOUT.
+	echo "${COUNT}"
 
 }
 
@@ -76,11 +89,21 @@ function resetTimeout() {
 
 }
 
-if [[ $SECURED == "true" ]]; then
-	NCAT="ncat -w 3 --ssl-verify"
-else
-	NCAT="ncat -w 3"
-fi
+function emptyResponse() {
+
+	# Resposta vazia. Uma conexão recusada (porta fechada ou REJECT do
+	# firewall) falha na hora; um timeout leva os 3 segundos do -w 3.
+	# $SECONDS conta os segundos desde o início do script.
+	if [ "$SECONDS" -lt 2 ]; then
+		echo "OUT OF SERVICE"
+	elif [ "$(incrementTimeout)" -le "$MAX_TIMEOUT" ]; then
+		echo "TIMEOUT"
+	else
+		echo "OUT OF SERVICE"
+	fi
+
+}
+
 
 case $1 in
 	'start')
@@ -114,17 +137,12 @@ case $1 in
 		#    3: out of service.
 
 
-		response=$(echo "VERSION" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+		response=$(echo "VERSION" | $COMMAND 2> /dev/null)
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -153,14 +171,9 @@ case $1 in
 		response=$(echo "FIREWALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -189,14 +202,9 @@ case $1 in
 		response=$(echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -225,14 +233,9 @@ case $1 in
 		response=$(echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -261,14 +264,9 @@ case $1 in
 		response=$(echo "TEST" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -306,14 +304,9 @@ case $1 in
 					response=$(echo "TLD ADD $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -350,14 +343,9 @@ case $1 in
 					response=$(echo "TLD DROP $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -390,14 +378,9 @@ case $1 in
 					response=$(echo "TLD SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -440,14 +423,9 @@ case $1 in
 					response=$(echo "PROVIDER ADD $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -484,14 +462,9 @@ case $1 in
 					response=$(echo "PROVIDER DROP $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -524,14 +497,9 @@ case $1 in
 					response=$(echo "PROVIDER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -575,14 +543,9 @@ case $1 in
 					response=$(echo "IGNORE ADD $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -620,14 +583,9 @@ case $1 in
 					response=$(echo "IGNORE DROP $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -660,14 +618,9 @@ case $1 in
 					response=$(echo "IGNORE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -711,17 +664,12 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "BLOCK ADD $sender" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -760,17 +708,12 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "BLOCK DROP $sender" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -802,20 +745,15 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "BLOCK SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+						response=$(echo "BLOCK SHOW ALL" | $COMMAND 2> /dev/null)
 					else
-						response=$(echo "BLOCK SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+						response=$(echo "BLOCK SHOW" | $COMMAND 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -845,17 +783,12 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block find token\n"
 				else
 					token=$3
-					response=$(echo "BLOCK FIND $token" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "BLOCK FIND $token" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -903,14 +836,9 @@ case $1 in
 					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -947,14 +875,9 @@ case $1 in
 					response=$(echo "BLOCK SPLIT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -992,14 +915,9 @@ case $1 in
 					response=$(echo "BLOCK OVERLAP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1036,14 +954,9 @@ case $1 in
 					response=$(echo "BLOCK EXTRACT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1083,14 +996,9 @@ case $1 in
 					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1128,14 +1036,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1177,14 +1080,9 @@ case $1 in
 					response=$(echo "GENERIC ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1217,14 +1115,9 @@ case $1 in
 					response=$(echo "GENERIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1259,14 +1152,9 @@ case $1 in
 					response=$(echo "GENERIC DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1304,14 +1192,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1353,14 +1236,9 @@ case $1 in
 					response=$(echo "DYNAMIC ADD $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1393,14 +1271,9 @@ case $1 in
 					response=$(echo "DYNAMIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1435,14 +1308,9 @@ case $1 in
 					response=$(echo "DYNAMIC DROP $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1473,14 +1341,9 @@ case $1 in
 					response=$(echo "DYNAMIC SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1521,17 +1384,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "WHITE ADD $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1566,17 +1424,12 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "WHITE SENDER $sender" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "WHITE SENDER $sender" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1613,17 +1466,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "WHITE DROP $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1653,17 +1501,12 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 white show\n"
 				else
-					response=$(echo "WHITE SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "WHITE SHOW" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1707,14 +1550,9 @@ case $1 in
 					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1752,14 +1590,9 @@ case $1 in
 					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1796,14 +1629,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1856,14 +1684,9 @@ case $1 in
 					response=$(echo "CLIENT ADD $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1910,14 +1733,9 @@ case $1 in
 					response=$(echo "CLIENT SET $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1952,14 +1770,9 @@ case $1 in
 					response=$(echo "CLIENT DROP $cidr" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -1991,14 +1804,9 @@ case $1 in
 					response=$(echo "CLIENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2043,14 +1851,9 @@ case $1 in
 					response=$(echo "USER ADD $email $nome" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2087,14 +1890,9 @@ case $1 in
 					response=$(echo "USER DROP $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2126,14 +1924,9 @@ case $1 in
 					response=$(echo "USER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2155,14 +1948,9 @@ case $1 in
 					response=$(echo "USER SEND $3 TOTP" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2213,14 +2001,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2261,14 +2044,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2306,14 +2084,9 @@ case $1 in
 					fi
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2352,14 +2125,9 @@ case $1 in
 					response=$(echo "PEER SET $host $send $receive" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2394,14 +2162,9 @@ case $1 in
 					response=$(echo "PEER PING $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2436,14 +2199,9 @@ case $1 in
 					response=$(echo "PEER SEND $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -2480,14 +2238,9 @@ case $1 in
 		fi
 
 		if [[ $response == "" ]]; then
-			$(incrementTimeout)
-			if [ "$?" -le "$MAX_TIMEOUT" ]; then
-				response="TIMEOUT"
-			else
-				response="OUT OF SERVICE"
-			fi
+			response=$(emptyResponse)
 		else
-			$(resetTimeout)
+			resetTimeout
 		fi
 
 		echo "$response"
@@ -2523,17 +2276,12 @@ case $1 in
 			messageID=$2
 			from=$3
 
-			response=$(echo "ABUSE $messageID $from" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "ABUSE $messageID $from" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -2576,14 +2324,9 @@ case $1 in
 			response=$(echo "CLEAR $hostname" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -2617,17 +2360,12 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo "REFRESH $hostname" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "REFRESH $hostname" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -2660,14 +2398,9 @@ case $1 in
 				response=$(echo "ANALISE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
-					$(incrementTimeout)
-					if [ "$?" -le "$MAX_TIMEOUT" ]; then
-						response="TIMEOUT"
-					else
-						response="OUT OF SERVICE"
-					fi
+					response=$(emptyResponse)
 				else
-					$(resetTimeout)
+					resetTimeout
 				fi
 
 				echo "$response"
@@ -2684,14 +2417,9 @@ case $1 in
 				response=$(echo "ANALISE DUMP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
-					$(incrementTimeout)
-					if [ "$?" -le "$MAX_TIMEOUT" ]; then
-						response="TIMEOUT"
-					else
-						response="OUT OF SERVICE"
-					fi
+					response=$(emptyResponse)
 				else
-					$(resetTimeout)
+					resetTimeout
 				fi
 
 				echo "$response"
@@ -2709,14 +2437,9 @@ case $1 in
 				response=$(echo "ANALISE DROP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
-					$(incrementTimeout)
-					if [ "$?" -le "$MAX_TIMEOUT" ]; then
-						response="TIMEOUT"
-					else
-						response="OUT OF SERVICE"
-					fi
+					response=$(emptyResponse)
 				else
-					$(resetTimeout)
+					resetTimeout
 				fi
 
 				echo "$response"
@@ -2736,14 +2459,9 @@ case $1 in
 				response=$(echo "ANALISE $ip $list" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
-					$(incrementTimeout)
-					if [ "$?" -le "$MAX_TIMEOUT" ]; then
-						response="TIMEOUT"
-					else
-						response="OUT OF SERVICE"
-					fi
+					response=$(emptyResponse)
 				else
-					$(resetTimeout)
+					resetTimeout
 				fi
 
 				echo "$response"
@@ -2799,17 +2517,12 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | $COMMAND 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					qualifier="TIMEOUT"
-				else
-					qualifier="OUT OF SERVICE"
-				fi
+				qualifier=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$qualifier"
@@ -2907,7 +2620,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "SPAM $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					resposta=$(echo "SPAM $ticket" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A reclamação SPFBL não foi enviada por timeout."
@@ -2960,17 +2673,12 @@ case $1 in
 			ticket=$2
 			links=$3
 
-			response=$(echo "LINK $ticket $links" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "LINK $ticket $links" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3010,17 +2718,12 @@ case $1 in
 			ticket=$2
 			signer=$3
 
-			response=$(echo "SIGNER $ticket $signer" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "SIGNER $ticket $signer" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3099,7 +2802,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL como malware.
-					resposta=$(echo "MALWARE $ticket $3" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					resposta=$(echo "MALWARE $ticket $3" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A reclamação SPFBL não foi enviada por timeout."
@@ -3157,17 +2860,12 @@ case $1 in
 			replyto=$4
 			unsubscribe=$5
 
-			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3213,17 +2911,12 @@ case $1 in
 			unsubscribe=$8
 			queueID=$9
 
-			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | $COMMAND 2> /dev/null)
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3272,7 +2965,7 @@ case $1 in
 				if [ "$LENGTH" -gt "65535" ]; then
 					response="TOO BIG"
 				else
-					response=$(echo "MESSAGE $QUEUEID $ENCODED" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "MESSAGE $QUEUEID $ENCODED" | $COMMAND 2> /dev/null)
 				fi
 			else
 				response="NOT FOUND"
@@ -3280,14 +2973,9 @@ case $1 in
 
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3336,7 +3024,7 @@ case $1 in
 					response="TOO BIG"
 				else
 					ENCODED=$(base64 --wrap=0 $FILE.gz)
-					response=$(echo "BODY $TICKET $ENCODED $CHARSET" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "BODY $TICKET $ENCODED $CHARSET" | $COMMAND 2> /dev/null)
 				fi
 			else
 				response="NOT A FILE"
@@ -3344,14 +3032,9 @@ case $1 in
 
 
 			if [[ $response == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					response="TIMEOUT"
-				else
-					response="OUT OF SERVICE"
-				fi
+				response=$(emptyResponse)
 			else
-				$(resetTimeout)
+				resetTimeout
 			fi
 
 			echo "$response"
@@ -3402,7 +3085,7 @@ case $1 in
 	
 						if [ $? -eq 0 ]; then
 	
-							response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+							response=$(echo "HOLDING $ticket" | $COMMAND 2> /dev/null)
 
 							if [[ $response == "" ]]; then
 
@@ -3458,7 +3141,7 @@ case $1 in
 	
 			if [ $? -eq 0 ]; then
 	
-				response=$(echo "HOLDING $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+				response=$(echo "HOLDING $ticket" | $COMMAND 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 
@@ -3567,7 +3250,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "HAM $ticket" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					resposta=$(echo "HAM $ticket" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						echo "A revogação SPFBL não foi enviada por timeout."
@@ -3687,18 +3370,21 @@ case $1 in
 			recipient=$5
 			exists=$6
 
-			qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $NCAT -w 3 $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+			case "$ip" in
+				127.0.0.1|::1|0:0:0:0:0:0:0:1|::ffff:127.0.0.1)
+					# Origem localhost: responde LAN sem consultar o servidor.
+					qualifier="LAN"
+					;;
+				*)
+					qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $COMMAND 2> /dev/null)
 
-			if [[ $qualifier == "" ]]; then
-				$(incrementTimeout)
-				if [ "$?" -le "$MAX_TIMEOUT" ]; then
-					qualifier="TIMEOUT"
-				else
-					qualifier="OUT OF SERVICE"
-				fi
-			else
-				$(resetTimeout)
-			fi
+					if [[ $qualifier == "" ]]; then
+						qualifier=$(emptyResponse)
+					else
+						resetTimeout
+					fi
+					;;
+			esac
 
 			echo "$qualifier"
 
@@ -3801,17 +3487,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "TRAP ADD $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -3846,17 +3527,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "TRAP DROP $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -3886,17 +3562,12 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 trap show\n"
 				else
-					response=$(echo "TRAP SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "TRAP SHOW" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -3937,17 +3608,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "INEXISTENT ADD $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -3982,17 +3648,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "INEXISTENT DROP $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4022,17 +3683,12 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 inexistent show\n"
 				else
-					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "INEXISTENT SHOW" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4061,17 +3717,12 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 inexistent is <recipient>\n"
 				else
 					recipient=$3
-					response=$(echo "INEXISTENT IS $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "INEXISTENT IS $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4117,14 +3768,9 @@ case $1 in
 					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4162,14 +3808,9 @@ case $1 in
 					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4202,14 +3843,9 @@ case $1 in
 					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4253,14 +3889,9 @@ case $1 in
 					response=$(echo "NOREPLY ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4298,14 +3929,9 @@ case $1 in
 					response=$(echo "NOREPLY DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4338,14 +3964,9 @@ case $1 in
 					response=$(echo "NOREPLY SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
@@ -4378,17 +3999,12 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "NOREPLY IS $recipient" | $NCAT $IP_SERVIDOR $PORTA_SERVIDOR 2> /dev/null)
+					response=$(echo "NOREPLY IS $recipient" | $COMMAND 2> /dev/null)
 
 					if [[ $response == "" ]]; then
-						$(incrementTimeout)
-						if [ "$?" -le "$MAX_TIMEOUT" ]; then
-							response="TIMEOUT"
-						else
-							response="OUT OF SERVICE"
-						fi
+						response=$(emptyResponse)
 					else
-						$(resetTimeout)
+						resetTimeout
 					fi
 
 					echo "$response"
