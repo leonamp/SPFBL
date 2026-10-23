@@ -62,7 +62,7 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- ht
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.01"
+version="3.02"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
