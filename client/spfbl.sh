@@ -39,23 +39,30 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 SECURED="false"
 DUMP_PATH="/tmp"
-QUERY_TIMEOUT="10"
+QUERY_TIMEOUT="60"
 MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
+# Timeouts de cada consulta:
+#   -w 3                      tempo máximo para conectar.
+#   timeout QUERY_TIMEOUT     tempo máximo da consulta inteira. Sem ele, uma
+#                             conexão que cai no meio do caminho deixa o ncat
+#                             aberto para sempre. O -i do ncat não serve: no
+#                             ncat 6.x ele espera o tempo todo mesmo depois de
+#                             o servidor fechar a conexão.
 if [[ $SECURED == "true" ]]; then
-	NCAT="ncat -w 3 --ssl-verify"
+	NCAT="timeout -k 2 $QUERY_TIMEOUT ncat -w 3 --ssl-verify"
 else
-	NCAT="ncat -w 3"
+	NCAT="timeout -k 2 $QUERY_TIMEOUT ncat -w 3"
 fi
 
 # Canal das consultas ao servidor SPFBL (porta de consulta).
 # Para consultar via HTTPS, troque por:
-# COMMAND="curl -s -f -m 3 --data-binary @- https://matrix.spfbl.net/spfbl/"
-COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
+COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- https://matrix.spfbl.net/spfbl/"
+# COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.00"
+version="3.01"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -92,7 +99,9 @@ function resetTimeout() {
 function emptyResponse() {
 
 	# Resposta vazia. Uma conexão recusada (porta fechada ou REJECT do
-	# firewall) falha na hora; um timeout leva os 3 segundos do -w 3.
+	# firewall) ou um erro HTTP (curl -f) volta em menos de 2 segundos.
+	# Um timeout leva pelo menos os 3 segundos do -w 3 (conexão) ou os
+	# QUERY_TIMEOUT segundos do timeout (consulta inteira).
 	# $SECONDS conta os segundos desde o início do script.
 	if [ "$SECONDS" -lt 2 ]; then
 		echo "OUT OF SERVICE"
