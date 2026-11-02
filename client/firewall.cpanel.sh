@@ -3,45 +3,77 @@
 # Firewall for SPFBL client.
 # Author: Leandro Carlos Rodrigues <leandro@spfbl.net>
 # Contribuição de Luciano Zanita <lucianozanita@advenhost.com.br>
+#
+# Instala o atualizador /usr/local/bin/spfbl-firewall-update,
+# agenda ele de hora em hora, integra com o CSF e roda a primeira vez.
 
-# Gerando lista de Firewall
-rm -rf /usr/local/bin/spfbl-firewall
-echo "FIREWALL" | nc -w 60 matrix4.spfbl.net 9877 > /usr/local/bin/spfbl-firewall
-# Aplicando permissão
-chmod +x /usr/local/bin/spfbl-firewall
-# Verifica se já existe o atalho pra o cron de 1H
-if [ -e "/etc/cron.hourly/spfbl-firewall-update" ]; then
-    # Caso já exista o arquivo de cron, ignoramos
-    :
-else
-    # Caso não exista, vamos adicionar agora o atalho para o cron
-    ln -s /usr/local/bin/spfbl-firewall-update /etc/cron.hourly/spfbl-firewall-update
-    # Aplicando permissão 
-    chmod +x /etc/cron.hourly/spfbl-firewall-update
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
+
+FIREWALL="/usr/local/bin/spfbl-firewall"
+UPDATE="/usr/local/bin/spfbl-firewall-update"
+
+if ! command -v curl > /dev/null 2>&1; then
+    echo "curl não encontrado." >&2
+    exit 1
 fi
+
+# Atualizador: baixa o firewall, valida e só então substitui e executa.
+cat > "${UPDATE}.tmp" << 'EOF'
+#!/bin/bash
+#
+# Atualização do firewall do SPFBL (instalado pelo firewall.cpanel.sh).
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
+
+FIREWALL="/usr/local/bin/spfbl-firewall"
+URL="https://matrix.spfbl.net/spfbl/"
+
+TEMP=$(mktemp "${FIREWALL}.XXXXXX") || exit 1
+trap 'rm -f "$TEMP"' EXIT
+
+# -4: a liberação do cliente no SPFBL é pelo IPv4.
+# -f: erro HTTP (403 cliente não liberado, 503 etc.) não gera arquivo.
+if ! echo "FIREWALL" | curl -4 -s -f --connect-timeout 10 -m 300 \
+        --data-binary @- "$URL" > "$TEMP"; then
+    echo "Não foi possível obter o firewall do SPFBL." >&2
+    exit 2
+fi
+
+# Só aceita um script bash: qualquer outra resposta não pode ser executada.
+if [ "$(head -n 1 "$TEMP")" != "#!/bin/bash" ]; then
+    echo "Resposta inválida do SPFBL." >&2
+    exit 3
+fi
+
+chmod 755 "$TEMP"
+mv -f "$TEMP" "$FIREWALL"
+trap - EXIT
+
+"$FIREWALL" > /dev/null 2>&1
+EOF
+chmod 755 "${UPDATE}.tmp"
+mv -f "${UPDATE}.tmp" "$UPDATE"
+
+# Agenda de hora em hora. Recria o atalho se ele não existir
+# ou se estiver quebrado (apontando para arquivo inexistente).
+if [ ! -e "/etc/cron.hourly/spfbl-firewall-update" ]; then
+    ln -sf "$UPDATE" /etc/cron.hourly/spfbl-firewall-update
+fi
+
 # Verificando se o cliente possui CSF
 if [ -d "/etc/csf/" ]; then
-    # Verificando se o cliente ja possui o csfpost
     if [ -e "/etc/csf/csfpost.sh" ]; then
-        if grep -Fxq '/usr/local/bin/spfbl-firewall' "/etc/csf/csfpost.sh"; then
-            # Caso a linha ja existe, vamos ignorar
-            :
-	else
-            # Adicionando a linha ao arquivo csfpost.sh
-	    sed -i -e '$a\'"/usr/local/bin/spfbl-firewall" "/etc/csf/csfpost.sh"
+        # Adicionando a linha ao arquivo csfpost.sh, se ainda não existir
+        if ! grep -Fxq "$FIREWALL" "/etc/csf/csfpost.sh"; then
+            sed -i -e '$a\'"$FIREWALL" "/etc/csf/csfpost.sh"
         fi
     else
-        # Caso não existir, vamos cria-lo
-        # Adicionando cabeçario de shell
+        # Caso não exista, vamos criá-lo
         echo '#!/bin/bash' > "/etc/csf/csfpost.sh"
-        # Adicionando código executavel
-        echo '/usr/local/bin/spfbl-firewall' >> "/etc/csf/csfpost.sh"
+        echo "$FIREWALL" >> "/etc/csf/csfpost.sh"
     fi
-    # Vamos agora aplicar a permissão
     chmod +x /etc/csf/csfpost.sh
-else
-    # Caso o CSF não esteja instalado, apenas ignoramos
-    :
 fi
-# Executa o Firewall para atualização
-/usr/local/bin/spfbl-firewall > /dev/null 2>&1
+
+# Primeira atualização
+"$UPDATE"
