@@ -129,8 +129,8 @@ function install() {
             exit 1;
         fi
         sed -i 's/^clam_user="clam"/clam_user="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
-	sed -i 's/^clam_group="clam"/clam_group="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
-	sed -i 's/^clamd_restart_opt="\/sbin\/service clamd reload"/clamd_restart_opt="\/sbin\/service clamd@scan reload"/' /etc/clamav-unofficial-sigs/os.conf
+	    sed -i 's/^clam_group="clam"/clam_group="clamupdate"/' /etc/clamav-unofficial-sigs/os.conf
+	    sed -i 's/^clamd_restart_opt="\/sbin\/service clamd reload"/clamd_restart_opt="\/sbin\/service clamd@scan reload"/' /etc/clamav-unofficial-sigs/os.conf
         wget https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master/clamav-unofficial-sigs.sh -O /usr/local/bin/clamav-unofficial-sigs.sh
         chmod 755 /usr/local/bin/clamav-unofficial-sigs.sh
         /usr/local/bin/clamav-unofficial-sigs.sh --force
@@ -141,15 +141,18 @@ function install() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
-        echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
-	echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
-	echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
+		
+        [ -f /etc/exim.variables.conf.custom.bak-spfbl ] || cp -p /etc/exim.variables.conf.custom /etc/exim.variables.conf.custom.bak-spfbl 2>/dev/null
+        [ -f /etc/exim.strings.conf.custom.bak-spfbl ] || cp -p /etc/exim.strings.conf.custom /etc/exim.strings.conf.custom.bak-spfbl 2>/dev/null
+        set_exim_key /etc/exim.variables.conf.custom av_scanner "=" "clamd:/run/clamd.scan/clamd.sock" keep
+        set_exim_key /etc/exim.variables.conf.custom spamd_address "=" "matrix4.spfbl.net 9877"
+        set_exim_key /etc/exim.strings.conf.custom RBL_DNS_LIST "==" ""
         
         # Restart DirectAdmin service.
         restart_exim || exit 1
         
         # Creating holding routine.
-	echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
+	    echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
         chmod +x /etc/cron.hourly/spfbl-holding-check
         
         echo "SPFBL Checker was successfully installed!"
@@ -157,7 +160,7 @@ function install() {
         echo "Installing SPFBL Firewall solution..."
         
         # Install firewall solution
-	firewall
+	    firewall
     else
 	    matrixIP=$(dig +short A matrix4.spfbl.net | grep -E '^[0-9.]+$' | head -1)
         myIP=$(curl -s http://checkip.amazonaws.com/)
@@ -181,9 +184,12 @@ function update() {
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_recipient.pre.conf -O /etc/exim.acl_check_recipient.pre.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_dkim.conf -O /etc/exim.easy_spam_fighter/check_dkim.conf
         wget https://raw.githubusercontent.com/leonamp/SPFBL/master/client/directadmin.acl_check_message.pre.conf -O /etc/exim.acl_check_message.pre.conf
-        echo "av_scanner = clamd:/run/clamd.scan/clamd.sock" > /etc/exim.variables.conf.custom
-	    echo "spamd_address = matrix4.spfbl.net 9877" >> /etc/exim.variables.conf.custom
-	    echo "RBL_DNS_LIST==" > /etc/exim.strings.conf.custom
+        
+		[ -f /etc/exim.variables.conf.custom.bak-spfbl ] || cp -p /etc/exim.variables.conf.custom /etc/exim.variables.conf.custom.bak-spfbl 2>/dev/null
+        [ -f /etc/exim.strings.conf.custom.bak-spfbl ] || cp -p /etc/exim.strings.conf.custom /etc/exim.strings.conf.custom.bak-spfbl 2>/dev/null
+        set_exim_key /etc/exim.variables.conf.custom av_scanner "=" "clamd:/run/clamd.scan/clamd.sock" keep
+        set_exim_key /etc/exim.variables.conf.custom spamd_address "=" "matrix4.spfbl.net 9877"
+        set_exim_key /etc/exim.strings.conf.custom RBL_DNS_LIST "==" ""
         
         # Restart cPanel service.
         restart_exim || exit 1
@@ -194,12 +200,34 @@ function update() {
         
         # Reinstall firewall solution
         rm -f /etc/cron.hourly/spfbl-firewall-update
-	firewall
+	    firewall
 	
     else
         echo "The SPFBL Checker was not installed yet."
         exit 1;
     fi
+}
+
+function set_exim_key() {
+    local file="$1" key="$2" sep="$3" value="$4" keep="$5"
+    touch "$file"
+    if grep -qE "^[[:space:]]*${key}[[:space:]]*${sep}" "$file"; then
+        if [ "$keep" != "keep" ]; then
+            sed -i -E "s|^[[:space:]]*${key}[[:space:]]*${sep}.*|${key} ${sep} ${value}|" "$file"
+        fi
+    else
+        echo "${key} ${sep} ${value}" >> "$file"
+    fi
+}
+
+function unset_exim_key() {
+    local file="$1" key="$2" value="$3"
+    [ -f "$file" ] || return 0
+    awk -v k="$key" -v v="$value" '
+        { line = $0; sub(/^[[:space:]]+/, "", line) }
+        index(line, k) == 1 && substr(line, length(k) + 1) ~ /^[[:space:]]*=/ && (v == "" || index($0, v) > 0) { next }
+        { print }' "$file" > "$file.tmp"
+    cat "$file.tmp" > "$file" && rm -f "$file.tmp"
 }
 
 function restart_exim() {
@@ -228,6 +256,11 @@ function uninstall() {
     /usr/local/directadmin/custombuild/build set modsecurity_uploadscan no
     /usr/local/directadmin/custombuild/build set easy_spam_fighter yes
     /usr/local/directadmin/custombuild/build remove_clamav
+	
+	unset_exim_key /etc/exim.variables.conf.custom spamd_address
+    unset_exim_key /etc/exim.variables.conf.custom av_scanner "clamd:/run/clamd.scan/clamd.sock"
+    unset_exim_key /etc/exim.strings.conf.custom RBL_DNS_LIST
+	
     /usr/local/directadmin/custombuild/build exim_conf
     /usr/local/directadmin/custombuild/build proftpd
     /usr/local/directadmin/custombuild/build clean
@@ -244,11 +277,9 @@ function uninstall() {
     rm /etc/exim.acl_check_recipient.pre.conf
     rm -r /etc/exim.easy_spam_fighter/
     rm /etc/exim.acl_check_message.pre.conf
-    rm /etc/exim.strings.conf.custom
-    rm /etc/exim.variables.conf.custom
-    
+	    
     # Restart DirectAdmin service.
-    service exim restart
+    restart_exim
 
     # Remove holding rountine
     rm -f /etc/cron.hourly/spfbl-holding-check
