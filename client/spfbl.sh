@@ -57,12 +57,14 @@ else
 fi
 
 # Canal das consultas ao servidor SPFBL (porta de consulta).
-# Para consultar via HTTPS, troque por:
-COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- https://matrix.spfbl.net/spfbl/"
+URL_SERVIDOR="https://matrix.spfbl.net"
+COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $URL_SERVIDOR/spfbl/"
+# Para consultar via ncat, comente a linha do COMMAND acima e descomente a abaixo.
+# O comando scan continua usando HTTPS pelo URL_SERVIDOR.
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.02"
+version="3.03"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -2946,6 +2948,88 @@ case $1 in
 				exit 7
 			elif [[ $response == "BLOCKED"* ]]; then
 				exit 1
+			else
+				exit 3
+			fi
+		fi
+	;;
+	'scan')
+		# Envia a mensagem completa, ainda na ACL de DATA do Exim,
+		# para inspeção no SPFBL via HTTPS.
+		#
+		# Parâmetros de entrada:
+		#
+		#    1. queueid: o Queue-ID do Exim ($message_exim_id).
+		#    2. spool: [opcional] o $spool_directory do Exim.
+		#    3. tickets: [opcional] o conjunto de tickets da consulta,
+		#       separados por ponto e vírgula ($acl_c_spfblticketset).
+		#
+		# Códigos de saída (mesmos do comando header):
+		#
+		#    0: nenhum bloqueio encontrado.
+		#    1: pelo meno um endereço está bloqueado e o ticket foi denunciado.
+		#    2: timeout de conexão.
+		#    3: consulta inválida.
+		#    4: out of service.
+		#    5: mensagem rejeitada pelo conteudo.
+		#    6: marcar como SPAM.
+		#    7: congelar a entrega da mensagem.
+		#   17: remetente colocado em lista branca.
+		#  255: erro no processamento do servidor.
+
+		if [ $# -lt "2" ]; then
+			head
+			printf "Faltando parametro(s).\nSintaxe: $0 scan <queueid> [spool_directory] [ticketset]\n"
+		else
+			QUEUEID=$2
+			SPOOL=${3:-/var/spool/exim}
+			FILE="$SPOOL/scan/$QUEUEID/$QUEUEID.eml"
+
+			# Reduz cada ticket ao último segmento (descarta o prefixo de URL)
+			# e mantém só caracteres de ticket, para o cabeçalho HTTP ficar
+			# curto e não aceitar quebra de linha nem outro caractere estranho.
+			TICKETS=$(printf '%s' "$4" | tr ';' '\n' | sed 's#.*/##' | tr -cd 'A-Za-z0-9_=\n-' | grep -v '^$' | paste -sd ';' -)
+
+			CURL_ARGS=(-4 -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
+			if [ -n "$TICKETS" ]; then
+				CURL_ARGS+=(-H "X-SPFBL-Tickets: $TICKETS")
+			fi
+
+			if [[ ! $QUEUEID =~ ^[0-9a-zA-Z]{6}-([0-9a-zA-Z]{11}-[0-9a-zA-Z]{4}|[0-9a-zA-Z]{6}-[0-9a-zA-Z]{2})$ ]]; then
+				response="INVALID QUEUE-ID"
+			elif [ ! -f "$FILE" ]; then
+				response="NOT FOUND"
+			else
+				# EML puro: descarta a linha separadora "From " do MBOX, se houver.
+				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 2> /dev/null)
+
+				if [[ $response == "" ]]; then
+					response=$(emptyResponse)
+				else
+					resetTimeout
+				fi
+			fi
+
+			echo "$response"
+
+			if [[ $response == "OUT OF SERVICE" ]]; then
+				exit 4
+			elif [[ $response == "TIMEOUT" ]]; then
+				exit 2
+			elif [[ $response == "CLEAR" ]]; then
+				exit 0
+			elif [[ $response == "WHITE" ]]; then
+				exit 17
+			elif [[ $response == "REJECT" ]]; then
+				exit 5
+			elif [[ $response == "FLAG" ]]; then
+				exit 6
+			elif [[ $response == "HOLD" ]]; then
+				exit 7
+			elif [[ $response == "BLOCKED"* ]]; then
+				exit 1
+			elif [[ $response == "ERROR" ]]; then
+				exit 255
 			else
 				exit 3
 			fi
