@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# SPFBL Iron Dome: the SPFBL Checker installer for cPanel and DirectAdmin.
+# SPFBL Irondome installer for cPanel and DirectAdmin.
 # The control panel is detected automatically.
 #
 # Usage as root:
@@ -603,7 +603,7 @@ function install() {
         da_configure_exim
     fi
     install_holding
-    echo "SPFBL Checker was successfully installed!"
+    echo "SPFBL Irondome was successfully installed!"
     echo ""
     echo "Installing SPFBL Firewall solution..."
     firewall
@@ -611,7 +611,7 @@ function install() {
 
 function update() {
     if ! is_installed; then
-        echo "The SPFBL Checker was not installed yet."
+        echo "The SPFBL Irondome was not installed yet."
         exit 1
     fi
     detect_distro
@@ -644,17 +644,17 @@ fi
 
 case "$1" in
     install)
-        echo "[install] Installing SPFBL Checker powered by SPFBL.net"
+        echo "[install] Installing SPFBL Irondome powered by SPFBL.net"
         detect_panel
         install
     ;;
     update)
-        echo "[update] Updating SPFBL Checker powered by SPFBL.net"
+        echo "[update] Updating SPFBL Irondome powered by SPFBL.net"
         detect_panel
         update
     ;;
     uninstall)
-        echo "[uninstall] Uninstalling SPFBL Checker powered by SPFBL.net"
+        echo "[uninstall] Uninstalling SPFBL Irondome powered by SPFBL.net"
         detect_panel
         uninstall
     ;;
