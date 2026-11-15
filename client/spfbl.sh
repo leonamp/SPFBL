@@ -39,7 +39,10 @@ PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 SECURED="false"
 DUMP_PATH="/tmp"
-QUERY_TIMEOUT="60"
+# Tempo máximo de qualquer consulta, em segundos. Igual ao limite do
+# proxy da Cloudflare (100 segundos até a origem começar a responder):
+# esperar mais que isso não adianta, porque o proxy já terá desistido.
+QUERY_TIMEOUT="100"
 MAX_TIMEOUT="256"
 LOGPATH=/var/log/spfbl/
 
@@ -59,7 +62,7 @@ fi
 # Canal das consultas ao servidor SPFBL (porta de consulta).
 URL_SERVIDOR="https://matrix.spfbl.net"
 COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $URL_SERVIDOR/spfbl/"
-# Para consultar via ncat, comente a linha do COMMAND acima e descomente a abaixo.
+# Para consultar via ncat, comente a linha acima e descomente a abaixo.
 # O comando scan continua usando HTTPS pelo URL_SERVIDOR.
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
