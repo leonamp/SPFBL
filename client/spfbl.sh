@@ -44,6 +44,10 @@ DUMP_PATH="/tmp"
 # esperar mais que isso não adianta, porque o proxy já terá desistido.
 QUERY_TIMEOUT="100"
 MAX_TIMEOUT="256"
+# Análise profunda por inteligência artificial no comando scan, para os
+# casos que o algoritmo do SPFBL não decide sozinho. Gera custo por
+# mensagem analisada. Valores: "true" (padrão) ou "false".
+DEEP_ANALYSIS="true"
 LOGPATH=/var/log/spfbl/
 
 # Timeouts de cada consulta:
@@ -67,7 +71,7 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $U
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.03"
+version="3.04"
 
 if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
     touch /tmp/SPFBL_TIMEOUT_COUNT
@@ -2996,6 +3000,9 @@ case $1 in
 			CURL_ARGS=(-4 -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
 			if [ -n "$TICKETS" ]; then
 				CURL_ARGS+=(-H "X-SPFBL-Tickets: $TICKETS")
+			fi
+			if [ "$DEEP_ANALYSIS" == "true" ]; then
+				CURL_ARGS+=(-H "X-SPFBL-Deep-Analysis: true")
 			fi
 
 			if [[ ! $QUEUEID =~ ^[0-9a-zA-Z]{6}-([0-9a-zA-Z]{11}-[0-9a-zA-Z]{4}|[0-9a-zA-Z]{6}-[0-9a-zA-Z]{2})$ ]]; then
