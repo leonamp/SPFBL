@@ -173,9 +173,48 @@ function download() {
     fi
 }
 
+function migrate_client_config() {
+    # Copies the settings of the installed client into the new one:
+    # every simple assignment of the configuration section (before
+    # "export PATH") that also exists in the old file, plus the query
+    # channel (HTTPS or ncat). Settings that only exist in the new
+    # version keep their default value.
+    local old="$1" new="$2"
+    [ -f "$old" ] || return 0
+    local name old_value new_value
+    while IFS= read -r name; do
+        old_value=$(awk -v n="$name" 'index($0, n "=") == 1 {print substr($0, length(n) + 2); exit}' "$old")
+        new_value=$(awk -v n="$name" 'index($0, n "=") == 1 {print substr($0, length(n) + 2); exit}' "$new")
+        if grep -q "^${name}=" "$old" && [ "$old_value" != "$new_value" ]; then
+            V="$old_value" awk -v n="$name" '
+                index($0, n "=") == 1 && !done { print n "=" ENVIRON["V"]; done = 1; next }
+                { print }' "$new" > "$new.tmp" && cat "$new.tmp" > "$new" && rm -f "$new.tmp"
+            echo "Preserved setting: ${name}=${old_value}"
+        fi
+    done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT)$')
+    # ncat only stays when it was a deliberate choice: the installed client
+    # already offered curl (commented line) and the admin chose ncat.
+    # Older clients, without the curl option, move to curl.
+    if grep -qE '^COMMAND="\$NCAT' "$old" && grep -qE '^#[[:space:]]*COMMAND="curl' "$old"; then
+        sed -i -E 's/^COMMAND="curl/# COMMAND="curl/; s/^# COMMAND="\$NCAT/COMMAND="$NCAT/' "$new"
+        echo "Preserved setting: queries through ncat"
+    elif grep -qE '^COMMAND="\$NCAT' "$old"; then
+        echo "Changed setting: queries through HTTPS (curl) instead of ncat"
+    fi
+}
+
 function install_client() {
-    download "$GITHUB_SPFBL/spfbl.sh" "$SPFBL_CLIENT"
-    chmod +x "$SPFBL_CLIENT"
+    # Downloads the new client, applies the settings of the installed one
+    # and only then replaces it.
+    local new="$SPFBL_CLIENT.new"
+    download "$GITHUB_SPFBL/spfbl.sh" "$new"
+    migrate_client_config "$SPFBL_CLIENT" "$new"
+    if ! bash -n "$new"; then
+        rm -f "$new"
+        fail "The new SPFBL client is invalid after applying the current settings."
+    fi
+    chmod +x "$new"
+    mv -f "$new" "$SPFBL_CLIENT"
 }
 
 function client_value() {
