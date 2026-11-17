@@ -1,7 +1,8 @@
 #!/bin/bash
 #
-# SPFBL Irondome installer for cPanel and DirectAdmin.
-# The control panel is detected automatically.
+# SPFBL Irondome installer for cPanel, DirectAdmin and pure Exim.
+# The control panel is detected automatically. Pure Exim is supported
+# on Debian and Ubuntu, with Exim 4.96 or newer.
 #
 # Usage as root:
 #    ./spfbl.irondome.sh [install|update|uninstall|firewall]
@@ -48,10 +49,26 @@ function fail() {
     exit 1
 }
 
+function detect_other_panel() {
+    # Panels with their own Exim configuration, not supported yet.
+    if [ -d /usr/local/hestia ]; then
+        echo "HestiaCP"
+    elif [ -d /usr/local/vesta ]; then
+        echo "VestaCP/myVesta"
+    elif [ -d /usr/local/mgr5 ]; then
+        echo "ISPmanager"
+    elif [ -d /usr/local/webuzo ]; then
+        echo "Webuzo"
+    elif [ -d /usr/local/fastpanel2 ] || [ -d /usr/local/fastpanel ]; then
+        echo "FASTPANEL"
+    fi
+}
+
 function detect_panel() {
-    local cpanel=false directadmin=false
+    local cpanel=false directadmin=false other
     [ -x /usr/local/cpanel/cpanel ] && cpanel=true
     [ -x /usr/local/directadmin/directadmin ] || [ -x /usr/local/directadmin/custombuild/build ] && directadmin=true
+    other=$(detect_other_panel)
     if $cpanel && $directadmin; then
         fail "Both cPanel and DirectAdmin were found in this host. Installation aborted."
     elif $cpanel; then
@@ -60,8 +77,16 @@ function detect_panel() {
     elif $directadmin; then
         PANEL="directadmin"
         PANEL_NAME="DirectAdmin"
+    elif [ -n "$other" ]; then
+        echo "Control panel detected: $other"
+        echo "This control panel is not supported yet."
+        echo "$CONTACT_URL"
+        exit 1
+    elif command -v exim4 >/dev/null 2>&1 || command -v exim >/dev/null 2>&1; then
+        PANEL="exim"
+        PANEL_NAME="Exim"
     else
-        echo "Neither cPanel nor DirectAdmin is installed in this host."
+        echo "Neither cPanel, DirectAdmin nor Exim is installed in this host."
         echo "$CONTACT_URL"
         exit 1
     fi
@@ -614,12 +639,236 @@ function da_uninstall() {
 }
 
 ###########################################################################
+# Pure Exim functions (Debian and Ubuntu)
+###########################################################################
+
+EXIM_SPFBL_DIR="/etc/exim4/spfbl"
+EXIM_MACROS="/etc/exim4/exim4.conf.localmacros"
+EXIM_MACROS_BACKUP="/etc/exim4/exim4.conf.localmacros.bak-spfbl"
+EXIM_STATE="/var/lib/spfbl/irondome.state"
+EXIM_BIN=""
+
+function state_get() {
+    # Reads a value recorded by the first installation.
+    [ -f "$EXIM_STATE" ] && sed -n "s/^$1=//p" "$EXIM_STATE" | tail -1
+}
+
+function state_set_once() {
+    # Records the original state only once: reinstalls and updates
+    # must not overwrite what the host had before SPFBL.
+    mkdir -p "$(dirname "$EXIM_STATE")"
+    touch "$EXIM_STATE"
+    grep -q "^$1=" "$EXIM_STATE" || echo "$1=$2" >> "$EXIM_STATE"
+}
+
+function exim_value() {
+    # Effective value of a main option in the current configuration.
+    "$EXIM_BIN" -bP -n "$1" 2>/dev/null
+}
+
+function exim_macro() {
+    # Effective value of a macro in the current configuration.
+    "$EXIM_BIN" -bP macro "$1" 2>/dev/null | sed -n "s/^$1[[:space:]]*=[[:space:]]*//p"
+}
+
+function exim_check() {
+    # Everything that can stop the installation is checked here,
+    # before any change in the host.
+    if [ "$DISTRO_FAMILY" != "debian" ] && [ "$DISTRO_FAMILY" != "ubuntu" ]; then
+        fail "Pure Exim is only supported on Debian and Ubuntu for now."
+    fi
+    EXIM_BIN=$(command -v exim4 || command -v exim)
+    [ -n "$EXIM_BIN" ] || fail "The Exim binary was not found."
+    command -v update-exim4.conf >/dev/null || fail "The Debian Exim configuration (exim4-config) was not found."
+    if [ -f /etc/exim4/exim4.conf ]; then
+        # Hand-written configuration: update-exim4.conf and its macros are ignored.
+        fail "The file /etc/exim4/exim4.conf replaces the Debian configuration and is not supported."
+    fi
+    # Exim 4.96 splits the ${run} arguments before the expansion, so the
+    # single quotes of the ACLs are safe for any sender or recipient.
+    local version major minor
+    version=$("$EXIM_BIN" -bV 2>/dev/null | sed -n 's/^Exim version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)
+    major=${version%%.*}
+    minor=${version#*.}
+    if [ -z "$version" ] || [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -lt 96 ]; }; then
+        fail "Exim ${version:-unknown} found. SPFBL Irondome requires Exim 4.96 or newer."
+    fi
+    echo "Exim version detected: $version"
+    # Options and macros already defined by the admin are not overwritten.
+    local name value
+    for name in CHECK_RCPT_LOCAL_ACL_FILE CHECK_DATA_LOCAL_ACL_FILE; do
+        value=$(exim_macro "$name")
+        if [ -n "$value" ] && [[ $value != $EXIM_SPFBL_DIR/* ]]; then
+            fail "The macro $name is already defined ($value). Installation aborted."
+        fi
+    done
+    value=$(exim_value acl_smtp_dkim)
+    if [ -n "$value" ] && [[ $value != $EXIM_SPFBL_DIR/* ]]; then
+        fail "The option acl_smtp_dkim is already defined ($value). Installation aborted."
+    fi
+    value=$(exim_value av_scanner)
+    if [ -n "$value" ] && ! grep -q "^# BEGIN SPFBL" "$EXIM_MACROS" 2>/dev/null; then
+        fail "The option av_scanner is already defined ($value). Installation aborted."
+    fi
+}
+
+function exim_install_clamav() {
+    # Content scanning (malware condition) only exists in the heavy daemon.
+    local daemon
+    for daemon in exim4-daemon-heavy exim4-daemon-light; do
+        if dpkg -s "$daemon" 2>/dev/null | grep -q '^Status: install ok installed'; then
+            state_set_once EXIM_DAEMON "$daemon"
+            break
+        fi
+    done
+    if [ "$(state_get EXIM_DAEMON)" != "exim4-daemon-heavy" ]; then
+        pkg_install exim4-daemon-heavy
+    fi
+    "$EXIM_BIN" -bV | grep -q 'Content_Scanning' || fail "This Exim build has no content scanning support."
+    # ClamAV from the distro packages.
+    if dpkg -s clamav-daemon 2>/dev/null | grep -q '^Status: install ok installed'; then
+        state_set_once CLAMAV_PACKAGES "present"
+    else
+        state_set_once CLAMAV_PACKAGES "installed"
+        pkg_install clamav clamav-daemon clamav-freshclam
+    fi
+    # clamd reads the files that Exim unpacks in its spool.
+    if id -nG clamav 2>/dev/null | grep -qw Debian-exim; then
+        state_set_once CLAMAV_GROUP "present"
+    else
+        state_set_once CLAMAV_GROUP "added"
+        usermod -aG Debian-exim clamav
+    fi
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+        # clamd only starts after the first database download.
+        if ! ls /var/lib/clamav/*.c[lv]d >/dev/null 2>&1; then
+            systemctl stop clamav-freshclam.service 2>/dev/null
+            freshclam
+        fi
+        systemctl enable --now clamav-freshclam.service 2>/dev/null
+        systemctl enable clamav-daemon.service 2>/dev/null
+        systemctl restart clamav-daemon.service
+    fi
+}
+
+function exim_remove_block() {
+    # Removes the lines between the SPFBL markers.
+    local file="$1"
+    [ -f "$file" ] || return 0
+    awk '/^# BEGIN SPFBL$/{skip=1} !skip{print} /^# END SPFBL$/{skip=0}' "$file" > "$file.tmp"
+    cat "$file.tmp" > "$file" && rm -f "$file.tmp"
+}
+
+function exim_write_block() {
+    local socket="$1"
+    exim_remove_block "$EXIM_MACROS"
+    {
+        echo "# BEGIN SPFBL"
+        echo "CHECK_RCPT_LOCAL_ACL_FILE = $EXIM_SPFBL_DIR/acl_check_rcpt.conf"
+        echo "CHECK_DATA_LOCAL_ACL_FILE = $EXIM_SPFBL_DIR/acl_check_data.conf"
+        echo "acl_smtp_dkim = $EXIM_SPFBL_DIR/acl_check_dkim.conf"
+        echo "av_scanner = clamd:$socket"
+        # Frozen messages wait for "spfbl holding"; without this limit they never expire.
+        if [ "$(state_get FROZEN_OPTION)" = "added" ]; then
+            echo "timeout_frozen_after = 7d"
+        fi
+        echo "# END SPFBL"
+    } >> "$EXIM_MACROS"
+}
+
+function exim_restart() {
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+        systemctl restart exim4.service
+    else
+        invoke-rc.d exim4 restart
+    fi
+}
+
+function exim_rebuild() {
+    # Generates the final configuration and checks it before the restart.
+    update-exim4.conf && "$EXIM_BIN" -bV >/dev/null
+}
+
+function exim_configure() {
+    download "$GITHUB_SPFBL/exim.acl_check_rcpt.conf" "$EXIM_SPFBL_DIR/acl_check_rcpt.conf"
+    download "$GITHUB_SPFBL/exim.acl_check_data.conf" "$EXIM_SPFBL_DIR/acl_check_data.conf"
+    download "$GITHUB_SPFBL/exim.acl_check_dkim.conf" "$EXIM_SPFBL_DIR/acl_check_dkim.conf"
+    # Backup of the only Exim file touched by SPFBL, on the first installation.
+    if [ ! -f "$EXIM_MACROS_BACKUP" ]; then
+        if [ -f "$EXIM_MACROS" ]; then
+            cp -p "$EXIM_MACROS" "$EXIM_MACROS_BACKUP"
+            state_set_once MACROS_FILE "present"
+        else
+            : > "$EXIM_MACROS_BACKUP"
+            state_set_once MACROS_FILE "absent"
+        fi
+    fi
+    # Only when the host has no limit for frozen messages.
+    if [ -z "$(state_get FROZEN_OPTION)" ]; then
+        local frozen
+        frozen=$(exim_value timeout_frozen_after)
+        if [ -z "$frozen" ] || [ "$frozen" = "0s" ]; then
+            state_set_once FROZEN_OPTION "added"
+        else
+            state_set_once FROZEN_OPTION "present"
+        fi
+    fi
+    find_clamd
+    exim_write_block "${CLAMD_SOCKET:-/run/clamav/clamd.ctl}"
+    if ! exim_rebuild; then
+        # Leaves Exim as it was before this installation.
+        exim_remove_block "$EXIM_MACROS"
+        rm -rf "$EXIM_SPFBL_DIR"
+        exim_rebuild
+        fail "The new Exim configuration is invalid. The previous configuration was kept."
+    fi
+    exim_restart || fail "Exim could not be restarted."
+}
+
+function exim_uninstall() {
+    EXIM_BIN=$(command -v exim4 || command -v exim)
+    [ -x "$SIGS_SCRIPT" ] && "$SIGS_SCRIPT" --remove-script
+    # Configuration: only the SPFBL block and files.
+    exim_remove_block "$EXIM_MACROS"
+    if [ "$(state_get MACROS_FILE)" = "absent" ] && [ -f "$EXIM_MACROS" ] && ! grep -q '[^[:space:]]' "$EXIM_MACROS"; then
+        rm -f "$EXIM_MACROS"
+    fi
+    if [ -f "$EXIM_MACROS_BACKUP" ]; then
+        if { [ -f "$EXIM_MACROS" ] && cmp -s "$EXIM_MACROS" "$EXIM_MACROS_BACKUP"; } ||
+           { [ ! -f "$EXIM_MACROS" ] && [ ! -s "$EXIM_MACROS_BACKUP" ]; }; then
+            rm -f "$EXIM_MACROS_BACKUP"
+        else
+            echo "WARNING: $EXIM_MACROS was changed after the SPFBL installation."
+            echo "The original file was kept in $EXIM_MACROS_BACKUP."
+        fi
+    fi
+    rm -rf "$EXIM_SPFBL_DIR"
+    # Packages and groups, only when SPFBL changed them.
+    if [ "$(state_get EXIM_DAEMON)" = "exim4-daemon-light" ]; then
+        pkg_install exim4-daemon-light
+    fi
+    if [ "$(state_get CLAMAV_GROUP)" = "added" ]; then
+        gpasswd -d clamav Debian-exim 2>/dev/null
+    fi
+    if [ "$(state_get CLAMAV_PACKAGES)" = "installed" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
+    fi
+    rm -f "$EXIM_STATE"
+    if [ -n "$EXIM_BIN" ]; then
+        exim_rebuild || echo "WARNING: check the Exim configuration with update-exim4.conf." >&2
+        exim_restart
+    fi
+}
+
+###########################################################################
 # Commands
 ###########################################################################
 
 function is_installed() {
     if [ "$PANEL" = "cpanel" ]; then
         [ -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient ]
+    elif [ "$PANEL" = "exim" ]; then
+        [ -f "$EXIM_SPFBL_DIR/acl_check_rcpt.conf" ]
     else
         [ -f /etc/exim.acl_check_recipient.pre.conf ]
     fi
@@ -627,6 +876,7 @@ function is_installed() {
 
 function install() {
     detect_distro
+    [ "$PANEL" = "exim" ] && exim_check
     install_dependencies
     install_client
     if ! "$SPFBL_CLIENT" version; then
@@ -636,6 +886,10 @@ function install() {
         cpanel_install_clamav
         install_sigs
         cpanel_configure_exim
+    elif [ "$PANEL" = "exim" ]; then
+        exim_install_clamav
+        install_sigs
+        exim_configure
     else
         da_install_clamav
         install_sigs
@@ -654,12 +908,15 @@ function update() {
         exit 1
     fi
     detect_distro
+    [ "$PANEL" = "exim" ] && exim_check
     install_dependencies
     install_client
     # Signatures: script, master.conf and the SPFBL databases (spfbl.ldb included).
     install_sigs
     if [ "$PANEL" = "cpanel" ]; then
         cpanel_configure_exim
+    elif [ "$PANEL" = "exim" ]; then
+        exim_configure
     else
         da_configure_exim
     fi
@@ -670,6 +927,8 @@ function update() {
 function uninstall() {
     if [ "$PANEL" = "cpanel" ]; then
         cpanel_uninstall
+    elif [ "$PANEL" = "exim" ]; then
+        exim_uninstall
     else
         da_uninstall
     fi
