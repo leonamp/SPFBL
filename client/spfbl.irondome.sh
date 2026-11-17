@@ -1,8 +1,10 @@
 #!/bin/bash
 #
-# SPFBL Irondome installer for cPanel, DirectAdmin and pure Exim.
-# The control panel is detected automatically. Pure Exim is supported
-# on Debian and Ubuntu, with Exim 4.96 or newer.
+# SPFBL Irondome installer for cPanel, DirectAdmin, pure Exim and
+# Postfix panels. The control panel is detected automatically.
+# Pure Exim is supported on Debian and Ubuntu, with Exim 4.96 or newer.
+# On CyberPanel and aaPanel, a compiled Exim works as a gateway on
+# port 25, in front of their Postfix.
 #
 # Usage as root:
 #    ./spfbl.irondome.sh [install|update|uninstall|firewall]
@@ -65,10 +67,11 @@ function detect_other_panel() {
 }
 
 function detect_panel() {
-    local cpanel=false directadmin=false other
+    local cpanel=false directadmin=false other postfix_panel
     [ -x /usr/local/cpanel/cpanel ] && cpanel=true
     [ -x /usr/local/directadmin/directadmin ] || [ -x /usr/local/directadmin/custombuild/build ] && directadmin=true
     other=$(detect_other_panel)
+    postfix_panel=$(detect_postfix_panel)
     if $cpanel && $directadmin; then
         fail "Both cPanel and DirectAdmin were found in this host. Installation aborted."
     elif $cpanel; then
@@ -82,6 +85,9 @@ function detect_panel() {
         echo "This control panel is not supported yet."
         echo "$CONTACT_URL"
         exit 1
+    elif [ -n "$postfix_panel" ]; then
+        PANEL="gateway"
+        PANEL_NAME="$postfix_panel"
     elif command -v exim4 >/dev/null 2>&1 || command -v exim >/dev/null 2>&1; then
         PANEL="exim"
         PANEL_NAME="Exim"
@@ -861,6 +867,501 @@ function exim_uninstall() {
 }
 
 ###########################################################################
+# Gateway functions: Exim on port 25 in front of the Postfix of a panel
+###########################################################################
+
+# Exim source compiled by this script. Check the latest release on
+# https://www.exim.org and update both values together.
+GW_EXIM_VERSION="4.99.1"
+GW_EXIM_SHA256=""
+GW_EXIM_URL="https://ftp.exim.org/pub/exim/exim4/exim-$GW_EXIM_VERSION.tar.xz"
+
+GW_DIR="/opt/spfbl/exim"
+GW_EXIM="$GW_DIR/bin/exim"
+GW_USER="spfbl-exim"
+GW_LOG_DIR="/var/log/spfbl-exim"
+GW_UNIT="/etc/systemd/system/spfbl-exim.service"
+GW_TLS_CRON="/etc/cron.hourly/spfbl-exim-tls"
+GW_INBOUND_PORT="2525"
+GW_LOCAL_PORT="2526"
+POSTFIX_MASTER=""
+
+function detect_postfix_panel() {
+    # Panels with Postfix: the Irondome runs as a gateway in front of it.
+    if [ -d /usr/local/CyberCP ]; then
+        echo "CyberPanel"
+    elif [ -d /www/server/panel ]; then
+        echo "aaPanel"
+    fi
+}
+
+function port_owner() {
+    # Names of the processes listening on a TCP port.
+    ss -ltnpH "( sport = :$1 )" 2>/dev/null | grep -o 'users:(("[^"]*"' | cut -d'"' -f2 | sort -u | tr '\n' ' '
+}
+
+function port_listening() {
+    # Waits up to 10 seconds for an SMTP banner on 127.0.0.1.
+    local port="$1" try banner
+    for try in $(seq 1 10); do
+        banner=$(timeout 5 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port && head -1 <&3" 2>/dev/null)
+        [[ $banner == 220* ]] && return 0
+        sleep 1
+    done
+    return 1
+}
+
+function gw_installed() {
+    [ -x "$GW_EXIM" ] && [ -f "$GW_DIR/etc/exim.conf" ]
+}
+
+function gw_check() {
+    # Everything that can stop the installation is checked here,
+    # before any change in the host.
+    case "$DISTRO_FAMILY" in
+        debian|ubuntu|rhel) ;;
+        *) fail "The SPFBL gateway is only supported on Debian, Ubuntu and the RHEL family." ;;
+    esac
+    command -v postconf >/dev/null || fail "$PANEL_NAME was found, but its Postfix mail server is not installed."
+    command -v ss >/dev/null || pkg_install iproute2 2>/dev/null || pkg_install iproute
+    POSTFIX_MASTER="$(postconf -h config_directory)/master.cf"
+    [ -f "$POSTFIX_MASTER" ] || fail "The Postfix file $POSTFIX_MASTER was not found."
+    [ -n "$GW_EXIM_SHA256" ] || fail "The checksum of the Exim source is not defined in this script."
+    if ! gw_installed; then
+        [[ $(port_owner 25) == *master* ]] || fail "Postfix is not listening on port 25. Installation aborted."
+        local port
+        for port in "$GW_INBOUND_PORT" "$GW_LOCAL_PORT"; do
+            [ -z "$(port_owner "$port")" ] || fail "The port $port is already in use. Installation aborted."
+        done
+        [ -n "$(gw_master_public)" ] || fail "The port 25 service was not found in $POSTFIX_MASTER."
+    fi
+}
+
+function gw_master_awk() {
+    # Shared parser of master.cf: an entry starts on a line without
+    # leading space; the following indented lines belong to it.
+    # Mode "public": prints the port 25 entries outside the SPFBL block.
+    # Mode "block": prints the SPFBL services.
+    # Mode "close": comments out those port 25 entries.
+    [ -f "$POSTFIX_MASTER" ] || return 1
+    awk -v mode="$1" -v inport="$GW_INBOUND_PORT" -v localport="$GW_LOCAL_PORT" '
+        function public_smtp(name, type,   i, host, port) {
+            if (type != "inet") return 0
+            i = match(name, /:[^:]*$/)
+            if (i) { host = substr(name, 1, i - 1); port = substr(name, i + 1) }
+            else { host = ""; port = name }
+            # Loopback included: Exim listens on every address of port 25.
+            return (port == "smtp" || port == "25")
+        }
+        /^# BEGIN SPFBL$/ { inblock = 1 }
+        /^[^#[:space:]]/ {
+            n++; name[n] = $1; type[n] = $2; chroot[n] = $5; command[n] = $8; extra[n] = ""
+            pub[n] = !inblock && public_smtp($1, $2)
+            closing = (mode == "close" && pub[n])
+            if (closing) { print "#SPFBL# " $0; next }
+            if (mode == "public" && pub[n]) print
+        }
+        /^[[:space:]]+[^[:space:]#]/ && n {
+            extra[n] = extra[n] $0 "\n"
+            if (closing) { print "#SPFBL# " $0; next }
+        }
+        /^# END SPFBL$/ { inblock = 0 }
+        mode == "close" { print }
+        END {
+            if (mode != "block") exit
+            # Original settings: the smtpd of port 25, or the smtpd behind postscreen.
+            src = 0
+            for (i = 1; i <= n; i++) if (pub[i] && command[i] == "smtpd") { src = i; break }
+            if (!src) for (i = 1; i <= n; i++) if (name[i] == "smtpd" && type[i] == "pass") { src = i; break }
+            ch = src ? chroot[src] : "n"
+            print "# BEGIN SPFBL"
+            print "# Inbound mail checked by the SPFBL Irondome gateway (Exim on port 25)."
+            print "# Spam, SPF and DNSBL checks were already done by the gateway."
+            print "127.0.0.1:" inport "      inet  n       -       " ch "       -       -       smtpd"
+            print "  -o syslog_name=postfix/spfbl-inbound"
+            print "  -o smtpd_client_restrictions="
+            print "  -o smtpd_helo_restrictions="
+            print "  -o smtpd_sender_restrictions="
+            print "  -o smtpd_relay_restrictions=reject_unauth_destination"
+            print "  -o smtpd_recipient_restrictions=reject_unauth_destination"
+            print "  -o smtpd_data_restrictions="
+            print "  -o smtpd_end_of_data_restrictions="
+            print "  -o smtpd_reject_unlisted_recipient=yes"
+            print "  -o smtpd_sasl_auth_enable=no"
+            print "  -o smtpd_tls_security_level=none"
+            print "  -o smtpd_milters="
+            print "# Mail from this host, with the original settings of port 25."
+            print "127.0.0.1:" localport "      inet  n       -       " ch "       -       -       smtpd"
+            if (src) printf "%s", extra[src]
+            print "# END SPFBL"
+        }' "$POSTFIX_MASTER"
+}
+
+function gw_master_public() {
+    gw_master_awk public
+}
+
+function gw_postfix_reload() {
+    # Starts Postfix if a previous master.cf left it stopped.
+    postfix check || return 1
+    if postfix status >/dev/null 2>&1; then
+        postfix reload
+    else
+        postfix start
+    fi
+}
+
+function gw_postfix_restore() {
+    # Original master.cf, with port 25 back to Postfix.
+    if [ -f "$POSTFIX_MASTER.bak-spfbl" ]; then
+        cat "$POSTFIX_MASTER.bak-spfbl" > "$POSTFIX_MASTER"
+        gw_postfix_reload
+    fi
+}
+
+function gw_postfix_add_ports() {
+    # Opens the internal ports. On the installation, Postfix keeps port 25
+    # until the switch. With "close", the Exim gateway is already running
+    # and port 25 is closed in the same reload, to avoid a bind conflict.
+    if ! grep -q '^# BEGIN SPFBL$' "$POSTFIX_MASTER"; then
+        # First installation, or the panel rewrote master.cf: this is the original.
+        cp -p "$POSTFIX_MASTER" "$POSTFIX_MASTER.bak-spfbl"
+        local block
+        block=$(gw_master_awk block)
+        printf "\n%s\n" "$block" >> "$POSTFIX_MASTER"
+    fi
+    if [ "$1" = "close" ] && [ -n "$(gw_master_public)" ]; then
+        local closed
+        closed=$(gw_master_awk close) && printf "%s\n" "$closed" > "$POSTFIX_MASTER"
+    fi
+    if command -v selinuxenabled >/dev/null && selinuxenabled; then
+        command -v semanage >/dev/null || pkg_install policycoreutils-python-utils
+        local port
+        for port in "$GW_INBOUND_PORT" "$GW_LOCAL_PORT"; do
+            semanage port -a -t smtp_port_t -p tcp "$port" 2>/dev/null ||
+            semanage port -m -t smtp_port_t -p tcp "$port" 2>/dev/null
+        done
+    fi
+    if ! gw_postfix_reload; then
+        gw_postfix_restore
+        fail "Postfix did not accept the internal ports. The original master.cf was restored."
+    fi
+    port_listening "$GW_INBOUND_PORT" && port_listening "$GW_LOCAL_PORT" || {
+        gw_postfix_restore
+        fail "Postfix is not answering on the ports $GW_INBOUND_PORT and $GW_LOCAL_PORT. The original master.cf was restored."
+    }
+}
+
+function gw_install_build_deps() {
+    if [ "$DISTRO_FAMILY" = "rhel" ]; then
+        # pcre2-devel and gdbm-devel come from CRB (EL9) or PowerTools (EL8).
+        pkg_install dnf-plugins-core
+        dnf config-manager --set-enabled crb 2>/dev/null || dnf config-manager --set-enabled powertools 2>/dev/null
+        pkg_install gcc make pkgconf-pkg-config pcre2-devel openssl-devel gdbm-devel perl xz tar
+    else
+        pkg_install build-essential pkg-config libpcre2-dev libssl-dev libgdbm-dev perl xz-utils
+    fi
+}
+
+function gw_build() {
+    # Compiles Exim into $GW_DIR, apart from the packages of the system.
+    if gw_installed && "$GW_EXIM" -bV 2>/dev/null | head -1 | grep -q "Exim version $GW_EXIM_VERSION "; then
+        echo "Exim $GW_EXIM_VERSION is already compiled."
+        return 0
+    fi
+    gw_install_build_deps
+    if ! getent passwd "$GW_USER" >/dev/null; then
+        useradd --system --user-group --no-create-home --home-dir "$GW_DIR/spool" --shell "$(command -v nologin || echo /sbin/nologin)" "$GW_USER"
+    fi
+    mkdir -p "$GW_DIR/etc" "$GW_DIR/spool" "$GW_LOG_DIR"
+    chown "$GW_USER:$GW_USER" "$GW_DIR/spool" "$GW_LOG_DIR"
+    chmod 750 "$GW_DIR/spool" "$GW_LOG_DIR"
+    local work source
+    work=$(mktemp -d) || fail "Could not create a temporary directory."
+    download "$GW_EXIM_URL" "$work/exim.tar.xz"
+    if ! echo "$GW_EXIM_SHA256  $work/exim.tar.xz" | sha256sum -c --quiet; then
+        rm -rf "$work"
+        fail "The Exim source does not match the expected checksum."
+    fi
+    tar -xJf "$work/exim.tar.xz" -C "$work" || fail "The Exim source could not be extracted."
+    source="$work/exim-$GW_EXIM_VERSION"
+    mkdir -p "$source/Local"
+    cat > "$source/Local/Makefile" <<EOF
+# SPFBL Irondome gateway build of Exim.
+BIN_DIRECTORY=$GW_DIR/bin
+CONFIGURE_FILE=$GW_DIR/etc/exim.conf
+EXIM_USER=ref:$GW_USER
+SPOOL_DIRECTORY=$GW_DIR/spool
+LOG_FILE_PATH=$GW_LOG_DIR/%slog
+PID_FILE_PATH=/run/spfbl-exim/exim.pid
+ROUTER_ACCEPT=yes
+ROUTER_DNSLOOKUP=yes
+ROUTER_MANUALROUTE=yes
+ROUTER_REDIRECT=yes
+TRANSPORT_SMTP=yes
+TRANSPORT_APPENDFILE=yes
+TRANSPORT_PIPE=yes
+LOOKUP_DBM=yes
+LOOKUP_LSEARCH=yes
+PCRE2_CONFIG=yes
+USE_OPENSSL=yes
+USE_OPENSSL_PC=openssl
+TLS_LIBS=-lssl -lcrypto
+WITH_CONTENT_SCAN=yes
+USE_GDBM=yes
+DBMLIB=-lgdbm
+FIXED_NEVER_USERS=root
+HEADERS_CHARSET="ISO-8859-1"
+SYSTEM_ALIASES_FILE=/etc/aliases
+CHOWN_COMMAND=/bin/chown
+CHGRP_COMMAND=/bin/chgrp
+CHMOD_COMMAND=/bin/chmod
+TMPDIR="/tmp"
+COMPRESS_COMMAND=/usr/bin/gzip
+COMPRESS_SUFFIX=gz
+ZCAT_COMMAND=/usr/bin/zcat
+EOF
+    echo "Compiling Exim $GW_EXIM_VERSION. This may take a few minutes..."
+    if ! (cd "$source" && make -j"$(nproc)" && make install) > "$GW_LOG_DIR/build.log" 2>&1; then
+        rm -rf "$work"
+        fail "Exim compilation failed. See $GW_LOG_DIR/build.log."
+    fi
+    rm -rf "$work"
+    "$GW_EXIM" -bV 2>/dev/null | grep -q 'Content_Scanning' || fail "The compiled Exim has no content scanning support."
+    # The SPFBL client calls exim and exiqgrep for the held messages.
+    ln -sf "$GW_DIR/bin/exim" /usr/local/sbin/exim
+    ln -sf "$GW_DIR/bin/exiqgrep" /usr/local/sbin/exiqgrep
+}
+
+function gw_install_clamav() {
+    if [ "$DISTRO_FAMILY" = "rhel" ]; then
+        if rpm -q clamd >/dev/null 2>&1; then
+            state_set_once CLAMAV_PACKAGES "present"
+        else
+            state_set_once CLAMAV_PACKAGES "installed"
+            rpm -q epel-release >/dev/null 2>&1 || pkg_install epel-release
+            pkg_install clamav clamd clamav-update
+        fi
+        if [ -f /etc/clamd.d/scan.conf ]; then
+            sed -i '/^Example$/d' /etc/clamd.d/scan.conf
+            sed -i 's|^#LocalSocket /run/clamd.scan/clamd.sock|LocalSocket /run/clamd.scan/clamd.sock|' /etc/clamd.d/scan.conf
+        fi
+        command -v setsebool >/dev/null && setsebool -P antivirus_can_scan_system 1
+        if [ ! -f /var/lib/clamav/main.cvd ] && [ ! -f /var/lib/clamav/main.cld ]; then
+            freshclam
+        fi
+        systemctl enable --now clamav-freshclam.service 2>/dev/null
+        systemctl enable clamd@scan 2>/dev/null
+        systemctl restart clamd@scan
+    else
+        if dpkg -s clamav-daemon 2>/dev/null | grep -q '^Status: install ok installed'; then
+            state_set_once CLAMAV_PACKAGES "present"
+        else
+            state_set_once CLAMAV_PACKAGES "installed"
+            pkg_install clamav clamav-daemon clamav-freshclam
+        fi
+        if ! ls /var/lib/clamav/*.c[lv]d >/dev/null 2>&1; then
+            systemctl stop clamav-freshclam.service 2>/dev/null
+            freshclam
+        fi
+        systemctl enable --now clamav-freshclam.service 2>/dev/null
+        systemctl enable clamav-daemon.service 2>/dev/null
+        systemctl restart clamav-daemon.service
+    fi
+}
+
+function gw_tls_script() {
+    # Hourly copy of the Postfix certificate, readable by the Exim user.
+    # Exim is reloaded only when the certificate changes (renewals).
+    local cert key chain
+    cert=$(postconf -h smtpd_tls_cert_file 2>/dev/null)
+    key=$(postconf -h smtpd_tls_key_file 2>/dev/null)
+    chain=$(postconf -h smtpd_tls_chain_files 2>/dev/null | awk '{print $1}')
+    if [ -z "$cert" ] || [ "$cert" = "none" ] || [ ! -f "$cert" ]; then
+        cert="$chain"
+        key="$chain"
+    fi
+    [ -z "$key" ] || [ "$key" = "none" ] && key="$cert"
+    if [ -z "$cert" ] || [ ! -f "$cert" ] || [ ! -f "$key" ]; then
+        rm -f "$GW_TLS_CRON"
+        echo "WARNING: the Postfix certificate was not found. Exim will not offer STARTTLS."
+        return 0
+    fi
+    cat > "$GW_TLS_CRON" <<EOF
+#!/bin/bash
+# SPFBL gateway: copies the Postfix certificate to Exim.
+dir="$GW_DIR/etc/tls"
+mkdir -p "\$dir"
+if ! cmp -s "$cert" "\$dir/cert.pem" || ! cmp -s "$key" "\$dir/key.pem"; then
+    install -m 640 -o root -g $GW_USER "$cert" "\$dir/cert.pem"
+    install -m 640 -o root -g $GW_USER "$key" "\$dir/key.pem"
+    systemctl reload spfbl-exim.service 2>/dev/null
+fi
+EOF
+    chmod 755 "$GW_TLS_CRON"
+    "$GW_TLS_CRON"
+}
+
+function gw_configure() {
+    download "$GITHUB_SPFBL/exim.gateway.conf" "$GW_DIR/etc/exim.conf"
+    download "$GITHUB_SPFBL/exim.acl_check_rcpt.conf" "$GW_DIR/etc/acl_check_rcpt.conf"
+    download "$GITHUB_SPFBL/exim.acl_check_data.conf" "$GW_DIR/etc/acl_check_data.conf"
+    download "$GITHUB_SPFBL/exim.acl_check_dkim.conf" "$GW_DIR/etc/acl_check_dkim.conf"
+    # clamd reads the files that Exim unpacks in its spool.
+    find_clamd
+    if [ -n "$CLAMD_USER" ] && id "$CLAMD_USER" >/dev/null 2>&1; then
+        usermod -aG "$GW_USER" "$CLAMD_USER"
+    fi
+    gw_tls_script
+    local size
+    size=$(postconf -h message_size_limit 2>/dev/null)
+    {
+        echo "# Values of this host, written by spfbl.irondome.sh."
+        echo "GW_HOSTNAME = $(postconf -h myhostname)"
+        echo "GW_SIZE_LIMIT = ${size:-52428800}"
+        echo "GW_AV_SCANNER = clamd:${CLAMD_SOCKET:-/run/clamav/clamd.ctl}"
+        echo "GW_INBOUND_PORT = $GW_INBOUND_PORT"
+        echo "GW_LOCAL_PORT = $GW_LOCAL_PORT"
+        if [ -f "$GW_DIR/etc/tls/cert.pem" ]; then
+            echo "GW_TLS_CERT = $GW_DIR/etc/tls/cert.pem"
+            echo "GW_TLS_KEY = $GW_DIR/etc/tls/key.pem"
+        fi
+    } > "$GW_DIR/etc/local.conf"
+    "$GW_EXIM" -bV >/dev/null || fail "The Exim gateway configuration is invalid."
+    cat > "$GW_UNIT" <<EOF
+[Unit]
+Description=SPFBL Irondome gateway (Exim on port 25)
+After=network-online.target postfix.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+RuntimeDirectory=spfbl-exim
+ExecStart=$GW_EXIM -bdf -q15m
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    cat > /etc/logrotate.d/spfbl-exim <<EOF
+$GW_LOG_DIR/*log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 $GW_USER $GW_USER
+}
+EOF
+    systemctl daemon-reload
+}
+
+function gw_test() {
+    # Exim must reach Postfix and must not relay. The fake session
+    # comes from a documentation IP and does not query the SPFBL server.
+    local result
+    result=$(printf 'EHLO test.spfbl.net\r\nMAIL FROM:<>\r\nRCPT TO:<spfbl-relay-test@example.com>\r\nQUIT\r\n' |
+        "$GW_EXIM" -bhc 192.0.2.1 2>/dev/null | grep -E '^[0-9]{3}[ -]' | tail -3)
+    if echo "$result" | grep -q '^250 Accepted'; then
+        gw_postfix_restore
+        fail "Relay test failed: the gateway accepted mail for example.com. The original master.cf was restored."
+    elif ! echo "$result" | grep -q 'Callout verification failed'; then
+        echo "$result"
+        gw_postfix_restore
+        fail "The gateway could not check recipients through Postfix on port $GW_INBOUND_PORT. The original master.cf was restored."
+    fi
+    echo "Gateway test passed: recipients checked by Postfix and relay closed."
+}
+
+function gw_switch() {
+    # Postfix leaves port 25 and Exim takes it, in a few seconds.
+    if [ -n "$(gw_master_public)" ]; then
+        local closed
+        closed=$(gw_master_awk close) && printf "%s\n" "$closed" > "$POSTFIX_MASTER"
+        if ! gw_postfix_reload; then
+            gw_postfix_restore
+            fail "Postfix did not accept the new master.cf. The original master.cf was restored."
+        fi
+        local try
+        for try in $(seq 1 10); do
+            [[ $(port_owner 25) == *master* ]] || break
+            sleep 1
+        done
+    fi
+    systemctl enable spfbl-exim.service
+    systemctl restart spfbl-exim.service
+    if ! port_listening 25 || [[ $(port_owner 25) != *exim* ]]; then
+        systemctl disable --now spfbl-exim.service
+        gw_postfix_restore
+        fail "Exim could not take port 25. Postfix was put back on port 25."
+    fi
+    echo "Port 25: Exim gateway. Postfix: 127.0.0.1:$GW_INBOUND_PORT and 127.0.0.1:$GW_LOCAL_PORT."
+}
+
+function gw_apply() {
+    # Install and update: internal ports, tests and the port 25 switch.
+    # The panel may rewrite master.cf in its updates, so it is checked every time.
+    if ! grep -q '^# BEGIN SPFBL$' "$POSTFIX_MASTER" || [ -n "$(gw_master_public)" ]; then
+        echo "Applying the gateway ports to the Postfix master.cf."
+        if systemctl is-active --quiet spfbl-exim.service; then
+            gw_postfix_add_ports close
+        else
+            gw_postfix_add_ports
+        fi
+    fi
+    gw_test
+    gw_switch
+}
+
+function gw_uninstall() {
+    POSTFIX_MASTER="$(postconf -h config_directory 2>/dev/null)/master.cf"
+    [ -x "$SIGS_SCRIPT" ] && "$SIGS_SCRIPT" --remove-script
+    if gw_installed; then
+        # Delivers what is waiting while Postfix still listens on the internal ports.
+        "$GW_EXIM" -q 2>/dev/null
+        local frozen
+        frozen=$("$GW_DIR/bin/exiqgrep" -z -c 2>/dev/null | grep -o '^[0-9]*')
+        if [ "${frozen:-0}" -gt 0 ]; then
+            local backup="/var/backups/spfbl-exim-spool-$(date +%Y%m%d%H%M%S).tar.gz"
+            mkdir -p /var/backups
+            tar -czf "$backup" -C "$GW_DIR" spool
+            echo "WARNING: $frozen held messages were saved in $backup."
+        fi
+    fi
+    systemctl disable --now spfbl-exim.service 2>/dev/null
+    gw_postfix_restore
+    rm -f "$POSTFIX_MASTER.bak-spfbl"
+    if command -v selinuxenabled >/dev/null && selinuxenabled && command -v semanage >/dev/null; then
+        semanage port -d -t smtp_port_t -p tcp "$GW_INBOUND_PORT" 2>/dev/null
+        semanage port -d -t smtp_port_t -p tcp "$GW_LOCAL_PORT" 2>/dev/null
+    fi
+    # The whole manual installation of Exim.
+    rm -f "$GW_UNIT" "$GW_TLS_CRON" /etc/logrotate.d/spfbl-exim
+    systemctl daemon-reload
+    rm -f /usr/local/sbin/exim /usr/local/sbin/exiqgrep
+    rm -rf "$GW_DIR" "$GW_LOG_DIR" /run/spfbl-exim
+    rmdir /opt/spfbl 2>/dev/null
+    getent passwd "$GW_USER" >/dev/null && userdel "$GW_USER"
+    getent group "$GW_USER" >/dev/null && groupdel "$GW_USER"
+    if [ "$(state_get CLAMAV_PACKAGES)" = "installed" ]; then
+        if command -v dpkg >/dev/null; then
+            DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
+        else
+            dnf remove -y clamav clamd clamav-update 2>/dev/null || yum remove -y clamav clamd clamav-update
+        fi
+    fi
+    rm -f "$EXIM_STATE"
+    if [[ $(port_owner 25) == *master* ]]; then
+        echo "Postfix is back on port 25."
+    else
+        echo "WARNING: Postfix is not listening on port 25. Check the Postfix service."
+    fi
+}
+
+###########################################################################
 # Commands
 ###########################################################################
 
@@ -869,6 +1370,8 @@ function is_installed() {
         [ -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient ]
     elif [ "$PANEL" = "exim" ]; then
         [ -f "$EXIM_SPFBL_DIR/acl_check_rcpt.conf" ]
+    elif [ "$PANEL" = "gateway" ]; then
+        gw_installed
     else
         [ -f /etc/exim.acl_check_recipient.pre.conf ]
     fi
@@ -877,6 +1380,7 @@ function is_installed() {
 function install() {
     detect_distro
     [ "$PANEL" = "exim" ] && exim_check
+    [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
     install_client
     if ! "$SPFBL_CLIENT" version; then
@@ -890,6 +1394,12 @@ function install() {
         exim_install_clamav
         install_sigs
         exim_configure
+    elif [ "$PANEL" = "gateway" ]; then
+        gw_install_clamav
+        install_sigs
+        gw_build
+        gw_configure
+        gw_apply
     else
         da_install_clamav
         install_sigs
@@ -909,6 +1419,7 @@ function update() {
     fi
     detect_distro
     [ "$PANEL" = "exim" ] && exim_check
+    [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
     install_client
     # Signatures: script, master.conf and the SPFBL databases (spfbl.ldb included).
@@ -917,6 +1428,10 @@ function update() {
         cpanel_configure_exim
     elif [ "$PANEL" = "exim" ]; then
         exim_configure
+    elif [ "$PANEL" = "gateway" ]; then
+        gw_build
+        gw_configure
+        gw_apply
     else
         da_configure_exim
     fi
@@ -929,6 +1444,8 @@ function uninstall() {
         cpanel_uninstall
     elif [ "$PANEL" = "exim" ]; then
         exim_uninstall
+    elif [ "$PANEL" = "gateway" ]; then
+        gw_uninstall
     else
         da_uninstall
     fi
