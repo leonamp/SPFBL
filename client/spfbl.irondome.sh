@@ -7,7 +7,11 @@
 # port 25, in front of their Postfix.
 #
 # Usage as root:
-#    ./spfbl.irondome.sh [install|update|uninstall|firewall]
+#    ./spfbl.irondome.sh [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]
+#
+# The optional Spamcenter API key adds the Spamcenter databases to
+# clamav-unofficial-sigs, as client/spfbl.spamcenter.sh does. On update
+# without a key, the key already configured is kept.
 #
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +29,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.0
+# Version: 2.1
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -33,6 +37,10 @@ SPFBL_CLIENT="/usr/local/bin/spfbl"
 SIGS_SCRIPT="/usr/local/bin/clamav-unofficial-sigs.sh"
 SIGS_DIR="/etc/clamav-unofficial-sigs"
 CONTACT_URL="https://spfbl.net/en/contact"
+SPAMCENTER_URL="https://api.spam.center/download/clamav"
+SPAMCENTER_KEY=""
+# Every additional database this script may configure; uninstall removes them.
+ADDITIONAL_DB_FILES="spfbl.hsb spfbl.ldb spfbl.ign2 cpanel.ign2 spamcenter.ndb spamcenter.hsb"
 
 PANEL=""
 PANEL_NAME=""
@@ -346,11 +354,74 @@ function select_sigs_os_conf() {
     fi
 }
 
+###########################################################################
+# Spamcenter databases (client/spfbl.spamcenter.sh)
+###########################################################################
+
+function spamcenter_valid_key() {
+    [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+function spamcenter_current_key() {
+    # Key already configured in user.conf, if any.
+    [ -f "$SIGS_DIR/user.conf" ] || return 0
+    grep -oE "${SPAMCENTER_URL}/[0-9a-f-]{36}/" "$SIGS_DIR/user.conf" | head -1 | cut -d/ -f6
+}
+
+function spamcenter_check() {
+    # Both files must be reachable with this key from this host.
+    # The key goes only in the URL required by the provider; it is never printed.
+    local code1 code2 myIP
+    code1=$(curl -o /dev/null -s --head --connect-timeout 10 -m 30 -w '%{http_code}' "$SPAMCENTER_URL/$SPAMCENTER_KEY/spamcenter.ndb")
+    code2=$(curl -o /dev/null -s --head --connect-timeout 10 -m 30 -w '%{http_code}' "$SPAMCENTER_URL/$SPAMCENTER_KEY/spamcenter.hsb")
+    if [ "$code1" != "200" ] || [ "$code2" != "200" ]; then
+        myIP=$(curl -s https://matrix.spfbl.net/whatsmyip/)
+        echo "This Spamcenter API key has not permission to access Spamcenter data using IP ${myIP:-unknown}."
+        echo "Nothing was changed. Please contact us: $CONTACT_URL"
+        exit 1
+    fi
+    echo "Spamcenter API key accepted."
+}
+
+function spamcenter_prepare() {
+    # Decides the key before any change: the one given, or the one in use.
+    if [ -z "$SPAMCENTER_KEY" ]; then
+        SPAMCENTER_KEY=$(spamcenter_current_key)
+        [ -n "$SPAMCENTER_KEY" ] && echo "Keeping the Spamcenter API key already configured."
+    fi
+    if [ -n "$SPAMCENTER_KEY" ]; then
+        spamcenter_check
+    fi
+}
+
+function remove_additional_dbs() {
+    # clamav-unofficial-sigs --remove-script does not delete the additional
+    # databases from the clamd directory, so they are removed here.
+    local dbs="" file
+    [ -f "$SIGS_DIR/os.conf" ] && dbs=$(sed -n 's/^clam_dbs="\(.*\)"/\1/p' "$SIGS_DIR/os.conf" | tail -1)
+    if [ -z "$dbs" ] || [ ! -d "$dbs" ]; then
+        find_clamd >/dev/null
+        dbs="$CLAMD_DBS"
+    fi
+    if [ -n "$dbs" ] && [ -d "$dbs" ]; then
+        for file in $ADDITIONAL_DB_FILES; do
+            rm -f "$dbs/$file" "$dbs/$file-bak"
+        done
+        command -v clamdscan >/dev/null && clamdscan --reload >/dev/null 2>&1
+    fi
+    # Also takes them out of the configuration that remove-script keeps.
+    if [ -f "$SIGS_DIR/user.conf" ]; then
+        awk '/^declare -a additional_dbs=\(/{skip=1} !skip{print} /END ADDITIONAL DATABASES/{skip=0}' "$SIGS_DIR/user.conf" | grep -v '^additional_update_hours=.*# spfbl.irondome.sh$' > "$SIGS_DIR/user.conf.tmp"
+        cat "$SIGS_DIR/user.conf.tmp" > "$SIGS_DIR/user.conf" && rm -f "$SIGS_DIR/user.conf.tmp"
+    fi
+    echo "SPFBL and Spamcenter databases were removed from ClamAV."
+}
+
 function configure_sigs_databases() {
     # SPFBL databases, replacing any previous block (no duplicates on reinstall).
     local user_conf="$SIGS_DIR/user.conf"
     [ -f "$user_conf" ] || download "$GITHUB_SIGS/config/user.conf" "$user_conf"
-    awk '/^declare -a additional_dbs=\(/{skip=1} !skip{print} /END ADDITIONAL DATABASES/{skip=0}' "$user_conf" > "$user_conf.tmp"
+    awk '/^declare -a additional_dbs=\(/{skip=1} !skip{print} /END ADDITIONAL DATABASES/{skip=0}' "$user_conf" | grep -v '^additional_update_hours=.*# spfbl.irondome.sh$' > "$user_conf.tmp"
     cat "$user_conf.tmp" > "$user_conf" && rm -f "$user_conf.tmp"
     # Removes the blank lines left at the end, so reinstalls don't pile them up.
     sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$user_conf"
@@ -362,8 +433,18 @@ function configure_sigs_databases() {
         if [ "$PANEL" = "cpanel" ]; then
             printf "\thttps://matrix.spfbl.net/cpanel.ign2\n"
         fi
+        if [ -n "$SPAMCENTER_KEY" ]; then
+            printf "\t%s/%s/spamcenter.ndb\n" "$SPAMCENTER_URL" "$SPAMCENTER_KEY"
+            printf "\t%s/%s/spamcenter.hsb\n" "$SPAMCENTER_URL" "$SPAMCENTER_KEY"
+        fi
         printf ") #END ADDITIONAL DATABASES\n\n"
+        if [ -n "$SPAMCENTER_KEY" ]; then
+            # Spamcenter is updated every hour (user.conf overrides master.conf).
+            printf 'additional_update_hours="1" # spfbl.irondome.sh\n'
+        fi
     } >> "$user_conf"
+    # The file holds the Spamcenter key.
+    chmod 600 "$user_conf"
     # Activation required by the script (already present in recent user.conf).
     grep -q '^user_configuration_complete="yes"' "$user_conf" || echo 'user_configuration_complete="yes"' >> "$user_conf"
 }
@@ -1382,6 +1463,7 @@ function install() {
     [ "$PANEL" = "exim" ] && exim_check
     [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
+    spamcenter_prepare
     install_client
     if ! "$SPFBL_CLIENT" version; then
         access_denied
@@ -1421,6 +1503,7 @@ function update() {
     [ "$PANEL" = "exim" ] && exim_check
     [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
+    spamcenter_prepare
     install_client
     # Signatures: script, master.conf and the SPFBL databases (spfbl.ldb included).
     install_sigs
@@ -1440,6 +1523,7 @@ function update() {
 }
 
 function uninstall() {
+    remove_additional_dbs
     if [ "$PANEL" = "cpanel" ]; then
         cpanel_uninstall
     elif [ "$PANEL" = "exim" ]; then
@@ -1455,6 +1539,23 @@ function uninstall() {
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must run as root."
     exit 1
+fi
+
+if [ -n "$2" ]; then
+    case "$1" in
+        install|update)
+            # Same format as the Spamcenter panel shows (UUID); uppercase is accepted.
+            set -- "$1" "$(echo "$2" | tr 'A-F' 'a-f')"
+            if ! spamcenter_valid_key "$2"; then
+                echo "This is not a valid Spamcenter API key."
+                exit 1
+            fi
+            SPAMCENTER_KEY="$2"
+        ;;
+        *)
+            echo "*** The Spamcenter API key is only accepted by install and update."
+            exit 1
+    esac
 fi
 
 case "$1" in
@@ -1479,6 +1580,6 @@ case "$1" in
         firewall
     ;;
     *)
-        echo "*** Usage: $0 [install|update|uninstall|firewall]"
+        echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
         exit 1
 esac
