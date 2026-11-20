@@ -217,7 +217,8 @@ function migrate_client_config() {
     # every simple assignment of the configuration section (before
     # "export PATH") that also exists in the old file, plus the query
     # channel (HTTPS or ncat). Settings that only exist in the new
-    # version keep their default value.
+    # version keep their default value. QUERY_TIMEOUT is never kept: it
+    # always takes the value of the new client.
     local old="$1" new="$2"
     [ -f "$old" ] || return 0
     local name old_value new_value
@@ -230,7 +231,7 @@ function migrate_client_config() {
                 { print }' "$new" > "$new.tmp" && cat "$new.tmp" > "$new" && rm -f "$new.tmp"
             echo "Preserved setting: ${name}=${old_value}"
         fi
-    done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT)$')
+    done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT|QUERY_TIMEOUT)$')
     # ncat only stays when it was a deliberate choice: the installed client
     # already offered curl (commented line) and the admin chose ncat.
     # Older clients, without the curl option, move to curl.
