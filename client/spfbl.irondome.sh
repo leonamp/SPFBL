@@ -179,13 +179,26 @@ function detect_distro() {
 }
 
 function pkg_install() {
-    # Installs the given packages without asking anything.
+    # Installs only the given packages that are missing, without asking
+    # anything. "install" of a package already installed would also
+    # upgrade it, and the installer must not upgrade the host packages.
+    local package missing=()
+    for package in "$@"; do
+        if command -v dpkg-query >/dev/null && command -v apt-get >/dev/null; then
+            dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'ok installed' && continue
+        elif command -v rpm >/dev/null; then
+            # Also finds a package by what it provides (nmap-ncat, gnupg2...).
+            rpm -q --whatprovides "$package" >/dev/null 2>&1 && continue
+        fi
+        missing+=("$package")
+    done
+    [ ${#missing[@]} -eq 0 ] && return 0
     if command -v apt-get >/dev/null; then
-        DEBIAN_FRONTEND=noninteractive apt-get install --yes "$@"
+        DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-upgrade "${missing[@]}"
     elif command -v dnf >/dev/null; then
-        dnf install -y "$@"
+        dnf install -y "${missing[@]}"
     elif command -v yum >/dev/null; then
-        yum install -y "$@"
+        yum install -y "${missing[@]}"
     else
         fail "Linux installation tool not identified."
     fi
@@ -1841,8 +1854,14 @@ function gw_public_check() {
     # SMTP banner through the public addresses of the host name.
     local name address banner
     name=$(postconf -h myhostname 2>/dev/null)
-    for address in $(getent ahostsv4 "$name" 2>/dev/null | awk '{print $1}' | sort -u) \
-                   $(getent ahostsv6 "$name" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {print $1}' | sort -u); do
+    # From the DNS, as the senders see it: /etc/hosts often has only the IPv4.
+    local addresses
+    if command -v dig >/dev/null; then
+        addresses=$( { dig +short A "$name"; dig +short AAAA "$name"; } 2>/dev/null | grep -E '^[0-9a-fA-F.:]+$' | sort -u)
+    else
+        addresses=$(getent ahosts "$name" 2>/dev/null | awk '$1 !~ /^::ffff:/ {print $1}' | sort -u)
+    fi
+    for address in $addresses; do
         banner=$(timeout 5 bash -c "exec 3<>/dev/tcp/$address/25 && head -1 <&3" 2>/dev/null | tr -d '\r')
         echo "    $address: ${banner:-no answer}"
     done
