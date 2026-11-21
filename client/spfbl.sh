@@ -71,11 +71,22 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $U
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.04"
+version="3.05"
 
-if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ]; then
-    touch /tmp/SPFBL_TIMEOUT_COUNT
-    chmod 777 /tmp/SPFBL_TIMEOUT_COUNT
+# Contador de timeouts seguidos. Guarda também o estado MAINTENANCE,
+# gravado quando a primeira falha de um evento coincide com a janela de
+# manutenção publicada em https://status.spfbl.net. A primeira consulta
+# bem-sucedida volta tudo para zero.
+TIMEOUT_FILE="/tmp/SPFBL_TIMEOUT_COUNT"
+
+# Monitor do serviço no HetrixTools. A chave só tem leitura e está
+# limitada ao status deste monitor, dado já público em status.spfbl.net.
+HETRIX_URL="https://api.hetrixtools.com/v3/uptime-monitors?id=acf42641d16137913fcef0a2b40b4d41"
+HETRIX_KEY="2e8532718d586454d2ee2bafe98a4bc9"
+
+if [ ! -f "$TIMEOUT_FILE" ]; then
+    touch "$TIMEOUT_FILE"
+    chmod 777 "$TIMEOUT_FILE"
 fi
 
 function head(){
@@ -85,13 +96,13 @@ function head(){
 
 function incrementTimeout() {
 
-	if [ ! -f "/tmp/SPFBL_TIMEOUT_COUNT" ] ; then
-		local COUNT=0
-	else
-		local COUNT=`cat /tmp/SPFBL_TIMEOUT_COUNT`
+	local COUNT=$(cat "$TIMEOUT_FILE" 2> /dev/null)
+
+	# Valor que não é número (MAINTENANCE) fica como está.
+	if [[ -z $COUNT || $COUNT =~ ^[0-9]+$ ]]; then
+		COUNT=$(( ${COUNT:-0} + 1 ))
+		echo "${COUNT}" > "$TIMEOUT_FILE"
 	fi
-	local COUNT=`expr ${COUNT:-0} + 1`
-	echo "${COUNT}" > /tmp/SPFBL_TIMEOUT_COUNT
 
 	# Devolve a contagem pela saída padrão: o "return" do bash
 	# só vai até 255 e daria a volta, nunca passando de MAX_TIMEOUT.
@@ -101,7 +112,17 @@ function incrementTimeout() {
 
 function resetTimeout() {
 
-	echo "0" > /tmp/SPFBL_TIMEOUT_COUNT
+	echo "0" > "$TIMEOUT_FILE"
+
+}
+
+function isMaintenance() {
+
+	# O monitor está em janela de manutenção? Tempo curto: a consulta
+	# acontece dentro da transação SMTP. Sem resposta, não é manutenção.
+	local status=$(curl -s -f --connect-timeout 2 -m 3 \
+		-H "Authorization: Bearer $HETRIX_KEY" "$HETRIX_URL" 2> /dev/null)
+	[[ $status =~ \"monitor_status\"[[:space:]]*:[[:space:]]*\"maint\" ]]
 
 }
 
@@ -111,13 +132,52 @@ function emptyResponse() {
 	# firewall) ou um erro HTTP (curl -f) volta em menos de 2 segundos.
 	# Um timeout leva pelo menos os 3 segundos do -w 3 (conexão) ou os
 	# QUERY_TIMEOUT segundos do timeout (consulta inteira).
-	# $SECONDS conta os segundos desde o início do script.
-	if [ "$SECONDS" -lt 2 ]; then
+	# $SECONDS conta os segundos desde o início do script; é lido antes
+	# da consulta ao HetrixTools, que também leva tempo.
+	local ELAPSED=$SECONDS
+	local STATE=$(cat "$TIMEOUT_FILE" 2> /dev/null)
+
+	if [[ $STATE == "MAINTENANCE" ]]; then
+		echo "MAINTENANCE"
+		return
+	elif [[ ${STATE:-0} == "0" ]] && isMaintenance; then
+		# Primeira falha do evento: uma única consulta ao HetrixTools.
+		echo "MAINTENANCE" > "$TIMEOUT_FILE"
+		echo "MAINTENANCE"
+		return
+	fi
+
+	# Toda falha conta, inclusive a rápida: com o contador acima de zero,
+	# as próximas falhas do mesmo evento não consultam o HetrixTools.
+	local COUNT=$(incrementTimeout)
+
+	if [[ $COUNT == "MAINTENANCE" ]]; then
+		echo "MAINTENANCE"
+	elif [ "$ELAPSED" -lt 2 ]; then
 		echo "OUT OF SERVICE"
-	elif [ "$(incrementTimeout)" -le "$MAX_TIMEOUT" ]; then
+	elif [ "$COUNT" -le "$MAX_TIMEOUT" ]; then
 		echo "TIMEOUT"
 	else
 		echo "OUT OF SERVICE"
+	fi
+
+}
+
+function httpUnavailable() {
+
+	# Código HTTP de serviço indisponível: 000 (sem conexão ou timeout do
+	# curl), erro de gateway ou página de erro do Cloudflare (52x e 530).
+	# Os erros do próprio SPFBL (400, 403, 404, 413, 500) trazem resposta.
+	[[ $1 =~ ^(000|502|503|504|52[0-9]|530)$ ]]
+
+}
+
+function maintenanceExit() {
+
+	# Serviço em manutenção programada: mesmo código em todos os comandos.
+	if [[ $1 == "MAINTENANCE" ]]; then
+		echo "MAINTENANCE"
+		exit 26
 	fi
 
 }
@@ -153,12 +213,14 @@ case $1 in
 		#    1: erro ao tentar adiquirir versão.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 		response=$(echo "VERSION" | $COMMAND 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -184,12 +246,14 @@ case $1 in
 		#    1: erro ao tentar adiquirir firewall.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 		response=$(echo "FIREWALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -215,12 +279,14 @@ case $1 in
 		#    1: houve falha no fechamento dos processos.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 		response=$(echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -246,12 +312,14 @@ case $1 in
 		#    1: houve falha ao gravar o cache em disco.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 		response=$(echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -277,12 +345,14 @@ case $1 in
 		#    1: processo anterior não finalizado.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 		response=$(echo "TEST" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -312,6 +382,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -323,6 +394,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -351,6 +423,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -362,6 +435,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -387,6 +461,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -397,6 +472,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -431,6 +507,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -442,6 +519,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -470,6 +548,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -481,6 +560,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -506,6 +586,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -516,6 +597,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -551,6 +633,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -562,6 +645,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -591,6 +675,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -602,6 +687,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -627,6 +713,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -637,6 +724,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -675,6 +763,7 @@ case $1 in
 				#    2: registro já incluido.
 				#    3: timeout de conexão.
 				#    4: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -686,6 +775,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -719,6 +809,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -730,6 +821,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -757,6 +849,7 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -770,6 +863,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -795,6 +889,7 @@ case $1 in
 				#    1: registro encontrado.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -805,6 +900,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -844,6 +940,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -855,6 +952,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -883,6 +981,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -894,6 +993,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -922,6 +1022,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 
 				if [ $# -lt "3" ]; then
@@ -934,6 +1035,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -962,6 +1064,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -973,6 +1076,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1004,6 +1108,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1015,6 +1120,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1042,6 +1148,7 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1055,6 +1162,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1088,6 +1196,7 @@ case $1 in
 				#    1: erro ao tentar adicionar generico.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1099,6 +1208,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1123,6 +1233,7 @@ case $1 in
 				#    1: erro ao tentar adicionar generico.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1134,6 +1245,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1160,6 +1272,7 @@ case $1 in
 				#    1: erro ao tentar adicionar generico.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1171,6 +1284,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1198,6 +1312,7 @@ case $1 in
 				#    1: erro ao tentar visualizar generico.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1211,6 +1326,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1244,6 +1360,7 @@ case $1 in
 				#    1: erro ao tentar adicionar dynamic.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1255,6 +1372,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1279,6 +1397,7 @@ case $1 in
 				#    1: erro ao tentar adicionar dynamic.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1290,6 +1409,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1316,6 +1436,7 @@ case $1 in
 				#    1: erro ao tentar adicionar dynamic.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1327,6 +1448,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1351,6 +1473,7 @@ case $1 in
 				#    1: erro ao tentar visualizar dynamic.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1360,6 +1483,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1395,6 +1519,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1406,6 +1531,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1435,6 +1561,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1446,6 +1573,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1477,6 +1605,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1488,6 +1617,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1514,6 +1644,7 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1523,6 +1654,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1558,6 +1690,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1569,6 +1702,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1598,6 +1732,7 @@ case $1 in
 				#    1: erro ao tentar adicionar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1609,6 +1744,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1635,6 +1771,7 @@ case $1 in
 				#    1: erro ao tentar visualizar bloqueio.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1648,6 +1785,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1685,6 +1823,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "5" ]; then
 					head
@@ -1703,6 +1842,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1734,6 +1874,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "5" ]; then
 					head
@@ -1752,6 +1893,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1778,6 +1920,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1789,6 +1932,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1813,6 +1957,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1823,6 +1968,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1858,6 +2004,7 @@ case $1 in
 				#    1: erro ao tentar adiciona.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "4" ]; then
 					head
@@ -1870,6 +2017,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1898,6 +2046,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -1909,6 +2058,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1934,6 +2084,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -1943,6 +2094,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -1967,6 +2119,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2004,6 +2157,7 @@ case $1 in
 				#    1: erro ao tentar adicionar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2020,6 +2174,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2048,6 +2203,7 @@ case $1 in
 				#    1: erro ao tentar remover.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2063,6 +2219,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2088,6 +2245,7 @@ case $1 in
 				#    1: erro ao tentar visualizar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -2103,6 +2261,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2131,6 +2290,7 @@ case $1 in
 				#    1: erro ao tentar setar opções.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "5" ]; then
 					head
@@ -2144,6 +2304,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2170,6 +2331,7 @@ case $1 in
 				#    1: erro ao tentar executar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2181,6 +2343,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2207,6 +2370,7 @@ case $1 in
 				#    1: erro ao tentar executar.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -2218,6 +2382,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -2248,6 +2413,7 @@ case $1 in
 		#    1: lista vazia.
 		#    2: timeout de conexão.
 		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [[ $2 == "cidr" ]]; then
 			response=$(echo "REPUTATION CIDR" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
@@ -2257,6 +2423,7 @@ case $1 in
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
+			maintenanceExit "$response"
 		else
 			resetTimeout
 		fi
@@ -2286,6 +2453,7 @@ case $1 in
 		#    1: erro durante o processamento.
 		#    3: timeout de conexão.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2298,6 +2466,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2332,6 +2501,7 @@ case $1 in
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2343,6 +2513,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2371,6 +2542,7 @@ case $1 in
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2382,6 +2554,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2410,6 +2583,7 @@ case $1 in
 		#    2: erro ao processar atualização.
 		#    3: timeout de conexão.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		case $2 in
 			'show')
@@ -2417,6 +2591,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
+					maintenanceExit "$response"
 				else
 					resetTimeout
 				fi
@@ -2436,6 +2611,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
+					maintenanceExit "$response"
 				else
 					resetTimeout
 				fi
@@ -2456,6 +2632,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
+					maintenanceExit "$response"
 				else
 					resetTimeout
 				fi
@@ -2478,6 +2655,7 @@ case $1 in
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
+					maintenanceExit "$response"
 				else
 					resetTimeout
 				fi
@@ -2524,6 +2702,7 @@ case $1 in
 		#    10: domínio inexistente.
 		#    11: parâmetros inválidos.
 		#    12: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#    13: remetente inexistente.
 
 		if [ $# -lt "4" ]; then
@@ -2539,6 +2718,7 @@ case $1 in
 
 			if [[ $qualifier == "" ]]; then
 				qualifier=$(emptyResponse)
+				maintenanceExit "$qualifier"
 			else
 				resetTimeout
 			fi
@@ -2641,6 +2821,8 @@ case $1 in
 					resposta=$(echo "SPAM $ticket" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
+						resposta=$(emptyResponse)
+						maintenanceExit "$resposta"
 						echo "A reclamação SPFBL não foi enviada por timeout."
 						exit 4
 					elif [[ $resposta == "OK"* ]]; then
@@ -2656,8 +2838,16 @@ case $1 in
 				fi
 			else
 				# Registra reclamação SPFBL via HTTP.
-				resposta=$(curl -X PUT -s -m 3 $url)
-				if [[ $? == "28" ]]; then
+				resposta=$(curl -X PUT -s -m 3 -w '\n%{http_code}' $url)
+				code=${resposta##*$'\n'}
+				resposta=$(printf '%s' "${resposta%$'\n'*}")
+				if httpUnavailable "$code"; then
+					resposta=$(emptyResponse)
+					maintenanceExit "$resposta"
+				else
+					resetTimeout
+				fi
+				if httpUnavailable "$code"; then
 					echo "A reclamação SPFBL não foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
@@ -2681,6 +2871,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#    5: hold message.
 		#    6: flag message.
 
@@ -2695,6 +2886,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2728,6 +2920,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [ $# -lt "2" ]; then
 			head
@@ -2740,6 +2933,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2823,6 +3017,8 @@ case $1 in
 					resposta=$(echo "MALWARE $ticket $3" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
+						resposta=$(emptyResponse)
+						maintenanceExit "$resposta"
 						echo "A reclamação SPFBL não foi enviada por timeout."
 						exit 4
 					elif [[ $resposta == "OK"* ]]; then
@@ -2842,8 +3038,16 @@ case $1 in
 			else
 				### Atenção! Reclamaão de malware não implementada em HTTP ainda.
 				# Registra reclamação SPFBL via HTTP.
-				resposta=$(curl -X PUT -s -m 3 $url)
-				if [[ $? == "28" ]]; then
+				resposta=$(curl -X PUT -s -m 3 -w '\n%{http_code}' $url)
+				code=${resposta##*$'\n'}
+				resposta=$(printf '%s' "${resposta%$'\n'*}")
+				if httpUnavailable "$code"; then
+					resposta=$(emptyResponse)
+					maintenanceExit "$resposta"
+				else
+					resetTimeout
+				fi
+				if httpUnavailable "$code"; then
 					echo "A reclamação SPFBL não foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
@@ -2867,6 +3071,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#   17: remetente colocado em lista branca.
 
 		if [ $# -lt "3" ]; then
@@ -2882,6 +3087,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2911,6 +3117,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#    5: mensagem rejeitada pelo conteudo.
 		#    6: marcar como SPAM.
 		#    7: congelar a entrega da mensagem.
@@ -2933,6 +3140,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -2978,6 +3186,7 @@ case $1 in
 		#    2: timeout de conexão.
 		#    3: consulta inválida.
 		#    4: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#    5: mensagem rejeitada pelo conteudo.
 		#    6: marcar como SPAM.
 		#    7: congelar a entrega da mensagem.
@@ -3011,10 +3220,18 @@ case $1 in
 				response="NOT FOUND"
 			else
 				# EML puro: descarta a linha separadora "From " do MBOX, se houver.
-				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 2> /dev/null)
+				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" -w '\n%{http_code}' --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 2> /dev/null)
+				code=${response##*$'\n'}
+				response=$(printf '%s' "${response%$'\n'*}")
 
-				if [[ $response == "" ]]; then
+				if httpUnavailable "$code" || [[ $response == "" && $code == "200" ]]; then
+					# Sem conexão, timeout ou página de erro do Cloudflare.
 					response=$(emptyResponse)
+					maintenanceExit "$response"
+				elif [[ $response == "" ]]; then
+					# Recusa do próprio SPFBL (400, 403, 413): o serviço respondeu.
+					resetTimeout
+					response="INVALID"
 				else
 					resetTimeout
 				fi
@@ -3077,6 +3294,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -3136,6 +3354,7 @@ case $1 in
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
+				maintenanceExit "$response"
 			else
 				resetTimeout
 			fi
@@ -3193,7 +3412,12 @@ case $1 in
 							if [[ $response == "" ]]; then
 
 								# Manter a mensagem congelada.
-								echo "Message $message keep frozen."
+								response=$(emptyResponse)
+								if [[ $response == "MAINTENANCE" ]]; then
+									echo "SPFBL under maintenance: message $message keep frozen."
+								else
+									echo "Message $message keep frozen."
+								fi
 
 							elif [[ $response == "WHITE" ]]; then
 
@@ -3249,7 +3473,12 @@ case $1 in
 				if [[ $response == "" ]]; then
 
 					# Manter a mensagem congelada.
-					echo "Message $message keep frozen."
+					response=$(emptyResponse)
+					if [[ $response == "MAINTENANCE" ]]; then
+						echo "SPFBL under maintenance: message $message keep frozen."
+					else
+						echo "Message $message keep frozen."
+					fi
 
 				elif [[ $response == "WHITE" ]]; then
 
@@ -3356,6 +3585,8 @@ case $1 in
 					resposta=$(echo "HAM $ticket" | $COMMAND 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
+						resposta=$(emptyResponse)
+						maintenanceExit "$resposta"
 						echo "A revogação SPFBL não foi enviada por timeout."
 						exit 4
 					elif [[ $resposta == "OK"* ]]; then
@@ -3374,8 +3605,16 @@ case $1 in
 				spamURL=/spam/
 				hamURL=/ham/
 				url=${url/$spamURL/$hamURL}
-				resposta=$(curl -X PUT -s -m 3 $url)
-				if [[ $? == "28" ]]; then
+				resposta=$(curl -X PUT -s -m 3 -w '\n%{http_code}' $url)
+				code=${resposta##*$'\n'}
+				resposta=$(printf '%s' "${resposta%$'\n'*}")
+				if httpUnavailable "$code"; then
+					resposta=$(emptyResponse)
+					maintenanceExit "$resposta"
+				else
+					resetTimeout
+				fi
+				if httpUnavailable "$code"; then
 					echo "A revogação SPFBL não foi enviada por timeout."
 					exit 4
 				elif [[ $resposta == "OK"* ]]; then
@@ -3457,6 +3696,7 @@ case $1 in
 		#    18: congelar mensagem.
 		#    19: inexistente.
 		#    20: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		#    21: remetente inexistente.
 		#    22: remetente banido.
 		#    23: mensagem liberada.
@@ -3483,6 +3723,7 @@ case $1 in
 
 					if [[ $qualifier == "" ]]; then
 						qualifier=$(emptyResponse)
+						maintenanceExit "$qualifier"
 					else
 						resetTimeout
 					fi
@@ -3583,6 +3824,7 @@ case $1 in
 				#    1: erro ao tentar adicionar armadilha.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3594,6 +3836,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3623,6 +3866,7 @@ case $1 in
 				#    1: erro ao tentar adicionar armadilha.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3634,6 +3878,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3660,6 +3905,7 @@ case $1 in
 				#    1: erro ao tentar visualizar armadilhas.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -3669,6 +3915,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3704,6 +3951,7 @@ case $1 in
 				#    1: erro ao tentar adicionar destinatário inexistente.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3715,6 +3963,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3744,6 +3993,7 @@ case $1 in
 				#    1: erro ao tentar remover endereço.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3755,6 +4005,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3781,6 +4032,7 @@ case $1 in
 				#    1: erro ao tentar visualizar inexistentes.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -3790,6 +4042,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3814,6 +4067,7 @@ case $1 in
 				#    1: é inexistente.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3824,6 +4078,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3861,6 +4116,7 @@ case $1 in
 				#    1: erro ao tentar adicionar destinatário inexistente.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3872,6 +4128,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3901,6 +4158,7 @@ case $1 in
 				#    1: erro ao tentar remover endereço.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3912,6 +4170,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3938,6 +4197,7 @@ case $1 in
 				#    1: erro ao tentar visualizar inexistentes.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -3947,6 +4207,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -3982,6 +4243,7 @@ case $1 in
 				#    1: erro ao tentar adicionar endereço.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -3993,6 +4255,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -4022,6 +4285,7 @@ case $1 in
 				#    1: erro ao tentar adicionar endereço.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -4033,6 +4297,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -4059,6 +4324,7 @@ case $1 in
 				#    1: erro ao tentar visualizar endereços.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "2" ]; then
 					head
@@ -4068,6 +4334,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
@@ -4095,6 +4362,7 @@ case $1 in
 				#    1: não pode reponder e-mail.
 				#    2: timeout de conexão.
 				#    3: out of service.
+				#   26: serviço em manutenção programada (status.spfbl.net).
 
 				if [ $# -lt "3" ]; then
 					head
@@ -4106,6 +4374,7 @@ case $1 in
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
+						maintenanceExit "$response"
 					else
 						resetTimeout
 					fi
