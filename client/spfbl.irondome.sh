@@ -68,7 +68,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.5
+# Version: 2.6
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -90,6 +90,11 @@ DISTRO_FAMILY=""
 SPFBL_CONF_DIR="/etc/spfbl"
 SPFBL_CONF="$SPFBL_CONF_DIR/spfbl.conf"
 SPFBL_SERVER="https://matrix.spfbl.net"
+# Status of the SPFBL monitor at HetrixTools (status.spfbl.net), the same
+# read-only key of spfbl.sh: only tells a scheduled maintenance apart from
+# a failure when SPFBL does not answer.
+HETRIX_URL="https://api.hetrixtools.com/v3/uptime-monitors?id=acf42641d16137913fcef0a2b40b4d41"
+HETRIX_KEY="2e8532718d586454d2ee2bafe98a4bc9"
 
 ###########################################################################
 # Common functions
@@ -2270,6 +2275,54 @@ function conf_fix_group() {
     fi
 }
 
+function spfbl_is_maintenance() {
+    # Is the SPFBL monitor in a maintenance window? No answer: no.
+    local status
+    status=$(curl -s -f --connect-timeout 3 -m 5 -H "Authorization: Bearer $HETRIX_KEY" "$HETRIX_URL" 2> /dev/null)
+    [[ $status =~ \"monitor_status\"[[:space:]]*:[[:space:]]*\"maint\" ]]
+}
+
+function spfbl_unavailable_code() {
+    # HTTP codes of SPFBL not answering (no route, proxy, Cloudflare).
+    [[ "$1" =~ ^(000|502|503|504|52[0-9]|530)$ ]]
+}
+
+function spfbl_unavailable() {
+    # SPFBL did not answer: scheduled maintenance or communication failure.
+    # The customer only has to try again later. On "update" (CONF_SOFT=1)
+    # it goes on querying by IP; elsewhere nothing is changed.
+    if spfbl_is_maintenance; then
+        echo "SPFBL is under scheduled maintenance (https://status.spfbl.net)."
+        echo "Try again in a few minutes."
+    else
+        echo "SPFBL did not answer. Check the connection of this server to"
+        echo "$SPFBL_SERVER and try again in a few minutes."
+    fi
+    if [ -n "$CONF_SOFT" ]; then
+        echo "Going on without $SPFBL_CONF: spfbl.sh keeps querying by IP."
+        echo "Run \"$0 config\" later to use the SPFBL access key."
+        return 1
+    fi
+    echo "Nothing was changed."
+    exit 1
+}
+
+function client_check() {
+    # SPFBL client installed: "spfbl version" must answer. Exit 26
+    # (maintenance), 2 (timeout) and 3 (out of service) are SPFBL not
+    # answering, not a refusal of this server.
+    local rc
+    "$SPFBL_CLIENT" version
+    rc=$?
+    if [ "$rc" = "0" ]; then
+        return 0
+    elif [ "$rc" = "26" ] || [ "$rc" = "2" ] || [ "$rc" = "3" ]; then
+        CONF_SOFT="" spfbl_unavailable
+    else
+        access_denied
+    fi
+}
+
 function conf_abort() {
     # Failure of the SPFBL client configuration. On "config", "install" and
     # "prepare" it stops everything; on "update" (CONF_SOFT=1) it goes on
@@ -2353,7 +2406,11 @@ function config() {
     # Registration over IPv4 and IPv6. HTTP 000: no route for that protocol.
     local ok4="" ok6="" msg4="" msg6=""
     conf_register 4
-    if [ "$REG_CODE" = "403" ] || [ "$REG_CODE" = "429" ]; then
+    local code4="$REG_CODE"
+    if [ "$REG_CODE" != "000" ] && spfbl_unavailable_code "$REG_CODE"; then
+        spfbl_unavailable
+        return 1
+    elif [ "$REG_CODE" = "403" ] || [ "$REG_CODE" = "429" ]; then
         # Key refused or IP banned: the same for IPv6. Nothing is changed.
         conf_abort "Refused: $(conf_reason)"
         return 1
@@ -2367,11 +2424,14 @@ function config() {
         echo "IPv4: refused: $msg4"
     fi
     conf_register 6
-    if [ "$REG_CODE" = "200" ]; then
+    if [ "$REG_CODE" != "000" ] && spfbl_unavailable_code "$REG_CODE"; then
+        spfbl_unavailable
+        return 1
+    elif [ "$REG_CODE" = "200" ]; then
         ok6=1
         echo "IPv6: $REG_BODY"
     elif [ "$REG_CODE" = "000" ]; then
-        echo "IPv6: no IPv6 connection to $SPFBL_SERVER (only IPv4 will be used)."
+        echo "IPv6: no IPv6 connection to $SPFBL_SERVER."
     else
         msg6=$(conf_reason 6 AAAA IPv6)
         echo "IPv6: refused: $msg6"
@@ -2385,6 +2445,10 @@ function config() {
     elif [ -n "$ok6" ]; then
         CONF_IP_VERSION="6"
         [ -n "$msg4" ] && echo "The SPFBL queries will use only IPv6."
+    elif [ "$code4" = "000" ] && [ "$REG_CODE" = "000" ]; then
+        # No answer by either protocol: not a hostname problem.
+        spfbl_unavailable
+        return 1
     else
         echo "SPFBL Irondome needs a valid FQDN on this server: the SPFBL sends to it"
         echo "the release signals of held messages. Set the hostname of this server"
@@ -2425,9 +2489,7 @@ function install() {
     config
     spamcenter_prepare
     install_client
-    if ! "$SPFBL_CLIENT" version; then
-        access_denied
-    fi
+    client_check
     if [ "$PANEL" = "cpanel" ]; then
         cpanel_install_clamav
         install_sigs
@@ -2466,9 +2528,7 @@ function prepare() {
     config
     spamcenter_prepare
     install_client
-    if ! "$SPFBL_CLIENT" version; then
-        access_denied
-    fi
+    client_check
     gw_install_clamav
     install_sigs
     gw_build
