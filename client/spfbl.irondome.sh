@@ -19,9 +19,38 @@
 #        Postfix gets port 25 back at once. "switch" goes forward again.
 # "install" runs prepare and switch together.
 #
+# install and prepare configure the SPFBL client first (as "config"
+# below): without a valid SPFBL access key and a FQDN hostname validated
+# by the SPFBL server, nothing is changed. update uses the spfbl.conf
+# already there; without it, it asks for the key when run on a terminal,
+# and otherwise goes on querying by IP, as before.
+#
+# SPFBL client configuration only (no panel, package or MTA change):
+#    ./spfbl.irondome.sh config
+#        Writes /etc/spfbl/spfbl.conf, read by spfbl.sh 3.06 or newer,
+#        with the SPFBL access key, after the SPFBL server validates the
+#        hostname of this server for IPv4 and IPv6 (POST /client/).
+#        Hostname: spfbl.sh sends the hostname in use by the kernel
+#        (/proc/sys/kernel/hostname), so a hostname change reaches SPFBL
+#        at once. It must be the FQDN of this server (hostnamectl
+#        set-hostname mx.example.com).
+#        The key already in the file is kept; it is asked for (without
+#        echo) only when there is none. Optional environment variables:
+#           SPFBL_KEY=...        replaces the key in the file;
+#           SPFBL_GROUP=...      group allowed to read the file (the MTA
+#                                user group; detected from Exim).
+#
 # The optional Spamcenter API key adds the Spamcenter databases to
-# clamav-unofficial-sigs, as client/spfbl.spamcenter.sh does. On update
-# without a key, the key already configured is kept.
+# clamav-unofficial-sigs, as client/spfbl.spamcenter.sh does. Without the
+# key in the command line, install and update take the key registered in
+# the SPFBL account (spamcenter_api_key), read with the SPFBL access key of
+# /etc/spfbl/spfbl.conf: added when missing, replaced when it changed. With
+# no key in the account, the key already configured is kept.
+#
+# Spamcenter key only, on a server already with clamav-unofficial-sigs:
+#    ./spfbl.irondome.sh spamcenter
+#        Adds or replaces the Spamcenter databases in user.conf with the
+#        key of the SPFBL account. Nothing else is changed.
 #
 # SPFBL is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -39,7 +68,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.3
+# Version: 2.5
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -57,6 +86,10 @@ PANEL_NAME=""
 DISTRO_ID=""
 DISTRO_VERSION=""
 DISTRO_FAMILY=""
+
+SPFBL_CONF_DIR="/etc/spfbl"
+SPFBL_CONF="$SPFBL_CONF_DIR/spfbl.conf"
+SPFBL_SERVER="https://matrix.spfbl.net"
 
 ###########################################################################
 # Common functions
@@ -241,7 +274,8 @@ function migrate_client_config() {
     # "export PATH") that also exists in the old file, plus the query
     # channel (HTTPS or ncat). Settings that only exist in the new
     # version keep their default value. QUERY_TIMEOUT is never kept: it
-    # always takes the value of the new client.
+    # always takes the value of the new client. The key, the hostname and
+    # the protocol live in /etc/spfbl/spfbl.conf, not in the script.
     local old="$1" new="$2"
     [ -f "$old" ] || return 0
     local name old_value new_value
@@ -254,7 +288,7 @@ function migrate_client_config() {
                 { print }' "$new" > "$new.tmp" && cat "$new.tmp" > "$new" && rm -f "$new.tmp"
             echo "Preserved setting: ${name}=${old_value}"
         fi
-    done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT|QUERY_TIMEOUT)$')
+    done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT|QUERY_TIMEOUT|SPFBL_CONF|SPFBL_KEY|LOCAL_HOSTNAME|IP_VERSION|CURL_KEY_CONFIG)$')
     # ncat only stays when it was a deliberate choice: the installed client
     # already offered curl (commented line) and the admin chose ncat.
     # Older clients, without the curl option, move to curl.
@@ -286,6 +320,13 @@ function client_value() {
 }
 
 function access_denied() {
+    if [ -r "$SPFBL_CONF" ] && grep -q '^version="3\.0[6-9]\|^version="3\.[1-9]' "$SPFBL_CLIENT" 2> /dev/null; then
+        # Client with the access key: the refusal is of the key or of the hostname.
+        echo "The SPFBL server refused the access key or the hostname of this server."
+        echo "See the lines \"spfbl\" in the system log and the page MTA Clients of the"
+        echo "SPFBL panel. To configure them again: $0 config"
+        exit 1
+    fi
     local myIP myHOST
     myIP=$(curl -s https://checkip.amazonaws.com/)
     myHOST=$(hostname)
@@ -422,14 +463,93 @@ function spamcenter_check() {
     echo "Spamcenter API key accepted."
 }
 
+function spamcenter_account_key() {
+    # Spamcenter key registered in the SPFBL account (GET /user/properties/),
+    # read with the SPFBL access key of spfbl.conf. Prints the key, or
+    # nothing when there is no conf, no answer or no valid key. Neither key
+    # is ever printed to the terminal.
+    local key ipv out code body value
+    key=$(conf_value SPFBL_KEY)
+    conf_key_valid "$key" || return 0
+    ipv=$(conf_value IP_VERSION)
+    out=$(curl ${ipv:+-$ipv} -s --connect-timeout 10 -m 30 -w '\n%{http_code}' -K /dev/fd/3 \
+        "$SPFBL_SERVER/user/properties/" 2> /dev/null \
+        3<<< "header = \"Authorization: Bearer $key\"")
+    code=${out##*$'\n'}
+    body=${out%$'\n'*}
+    [ "$code" = "200" ] || return 0
+    value=$(printf '%s\n' "$body" | sed -n 's/^spamcenter_api_key=//p' | head -1 | tr -d '\r' | tr 'A-F' 'a-f')
+    spamcenter_valid_key "$value" && echo "$value"
+}
+
 function spamcenter_prepare() {
-    # Decides the key before any change: the one given, or the one in use.
-    if [ -z "$SPAMCENTER_KEY" ]; then
-        SPAMCENTER_KEY=$(spamcenter_current_key)
-        [ -n "$SPAMCENTER_KEY" ] && echo "Keeping the Spamcenter API key already configured."
-    fi
+    # Decides the key before any change: the one given in the command line
+    # (tested), else the one in the SPFBL account (not tested: the access
+    # depends on the IP list kept at Spamcenter), else the one in use.
+    local current account
+    current=$(spamcenter_current_key)
     if [ -n "$SPAMCENTER_KEY" ]; then
         spamcenter_check
+        return
+    fi
+    account=$(spamcenter_account_key)
+    if [ -n "$account" ]; then
+        SPAMCENTER_KEY="$account"
+        if [ -z "$current" ]; then
+            echo "Adding the Spamcenter API key of the SPFBL account."
+        elif [ "$current" != "$account" ]; then
+            echo "Replacing the Spamcenter API key with the one of the SPFBL account."
+        else
+            echo "Spamcenter API key of the SPFBL account already configured."
+        fi
+    elif [ -n "$current" ]; then
+        SPAMCENTER_KEY="$current"
+        echo "Keeping the Spamcenter API key already configured."
+    fi
+}
+
+function spamcenter_sync() {
+    # "spamcenter" command: only the Spamcenter lines of user.conf, with
+    # the key of the SPFBL account. The other databases stay as they are.
+    local user_conf="$SIGS_DIR/user.conf" current account
+    [ -r "$SPFBL_CONF" ] || fail "There is no $SPFBL_CONF yet. Run first: $0 config"
+    [ -f "$user_conf" ] && grep -q '^declare -a additional_dbs=(' "$user_conf" || \
+        fail "clamav-unofficial-sigs is not configured by SPFBL Irondome on this server. Run: $0 update"
+    account=$(spamcenter_account_key)
+    if [ -z "$account" ]; then
+        echo "There is no valid Spamcenter API key in the SPFBL account (or SPFBL did not answer)."
+        echo "Nothing was changed."
+        exit 1
+    fi
+    current=$(spamcenter_current_key)
+    if [ "$current" = "$account" ]; then
+        echo "The Spamcenter API key of the SPFBL account is already configured. Nothing to change."
+        return 0
+    fi
+    # Old Spamcenter lines out, new ones before the end of the block.
+    awk -v url="$SPAMCENTER_URL" -v key="$account" '
+        index($0, url "/") > 0 && /spamcenter\.(ndb|hsb)/ { next }
+        /^additional_update_hours=.*# spfbl.irondome.sh$/ { next }
+        /^\) #END ADDITIONAL DATABASES/ {
+            printf "\t%s/%s/spamcenter.ndb\n", url, key
+            printf "\t%s/%s/spamcenter.hsb\n", url, key
+            print
+            print ""
+            print "additional_update_hours=\"1\" # spfbl.irondome.sh"
+            next
+        }
+        { print }' "$user_conf" > "$user_conf.tmp" || fail "Could not write $user_conf.tmp."
+    cat "$user_conf.tmp" > "$user_conf" && rm -f "$user_conf.tmp"
+    sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$user_conf"
+    chmod 600 "$user_conf"
+    if [ -z "$current" ]; then
+        echo "Spamcenter API key of the SPFBL account added to $user_conf."
+    else
+        echo "Spamcenter API key replaced in $user_conf."
+    fi
+    if [ -x "$SIGS_SCRIPT" ]; then
+        echo "Updating the signatures..."
+        "$SIGS_SCRIPT" > /dev/null 2>&1 || echo "clamav-unofficial-sigs returned an error: see its log."
     fi
 }
 
@@ -2057,6 +2177,233 @@ function gw_uninstall() {
 # Commands
 ###########################################################################
 
+###########################################################################
+# SPFBL client configuration (/etc/spfbl/spfbl.conf)
+###########################################################################
+
+function conf_value() {
+    # Value of a parameter in spfbl.conf, without quotes.
+    [ -r "$SPFBL_CONF" ] || return 0
+    awk -v n="$1" 'index($0, n "=") == 1 { v = substr($0, length(n) + 2); gsub(/^"|"$/, "", v); print v }' "$SPFBL_CONF" | tail -1
+}
+
+function conf_key_valid() {
+    [[ "$1" =~ ^spfbl_[A-Za-z0-9_-]{52}$ ]]
+}
+
+function conf_group() {
+    # Group of the MTA user, which runs spfbl.sh: from the running Exim
+    # processes (cPanel mailnull, DirectAdmin mail, Debian-exim, gateway).
+    if [ -n "$SPFBL_GROUP" ]; then
+        getent group "$SPFBL_GROUP" > /dev/null || fail "The group $SPFBL_GROUP does not exist."
+        echo "$SPFBL_GROUP"
+        return
+    fi
+    # By the numeric GID: the ps group column cuts long names
+    # ("Debian-exim" becomes "Debian-+").
+    local gid name
+    gid=$(ps -eo egid=,comm= 2> /dev/null | awk '$2 ~ /^exim/ && $1 != 0 { print $1 }' | sort -u | head -1)
+    if [ -n "$gid" ]; then
+        getent group "$gid" | cut -d: -f1
+        return
+    fi
+    # Exim not running (yet): the group of the panel, if it exists.
+    case "$PANEL" in
+        gateway) name="$GW_USER" ;;
+        cpanel) name="mailnull" ;;
+        directadmin) name="mail" ;;
+        exim) name="Debian-exim" ;;
+    esac
+    for name in $name exim Debian-exim; do
+        if getent group "$name" > /dev/null; then
+            echo "$name"
+            return
+        fi
+    done
+}
+
+function conf_register() {
+    # POST /client/ over IPv4 ($1 = 4) or IPv6 ($1 = 6). The key and the
+    # hostname go through file descriptor 3: never on the command line.
+    local out
+    out=$(curl -"$1" -s --connect-timeout 10 -m 60 -X POST -w '\n%{http_code}' -K /dev/fd/3 \
+        "$SPFBL_SERVER/client/" 2> /dev/null \
+        3<<< "header = \"Authorization: Bearer $CONF_KEY\""$'\n'"header = \"X-SPFBL-Hostname: $CONF_HOSTNAME\"")
+    REG_CODE=${out##*$'\n'}
+    REG_BODY=${out%$'\n'*}
+    REG_BODY=${REG_BODY%%$'\n'*}
+}
+
+function conf_reason() {
+    # Explanation of a refused registration.
+    case "$REG_BODY" in
+        "INVALID FQDN NO_ADDRESS")
+            echo "the hostname $CONF_HOSTNAME has no $2 record in DNS." ;;
+        "INVALID FQDN IP_MISMATCH")
+            echo "the $2 record of $CONF_HOSTNAME does not contain the $3 of this server." ;;
+        "INVALID FQDN GENERIC")
+            echo "$CONF_HOSTNAME is a generic provider name. Set a hostname of its own on this server." ;;
+        "INVALID FQDN RESERVED_IP")
+            echo "this server reaches SPFBL from a private or reserved IP." ;;
+        "INVALID FQDN"*)
+            echo "the hostname $CONF_HOSTNAME is invalid." ;;
+        *INVALID_KEY*|"KEY REQUIRED")
+            echo "the SPFBL access key is invalid." ;;
+        *KEY_REVOKED*)
+            echo "the SPFBL access key was revoked or expired. Create a new one in the SPFBL panel." ;;
+        *BANNED*)
+            echo "too many failures from this IP. Wait a few minutes and try again." ;;
+        *)
+            echo "unexpected answer (HTTP $REG_CODE)." ;;
+    esac
+}
+
+function conf_fix_group() {
+    # After the MTA is installed or rebuilt: the group of spfbl.conf may
+    # not exist when "config" ran (gateway Exim built afterwards).
+    [ -f "$SPFBL_CONF" ] || return 0
+    local group
+    group=$(conf_group)
+    if [ -n "$group" ] && [ "$(stat -c %G "$SPFBL_CONF")" != "$group" ]; then
+        chown "root:$group" "$SPFBL_CONF" && chmod 640 "$SPFBL_CONF" && \
+            echo "$SPFBL_CONF readable by the group $group."
+    fi
+}
+
+function conf_abort() {
+    # Failure of the SPFBL client configuration. On "config", "install" and
+    # "prepare" it stops everything; on "update" (CONF_SOFT=1) it goes on
+    # without spfbl.conf, with spfbl.sh querying by IP as before.
+    [ -n "$1" ] && echo "$1"
+    if [ -n "$CONF_SOFT" ]; then
+        echo "Going on without $SPFBL_CONF: spfbl.sh keeps querying by IP."
+        echo "Run \"$0 config\" later to use the SPFBL access key."
+        return 1
+    fi
+    echo "Nothing was changed."
+    exit 1
+}
+
+function conf_write() {
+    # Writes the file in one step: root:<MTA group>, mode 0640. Other
+    # parameters already in the file are kept.
+    local group="$1" temp="$SPFBL_CONF.tmp"
+    mkdir -p "$SPFBL_CONF_DIR"
+    chmod 755 "$SPFBL_CONF_DIR"
+    (
+        umask 077
+        {
+            echo "# SPFBL client configuration, read by spfbl.sh 3.06 or newer."
+            echo "# Written by spfbl.irondome.sh config and kept on updates."
+            echo "SPFBL_KEY=$CONF_KEY"
+            [ -n "$CONF_IP_VERSION" ] && echo "IP_VERSION=$CONF_IP_VERSION"
+            if [ -f "$SPFBL_CONF" ]; then
+                # Other parameters; grep finding none is not an error.
+                grep -vE '^(#|SPFBL_KEY=|SPFBL_HOSTNAME=|IP_VERSION=)' "$SPFBL_CONF" | grep -v '^[[:space:]]*$' || true
+            fi
+        } > "$temp"
+    ) || fail "Could not write $temp."
+    if ! chown "root:${group:-root}" "$temp"; then
+        rm -f "$temp"
+        fail "Could not set the group ${group:-root} on $SPFBL_CONF. Run again with SPFBL_GROUP=<group of the MTA user>."
+    fi
+    chmod 640 "$temp"
+    mv -f "$temp" "$SPFBL_CONF"
+}
+
+function config() {
+    command -v curl > /dev/null || { conf_abort "curl is required."; return 1; }
+    # Key: the environment one, the one in the file, or asked for.
+    CONF_KEY="$SPFBL_KEY"
+    if [ -z "$CONF_KEY" ]; then
+        CONF_KEY=$(conf_value SPFBL_KEY)
+        [ -n "$CONF_KEY" ] && echo "Keeping the SPFBL access key already in $SPFBL_CONF."
+    fi
+    if [ -z "$CONF_KEY" ]; then
+        if ! (exec < /dev/tty) 2> /dev/null; then
+            conf_abort "No SPFBL access key and no terminal to ask for it. Run again with SPFBL_KEY=... in the environment."
+            return 1
+        fi
+        echo "Create an access key in the SPFBL panel (Access keys) for this server."
+        [ -n "$CONF_SOFT" ] && echo "Press Enter without a key to go on querying by IP."
+        read -rs -p "SPFBL access key: " CONF_KEY < /dev/tty
+        echo ""
+        if [ -z "$CONF_KEY" ]; then
+            conf_abort "No SPFBL access key given."
+            return 1
+        fi
+    fi
+    if ! conf_key_valid "$CONF_KEY"; then
+        conf_abort "This is not a valid SPFBL access key (spfbl_..., 58 characters)."
+        return 1
+    fi
+    # Hostname: the one in use by the kernel, the same that spfbl.sh
+    # reads on every query. It must be the FQDN of this server.
+    CONF_HOSTNAME=$(tr 'A-Z' 'a-z' < /proc/sys/kernel/hostname 2> /dev/null)
+    [ -n "$CONF_HOSTNAME" ] || CONF_HOSTNAME=$(hostname 2> /dev/null | tr 'A-Z' 'a-z')
+    if [[ ! "$CONF_HOSTNAME" == *.* || ! "$CONF_HOSTNAME" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+        echo "The hostname \"$CONF_HOSTNAME\" of this server is not a FQDN."
+        echo "SPFBL Irondome needs the FQDN as the hostname of this server, with an"
+        echo "A/AAAA record pointing to its IP. Set it and run again:"
+        echo "   hostnamectl set-hostname mx.example.com"
+        conf_abort ""
+        return 1
+    fi
+    echo "Hostname of this server: $CONF_HOSTNAME"
+    # Registration over IPv4 and IPv6. HTTP 000: no route for that protocol.
+    local ok4="" ok6="" msg4="" msg6=""
+    conf_register 4
+    if [ "$REG_CODE" = "403" ] || [ "$REG_CODE" = "429" ]; then
+        # Key refused or IP banned: the same for IPv6. Nothing is changed.
+        conf_abort "Refused: $(conf_reason)"
+        return 1
+    elif [ "$REG_CODE" = "200" ]; then
+        ok4=1
+        echo "IPv4: $REG_BODY"
+    elif [ "$REG_CODE" = "000" ]; then
+        echo "IPv4: no connection to $SPFBL_SERVER."
+    else
+        msg4=$(conf_reason 4 A IPv4)
+        echo "IPv4: refused: $msg4"
+    fi
+    conf_register 6
+    if [ "$REG_CODE" = "200" ]; then
+        ok6=1
+        echo "IPv6: $REG_BODY"
+    elif [ "$REG_CODE" = "000" ]; then
+        echo "IPv6: no IPv6 connection to $SPFBL_SERVER (only IPv4 will be used)."
+    else
+        msg6=$(conf_reason 6 AAAA IPv6)
+        echo "IPv6: refused: $msg6"
+    fi
+    # Protocol of the queries: both, or only the accepted one.
+    if [ -n "$ok4" ] && [ -n "$ok6" ]; then
+        CONF_IP_VERSION=""
+    elif [ -n "$ok4" ]; then
+        CONF_IP_VERSION="4"
+        [ -n "$msg6" ] && echo "The SPFBL queries will use only IPv4."
+    elif [ -n "$ok6" ]; then
+        CONF_IP_VERSION="6"
+        [ -n "$msg4" ] && echo "The SPFBL queries will use only IPv6."
+    else
+        echo "SPFBL Irondome needs a valid FQDN on this server: the SPFBL sends to it"
+        echo "the release signals of held messages. Set the hostname of this server"
+        echo "with an A/AAAA record pointing to its IP."
+        conf_abort ""
+        return 1
+    fi
+    local group
+    group=$(conf_group)
+    conf_write "$group"
+    if [ -n "$group" ]; then
+        echo "Configuration written to $SPFBL_CONF (root:$group, 0640)."
+    else
+        echo "Configuration written to $SPFBL_CONF (root:root, 0640)."
+        echo "Warning: no Exim process found to set the group allowed to read it."
+        echo "Run again with SPFBL_GROUP=<group of the MTA user>, or spfbl.sh will query by IP."
+    fi
+}
+
 function is_installed() {
     if [ "$PANEL" = "cpanel" ]; then
         [ -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient ]
@@ -2074,6 +2421,8 @@ function install() {
     [ "$PANEL" = "exim" ] && exim_check
     [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
+    # SPFBL access key and FQDN first: without them, nothing else changes.
+    config
     spamcenter_prepare
     install_client
     if ! "$SPFBL_CLIENT" version; then
@@ -2099,6 +2448,7 @@ function install() {
         da_configure_exim
     fi
     install_holding
+    conf_fix_group
     echo "SPFBL Irondome was successfully installed!"
     [ "$PANEL" = "gateway" ] && gw_notes
     echo ""
@@ -2112,6 +2462,8 @@ function prepare() {
     detect_distro
     gw_check
     install_dependencies
+    # SPFBL access key and FQDN first: without them, nothing else changes.
+    config
     spamcenter_prepare
     install_client
     if ! "$SPFBL_CLIENT" version; then
@@ -2121,6 +2473,7 @@ function prepare() {
     install_sigs
     gw_build
     gw_configure
+    conf_fix_group
     gw_ports
     gw_test
     echo ""
@@ -2163,6 +2516,13 @@ function update() {
     [ "$PANEL" = "exim" ] && exim_check
     [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
+    # SPFBL access key: the one of spfbl.conf; without it, asked for on a
+    # terminal. Any failure here only keeps the queries by IP.
+    if [ -r "$SPFBL_CONF" ] && conf_key_valid "$(conf_value SPFBL_KEY)"; then
+        echo "Using the SPFBL access key of $SPFBL_CONF."
+    else
+        CONF_SOFT=1 config || true
+    fi
     spamcenter_prepare
     install_client
     # Signatures: script, master.conf and the SPFBL databases (spfbl.ldb included).
@@ -2186,6 +2546,7 @@ function update() {
         da_configure_exim
     fi
     install_holding
+    conf_fix_group
     firewall
 }
 
@@ -2261,8 +2622,18 @@ case "$1" in
         detect_panel
         rollback
     ;;
+    config)
+        echo "[config] Configuring the SPFBL client powered by SPFBL.net"
+        config
+    ;;
+    spamcenter)
+        echo "[spamcenter] Configuring the Spamcenter API key of the SPFBL account"
+        spamcenter_sync
+    ;;
     *)
         echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
         echo "*** Gateway in steps: $0 [prepare [SPAMCENTER_API_KEY]|switch|rollback]"
+        echo "*** SPFBL client configuration only: $0 config"
+        echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
         exit 1
 esac

@@ -49,6 +49,64 @@ MAX_TIMEOUT="256"
 # mensagem analisada. Valores: "true" (padrão) ou "false".
 DEEP_ANALYSIS="true"
 LOGPATH=/var/log/spfbl/
+# Servidor SPFBL das consultas HTTPS.
+URL_SERVIDOR="https://matrix.spfbl.net"
+
+# Configuração local, criada pelo spfbl.irondome.sh e preservada nas
+# atualizações deste script. Sem ela, o cliente é identificado pelo IP
+# (cadastro CIDR), como nas versões anteriores. Com ela, cada consulta
+# leva a chave de acesso e o hostname da máquina por cabeçalho HTTPS,
+# em IPv4 ou IPv6. Só os nomes abaixo são lidos; o arquivo não é
+# executado. Formato: NOME=valor, uma linha por parâmetro.
+SPFBL_CONF="/etc/spfbl/spfbl.conf"
+SPFBL_KEY=""
+# Protocolo das consultas com chave: vazio (IPv4 ou IPv6, o que o curl
+# conseguir), 4 ou 6. O spfbl.irondome.sh grava 4 quando o hostname não
+# tem AAAA com o IPv6 do servidor, e 6 no caso inverso.
+IP_VERSION=""
+if [[ -r $SPFBL_CONF ]]; then
+	while IFS='=' read -r name value; do
+		value=${value%$'\r'}
+		value=${value#\"}
+		value=${value%\"}
+		case "$name" in
+			SPFBL_KEY)
+				[[ $value =~ ^spfbl_[A-Za-z0-9_-]+$ ]] && SPFBL_KEY=$value
+				;;
+			URL_SERVIDOR)
+				[[ $value =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] && URL_SERVIDOR=$value
+				;;
+			QUERY_TIMEOUT)
+				[[ $value =~ ^[0-9]+$ ]] && QUERY_TIMEOUT=$value
+				;;
+			MAX_TIMEOUT)
+				[[ $value =~ ^[0-9]+$ ]] && MAX_TIMEOUT=$value
+				;;
+			DEEP_ANALYSIS)
+				[[ $value =~ ^(true|false)$ ]] && DEEP_ANALYSIS=$value
+				;;
+			IP_VERSION)
+				[[ $value =~ ^[46]?$ ]] && IP_VERSION=$value
+				;;
+		esac
+	done < "$SPFBL_CONF"
+fi
+# Hostname enviado ao servidor: o nome em uso agora no kernel, lido a
+# cada execução, sem processo novo e sem DNS. Uma troca de hostname
+# chega ao SPFBL na consulta seguinte. O hostname do servidor precisa
+# ser o FQDN (hostnamectl set-hostname mx.exemplo.com); nome curto é
+# recusado pelo servidor e as mensagens passam sem filtro.
+LOCAL_HOSTNAME=""
+if [[ -r /proc/sys/kernel/hostname ]]; then
+	read -r LOCAL_HOSTNAME < /proc/sys/kernel/hostname
+elif [[ -n $SPFBL_KEY ]]; then
+	# Fora do Linux (FreeBSD): comando hostname.
+	LOCAL_HOSTNAME=$(hostname 2> /dev/null)
+fi
+LOCAL_HOSTNAME=${LOCAL_HOSTNAME,,}
+# Chave e hostname para o curl -K, entregues por um descritor (3<<<):
+# não aparecem na linha de comando nem no ps.
+CURL_KEY_CONFIG="header = \"Authorization: Bearer $SPFBL_KEY\""$'\n'"header = \"X-SPFBL-Hostname: $LOCAL_HOSTNAME\""
 
 # Timeouts de cada consulta:
 #   -w 3                      tempo máximo para conectar.
@@ -63,15 +121,15 @@ else
 	NCAT="timeout -k 2 $QUERY_TIMEOUT ncat -w 3"
 fi
 
-# Canal das consultas ao servidor SPFBL (porta de consulta).
-URL_SERVIDOR="https://matrix.spfbl.net"
+# Canal das consultas ao servidor SPFBL sem chave no spfbl.conf (pelo IP).
+# Com chave, as consultas passam pela função spfbl_query.
 COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $URL_SERVIDOR/spfbl/"
 # Para consultar via ncat, comente a linha acima e descomente a abaixo.
 # O comando scan continua usando HTTPS pelo URL_SERVIDOR.
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.05"
+version="3.06"
 
 # Contador de timeouts seguidos. Guarda também o estado MAINTENANCE,
 # gravado quando a primeira falha de um evento coincide com a janela de
@@ -172,6 +230,74 @@ function httpUnavailable() {
 
 }
 
+function keyRefusal() {
+
+	# Recusa da chave ou do hostname pelo servidor: código 400, 403, 422
+	# ou 429 com o motivo no corpo. Os demais erros seguem o caminho de
+	# serviço indisponível.
+	local REASON=${2%%$'\n'*}
+	[[ $1 =~ ^(400|403|422|429)$ ]] &&
+	[[ $REASON =~ ^(INVALID\ KEY|KEY\ REVOKED|KEY\ HTTPS|BANNED|HOSTNAME\ REQUIRED|INVALID\ FQDN.*)$ ]]
+
+}
+
+function logKeyRefusal() {
+
+	# Registra no syslog (mail.warning) o motivo da recusa, no máximo uma
+	# vez por minuto. Gravação no mesmo arquivo, sem mv: o /tmp tem
+	# sticky bit e o arquivo pode ser de outro usuário (exim, root).
+	local FILE="/tmp/SPFBL_KEY_REFUSED"
+	local NOW
+	printf -v NOW '%(%s)T' -1
+	local LAST=$(cat "$FILE" 2> /dev/null)
+	if [[ ! $LAST =~ ^[0-9]+$ ]] || (( NOW - LAST >= 60 )); then
+		if [ ! -f "$FILE" ]; then
+			touch "$FILE" 2> /dev/null
+			chmod 666 "$FILE" 2> /dev/null
+		fi
+		echo "$NOW" > "$FILE" 2> /dev/null
+		logger -t spfbl -p mail.warning "SPFBL refused this server ($LOCAL_HOSTNAME): HTTP $1 ${2%%$'\n'*}. Messages pass without filtering. Check $SPFBL_CONF and the SPFBL panel." 2> /dev/null
+	fi
+
+}
+
+function spfbl_query() {
+
+	# Consulta ao servidor SPFBL: lê a consulta da entrada padrão e
+	# escreve a resposta, como o antigo $COMMAND.
+	# Sem chave no spfbl.conf: canal antigo, identificado pelo IP.
+	if [[ -z $SPFBL_KEY ]]; then
+		$COMMAND
+		return
+	fi
+
+	local query response code body
+	IFS= read -r query
+	response=$(printf '%s\n' "$query" | curl ${IP_VERSION:+-$IP_VERSION} -s --connect-timeout 3 -m "$QUERY_TIMEOUT" \
+		-w '\n%{http_code}' -K /dev/fd/3 --data-binary @- "$URL_SERVIDOR/spfbl/" \
+		3<<< "$CURL_KEY_CONFIG" 2> /dev/null)
+	code=${response##*$'\n'}
+	body=${response%$'\n'*}
+
+	if [[ $code == "200" ]]; then
+		printf '%s\n' "$body"
+	elif keyRefusal "$code" "$body"; then
+		# Chave ou hostname recusado: a mensagem passa sem filtro.
+		#   SPF e CHECK: LAN (mesmo fluxo de uma origem local);
+		#   HOLDING: HOLD (mantém congelada; nunca remove);
+		#   demais: OUT OF SERVICE (como o serviço fora do ar).
+		logKeyRefusal "$code" "$body"
+		case "${query%% *}" in
+			SPF|CHECK) echo "LAN" ;;
+			HOLDING) echo "HOLD" ;;
+			*) echo "OUT OF SERVICE" ;;
+		esac
+	fi
+	# Outros códigos: sem saída, como o curl -f; quem chamou trata a
+	# resposta vazia (timeout, fora do ar ou manutenção).
+
+}
+
 function maintenanceExit() {
 
 	# Serviço em manutenção programada: mesmo código em todos os comandos.
@@ -216,7 +342,7 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
-		response=$(echo "VERSION" | $COMMAND 2> /dev/null)
+		response=$(echo "VERSION" | spfbl_query 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
@@ -771,7 +897,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | $COMMAND 2> /dev/null)
+					response=$(echo "BLOCK ADD $sender" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -817,7 +943,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | $COMMAND 2> /dev/null)
+					response=$(echo "BLOCK DROP $sender" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -856,9 +982,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "BLOCK SHOW ALL" | $COMMAND 2> /dev/null)
+						response=$(echo "BLOCK SHOW ALL" | spfbl_query 2> /dev/null)
 					else
-						response=$(echo "BLOCK SHOW" | $COMMAND 2> /dev/null)
+						response=$(echo "BLOCK SHOW" | spfbl_query 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -896,7 +1022,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 block find token\n"
 				else
 					token=$3
-					response=$(echo "BLOCK FIND $token" | $COMMAND 2> /dev/null)
+					response=$(echo "BLOCK FIND $token" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1527,7 +1653,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE ADD $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "WHITE ADD $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1569,7 +1695,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "WHITE SENDER $sender" | $COMMAND 2> /dev/null)
+					response=$(echo "WHITE SENDER $sender" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1613,7 +1739,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE DROP $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "WHITE DROP $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1650,7 +1776,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 white show\n"
 				else
-					response=$(echo "WHITE SHOW" | $COMMAND 2> /dev/null)
+					response=$(echo "WHITE SHOW" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2462,7 +2588,7 @@ case $1 in
 			messageID=$2
 			from=$3
 
-			response=$(echo "ABUSE $messageID $from" | $COMMAND 2> /dev/null)
+			response=$(echo "ABUSE $messageID $from" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -2550,7 +2676,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo "REFRESH $hostname" | $COMMAND 2> /dev/null)
+			response=$(echo "REFRESH $hostname" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -2714,7 +2840,7 @@ case $1 in
 			helo=$4
 			recipient=$5
 
-			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | $COMMAND 2> /dev/null)
+			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | spfbl_query 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier=$(emptyResponse)
@@ -2818,7 +2944,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "SPAM $ticket" | $COMMAND 2> /dev/null)
+					resposta=$(echo "SPAM $ticket" | spfbl_query 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						resposta=$(emptyResponse)
@@ -2882,7 +3008,7 @@ case $1 in
 			ticket=$2
 			links=$3
 
-			response=$(echo "LINK $ticket $links" | $COMMAND 2> /dev/null)
+			response=$(echo "LINK $ticket $links" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -2929,7 +3055,7 @@ case $1 in
 			ticket=$2
 			signer=$3
 
-			response=$(echo "SIGNER $ticket $signer" | $COMMAND 2> /dev/null)
+			response=$(echo "SIGNER $ticket $signer" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -3014,7 +3140,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL como malware.
-					resposta=$(echo "MALWARE $ticket $3" | $COMMAND 2> /dev/null)
+					resposta=$(echo "MALWARE $ticket $3" | spfbl_query 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						resposta=$(emptyResponse)
@@ -3083,7 +3209,7 @@ case $1 in
 			replyto=$4
 			unsubscribe=$5
 
-			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | $COMMAND 2> /dev/null)
+			response=$(echo "FROM $ticket $from $replyto $unsubscribe" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -3136,7 +3262,7 @@ case $1 in
 			unsubscribe=$8
 			queueID=$9
 
-			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | $COMMAND 2> /dev/null)
+			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -3206,7 +3332,13 @@ case $1 in
 			# curto e não aceitar quebra de linha nem outro caractere estranho.
 			TICKETS=$(printf '%s' "$4" | tr ';' '\n' | sed 's#.*/##' | tr -cd 'A-Za-z0-9_=\n-' | grep -v '^$' | paste -sd ';' -)
 
-			CURL_ARGS=(-4 -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
+			if [[ -n $SPFBL_KEY ]]; then
+				# Com chave: IPv4 ou IPv6 (ou o IP_VERSION do spfbl.conf),
+				# chave e hostname pelo descritor 3.
+				CURL_ARGS=(${IP_VERSION:+-$IP_VERSION} -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -K /dev/fd/3 -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
+			else
+				CURL_ARGS=(-4 -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
+			fi
 			if [ -n "$TICKETS" ]; then
 				CURL_ARGS+=(-H "X-SPFBL-Tickets: $TICKETS")
 			fi
@@ -3220,11 +3352,15 @@ case $1 in
 				response="NOT FOUND"
 			else
 				# EML puro: descarta a linha separadora "From " do MBOX, se houver.
-				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" -w '\n%{http_code}' --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 2> /dev/null)
+				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" -w '\n%{http_code}' --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 3<<< "$CURL_KEY_CONFIG" 2> /dev/null)
 				code=${response##*$'\n'}
 				response=$(printf '%s' "${response%$'\n'*}")
 
-				if httpUnavailable "$code" || [[ $response == "" && $code == "200" ]]; then
+				if [[ -n $SPFBL_KEY ]] && keyRefusal "$code" "$response"; then
+					# Chave ou hostname recusado: a mensagem passa sem filtro.
+					logKeyRefusal "$code" "$response"
+					response="OUT OF SERVICE"
+				elif httpUnavailable "$code" || [[ $response == "" && $code == "200" ]]; then
 					# Sem conexão, timeout ou página de erro do Cloudflare.
 					response=$(emptyResponse)
 					maintenanceExit "$response"
@@ -3285,7 +3421,7 @@ case $1 in
 				if [ "$LENGTH" -gt "65535" ]; then
 					response="TOO BIG"
 				else
-					response=$(echo "MESSAGE $QUEUEID $ENCODED" | $COMMAND 2> /dev/null)
+					response=$(echo "MESSAGE $QUEUEID $ENCODED" | spfbl_query 2> /dev/null)
 				fi
 			else
 				response="NOT FOUND"
@@ -3345,7 +3481,7 @@ case $1 in
 					response="TOO BIG"
 				else
 					ENCODED=$(base64 --wrap=0 $FILE.gz)
-					response=$(echo "BODY $TICKET $ENCODED $CHARSET" | $COMMAND 2> /dev/null)
+					response=$(echo "BODY $TICKET $ENCODED $CHARSET" | spfbl_query 2> /dev/null)
 				fi
 			else
 				response="NOT A FILE"
@@ -3407,7 +3543,7 @@ case $1 in
 	
 						if [ $? -eq 0 ]; then
 	
-							response=$(echo "HOLDING $ticket" | $COMMAND 2> /dev/null)
+							response=$(echo "HOLDING $ticket" | spfbl_query 2> /dev/null)
 
 							if [[ $response == "" ]]; then
 
@@ -3468,7 +3604,7 @@ case $1 in
 	
 			if [ $? -eq 0 ]; then
 	
-				response=$(echo "HOLDING $ticket" | $COMMAND 2> /dev/null)
+				response=$(echo "HOLDING $ticket" | spfbl_query 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 
@@ -3582,7 +3718,7 @@ case $1 in
 					exit 6
 				else
 					# Registra reclamação SPFBL.
-					resposta=$(echo "HAM $ticket" | $COMMAND 2> /dev/null)
+					resposta=$(echo "HAM $ticket" | spfbl_query 2> /dev/null)
 
 					if [[ $resposta == "" ]]; then
 						resposta=$(emptyResponse)
@@ -3719,7 +3855,7 @@ case $1 in
 					qualifier="LAN"
 					;;
 				*)
-					qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | $COMMAND 2> /dev/null)
+					qualifier=$(echo "SPF '$ip' '$email' '$helo' '$recipient' $exists" | spfbl_query 2> /dev/null)
 
 					if [[ $qualifier == "" ]]; then
 						qualifier=$(emptyResponse)
@@ -3832,7 +3968,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP ADD $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "TRAP ADD $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -3874,7 +4010,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "TRAP DROP $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "TRAP DROP $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -3911,7 +4047,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 trap show\n"
 				else
-					response=$(echo "TRAP SHOW" | $COMMAND 2> /dev/null)
+					response=$(echo "TRAP SHOW" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -3959,7 +4095,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT ADD $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "INEXISTENT ADD $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4001,7 +4137,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT DROP $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "INEXISTENT DROP $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4038,7 +4174,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 inexistent show\n"
 				else
-					response=$(echo "INEXISTENT SHOW" | $COMMAND 2> /dev/null)
+					response=$(echo "INEXISTENT SHOW" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4074,7 +4210,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 inexistent is <recipient>\n"
 				else
 					recipient=$3
-					response=$(echo "INEXISTENT IS $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "INEXISTENT IS $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4370,7 +4506,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "NOREPLY IS $recipient" | $COMMAND 2> /dev/null)
+					response=$(echo "NOREPLY IS $recipient" | spfbl_query 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
