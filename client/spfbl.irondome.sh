@@ -955,6 +955,13 @@ function spamcenter_sync() {
     fi
 }
 
+function sigs_remove_script() {
+    # --remove-script asks "Are you sure? [y/N]" and repeats the question
+    # on any other answer: without a terminal (or with the output piped),
+    # it would wait forever. The answer is given here.
+    printf 'y\n' | "$SIGS_SCRIPT" --remove-script
+}
+
 function remove_additional_dbs() {
     # clamav-unofficial-sigs --remove-script does not delete the additional
     # databases from the clamd directory, so they are removed here.
@@ -1147,7 +1154,7 @@ function cpanel_configure_exim() {
 }
 
 function cpanel_uninstall() {
-    "$SIGS_SCRIPT" --remove-script
+    sigs_remove_script
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
@@ -1295,7 +1302,7 @@ function da_uninstall() {
         "$DA_BUILD" update
         "$DA_BUILD" spamassassin
     fi
-    [ -x "$SIGS_SCRIPT" ] && "$SIGS_SCRIPT" --remove-script
+    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
     rm -f /etc/exim.acl_check_recipient.pre.conf
     rm -rf /etc/exim.easy_spam_fighter/
     rm -f /etc/exim.acl_check_message.pre.conf
@@ -1491,7 +1498,7 @@ function exim_configure() {
 
 function exim_uninstall() {
     EXIM_BIN=$(command -v exim4 || command -v exim)
-    [ -x "$SIGS_SCRIPT" ] && "$SIGS_SCRIPT" --remove-script
+    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
     # Configuration: only the SPFBL block and files.
     exim_remove_block "$EXIM_MACROS"
     if [ "$(state_get MACROS_FILE)" = "absent" ] && [ -f "$EXIM_MACROS" ] && ! grep -q '[^[:space:]]' "$EXIM_MACROS"; then
@@ -2008,9 +2015,37 @@ function gw_postfix_restore() {
     gw_postfix_reload
 }
 
+function gw_stop_exim() {
+    # Stops the gateway Exim and makes sure that port 25 is free before
+    # Postfix gets it back. "systemctl disable --now" is not enough: the
+    # unit is a link into GW_DIR, and once it vanishes systemd may not stop
+    # the daemon, which keeps port 25 and Postfix cannot bind it.
+    local try pids
+    systemctl stop spfbl-exim.service >/dev/null 2>&1
+    for try in $(seq 1 10); do
+        pids=$(pgrep -f "^$GW_DIR/bin/exim" 2>/dev/null)
+        [ -z "$pids" ] && [[ $(port_owner 25) != *exim* ]] && break
+        sleep 1
+    done
+    pids=$(pgrep -f "^$GW_DIR/bin/exim" 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "The gateway Exim did not stop with systemd: ending its processes ($(echo $pids))."
+        kill $pids 2>/dev/null
+        sleep 2
+        pids=$(pgrep -f "^$GW_DIR/bin/exim" 2>/dev/null)
+        [ -n "$pids" ] && kill -9 $pids 2>/dev/null && sleep 1
+    fi
+    systemctl disable spfbl-exim.service >/dev/null 2>&1
+    if [[ $(port_owner 25) == *exim* ]]; then
+        echo "WARNING: an Exim process still holds port 25: $(ss -ltnp '( sport = :25 )' 2>/dev/null | tail -n +2 | head -2)"
+        return 1
+    fi
+    return 0
+}
+
 function gw_abort() {
     # Something failed: Postfix gets port 25 back, as before the gateway.
-    systemctl disable --now spfbl-exim.service >/dev/null 2>&1
+    gw_stop_exim
     gw_postfix_restore
     fail "$1 Postfix was put back on port 25, with the master.cf it had before the gateway."
 }
@@ -2058,11 +2093,17 @@ function gw_install_build_deps() {
     fi
 }
 
-function gw_dirs() {
-    # Directories of GW_DIR. The Exim user writes in spool, log and var.
+function gw_user() {
+    # System user of the gateway Exim. Created before "config", so that
+    # spfbl.conf gets its group at once.
     if ! getent passwd "$GW_USER" >/dev/null; then
         useradd --system --user-group --no-create-home --home-dir "$GW_DIR/spool" --shell "$(command -v nologin || echo /sbin/nologin)" "$GW_USER"
     fi
+}
+
+function gw_dirs() {
+    # Directories of GW_DIR. The Exim user writes in spool, log and var.
+    gw_user
     mkdir -p "$GW_DIR/bin" "$GW_DIR/etc" "$GW_DIR/spool" "$GW_LOG_DIR" "$GW_VAR_DIR" "$GW_BACKUP_DIR" "$GW_UNIT_DIR"
     # The whole spool: a directory created by root inside it (a scan test,
     # for example) would stop Exim from unpacking messages for clamd.
@@ -2680,7 +2721,7 @@ function gw_rollback() {
     # "switch" can go forward again without changing anything else.
     POSTFIX_MASTER="$(postconf -h config_directory)/master.cf"
     gw_installed || fail "The SPFBL gateway is not installed."
-    systemctl disable --now spfbl-exim.service >/dev/null 2>&1
+    gw_stop_exim
     if grep -q '^#SPFBL# ' "$POSTFIX_MASTER"; then
         local opened
         opened=$(sed 's/^#SPFBL# //' "$POSTFIX_MASTER")
@@ -2729,7 +2770,8 @@ function gw_notes() {
     echo "Notes about the gateway on this host:"
     echo "  - Mail from the Postfix mynetworks is accepted by Exim without SPFBL checks"
     echo "    and reaches Postfix through 127.0.0.1:$GW_LOCAL_PORT, so Postfix logs it from 127.0.0.1."
-    if [ -f /etc/amavisd/amavisd.conf ] || [ -f /etc/amavisd.conf ] || [ -d /etc/amavis ]; then
+    # Only when Amavis really runs (CWP installs it, but it may be off).
+    if systemctl is-active --quiet amavisd 2>/dev/null || systemctl is-active --quiet amavis 2>/dev/null; then
         echo "  - Amavis sees that mail coming from 127.0.0.1 and treats it as originating"
         echo "    from this host: DKIM signing for local domains, no inbound spam scan."
     fi
@@ -2756,7 +2798,7 @@ function gw_apply() {
 function gw_uninstall() {
     POSTFIX_MASTER="$(postconf -h config_directory 2>/dev/null)/master.cf"
     gw_state_file
-    [ -x "$SIGS_SCRIPT" ] && "$SIGS_SCRIPT" --remove-script
+    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
     local keep=false clamav
     clamav=$(state_get CLAMAV_PACKAGES)
     if gw_installed; then
@@ -2772,7 +2814,8 @@ function gw_uninstall() {
         fi
     fi
     ls -A "$GW_BACKUP_DIR" 2>/dev/null | grep -q . && keep=true
-    systemctl disable --now spfbl-exim.service spfbl-exim-maint.timer spfbl-postfix-guard.path 2>/dev/null
+    gw_stop_exim
+    systemctl disable --now spfbl-exim-maint.timer spfbl-postfix-guard.path 2>/dev/null
     # A test daemon started by hand (exim -bd -oX <port> -oP <file>).
     local pidfile
     for pidfile in /run/spfbl-exim-test.pid "$GW_VAR_DIR"/*.pid; do
@@ -2825,6 +2868,11 @@ function gw_uninstall() {
         fi
     fi
     rm -f "$EXIM_STATE" "$GW_OLD_STATE"
+    if [[ $(port_owner 25) != *master* ]] && ! postfix status >/dev/null 2>&1; then
+        # A reload that found port 25 still busy stops the Postfix master.
+        postfix start >/dev/null 2>&1
+        port_listening 25 >/dev/null 2>&1
+    fi
     if [[ $(port_owner 25) == *master* ]]; then
         echo "Postfix is back on port 25."
     else
@@ -3139,6 +3187,7 @@ function install() {
     [ "$PANEL" = "exim" ] && exim_check
     [ "$PANEL" = "gateway" ] && gw_check
     install_dependencies
+    [ "$PANEL" = "gateway" ] && gw_user
     # SPFBL access key and FQDN first: without them, nothing else changes.
     config
     spamcenter_prepare
@@ -3178,6 +3227,7 @@ function prepare() {
     detect_distro
     gw_check
     install_dependencies
+    gw_user
     # SPFBL access key and FQDN first: without them, nothing else changes.
     config
     spamcenter_prepare
