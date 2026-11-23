@@ -76,7 +76,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.7
+# Version: 2.8
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -85,7 +85,7 @@ SIGS_SCRIPT="/usr/local/bin/clamav-unofficial-sigs.sh"
 SIGS_DIR="/etc/clamav-unofficial-sigs"
 CONTACT_URL="https://spfbl.net/en/contact"
 CONTACT_EMAIL="admin@spfbl.net"
-IRONDOME_VERSION="2.7"
+IRONDOME_VERSION="2.8"
 SPAMCENTER_URL="https://api.spam.center/download/clamav"
 SPAMCENTER_KEY=""
 # Every additional database this script may configure; uninstall removes them.
@@ -133,6 +133,7 @@ PANEL_VERSION=""
 MTA_NAME=""
 MTA_VERSION=""
 MTA_NOTE=""
+UNSUPPORTED_REASON=""
 OS_NAME=""
 DETECTED=""
 
@@ -333,11 +334,43 @@ function select_mode() {
         "")
             case "$MTA_NAME" in
                 Exim)
-                    PANEL="exim"; PANEL_NAME="Exim" ;;
+                    if exim_requirements; then
+                        PANEL="exim"; PANEL_NAME="Exim"
+                    fi
+                    ;;
             esac
             ;;
     esac
     [ -n "$PANEL" ]
+}
+
+function exim_requirements() {
+    # Same requirements of exim_check, for the detection: Debian or Ubuntu,
+    # Exim 4.96 or newer and the Debian configuration (exim4-config).
+    UNSUPPORTED_REASON=""
+    local family="" like major minor
+    if [ -r /etc/os-release ]; then
+        family=$( . /etc/os-release; echo " $ID $ID_LIKE " | tr '[:upper:]' '[:lower:]')
+    fi
+    if [[ $family != *" debian "* && $family != *" ubuntu "* ]]; then
+        UNSUPPORTED_REASON="the pure Exim installation requires Debian or Ubuntu"
+    elif [ -n "$MTA_NOTE" ]; then
+        UNSUPPORTED_REASON="Exim is installed, but it is not listening on port 25"
+    elif [ -z "$MTA_VERSION" ]; then
+        UNSUPPORTED_REASON="the Exim version could not be read"
+    else
+        major=${MTA_VERSION%%.*}
+        minor=${MTA_VERSION#*.}
+        minor=${minor%%[!0-9]*}
+        if [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "${minor:-0}" -lt 96 ]; }; then
+            UNSUPPORTED_REASON="the pure Exim installation requires Exim 4.96 or newer"
+        elif ! command -v update-exim4.conf >/dev/null 2>&1; then
+            UNSUPPORTED_REASON="the Debian Exim configuration (exim4-config) was not found"
+        elif [ -f /etc/exim4/exim4.conf ]; then
+            UNSUPPORTED_REASON="/etc/exim4/exim4.conf replaces the Debian configuration"
+        fi
+    fi
+    [ -z "$UNSUPPORTED_REASON" ]
 }
 
 function unsupported() {
@@ -350,6 +383,8 @@ function unsupported() {
         echo "The Irondome does not have an installation for $PANEL_FOUND yet."
     elif [ -z "$MTA_NAME" ]; then
         echo "No mail server was found in this host."
+    elif [ -n "$UNSUPPORTED_REASON" ]; then
+        echo "The Irondome cannot be installed here: $UNSUPPORTED_REASON."
     else
         echo "The Irondome does not have an installation for pure $MTA_NAME yet."
     fi
@@ -371,7 +406,11 @@ function detect_report() {
     if select_mode; then
         echo "Supported: yes ($PANEL_NAME installation)"
     else
-        echo "Supported: no (contact $CONTACT_EMAIL to request it)"
+        if [ -n "$UNSUPPORTED_REASON" ]; then
+            echo "Supported: no ($UNSUPPORTED_REASON)"
+        else
+            echo "Supported: no (contact $CONTACT_EMAIL to request it)"
+        fi
     fi
 }
 
@@ -1395,8 +1434,17 @@ GW_OLD_STATE="/var/lib/spfbl/irondome.state"
 
 function port_owner() {
     # Names of all the processes listening on a TCP port: with postscreen,
-    # port 25 lists postscreen first and master after it.
-    ss -ltnpH "( sport = :$1 )" 2>/dev/null | grep -oE '\("[^"]+",pid=' | cut -d'"' -f2 | sort -u | tr '\n' ' '
+    # port 25 lists postscreen first and master after it. Without -H and
+    # without "pid=": old iproute2 (Ubuntu 14.04, CentOS 6/7) has neither.
+    # netstat is the fallback where ss is missing.
+    local names
+    if command -v ss >/dev/null 2>&1; then
+        names=$(ss -ltnp "( sport = :$1 )" 2>/dev/null | tail -n +2 | grep -oE '\("[^"]+",' | cut -d'"' -f2)
+    fi
+    if [ -z "$names" ] && command -v netstat >/dev/null 2>&1; then
+        names=$(netstat -ltnp 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" {n = split($7, a, "/"); if (n > 1) print a[2]}')
+    fi
+    echo "$names" | sed '/^$/d' | sort -u | tr '\n' ' '
 }
 
 function port_listening() {
