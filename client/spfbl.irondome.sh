@@ -418,6 +418,54 @@ function detect_panel() {
     echo "Control panel detected: $PANEL_NAME"
 }
 
+function detect_installed() {
+    # What this script installed on this host, whatever the panel and the
+    # MTA look like now. uninstall, update, switch and rollback decide by
+    # this, never by the compatibility check of a new installation: a
+    # stopped MTA, a panel installed later or an older script must never
+    # keep the Irondome from being updated or removed.
+    PANEL=""
+    PANEL_NAME=""
+    if [ -x /opt/spfbl/exim/bin/exim ] && [ -f /opt/spfbl/exim/etc/exim.conf ]; then
+        PANEL="gateway"
+    elif [ -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient ]; then
+        PANEL="cpanel"; PANEL_NAME="cPanel"
+    elif [ -f /etc/exim4/spfbl/acl_check_rcpt.conf ]; then
+        PANEL="exim"; PANEL_NAME="Exim"
+    elif [ -f /etc/exim.acl_check_recipient.pre.conf ] && grep -qi spfbl /etc/exim.acl_check_recipient.pre.conf 2>/dev/null; then
+        PANEL="directadmin"; PANEL_NAME="DirectAdmin"
+    fi
+    [ -n "$PANEL" ] || return 1
+    detect_all
+    if [ "$PANEL" = "gateway" ]; then
+        case "$PANEL_FOUND" in
+            "CWP (Control Web Panel)") PANEL_NAME="CWP" ;;
+            CyberPanel|aaPanel|iRedMail) PANEL_NAME="$PANEL_FOUND" ;;
+            *) PANEL_NAME="Postfix gateway" ;;
+        esac
+    fi
+    echo "Irondome installation found: $PANEL_NAME"
+    # The host changed since the installation: only a warning.
+    local current="$PANEL" current_name="$PANEL_NAME"
+    if select_mode; then
+        if [ "$PANEL" != "$current" ]; then
+            echo "WARNING: this host now looks like a $PANEL_NAME host; the installed $current_name is used."
+        fi
+    else
+        echo "WARNING: this combination is not supported for new installations ($(echo "$DETECTED" | sed -n '1,2p' | tr '\n' ';' | sed 's/;$//'))."
+    fi
+    PANEL="$current"
+    PANEL_NAME="$current_name"
+    return 0
+}
+
+function require_installed() {
+    if ! detect_installed; then
+        echo "SPFBL Irondome is not installed on this host."
+        exit 1
+    fi
+}
+
 function detect_report() {
     # "detect" command: shows what was found and changes nothing.
     detect_all
@@ -3260,12 +3308,12 @@ case "$1" in
     ;;
     update)
         echo "[update] Updating SPFBL Irondome powered by SPFBL.net"
-        detect_panel
+        require_installed
         update
     ;;
     uninstall)
         echo "[uninstall] Uninstalling SPFBL Irondome powered by SPFBL.net"
-        detect_panel
+        require_installed
         uninstall
     ;;
     firewall)
@@ -3280,12 +3328,13 @@ case "$1" in
     ;;
     switch)
         echo "[switch] Switching port 25 to SPFBL Irondome gateway powered by SPFBL.net"
-        detect_panel
+        require_installed
         switch
     ;;
     rollback)
         echo "[rollback] Giving port 25 back to Postfix"
-        detect_panel
+        # Emergency path: only the files of the gateway are needed.
+        require_installed
         rollback
     ;;
     config)
