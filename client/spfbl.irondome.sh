@@ -68,7 +68,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.6
+# Version: 2.7
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -513,6 +513,25 @@ function spamcenter_prepare() {
     fi
 }
 
+function sigs_conf_perms() {
+    # user.conf holds the Spamcenter key, but the cron of
+    # clamav-unofficial-sigs runs as clam_user and must read it:
+    # root:<clam_group> 640. With 600, the cron skips user.conf and
+    # stops updating without any visible error.
+    local file="$1" group
+    group=$(sed -n 's/^clam_group="\(.*\)".*/\1/p' "$SIGS_DIR/os.conf" "$SIGS_DIR/user.conf" 2>/dev/null | tail -1)
+    if [ -z "$group" ] || ! getent group "$group" >/dev/null; then
+        for group in clamav clamupdate clam ""; do
+            [ -n "$group" ] && getent group "$group" >/dev/null && break
+        done
+    fi
+    if [ -n "$group" ]; then
+        chown "root:$group" "$file" && chmod 640 "$file"
+    else
+        chmod 644 "$file"
+    fi
+}
+
 function spamcenter_sync() {
     # "spamcenter" command: only the Spamcenter lines of user.conf, with
     # the key of the SPFBL account. The other databases stay as they are.
@@ -546,7 +565,7 @@ function spamcenter_sync() {
         { print }' "$user_conf" > "$user_conf.tmp" || fail "Could not write $user_conf.tmp."
     cat "$user_conf.tmp" > "$user_conf" && rm -f "$user_conf.tmp"
     sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$user_conf"
-    chmod 600 "$user_conf"
+    sigs_conf_perms "$user_conf"
     if [ -z "$current" ]; then
         echo "Spamcenter API key of the SPFBL account added to $user_conf."
     else
@@ -608,7 +627,7 @@ function configure_sigs_databases() {
         fi
     } >> "$user_conf"
     # The file holds the Spamcenter key.
-    chmod 600 "$user_conf"
+    sigs_conf_perms "$user_conf"
     # Activation required by the script (already present in recent user.conf).
     grep -q '^user_configuration_complete="yes"' "$user_conf" || echo 'user_configuration_complete="yes"' >> "$user_conf"
 }
