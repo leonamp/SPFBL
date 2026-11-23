@@ -31,6 +31,11 @@
 # authenticates on port 25 anymore, the check can be skipped:
 #    SPFBL_SASL_PORT25=none ./spfbl.irondome.sh install
 #
+# Installations not validated yet on a real host (CyberPanel, aaPanel): the
+# code exists, but they are refused until the first installation together
+# with SPFBL.net. For that validation only:
+#    SPFBL_UNVALIDATED=yes ./spfbl.irondome.sh install
+#
 # Detection only (changes nothing):
 #    ./spfbl.irondome.sh detect
 #        Shows the control panel, the mail server (the process on port 25)
@@ -336,6 +341,7 @@ function select_mode() {
     # pure MTA installation is only for servers without a panel.
     PANEL=""
     PANEL_NAME=""
+    UNSUPPORTED_REASON=""
     case "$PANEL_FOUND" in
         "cPanel+DirectAdmin")
             ;;
@@ -343,8 +349,17 @@ function select_mode() {
             PANEL="cpanel"; PANEL_NAME="cPanel" ;;
         DirectAdmin)
             PANEL="directadmin"; PANEL_NAME="DirectAdmin" ;;
-        CyberPanel|aaPanel|iRedMail)
+        iRedMail)
             PANEL="gateway"; PANEL_NAME="$PANEL_FOUND" ;;
+        CyberPanel|aaPanel)
+            # The code exists, but no real installation validated it yet.
+            # Only for that first validation: SPFBL_UNVALIDATED=yes.
+            if [ "$SPFBL_UNVALIDATED" = "yes" ]; then
+                PANEL="gateway"; PANEL_NAME="$PANEL_FOUND"
+            else
+                UNSUPPORTED_REASON="the $PANEL_FOUND installation was not validated yet"
+            fi
+            ;;
         "CWP (Control Web Panel)")
             PANEL="gateway"; PANEL_NAME="CWP" ;;
         "")
@@ -395,6 +410,8 @@ function unsupported() {
     echo ""
     if [ "$PANEL_FOUND" = "cPanel+DirectAdmin" ]; then
         echo "Both cPanel and DirectAdmin were found in this host. Installation aborted."
+    elif [ -n "$UNSUPPORTED_REASON" ]; then
+        echo "The Irondome cannot be installed here: $UNSUPPORTED_REASON."
     elif [ -n "$PANEL_FOUND" ]; then
         echo "The Irondome does not have an installation for $PANEL_FOUND yet."
     elif [ -z "$MTA_NAME" ]; then
@@ -476,7 +493,7 @@ function detect_report() {
         if [ "$MTA_NAME" = "SPFBL (ServerSMTP)" ]; then
             echo "Supported: no (this host is an SPFBL server; the Irondome is not needed)"
         elif [ -n "$UNSUPPORTED_REASON" ]; then
-            echo "Supported: no ($UNSUPPORTED_REASON)"
+            echo "Supported: no ($UNSUPPORTED_REASON; contact $CONTACT_EMAIL)"
         else
             echo "Supported: no (contact $CONTACT_EMAIL to request it)"
         fi
