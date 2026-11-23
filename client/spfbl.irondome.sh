@@ -76,7 +76,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.8
+# Version: 2.9
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -85,7 +85,7 @@ SIGS_SCRIPT="/usr/local/bin/clamav-unofficial-sigs.sh"
 SIGS_DIR="/etc/clamav-unofficial-sigs"
 CONTACT_URL="https://spfbl.net/en/contact"
 CONTACT_EMAIL="admin@spfbl.net"
-IRONDOME_VERSION="2.8"
+IRONDOME_VERSION="2.9"
 SPAMCENTER_URL="https://api.spam.center/download/clamav"
 SPAMCENTER_KEY=""
 # Every additional database this script may configure; uninstall removes them.
@@ -246,6 +246,14 @@ function detect_mta() {
             MTA_NAME="Stalwart" ;;
         *" maddy "*)
             MTA_NAME="Maddy" ;;
+        *" java "*)
+            # The SPFBL server itself (ServerSMTP) also receives on port 25.
+            if pgrep -f 'SPFBL\.jar' >/dev/null 2>&1; then
+                MTA_NAME="SPFBL (ServerSMTP)"
+            else
+                MTA_NAME="unknown (java)"
+            fi
+            ;;
         *" node "*)
             command -v haraka >/dev/null 2>&1 && MTA_NAME="Haraka" || MTA_NAME="unknown (node)" ;;
         *" axigen"*)
@@ -383,6 +391,9 @@ function unsupported() {
         echo "The Irondome does not have an installation for $PANEL_FOUND yet."
     elif [ -z "$MTA_NAME" ]; then
         echo "No mail server was found in this host."
+    elif [ "$MTA_NAME" = "SPFBL (ServerSMTP)" ]; then
+        echo "This host is an SPFBL server: its ServerSMTP already does the Irondome checks."
+        exit 1
     elif [ -n "$UNSUPPORTED_REASON" ]; then
         echo "The Irondome cannot be installed here: $UNSUPPORTED_REASON."
     else
@@ -406,7 +417,9 @@ function detect_report() {
     if select_mode; then
         echo "Supported: yes ($PANEL_NAME installation)"
     else
-        if [ -n "$UNSUPPORTED_REASON" ]; then
+        if [ "$MTA_NAME" = "SPFBL (ServerSMTP)" ]; then
+            echo "Supported: no (this host is an SPFBL server; the Irondome is not needed)"
+        elif [ -n "$UNSUPPORTED_REASON" ]; then
             echo "Supported: no ($UNSUPPORTED_REASON)"
         else
             echo "Supported: no (contact $CONTACT_EMAIL to request it)"
