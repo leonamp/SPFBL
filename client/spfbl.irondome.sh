@@ -25,6 +25,14 @@
 # already there; without it, it asks for the key when run on a terminal,
 # and otherwise goes on querying by IP, as before.
 #
+# Detection only (changes nothing):
+#    ./spfbl.irondome.sh detect
+#        Shows the control panel, the mail server (the process on port 25)
+#        and the Linux found, and whether the Irondome supports them. A
+#        server with a control panel uses the installation for that panel;
+#        the pure MTA installation is only for servers without a panel.
+#        Unsupported combinations: contact admin@spfbl.net with these lines.
+#
 # SPFBL client configuration only (no panel, package or MTA change):
 #    ./spfbl.irondome.sh config
 #        Writes /etc/spfbl/spfbl.conf, read by spfbl.sh 3.06 or newer,
@@ -76,6 +84,8 @@ SPFBL_CLIENT="/usr/local/bin/spfbl"
 SIGS_SCRIPT="/usr/local/bin/clamav-unofficial-sigs.sh"
 SIGS_DIR="/etc/clamav-unofficial-sigs"
 CONTACT_URL="https://spfbl.net/en/contact"
+CONTACT_EMAIL="admin@spfbl.net"
+IRONDOME_VERSION="2.7"
 SPAMCENTER_URL="https://api.spam.center/download/clamav"
 SPAMCENTER_KEY=""
 # Every additional database this script may configure; uninstall removes them.
@@ -102,57 +112,267 @@ HETRIX_KEY="2e8532718d586454d2ee2bafe98a4bc9"
 
 function fail() {
     echo "$@"
-    echo "Please contact us to resolve this issue."
-    echo "$CONTACT_URL"
+    echo "Please contact $CONTACT_EMAIL to resolve this issue."
+    if [ -n "$DETECTED" ]; then
+        echo "Include these lines in your message:"
+        echo "$DETECTED"
+    fi
     exit 1
 }
 
-function detect_other_panel() {
-    # Panels with their own Exim configuration, not supported yet.
-    if [ -d /usr/local/hestia ]; then
-        echo "HestiaCP"
+###########################################################################
+# Detection: control panel first, then the MTA
+###########################################################################
+#
+# Each control panel has its own Irondome installation, because panels
+# have their own automation, specialized in the MTA they support. Only a
+# server with no control panel gets the installation for its pure MTA.
+
+PANEL_FOUND=""
+PANEL_VERSION=""
+MTA_NAME=""
+MTA_VERSION=""
+MTA_NOTE=""
+OS_NAME=""
+DETECTED=""
+
+function first_line() {
+    [ -r "$1" ] && head -1 "$1" 2>/dev/null | tr -d '\r' | cut -c1-40
+}
+
+function detect_os_name() {
+    if [ -r /etc/os-release ]; then
+        OS_NAME=$( . /etc/os-release; echo "${PRETTY_NAME:-$NAME $VERSION_ID}" )
+    else
+        OS_NAME=$(first_line /etc/redhat-release)
+    fi
+    [ -n "$OS_NAME" ] || OS_NAME="unknown Linux"
+}
+
+function detect_any_panel() {
+    # All known panels, supported or not. Only names and versions.
+    PANEL_FOUND=""
+    PANEL_VERSION=""
+    if [ -x /usr/local/cpanel/cpanel ]; then
+        PANEL_FOUND="cPanel"
+        PANEL_VERSION=$(first_line /usr/local/cpanel/version)
+    fi
+    if [ -x /usr/local/directadmin/directadmin ] || [ -x /usr/local/directadmin/custombuild/build ]; then
+        if [ -n "$PANEL_FOUND" ]; then
+            PANEL_FOUND="$PANEL_FOUND+DirectAdmin"
+            return
+        fi
+        PANEL_FOUND="DirectAdmin"
+        PANEL_VERSION=$(sed -n 's/^version=//p' /usr/local/directadmin/conf/directadmin.conf 2>/dev/null | head -1)
+    fi
+    [ -n "$PANEL_FOUND" ] && return
+    if [ -d /usr/local/CyberCP ]; then
+        PANEL_FOUND="CyberPanel"
+    elif [ -d /www/server/panel ]; then
+        PANEL_FOUND="aaPanel"
+    elif [ -f /etc/iredmail-release ] || [ -d /opt/iredapd ]; then
+        PANEL_FOUND="iRedMail"
+        PANEL_VERSION=$(first_line /etc/iredmail-release | awk '{print $1}')
+    elif [ -d /usr/local/hestia ]; then
+        PANEL_FOUND="HestiaCP"
+        PANEL_VERSION=$(sed -n "s/^VERSION=['\"]\{0,1\}\([^'\"]*\).*/\1/p" /usr/local/hestia/conf/hestia.conf 2>/dev/null | head -1)
     elif [ -d /usr/local/vesta ]; then
-        echo "VestaCP/myVesta"
+        PANEL_FOUND="VestaCP/myVesta"
     elif [ -d /usr/local/mgr5 ]; then
-        echo "ISPmanager"
+        PANEL_FOUND="ISPmanager"
     elif [ -d /usr/local/webuzo ]; then
-        echo "Webuzo"
+        PANEL_FOUND="Webuzo"
     elif [ -d /usr/local/fastpanel2 ] || [ -d /usr/local/fastpanel ]; then
-        echo "FASTPANEL"
+        PANEL_FOUND="FASTPANEL"
+    elif [ -d /usr/local/cwpsrv ]; then
+        PANEL_FOUND="CWP (Control Web Panel)"
+    elif [ -d /usr/local/psa ]; then
+        PANEL_FOUND="Plesk"
+        PANEL_VERSION=$(first_line /usr/local/psa/version | awk '{print $1}')
+    elif [ -d /usr/local/ispconfig ]; then
+        PANEL_FOUND="ISPConfig"
+    elif [ -d /etc/webmin/virtual-server ]; then
+        PANEL_FOUND="Virtualmin"
+    elif [ -d /var/www/froxlor ]; then
+        PANEL_FOUND="Froxlor"
+    elif [ -d /home/clp ]; then
+        PANEL_FOUND="CloudPanel"
+    elif [ -f /etc/mailinabox.conf ]; then
+        PANEL_FOUND="Mail-in-a-Box"
+    elif [ -d /opt/zextras ]; then
+        PANEL_FOUND="Carbonio"
+    elif [ -d /opt/zimbra ]; then
+        PANEL_FOUND="Zimbra"
+    elif [ -d /opt/mailcow-dockerized ]; then
+        PANEL_FOUND="mailcow"
     fi
 }
 
-function detect_panel() {
-    local cpanel=false directadmin=false other postfix_panel
-    [ -x /usr/local/cpanel/cpanel ] && cpanel=true
-    [ -x /usr/local/directadmin/directadmin ] || [ -x /usr/local/directadmin/custombuild/build ] && directadmin=true
-    other=$(detect_other_panel)
-    postfix_panel=$(detect_postfix_panel)
-    if $cpanel && $directadmin; then
-        fail "Both cPanel and DirectAdmin were found in this host. Installation aborted."
-    elif $cpanel; then
-        PANEL="cpanel"
-        PANEL_NAME="cPanel"
-    elif $directadmin; then
-        PANEL="directadmin"
-        PANEL_NAME="DirectAdmin"
-    elif [ -n "$other" ]; then
-        echo "Control panel detected: $other"
-        echo "This control panel is not supported yet."
-        echo "$CONTACT_URL"
-        exit 1
-    elif [ -n "$postfix_panel" ]; then
-        PANEL="gateway"
-        PANEL_NAME="$postfix_panel"
-    elif command -v exim4 >/dev/null 2>&1 || command -v exim >/dev/null 2>&1; then
-        PANEL="exim"
-        PANEL_NAME="Exim"
-    else
-        echo "Neither cPanel, DirectAdmin nor Exim is installed in this host."
-        echo "$CONTACT_URL"
-        exit 1
+function exim_binary() {
+    local bin
+    for bin in exim exim4 /usr/sbin/exim /usr/sbin/exim4; do
+        command -v "$bin" >/dev/null 2>&1 && { command -v "$bin"; return 0; }
+    done
+    return 1
+}
+
+function detect_mta() {
+    # The MTA is the process listening on port 25; when nothing listens,
+    # the installed binaries tell which one is there.
+    local owner bin
+    MTA_NAME=""
+    MTA_VERSION=""
+    MTA_NOTE=""
+    owner=" $(port_owner 25)"
+    case "$owner" in
+        *" docker-proxy "*|*" containerd"*|*" conmon "*|*" rootlessport "*|*" podman"*)
+            MTA_NAME="container (Docker/Podman)" ;;
+        *" exim"*)
+            MTA_NAME="Exim" ;;
+        *" master "*|*" postscreen "*)
+            MTA_NAME="Postfix" ;;
+        *" sendmail "*)
+            MTA_NAME="Sendmail" ;;
+        *" tcpserver "*|*" qmail-smtpd "*)
+            MTA_NAME="qmail" ;;
+        *" xinetd "*)
+            [ -d /var/qmail ] && MTA_NAME="qmail" || MTA_NAME="unknown (xinetd)" ;;
+        *" smtpd "*)
+            MTA_NAME="OpenSMTPD" ;;
+        *" couriertcpd "*|*" courieresmtpd "*)
+            MTA_NAME="Courier-MTA" ;;
+        *" stalwart"*)
+            MTA_NAME="Stalwart" ;;
+        *" maddy "*)
+            MTA_NAME="Maddy" ;;
+        *" node "*)
+            command -v haraka >/dev/null 2>&1 && MTA_NAME="Haraka" || MTA_NAME="unknown (node)" ;;
+        *" axigen"*)
+            MTA_NAME="Axigen" ;;
+        *" icewarpd "*)
+            MTA_NAME="IceWarp" ;;
+        *" mailserver "*)
+            [ -d /opt/kerio ] && MTA_NAME="Kerio Connect" || MTA_NAME="unknown (mailserver)" ;;
+        " ")
+            ;;
+        *)
+            MTA_NAME="unknown ($(echo $owner))" ;;
+    esac
+    if [ -z "$MTA_NAME" ]; then
+        MTA_NOTE="nothing listening on port 25"
+        if exim_binary >/dev/null; then
+            MTA_NAME="Exim"
+        elif command -v postconf >/dev/null 2>&1; then
+            MTA_NAME="Postfix"
+        elif [ -x /var/qmail/bin/qmail-smtpd ]; then
+            MTA_NAME="qmail"
+        elif [ -f /etc/smtpd.conf ] && command -v smtpd >/dev/null 2>&1; then
+            MTA_NAME="OpenSMTPD"
+        elif [ -f /etc/mail/sendmail.cf ]; then
+            MTA_NAME="Sendmail"
+        fi
     fi
+    # Zimbra and Carbonio run their own Postfix.
+    if [ "$MTA_NAME" = "Postfix" ] && [ -x /opt/zimbra/common/sbin/postconf ]; then
+        MTA_VERSION=$(/opt/zimbra/common/sbin/postconf -h mail_version 2>/dev/null)
+        return
+    fi
+    case "$MTA_NAME" in
+        Exim)
+            bin=$(exim_binary)
+            [ -n "$bin" ] && MTA_VERSION=$("$bin" -bV 2>/dev/null | sed -n 's/^Exim version \([^ ]*\).*/\1/p' | head -1) ;;
+        Postfix)
+            MTA_VERSION=$(postconf -h mail_version 2>/dev/null) ;;
+        OpenSMTPD)
+            MTA_VERSION=$(smtpd -h 2>&1 | sed -n 's/.*OpenSMTPD \([^ ]*\).*/\1/p' | head -1) ;;
+        Sendmail)
+            MTA_VERSION=$(sendmail -d0.1 -bt </dev/null 2>/dev/null | sed -n 's/^Version \([^ ]*\).*/\1/p' | head -1) ;;
+    esac
+}
+
+function detect_all() {
+    detect_os_name
+    detect_any_panel
+    detect_mta
+    local panel mta
+    if [ -n "$PANEL_FOUND" ]; then
+        panel="$PANEL_FOUND${PANEL_VERSION:+ $PANEL_VERSION}"
+    else
+        panel="no control panel"
+    fi
+    if [ -n "$MTA_NAME" ]; then
+        mta="$MTA_NAME${MTA_VERSION:+ $MTA_VERSION}"
+        if [ -n "$MTA_NOTE" ]; then
+            mta="$mta ($MTA_NOTE)"
+        else
+            mta="$mta (port 25)"
+        fi
+    else
+        mta="none found"
+    fi
+    DETECTED="Control panel: $panel
+Mail server: $mta
+Linux: $OS_NAME
+Irondome: $IRONDOME_VERSION"
+}
+
+function select_mode() {
+    # Supported combinations. Each panel has its own installation; the
+    # pure MTA installation is only for servers without a panel.
+    PANEL=""
+    PANEL_NAME=""
+    case "$PANEL_FOUND" in
+        "cPanel+DirectAdmin")
+            ;;
+        cPanel)
+            PANEL="cpanel"; PANEL_NAME="cPanel" ;;
+        DirectAdmin)
+            PANEL="directadmin"; PANEL_NAME="DirectAdmin" ;;
+        CyberPanel|aaPanel|iRedMail)
+            PANEL="gateway"; PANEL_NAME="$PANEL_FOUND" ;;
+        "")
+            case "$MTA_NAME" in
+                Exim)
+                    PANEL="exim"; PANEL_NAME="Exim" ;;
+            esac
+            ;;
+    esac
+    [ -n "$PANEL" ]
+}
+
+function unsupported() {
+    echo ""
+    echo "$DETECTED"
+    echo ""
+    if [ "$PANEL_FOUND" = "cPanel+DirectAdmin" ]; then
+        echo "Both cPanel and DirectAdmin were found in this host. Installation aborted."
+    elif [ -n "$PANEL_FOUND" ]; then
+        echo "The Irondome does not have an installation for $PANEL_FOUND yet."
+    elif [ -z "$MTA_NAME" ]; then
+        echo "No mail server was found in this host."
+    else
+        echo "The Irondome does not have an installation for pure $MTA_NAME yet."
+    fi
+    echo "Please contact $CONTACT_EMAIL to request it,"
+    echo "and include the lines above in your message."
+    exit 1
+}
+
+function detect_panel() {
+    detect_all
+    select_mode || unsupported
     echo "Control panel detected: $PANEL_NAME"
+}
+
+function detect_report() {
+    # "detect" command: shows what was found and changes nothing.
+    detect_all
+    echo "$DETECTED"
+    if select_mode; then
+        echo "Supported: yes ($PANEL_NAME installation)"
+    else
+        echo "Supported: no (contact $CONTACT_EMAIL to request it)"
+    fi
 }
 
 function detect_distro() {
@@ -191,8 +411,7 @@ function detect_distro() {
     esac
     if [ -z "$DISTRO_FAMILY" ]; then
         echo "Linux distro not identified."
-        echo "Please contact us to update this installation script to it works for your distro and send the information bellow."
-        echo "$CONTACT_URL"
+        echo "Please contact $CONTACT_EMAIL to request it, and include the information below."
         echo ""
         cat /etc/*-release
         exit 1
@@ -1174,17 +1393,6 @@ GW_OLD_LOGROTATE="/etc/logrotate.d/spfbl-exim"
 GW_OLD_LOG_DIR="/var/log/spfbl-exim"
 GW_OLD_STATE="/var/lib/spfbl/irondome.state"
 
-function detect_postfix_panel() {
-    # Panels with Postfix: the Irondome runs as a gateway in front of it.
-    if [ -d /usr/local/CyberCP ]; then
-        echo "CyberPanel"
-    elif [ -d /www/server/panel ]; then
-        echo "aaPanel"
-    elif [ -f /etc/iredmail-release ] || [ -d /opt/iredapd ]; then
-        echo "iRedMail"
-    fi
-}
-
 function port_owner() {
     # Names of all the processes listening on a TCP port: with postscreen,
     # port 25 lists postscreen first and master after it.
@@ -1319,49 +1527,90 @@ function gw_sasl_separable() {
         END { flush(); exit bad }' "$POSTFIX_MASTER"
 }
 
+function gw_sasl_tag() {
+    # Gives a syslog_name to every other public smtpd service of master.cf
+    # (submission, smtps...), so that "postfix/smtpd" in the log is port
+    # 25 only. Only log names change; the services stay the same.
+    local tmp="$POSTFIX_MASTER.spfbl-tmp"
+    cp -a "$POSTFIX_MASTER" "$POSTFIX_MASTER.spfbl-$(date +%Y%m%d%H%M%S)" || return 1
+    awk '
+        function label(name,   port) {
+            port = name
+            if (match(name, /:[^:]*$/)) port = substr(name, RSTART + 1)
+            if (port == "submission" || port == "587") return "postfix/submission"
+            if (port == "smtps" || port == "submissions" || port == "465") return "postfix/smtps"
+            gsub(/[^A-Za-z0-9_.-]/, "_", port)
+            return "postfix/smtpd-" port
+        }
+        function flush(   port, host, loopback) {
+            if (n == 0) return
+            if (type == "inet" && cmd == "smtpd" && !inblock) {
+                port = name; host = ""
+                if (match(name, /:[^:]*$/)) { host = substr(name, 1, RSTART - 1); port = substr(name, RSTART + 1) }
+                loopback = (host == "127.0.0.1" || host == "[::1]" || host == "localhost")
+                if (port != "smtp" && port != "25" && !loopback && body !~ /syslog_name=/) {
+                    print entry[1]
+                    print "  -o syslog_name=" label(name)
+                    for (i = 2; i <= n; i++) print entry[i]
+                    n = 0; return
+                }
+            }
+            for (i = 1; i <= n; i++) print entry[i]
+            n = 0
+        }
+        /^# BEGIN SPFBL$/ { flush(); inblock = 1; print; next }
+        /^# END SPFBL$/ { flush(); inblock = 0; print; next }
+        /^[^#[:space:]]/ { flush(); name = $1; type = $2; cmd = $8; body = $0; n = 1; entry[1] = $0; next }
+        /^[[:space:]]+[^[:space:]#]/ && n { body = body " " $0; entry[++n] = $0; next }
+        { flush(); print }
+        END { flush() }' "$POSTFIX_MASTER" > "$tmp" || { rm -f "$tmp"; return 1; }
+    cat "$tmp" > "$POSTFIX_MASTER" && rm -f "$tmp"
+    gw_postfix_reload
+}
+
 function gw_check_sasl() {
-    local value report answer
+    # Exim does not offer AUTH on port 25: the installation goes on only
+    # after 24 hours without authenticated logins on port 25 of Postfix.
+    local value report tagged since ready
     value=$(postconf -h smtpd_sasl_auth_enable 2>/dev/null)
     [ "$value" = "yes" ] || return 0
-    if gw_sasl_separable; then
-        report=$(gw_mail_log "1 hour ago" | gw_sasl_report)
-        [ -z "$report" ] && return 0
+    if ! gw_sasl_separable; then
+        # The log does not separate port 25 from the other SMTP ports yet:
+        # the other services get their own syslog_name and the check
+        # starts counting from now.
+        gw_sasl_tag || fail "Could not give a syslog_name to the SMTP services of $POSTFIX_MASTER."
+        gw_sasl_separable || fail "The SMTP services of $POSTFIX_MASTER still have no syslog_name."
+        state_set_once SASL_TAGGED "$(date +%s)"
         echo ""
-        echo "Authenticated logins (SASL) on port 25 in the last hour:"
+        echo "Postfix offers authentication (SASL) on port 25, and its log did not separate"
+        echo "port 25 from the submission ports. The services submission and smtps of"
+        echo "$POSTFIX_MASTER now have their own syslog_name (a backup was kept)."
+    fi
+    tagged=$(state_get SASL_TAGGED)
+    since="24 hours ago"
+    if [ -n "$tagged" ] && [ "$tagged" -gt "$(date -d "24 hours ago" +%s)" ]; then
+        since="@$tagged"
+    fi
+    report=$(gw_mail_log "$since" | gw_sasl_report)
+    if [ -n "$report" ]; then
+        echo ""
+        echo "Authenticated logins (SASL) on port 25 since $(date -d "$since" '+%Y-%m-%d %H:%M'):"
         echo "$report"
         echo ""
         echo "The SPFBL gateway does not offer authentication on port 25."
         echo "After the switch, these senders would have their mail refused."
         echo "Move them to the submission ports: 587 (STARTTLS) or 465 (TLS)."
-        echo "Then run this installation again, one hour after the last login above."
+        echo "Then run this installation again, 24 hours after the last login above."
         exit 1
     fi
-    # Other smtpd services log as "postfix/smtpd" too: port 25 cannot be
-    # told apart in the log, so the administrator answers.
-    report=$(gw_mail_log "7 days ago" | gw_sasl_report)
-    echo ""
-    echo "Postfix offers authentication (SASL) on port 25, and the Postfix log"
-    echo "does not separate port 25 from the other SMTP ports: they have no"
-    echo "syslog_name in $POSTFIX_MASTER."
-    if [ -n "$report" ]; then
-        echo "Authenticated logins of the last 7 days, on port 25 or on the other ports:"
-        echo "$report"
-    fi
-    echo "The SPFBL gateway does not offer authentication on port 25."
-    if ! (: </dev/tty) 2>/dev/null; then
-        echo "Run this installation in a terminal to answer the question about port 25."
+    if [ -n "$tagged" ] && [ "$tagged" -gt "$(date -d "24 hours ago" +%s)" ]; then
+        ready=$(date -d "@$((tagged + 86400))" '+%Y-%m-%d %H:%M')
+        echo ""
+        echo "No authenticated login on port 25 so far, but port 25 is logged apart only"
+        echo "since $(date -d "@$tagged" '+%Y-%m-%d %H:%M'). The check needs 24 hours of log."
+        echo "Nothing else was changed. Run this installation again after $ready."
         exit 1
     fi
-    read -r -p "Does anyone send authenticated mail through port 25? [y/N] " answer </dev/tty
-    case "$answer" in
-        y|Y|yes|YES|s|S|sim|SIM)
-            echo "Move them to the submission ports: 587 (STARTTLS) or 465 (TLS)."
-            echo "Then run this installation again."
-            echo "Tip: with \"-o syslog_name=postfix/submission\" and \"-o syslog_name=postfix/smtps\""
-            echo "in those services of master.cf, this check finds the logins by itself."
-            exit 1
-            ;;
-    esac
     return 0
 }
 
@@ -1624,6 +1873,19 @@ function gw_links() {
     done
 }
 
+function gw_clamav_databases() {
+    # Downloads the official databases when the directory of the clamd
+    # configuration $1 has none, and keeps freshclam updating them.
+    local dbs
+    dbs=$(awk '$1 == "DatabaseDirectory" {print $2}' "$1" 2>/dev/null | tail -1)
+    dbs="${dbs:-/var/lib/clamav}"
+    if ! ls "$dbs"/main.c[lv]d >/dev/null 2>&1; then
+        echo "No ClamAV databases in $dbs yet: running freshclam."
+        freshclam
+    fi
+    systemctl enable --now clamav-freshclam.service 2>/dev/null
+}
+
 function gw_install_clamav() {
     if [ "$DISTRO_FAMILY" = "rhel" ]; then
         # A clamd instance already installed is always reused, like the
@@ -1638,6 +1900,9 @@ function gw_install_clamav() {
             state_set_once CLAMAV_PACKAGES "present"
             echo "Reusing the clamd@$name service of this host."
             command -v setsebool >/dev/null && setsebool -P antivirus_can_scan_system 1 2>/dev/null
+            # The instance may never have run (CWP without Amavis): clamd
+            # does not start without databases, and freshclam may be off.
+            gw_clamav_databases "$conf"
             systemctl is-active --quiet "clamd@$name.service" || systemctl enable --now "clamd@$name.service"
             return 0
         done
@@ -2705,6 +2970,10 @@ case "$1" in
         echo "[config] Configuring the SPFBL client powered by SPFBL.net"
         config
     ;;
+    detect)
+        echo "[detect] Control panel and mail server of this host (nothing is changed)"
+        detect_report
+    ;;
     spamcenter)
         echo "[spamcenter] Configuring the Spamcenter API key of the SPFBL account"
         spamcenter_sync
@@ -2713,6 +2982,7 @@ case "$1" in
         echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
         echo "*** Gateway in steps: $0 [prepare [SPAMCENTER_API_KEY]|switch|rollback]"
         echo "*** SPFBL client configuration only: $0 config"
+        echo "*** Show the control panel and mail server found (changes nothing): $0 detect"
         echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
         exit 1
 esac
