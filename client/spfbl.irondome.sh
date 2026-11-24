@@ -31,7 +31,8 @@
 # authenticates on port 25 anymore, the check can be skipped:
 #    SPFBL_SASL_PORT25=none ./spfbl.irondome.sh install
 #
-# Installations not validated yet on a real host (CyberPanel, aaPanel): the
+# Installations not validated yet on a real host (CyberPanel, aaPanel and
+# pure Exim): the
 # code exists, but they are refused until the first installation together
 # with SPFBL.net. For that validation only:
 #    SPFBL_UNVALIDATED=yes ./spfbl.irondome.sh install
@@ -365,8 +366,13 @@ function select_mode() {
         "")
             case "$MTA_NAME" in
                 Exim)
-                    if exim_requirements; then
+                    if ! exim_requirements; then
+                        :
+                    elif [ "$SPFBL_UNVALIDATED" = "yes" ]; then
                         PANEL="exim"; PANEL_NAME="Exim"
+                    else
+                        # The code exists, but no real installation validated it yet.
+                        UNSUPPORTED_REASON="the pure Exim installation was not validated yet"
                     fi
                     ;;
             esac
