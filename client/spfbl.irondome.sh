@@ -978,6 +978,18 @@ function spamcenter_sync() {
     fi
 }
 
+function sigs_value() {
+    # Effective value of a clamav-unofficial-sigs variable: the last
+    # assignment, in the order the script reads its files.
+    local name="$1" file value="" found
+    for file in "$SIGS_DIR/master.conf" "$SIGS_DIR/os.conf" "$SIGS_DIR/user.conf"; do
+        [ -f "$file" ] || continue
+        found=$(sed -n "s/^[[:space:]]*${name}=[\"']\{0,1\}\([^\"' #]*\).*/\1/p" "$file" | tail -1)
+        [ -n "$found" ] && value="$found"
+    done
+    echo "$value"
+}
+
 function sigs_remove_script() {
     # --remove-script asks "Are you sure? [y/N]" and repeats the question
     # on any other answer: without a terminal (or with the output piped),
@@ -1010,8 +1022,20 @@ function remove_additional_dbs() {
 
 function configure_sigs_databases() {
     # SPFBL databases, replacing any previous block (no duplicates on reinstall).
-    local user_conf="$SIGS_DIR/user.conf"
+    local user_conf="$SIGS_DIR/user.conf" urlhaus urlhaus_line=""
     [ -f "$user_conf" ] || download "$GITHUB_SIGS/config/user.conf" "$user_conf"
+    # URLhaus (abuse.ch) is always disabled on install and update: SPFBL.net
+    # uses ClamAV data to train its own platform, which the Spamhaus terms
+    # of use forbid for that database. Already "no": nothing is changed.
+    # Whoever enables it again answers for it.
+    urlhaus=$(sigs_value urlhaus_enabled)
+    if [ "$(echo "$urlhaus" | tr 'A-Z' 'a-z')" = "no" ]; then
+        grep -q '^urlhaus_enabled=.*# spfbl.irondome.sh$' "$user_conf" && urlhaus_line=1
+    else
+        sed -i '/^[[:space:]]*urlhaus_enabled=/d' "$user_conf"
+        urlhaus_line=1
+        echo "URLhaus database disabled in clamav-unofficial-sigs (urlhaus_enabled was \"${urlhaus:-yes}\") to comply with the Spamhaus (abuse.ch) terms of use. Enabling it again is the server administrator's responsibility."
+    fi
     awk '/^declare -a additional_dbs=\(/{skip=1} !skip{print} /END ADDITIONAL DATABASES/{skip=0}' "$user_conf" | grep -v '# spfbl.irondome.sh$' > "$user_conf.tmp"
     cat "$user_conf.tmp" > "$user_conf" && rm -f "$user_conf.tmp"
     # Removes the blank lines left at the end, so reinstalls don't pile them up.
@@ -1033,8 +1057,10 @@ function configure_sigs_databases() {
             # Spamcenter is updated every hour (user.conf overrides master.conf).
             printf 'additional_update_hours="1" # spfbl.irondome.sh\n'
         fi
-        # abuse.ch retired the URLhaus download (HTTP 410 since 11/2026).
-        printf 'urlhaus_enabled="no" # spfbl.irondome.sh\n'
+        if [ -n "$urlhaus_line" ]; then
+            # URLhaus: Spamhaus terms of use (see above).
+            printf 'urlhaus_enabled="no" # spfbl.irondome.sh\n'
+        fi
     } >> "$user_conf"
     # The file holds the Spamcenter key.
     sigs_conf_perms "$user_conf"
