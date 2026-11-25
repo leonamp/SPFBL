@@ -35,6 +35,8 @@
 
 ### CONFIGURACOES ###
 IP_SERVIDOR="matrix4.spfbl.net"
+# Endereço da porta administrativa: o próprio servidor SPFBL, pelo loopback IPv6.
+IP_ADMIN="::1"
 PORTA_SERVIDOR="9877"
 PORTA_ADMIN="9875"
 SECURED="false"
@@ -88,6 +90,20 @@ if [[ -r $SPFBL_CONF ]]; then
 			IP_VERSION)
 				[[ $value =~ ^[46]?$ ]] && IP_VERSION=$value
 				;;
+			IP_SERVIDOR)
+				[[ $value =~ ^[A-Za-z0-9.:-]+$ ]] && IP_SERVIDOR=$value
+				;;
+			IP_ADMIN)
+				# Endereço dos comandos administrativos (porta admin). Padrão:
+				# ::1, o loopback IPv6 do próprio servidor SPFBL.
+				[[ $value =~ ^[A-Za-z0-9.:-]+$ ]] && IP_ADMIN=$value
+				;;
+			PORTA_ADMIN)
+				[[ $value =~ ^[0-9]+$ ]] && PORTA_ADMIN=$value
+				;;
+			SECURED)
+				[[ $value =~ ^(true|false)$ ]] && SECURED=$value
+				;;
 		esac
 	done < "$SPFBL_CONF"
 fi
@@ -107,6 +123,9 @@ LOCAL_HOSTNAME=${LOCAL_HOSTNAME,,}
 # Chave e hostname para o curl -K, entregues por um descritor (3<<<):
 # não aparecem na linha de comando nem no ps.
 CURL_KEY_CONFIG="header = \"Authorization: Bearer $SPFBL_KEY\""$'\n'"header = \"X-SPFBL-Hostname: $LOCAL_HOSTNAME\""
+# IP de saída das consultas com chave, quando o do sistema não é um IP do
+# hostname (ver keyCurl).
+INTERFACE_FILE="/tmp/SPFBL_INTERFACE"
 
 # Timeouts de cada consulta:
 #   -w 3                      tempo máximo para conectar.
@@ -129,7 +148,7 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $U
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.06"
+version="3.08"
 
 # Contador de timeouts seguidos. Guarda também o estado MAINTENANCE,
 # gravado quando a primeira falha de um evento coincide com a janela de
@@ -146,6 +165,203 @@ if [ ! -f "$TIMEOUT_FILE" ]; then
     touch "$TIMEOUT_FILE"
     chmod 777 "$TIMEOUT_FILE"
 fi
+
+function suppression_manual() {
+	printf "Suppression list: addresses that must not receive messages from SPFBL.net.\n"
+	printf "\n"
+	printf "Syntax:\n"
+	printf "    $0 suppression TYPE key       add the key with this type\n"
+	printf "    $0 suppression drop key [TYPE]\n"
+	printf "    $0 suppression show key\n"
+	printf "    $0 suppression list TYPE\n"
+	printf "\n"
+	printf "Example:\n"
+	printf "    $0 suppression abuse user@domain.com\n"
+	printf "\n"
+	printf "Keys:\n"
+	printf "    user@domain.com    one address\n"
+	printf "    user@              this local part in any domain\n"
+	printf "    @domain.com        every address of the domain\n"
+	printf "    .domain.com        every address of the domain and its subdomains\n"
+	printf "    (the last three forms are always NONCOMPLIANT)\n"
+	printf "\n"
+	printf "Types (days without use before expiring, messages blocked):\n"
+	printf "    inexistent     365  all      address does not exist (also leaves the abuse contacts)\n"
+	printf "    rejected        90  all      the server of the address rejects our messages\n"
+	printf "    unsubscribed   365  all      the owner asked not to receive messages\n"
+	printf "    complaint      365  all      the owner complained about our messages\n"
+	printf "    malware         30  malware  malware notices only\n"
+	printf "    abuse          180  abuse    abuse reports only\n"
+	printf "    quota            7  all      mailbox full\n"
+	printf "    hold           180  hold     hold notices only\n"
+	printf "    spammer        180  all      address used to send spam\n"
+	printf "    noncompliant   365  all      domain or local part keys\n"
+	printf "\n"
+	printf "Entries added here have origin ADMIN. Each blocked delivery counts as use.\n"
+	printf "The old \"noreply\" command was replaced by \"suppression\":\n"
+	printf "    noreply add user@domain.com  ->  suppression unsubscribed user@domain.com\n"
+}
+
+function billing_manual() {
+	printf "Billing: users' invoices, counters and prices (administration port).\n"
+	printf "\n"
+	printf "Syntax:\n"
+	printf "    $0 billing create user@domain.com   create the billing and its current invoice\n"
+	printf "    $0 billing show user@domain.com     billing, invoices and every counter\n"
+	printf "    $0 billing close user@domain.com    close the current invoice now; today becomes the closing day\n"
+	printf "    $0 billing drop user@domain.com     remove the billing (tests)\n"
+	printf "    $0 billing list                     users with billing\n"
+	printf "    $0 billing paid INVOICE CUR VALUE   record the payment of what is due on a closed invoice (USD, EUR or BRL)\n"
+	printf "    $0 billing pix user@domain.com      enable PIX and the BRL currency (permanent)\n"
+	printf "    $0 billing credit add user@domain.com USD   add credit (used at once on pending invoices)\n"
+	printf "    $0 billing credit drop user@domain.com USD  reverse credit added by mistake\n"
+	printf "    $0 billing element drop INVOICE ITEM ELEMENT\n"
+	printf "                                        remove an element from a set item of an unpaid invoice\n"
+	printf "    $0 billing price set ITEM VALUE     create or change a price\n"
+	printf "    $0 billing price drop ITEM          remove a price (the item becomes zero)\n"
+	printf "    $0 billing price show               current price table\n"
+	printf "\n"
+	printf "Examples:\n"
+	printf "    $0 billing price set spfbl_client_set 2\n"
+	printf "    $0 billing price set spfbl_envelope_count 0.00002\n"
+	printf "    $0 billing price set spfbl_incoming_bytes 0.01/MB   (B, KB, MB, GB or TB)\n"
+	printf "    $0 billing paid MWVTZOAG BRL 10.68\n"
+	printf "    $0 billing element drop MWVTZOAG spfbl_domain_set example.com\n"
+	printf "\n"
+	printf "An invoice copies the price table when it is created and keeps it until it\n"
+	printf "closes: a new price only applies to the invoices created after it.\n"
+	printf "Users only see items with quantity and price greater than zero.\n"
+	printf "\n"
+	printf "Items:\n"
+	printf "    spfbl_user_set spfbl_client_set spfbl_domain_set spfbl_envelope_count\n"
+	printf "    spfbl_header_count spfbl_malware_count spfbl_scan_bytes spfbl_analysis_bytes\n"
+	printf "    spfbl_complain_count spfbl_firewall_count spfbl_incoming_bytes\n"
+	printf "    spfbl_delivery_count spfbl_delivery_bytes spfbl_routing_count spfbl_hold_count\n"
+	printf "    spfbl_release_count spfbl_alert_count spfbl_imap_count spfbl_api_count\n"
+	printf "    spfbl_whois_count spfbl_query_count spfbl_dns_count spfbl_sample_count\n"
+	printf "    spfbl_sample_bytes admin_support_count\n"
+	printf "    dnswl_fqdn_set dnsal_domain_set dnsal_fqdn_set   (DNS listings)\n"
+}
+
+function listing_manual() {
+	printf "Listing: DNS listings contracted by users (administration port).\n"
+	printf "\n"
+	printf "Syntax:\n"
+	printf "    $0 listing show user@domain.com           records of the user\n"
+	printf "    $0 listing list { dnswl | dnsal }         all records of the type\n"
+	printf "    $0 listing drop { dnswl | dnsal } user@domain.com VALUE\n"
+	printf "                                              remove a record (the user receives an alert)\n"
+	printf "\n"
+	printf "DNSWL values are FQDNs; DNSAL values are a root domain or an FQDN.\n"
+	printf "The administrator's own lists (white and abuse contacts) stay as they are.\n"
+}
+
+function admin_manual() {
+	# Ajuda dos comandos administrativos repassados à porta administrativa.
+	local family=$1
+	printf "Administration command (passed through to the administration port).\n"
+	printf "Family and subcommand may be typed in lowercase; values go as typed.\n"
+	printf "\n"
+	printf "Syntax:\n"
+	case $family in
+		'thread'|'memory')
+			printf "    $0 $family show\n"
+		;;
+		'service')
+			printf "    $0 service start { IPinfoIO | RIPE | ... }\n"
+		;;
+		'log')
+			printf "    $0 log level { ERROR | WARN | INFO | DEBUG | TRACE }\n"
+			printf "    $0 log dns { true | false }\n"
+			printf "    $0 log p2p { true | false }\n"
+		;;
+		'owner')
+			printf "    $0 owner get domain\n"
+			printf "    $0 owner set domain email\n"
+		;;
+		'locale')
+			printf "    $0 locale get email\n"
+			printf "    $0 locale set email locale\n"
+		;;
+		'icann'|'private')
+			printf "    $0 $family { add value | drop value | show }\n"
+		;;
+		'dnsbl'|'uribl'|'dnswl'|'score'|'dnsal'|'since')
+			printf "    $0 $family add zone ...\n"
+			printf "    $0 $family set zone ...\n"
+			printf "    $0 $family drop { zone | all }\n"
+			printf "    $0 $family show\n"
+		;;
+		'fqdn')
+			printf "    $0 fqdn { add ... | white ... | drop ... | show ... }\n"
+		;;
+		'gateway')
+			printf "    $0 gateway show [domain]\n"
+			printf "    $0 gateway add user domain server1 [... serverN]\n"
+			printf "    $0 gateway set domain server1 [... serverN]\n"
+			printf "    $0 gateway drop domain\n"
+			printf "    $0 gateway import file\n"
+			printf "    $0 gateway key { add host | show | drop id }\n"
+		;;
+		'recipient')
+			printf "    $0 recipient add user recipient [TYPE]\n"
+			printf "    $0 recipient set user recipient { TYPE | locale }\n"
+			printf "    $0 recipient drop user { recipient | @domain [TYPE] }\n"
+			printf "    $0 recipient drop user email\n"
+			printf "    $0 recipient show { attack | catchall | node user }\n"
+		;;
+		'guess')
+			printf "    $0 guess { add ... | drop { value | all } | show }\n"
+		;;
+		'dictionary')
+			printf "    $0 dictionary add lang word\n"
+			printf "    $0 dictionary put ...\n"
+			printf "    $0 dictionary compile ...\n"
+			printf "    $0 dictionary flag ...\n"
+			printf "    $0 dictionary rep ...\n"
+			printf "    $0 dictionary drop { key | word | regex | flag | rep } ...\n"
+			printf "    $0 dictionary show { set | map | regex | flag }\n"
+		;;
+		'certificate'|'stack'|'reload'|'queue')
+			printf "    $0 $family\n"
+		;;
+		'split')
+			printf "    $0 split cidr\n"
+		;;
+		'suspect')
+			printf "    $0 suspect token\n"
+		;;
+		'licence')
+			printf "    $0 licence email mx\n"
+		;;
+		'invitation')
+			printf "    $0 invitation [user:]recipient ...\n"
+		;;
+		'transport')
+			printf "    $0 transport user add index smtp hostname [port] [username] [password]\n"
+			printf "    $0 transport user { set | put } ...\n"
+			printf "    $0 transport user drop index\n"
+			printf "    $0 transport user show\n"
+		;;
+	esac
+}
+
+function upperKeyword() {
+	# Devolve o token em maiúsculas só quando ele é uma das palavras-chave
+	# informadas; qualquer outro valor segue exatamente como foi digitado.
+	local token=$1
+	shift
+	local upper=$(echo "$token" | tr '[:lower:]' '[:upper:]')
+	local keyword
+	for keyword in "$@"; do
+		if [[ $upper == "$keyword" ]]; then
+			echo "$upper"
+			return 0
+		fi
+	done
+	echo "$token"
+	return 1
+}
 
 function head(){
 
@@ -261,6 +477,115 @@ function logKeyRefusal() {
 
 }
 
+function readInterface() {
+
+	# IP de saída das consultas com chave, guardado em /tmp/SPFBL_INTERFACE.
+	# Arquivo ausente, vazio ou com outro conteúdo: sem IP fixo. Leitura
+	# com o read do bash, sem processo novo.
+	local IP=""
+	[[ -r $INTERFACE_FILE ]] && read -r IP < "$INTERFACE_FILE" 2> /dev/null
+	[[ $IP =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || $IP =~ ^[0-9A-Fa-f:]+:[0-9A-Fa-f:.]*$ ]] && echo "$IP"
+
+}
+
+function writeInterface() {
+
+	# Grava (ou esvazia, sem argumento) o IP de saída. Mesmo arquivo, sem
+	# mv nem rm: o /tmp tem sticky bit e o arquivo pode ser de outro
+	# usuário (exim, root).
+	if [ ! -f "$INTERFACE_FILE" ]; then
+		touch "$INTERFACE_FILE" 2> /dev/null
+		chmod 666 "$INTERFACE_FILE" 2> /dev/null
+	fi
+	echo "$1" > "$INTERFACE_FILE" 2> /dev/null
+
+}
+
+function findInterface() {
+
+	# Um IP do hostname (DNS) que também esteja nesta máquina. Só roda
+	# depois de um 422 INVALID FQDN IP_MISMATCH, nunca a cada consulta.
+	local LOCAL_IPS IP
+	LOCAL_IPS=$(ip -o addr show 2> /dev/null | awk '{sub(/\/.*/, "", $4); print $4}')
+	[[ -z $LOCAL_IPS ]] && LOCAL_IPS=$(ifconfig 2> /dev/null | awk '$1 ~ /^inet6?$/ {sub(/\/.*/, "", $2); sub(/^addr:/, "", $2); print $2}')
+	for IP in $(getent ahosts${IP_VERSION:+v$IP_VERSION} "$LOCAL_HOSTNAME" 2> /dev/null | awk '{print $1}' | sort -u); do
+		if grep -qxF "$IP" <<< "$LOCAL_IPS"; then
+			echo "$IP"
+			return 0
+		fi
+	done
+	return 1
+
+}
+
+function isMismatch() {
+
+	# Resposta (corpo + código na última linha) de hostname cujo A/AAAA
+	# não contém o IP de saída da consulta.
+	local CODE=${1##*$'\n'}
+	local BODY=${1%$'\n'*}
+	[[ $CODE == "422" && ${BODY%%$'\n'*} == "INVALID FQDN IP_MISMATCH" ]]
+
+}
+
+function keyCurlOnce() {
+
+	# Uma requisição com a chave. $1: função que escreve o corpo; $2: URL;
+	# $3: IP de saída (vazio: o do sistema); $4: auto ou none (cabeçalho
+	# X-SPFBL-Interface); demais: argumentos do curl.
+	local BODY=$1 URL=$2 IFACE=$3 MODE=$4
+	shift 4
+	$BODY | curl "$@" ${IFACE:+--interface "$IFACE"} -H "X-SPFBL-Interface: $MODE" \
+		-w '\n%{http_code}' -K /dev/fd/3 "$URL" 3<<< "$CURL_KEY_CONFIG" 2> /dev/null
+
+}
+
+function keyCurl() {
+
+	# Requisição com a chave e escolha do IP de saída. Saída: o corpo e o
+	# código HTTP na última linha, como o -w '\n%{http_code}'.
+	#
+	# Sem /tmp/SPFBL_INTERFACE, o curl sai pelo IP do sistema. Num 422
+	# INVALID FQDN IP_MISMATCH, procura nesta máquina um IP do hostname;
+	# achando, grava no arquivo e repete a consulta saindo por ele. Com o
+	# arquivo, o curl já sai pelo IP gravado; num novo 422 (ou se o IP não
+	# existir mais), tenta sem o IP: se der certo, esvazia o arquivo; se
+	# não, procura de novo. Sem IP do hostname na máquina, avisa o servidor
+	# (none), que tenta confirmar o hostname pelo banner SMTP deste IP.
+	local BODY=$1 URL=$2
+	shift 2
+	local IFACE OUT CODE FOUND
+	IFACE=$(readInterface)
+	if [[ -n $IFACE ]]; then
+		OUT=$(keyCurlOnce "$BODY" "$URL" "$IFACE" auto "$@")
+		CODE=${OUT##*$'\n'}
+		if [[ $CODE != "000" ]] && ! isMismatch "$OUT"; then
+			printf '%s\n' "$OUT"
+			return
+		fi
+	fi
+	OUT=$(keyCurlOnce "$BODY" "$URL" "" auto "$@")
+	if ! isMismatch "$OUT"; then
+		CODE=${OUT##*$'\n'}
+		# Sem o IP gravado deu certo: as interfaces foram corrigidas.
+		[[ -n $IFACE && $CODE != "000" ]] && writeInterface
+		printf '%s\n' "$OUT"
+		return
+	fi
+	FOUND=$(findInterface)
+	if [[ -n $FOUND && $FOUND != "$IFACE" ]]; then
+		writeInterface "$FOUND"
+		OUT=$(keyCurlOnce "$BODY" "$URL" "$FOUND" auto "$@")
+		if ! isMismatch "$OUT"; then
+			printf '%s\n' "$OUT"
+			return
+		fi
+	fi
+	[[ -n $IFACE || -n $FOUND ]] && writeInterface
+	keyCurlOnce "$BODY" "$URL" "" none "$@"
+
+}
+
 function spfbl_query() {
 
 	# Consulta ao servidor SPFBL: lê a consulta da entrada padrão e
@@ -273,9 +598,11 @@ function spfbl_query() {
 
 	local query response code body
 	IFS= read -r query
-	response=$(printf '%s\n' "$query" | curl ${IP_VERSION:+-$IP_VERSION} -s --connect-timeout 3 -m "$QUERY_TIMEOUT" \
-		-w '\n%{http_code}' -K /dev/fd/3 --data-binary @- "$URL_SERVIDOR/spfbl/" \
-		3<<< "$CURL_KEY_CONFIG" 2> /dev/null)
+	queryBody() {
+		printf '%s\n' "$query"
+	}
+	response=$(keyCurl queryBody "$URL_SERVIDOR/spfbl/" ${IP_VERSION:+-$IP_VERSION} -s \
+		--connect-timeout 3 -m "$QUERY_TIMEOUT" --data-binary @-)
 	code=${response##*$'\n'}
 	body=${response%$'\n'*}
 
@@ -318,15 +645,15 @@ case $1 in
 	;;
 	'stop')
 		echo "Parando o serviço do SPFBL"
-		echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
-		echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
+		echo "STORE" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null
+		echo "SHUTDOWN" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null
 		echo "OK"
 	;;
 	'restart')
 		echo "Reiniciando serviço do SPFBL"
 		cd /opt/spfbl/
-		echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
-		echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null
+		echo "STORE" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null
+		echo "SHUTDOWN" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null
 		/usr/bin/java -jar /opt/spfbl/SPFBL.jar &
 		echo "OK"
 	;;
@@ -375,7 +702,7 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
-		response=$(echo "FIREWALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+		response=$(echo "FIREWALL" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
@@ -408,7 +735,7 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
-		response=$(echo "SHUTDOWN" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+		response=$(echo "SHUTDOWN" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
@@ -441,7 +768,7 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
-		response=$(echo "STORE" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+		response=$(echo "STORE" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
@@ -474,7 +801,7 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 
-		response=$(echo "TEST" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+		response=$(echo "TEST" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 		if [[ $response == "" ]]; then
 			response=$(emptyResponse)
@@ -516,7 +843,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo "TLD ADD $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "TLD ADD $tld" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -557,7 +884,7 @@ case $1 in
 				else
 					tld=$3
 
-					response=$(echo "TLD DROP $tld" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "TLD DROP $tld" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -594,7 +921,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 tld show\n"
 				else
 
-					response=$(echo "TLD SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "TLD SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -641,7 +968,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo "PROVIDER ADD $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PROVIDER ADD $provider" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -682,7 +1009,7 @@ case $1 in
 				else
 					provider=$3
 
-					response=$(echo "PROVIDER DROP $provider" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PROVIDER DROP $provider" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -719,7 +1046,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 provider show\n"
 				else
 
-					response=$(echo "PROVIDER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PROVIDER SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -767,7 +1094,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo "IGNORE ADD $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "IGNORE ADD $ignore" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -809,7 +1136,7 @@ case $1 in
 				else
 					ignore=$3
 
-					response=$(echo "IGNORE DROP $ignore" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "IGNORE DROP $ignore" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -846,7 +1173,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 ignore show\n"
 				else
 
-					response=$(echo "IGNORE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "IGNORE SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1074,7 +1401,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "BLOCK ADD $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1115,7 +1442,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK SPLIT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "BLOCK SPLIT $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1157,7 +1484,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK OVERLAP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "BLOCK OVERLAP $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1198,7 +1525,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK EXTRACT $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "BLOCK EXTRACT $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1242,7 +1569,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "BLOCK DROP $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1281,9 +1608,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 superblock show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "BLOCK SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "BLOCK SHOW ALL" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "BLOCK SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "BLOCK SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1330,7 +1657,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "GENERIC ADD $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "GENERIC ADD $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1367,7 +1694,7 @@ case $1 in
 				else
 					token=$3
 
-					response=$(echo "GENERIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "GENERIC FIND $token" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1406,7 +1733,7 @@ case $1 in
 				else
 					sender=$3
 
-					response=$(echo "GENERIC DROP $sender" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "GENERIC DROP $sender" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1445,9 +1772,9 @@ case $1 in
 					printf "Faltando parametro(s).\nSintaxe: $0 generic show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "GENERIC SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "GENERIC SHOW ALL" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "GENERIC SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "GENERIC SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1494,7 +1821,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "DYNAMIC ADD $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "DYNAMIC ADD $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1531,7 +1858,7 @@ case $1 in
 				else
 					token=$3
 
-					response=$(echo "DYNAMIC FIND $token" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "DYNAMIC FIND $token" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1570,7 +1897,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "DYNAMIC DROP $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "DYNAMIC DROP $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1605,7 +1932,7 @@ case $1 in
 					head
 					printf "Faltando parametro(s).\nSintaxe: $0 dynamic show\n"
 				else
-					response=$(echo "DYNAMIC SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "DYNAMIC SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1824,7 +2151,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "WHITE ADD $recipient" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1866,7 +2193,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "WHITE DROP $recipient" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -1904,9 +2231,9 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 superwhite show [all]\n"
 				else
 					if [ "$3" == "all" ]; then
-						response=$(echo "WHITE SHOW ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "WHITE SHOW ALL" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "WHITE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "WHITE SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -1964,7 +2291,7 @@ case $1 in
 						email=$6
 					fi
 
-					response=$(echo "CLIENT ADD $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "CLIENT ADD $cidr $domain $option $email" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2015,7 +2342,7 @@ case $1 in
 						email=$6
 					fi
 
-					response=$(echo "CLIENT SET $cidr $domain $option $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "CLIENT SET $cidr $domain $option $email" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2054,7 +2381,7 @@ case $1 in
 				else
 					cidr=$3
 
-					response=$(echo "CLIENT DROP $cidr" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "CLIENT DROP $cidr" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2090,7 +2417,7 @@ case $1 in
 					printf "Invalid Parameters. Syntax: $0 client show\n"
 				else
 
-					response=$(echo "CLIENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "CLIENT SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2139,7 +2466,7 @@ case $1 in
 					email=$3
 					nome="${@:4}"
 
-					response=$(echo "USER ADD $email $nome" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "USER ADD $email $nome" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2154,7 +2481,7 @@ case $1 in
 						exit 3
 					elif [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					elif [[ $response == "ADDED" ]]; then
+					elif [[ $response == ADDED* ]]; then
 						exit 0
 					else
 						exit 1
@@ -2180,7 +2507,7 @@ case $1 in
 				else
 					email=$3
 
-					response=$(echo "USER DROP $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "USER DROP $email" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2216,7 +2543,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 user show\n"
 				else
-					response=$(echo "USER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "USER SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2241,7 +2568,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 user send-totp <email>\n"
 				else
-					response=$(echo "USER SEND $3 TOTP" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "USER SEND $3 TOTP" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2256,7 +2583,70 @@ case $1 in
 						exit 3
 					elif [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					elif [[ $response == "ADDED" ]]; then
+					elif [[ $response == TOTP\ SENT* ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'copy')
+				# Copia os dados estáticos de um usuário para outro já existente:
+				# preferências, recipient, trap, block, white e ignore. Não copia
+				# credenciais, nome, transporte SMTP, clientes de MTA nem histórico.
+				if [ $# -ne "4" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 user copy origem destino\n"
+					exit 1
+				else
+					response=$(echo "USER COPY $3 $4" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+					if [[ $response == "" ]]; then
+						response=$(emptyResponse)
+						maintenanceExit "$response"
+					else
+						resetTimeout
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == COPIED* ]]; then
+						exit 0
+					else
+						exit 1
+					fi
+				fi
+			;;
+			'move')
+				# Troca o e-mail da conta: o destino não pode existir. Leva
+				# senha, TOTP, chaves, clientes de MTA, MX Gateway, Listing e
+				# Billing; copia recipient, trap, block, white e ignore; apaga
+				# a origem. O histórico não é movido.
+				if [ $# -ne "4" ]; then
+					head
+					printf "Invalid Parameters. Syntax: $0 user move origem destino\n"
+					exit 1
+				else
+					response=$(echo "USER MOVE $3 $4" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+					if [[ $response == "" ]]; then
+						response=$(emptyResponse)
+						maintenanceExit "$response"
+					else
+						resetTimeout
+					fi
+
+					echo "$response"
+
+					if [[ $response == "OUT OF SERVICE" ]]; then
+						exit 3
+					elif [[ $response == "TIMEOUT" ]]; then
+						exit 2
+					elif [[ $response == MOVED* ]]; then
 						exit 0
 					else
 						exit 1
@@ -2265,7 +2655,7 @@ case $1 in
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 user add email nome\n    $0 user drop email\n    $0 user show\n"
+				printf "Syntax:\n    $0 user add email nome\n    $0 user drop email\n    $0 user copy origem destino\n    $0 user move origem destino\n    $0 user show\n"
 			;;
 		esac
 	;;
@@ -2293,9 +2683,9 @@ case $1 in
 
 					if [ -f "$4" ]; then
 						email=$4
-						response=$(echo "PEER ADD $host $email" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER ADD $host $email" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "PEER ADD $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER ADD $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2338,9 +2728,9 @@ case $1 in
 					host=$3
 
 					if [ "$host" == "all" ]; then
-						response=$(echo "PEER DROP ALL" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER DROP ALL" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "PEER DROP $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER DROP $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2380,9 +2770,9 @@ case $1 in
 
 					if [ -f "$3" ]; then
 						host=$3
-						response=$(echo "PEER SHOW $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER SHOW $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					else
-						response=$(echo "PEER SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+						response=$(echo "PEER SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 					fi
 
 					if [[ $response == "" ]]; then
@@ -2426,7 +2816,7 @@ case $1 in
 					send=$4
 					receive=$5
 
-					response=$(echo "PEER SET $host $send $receive" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PEER SET $host $send $receive" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2465,7 +2855,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "PEER PING $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PEER PING $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2504,7 +2894,7 @@ case $1 in
 				else
 					host=$3
 
-					response=$(echo "PEER SEND $host" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "PEER SEND $host" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -2542,9 +2932,9 @@ case $1 in
 		#   26: serviço em manutenção programada (status.spfbl.net).
 
 		if [[ $2 == "cidr" ]]; then
-			response=$(echo "REPUTATION CIDR" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+			response=$(echo "REPUTATION CIDR" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 		else
-			response=$(echo "REPUTATION" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+			response=$(echo "REPUTATION" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 		fi
 
 		if [[ $response == "" ]]; then
@@ -2635,7 +3025,7 @@ case $1 in
 		else
 			hostname=$2
 
-			response=$(echo "CLEAR $hostname" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+			response=$(echo "CLEAR $hostname" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
@@ -2713,7 +3103,7 @@ case $1 in
 
 		case $2 in
 			'show')
-				response=$(echo "ANALISE SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+				response=$(echo "ANALISE SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
@@ -2733,7 +3123,7 @@ case $1 in
 				fi
 			;;
 			'dump')
-				response=$(echo "ANALISE DUMP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+				response=$(echo "ANALISE DUMP $3" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
@@ -2754,7 +3144,7 @@ case $1 in
 			;;
 			'drop')
 
-				response=$(echo "ANALISE DROP $3" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+				response=$(echo "ANALISE DROP $3" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
@@ -2777,7 +3167,7 @@ case $1 in
 				ip=$2
 				list=$3
 
-				response=$(echo "ANALISE $ip $list" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+				response=$(echo "ANALISE $ip $list" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 				if [[ $response == "" ]]; then
 					response=$(emptyResponse)
@@ -3335,7 +3725,7 @@ case $1 in
 			if [[ -n $SPFBL_KEY ]]; then
 				# Com chave: IPv4 ou IPv6 (ou o IP_VERSION do spfbl.conf),
 				# chave e hostname pelo descritor 3.
-				CURL_ARGS=(${IP_VERSION:+-$IP_VERSION} -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -K /dev/fd/3 -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
+				CURL_ARGS=(${IP_VERSION:+-$IP_VERSION} -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
 			else
 				CURL_ARGS=(-4 -s --connect-timeout 3 -m "$QUERY_TIMEOUT" -H "Content-Type: message/rfc822" -H "Content-Encoding: gzip")
 			fi
@@ -3352,7 +3742,14 @@ case $1 in
 				response="NOT FOUND"
 			else
 				# EML puro: descarta a linha separadora "From " do MBOX, se houver.
-				response=$(sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout | curl "${CURL_ARGS[@]}" -w '\n%{http_code}' --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 3<<< "$CURL_KEY_CONFIG" 2> /dev/null)
+				scanBody() {
+					sed '1{/^From /d}' "$FILE" | gzip --no-name --quiet --to-stdout
+				}
+				if [[ -n $SPFBL_KEY ]]; then
+					response=$(keyCurl scanBody "$URL_SERVIDOR/scan/$QUEUEID" "${CURL_ARGS[@]}" --data-binary @-)
+				else
+					response=$(scanBody | curl "${CURL_ARGS[@]}" -w '\n%{http_code}' --data-binary @- "$URL_SERVIDOR/scan/$QUEUEID" 2> /dev/null)
+				fi
 				code=${response##*$'\n'}
 				response=$(printf '%s' "${response%$'\n'*}")
 
@@ -4260,7 +4657,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "INEXISTENT ADD $recipient" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4302,7 +4699,7 @@ case $1 in
 				else
 					recipient=$3
 
-					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "INEXISTENT DROP $recipient" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4339,7 +4736,7 @@ case $1 in
 					head
 					printf "Invalid Parameters. Syntax: $0 inexistent show\n"
 				else
-					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "INEXISTENT SHOW" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4365,29 +4762,27 @@ case $1 in
 			;;
 		esac
 	;;
-	'noreply')
+	'suppression'|'supression')
+		# Códigos de saída de todos os subcomandos:
+		#
+		#    0: sucesso.
+		#    1: já existe, não encontrado, vazio ou parâmetro inválido.
+		#    2: timeout de conexão.
+		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
 		case $2 in
-			'add')
-				# Parâmetros de entrada:
-				#
-				#    1. recipient: o destinatário que o SPFBL não deve enviar mensagem de e-mail.
-				#
-				#
-				# Códigos de saída:
-				#
-				#    0: adicionado com sucesso.
-				#    1: erro ao tentar adicionar endereço.
-				#    2: timeout de conexão.
-				#    3: out of service.
-				#   26: serviço em manutenção programada (status.spfbl.net).
-
-				if [ $# -lt "3" ]; then
+			'inexistent'|'rejected'|'unsubscribed'|'complaint'|'malware'|'abuse'|'quota'|'hold'|'spammer'|'noncompliant'|\
+			'INEXISTENT'|'REJECTED'|'UNSUBSCRIBED'|'COMPLAINT'|'MALWARE'|'ABUSE'|'QUOTA'|'HOLD'|'SPAMMER'|'NONCOMPLIANT')
+				# suppression <TIPO> <chave>: adiciona com origem ADMIN.
+				if [ $# -ne "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 noreply add recipient\n"
+					suppression_manual
+					exit 1
 				else
-					recipient=$3
+					type=$(echo "$2" | tr '[:lower:]' '[:upper:]')
+					key=$3
 
-					response=$(echo "NOREPLY ADD $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "SUPPRESSION ADD $type $key" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4410,26 +4805,16 @@ case $1 in
 				fi
 			;;
 			'drop')
-				# Parâmetros de entrada:
-				#
-				#    1. recipient: o destinatário que o SPFBL não deve enviar mensagem de e-mail.
-				#
-				#
-				# Códigos de saída:
-				#
-				#    0: desbloqueado com sucesso.
-				#    1: erro ao tentar adicionar endereço.
-				#    2: timeout de conexão.
-				#    3: out of service.
-				#   26: serviço em manutenção programada (status.spfbl.net).
-
-				if [ $# -lt "3" ]; then
+				# suppression drop <chave> [TIPO]
+				if [ $# -lt "3" ] || [ $# -gt "4" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 noreply drop recipient\n"
+					suppression_manual
+					exit 1
 				else
-					recipient=$3
+					key=$3
+					type=$(echo "$4" | tr '[:lower:]' '[:upper:]')
 
-					response=$(echo "NOREPLY DROP $recipient" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					response=$(echo "SUPPRESSION DROP $key $type" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4452,21 +4837,15 @@ case $1 in
 				fi
 			;;
 			'show')
-				# Parâmetros de entrada: nenhum.
-				#
-				# Códigos de saída:
-				#
-				#    0: visualizado com sucesso.
-				#    1: erro ao tentar visualizar endereços.
-				#    2: timeout de conexão.
-				#    3: out of service.
-				#   26: serviço em manutenção programada (status.spfbl.net).
-
-				if [ $# -lt "2" ]; then
+				# suppression show <chave>
+				if [ $# -ne "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 noreply show\n"
+					suppression_manual
+					exit 1
 				else
-					response=$(echo "NOREPLY SHOW" | $NCAT $IP_SERVIDOR $PORTA_ADMIN 2> /dev/null)
+					key=$3
+
+					response=$(echo "SUPPRESSION SHOW $key" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4481,32 +4860,23 @@ case $1 in
 						exit 3
 					elif [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					else
+					elif [[ $response != "EMPTY" ]] && [[ $response != "INVALID COMMAND" ]]; then
 						exit 0
+					else
+						exit 1
 					fi
 				fi
 			;;
-			'is')
-				# Parâmetros de entrada:
-				#
-				#    1. recipient: o destinatário que o SPFBL deve verificar se pode responder e-mail.
-				#
-				#
-				# Códigos de saída:
-				#
-				#    0: pode reponder e-mail.
-				#    1: não pode reponder e-mail.
-				#    2: timeout de conexão.
-				#    3: out of service.
-				#   26: serviço em manutenção programada (status.spfbl.net).
-
-				if [ $# -lt "3" ]; then
+			'list')
+				# suppression list <TIPO>
+				if [ $# -ne "3" ]; then
 					head
-					printf "Invalid Parameters. Syntax: $0 noreply is <recipient>\n"
+					suppression_manual
+					exit 1
 				else
-					recipient=$3
+					type=$(echo "$3" | tr '[:lower:]' '[:upper:]')
 
-					response=$(echo "NOREPLY IS $recipient" | spfbl_query 2> /dev/null)
+					response=$(echo "SUPPRESSION LIST $type" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 					if [[ $response == "" ]]; then
 						response=$(emptyResponse)
@@ -4521,25 +4891,222 @@ case $1 in
 						exit 3
 					elif [[ $response == "TIMEOUT" ]]; then
 						exit 2
-					elif [[ $response == "TRUE" ]]; then
-						exit 1
-					else
+					elif [[ $response != "EMPTY" ]] && [[ $response != "INVALID COMMAND" ]]; then
 						exit 0
+					else
+						exit 1
 					fi
 				fi
 			;;
 			*)
 				head
-				printf "Syntax:\n    $0 noreply add recipient\n    $0 noreply drop recipient\n    $0 noreply show\n"
+				suppression_manual
 			;;
 		esac
+	;;
+	'listing')
+		# Listagens DNS dos usuários pela porta administrativa. Códigos de saída:
+		#
+		#    0: sucesso.
+		#    1: não encontrado, vazio ou parâmetro inválido.
+		#    2: timeout de conexão.
+		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
+		case $2 in
+			'show')
+				if [ $# -ne "3" ]; then
+					head
+					listing_manual
+					exit 1
+				fi
+				command="LISTING SHOW $3"
+				success='^(DNSWL|DNSAL) '
+			;;
+			'list')
+				if [ $# -ne "3" ] || { [ "$3" != "dnswl" ] && [ "$3" != "dnsal" ]; }; then
+					head
+					listing_manual
+					exit 1
+				fi
+				command="LISTING LIST $(echo "$3" | tr '[:lower:]' '[:upper:]')"
+				success='^(DNSWL|DNSAL) '
+			;;
+			'drop')
+				if [ $# -ne "5" ] || { [ "$3" != "dnswl" ] && [ "$3" != "dnsal" ]; }; then
+					head
+					listing_manual
+					exit 1
+				fi
+				command="LISTING DROP $(echo "$3" | tr '[:lower:]' '[:upper:]') $4 $5"
+				success='^DROPPED'
+			;;
+			*)
+				head
+				listing_manual
+				exit 1
+			;;
+		esac
+
+		response=$(echo "$command" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+		if [[ $response == "" ]]; then
+			response=$(emptyResponse)
+			maintenanceExit "$response"
+		else
+			resetTimeout
+		fi
+
+		echo "$response"
+
+		if [[ $response == "OUT OF SERVICE" ]]; then
+			exit 3
+		elif [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response =~ $success ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
+	'billing')
+		# Faturamento pela porta administrativa. Códigos de saída:
+		#
+		#    0: sucesso.
+		#    1: não encontrado, já existe, vazio ou parâmetro inválido.
+		#    2: timeout de conexão.
+		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
+		case $2 in
+			'create'|'show'|'close'|'drop')
+				if [ $# -ne "3" ]; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING $(echo "$2" | tr '[:lower:]' '[:upper:]') $3"
+				success='^(CREATED|CLOSED|DROPPED|[^ ]+@[^ ]+ created=)'
+			;;
+			'pix')
+				if [ $# -ne "3" ]; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING PIX $3"
+				success='^(ENABLED|ALREADY ENABLED)'
+			;;
+			'credit')
+				if [ $# -ne "5" ] || { [ "$3" != "add" ] && [ "$3" != "drop" ]; }; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING CREDIT $(echo "$3" | tr '[:lower:]' '[:upper:]') $4 $5"
+				success='^CREDIT USD'
+			;;
+			'element')
+				if [ $# -ne "6" ] || [ "$3" != "drop" ]; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING ELEMENT DROP $4 $5 $6"
+				success='^DROPPED'
+			;;
+			'paid')
+				if [ $# -ne "5" ]; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING PAID $3 $4 $5"
+				success='^PAID'
+			;;
+			'list')
+				if [ $# -ne "2" ]; then
+					head
+					billing_manual
+					exit 1
+				fi
+				command="BILLING LIST"
+				success='^[^ ]+@'
+			;;
+			'price')
+				case $3 in
+					'set')
+						if [ $# -ne "5" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING PRICE SET $4 $5"
+						success='^(SET|DROPPED)'
+					;;
+					'drop')
+						if [ $# -ne "4" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING PRICE DROP $4"
+						success='^DROPPED'
+					;;
+					'show')
+						if [ $# -ne "3" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING PRICE SHOW"
+						success='^spfbl_'
+					;;
+					*)
+						head
+						billing_manual
+						exit 1
+					;;
+				esac
+			;;
+			*)
+				head
+				billing_manual
+				exit 1
+			;;
+		esac
+
+		response=$(echo "$command" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+		if [[ $response == "" ]]; then
+			response=$(emptyResponse)
+			maintenanceExit "$response"
+		else
+			resetTimeout
+		fi
+
+		echo "$response"
+
+		if [[ $response == "OUT OF SERVICE" ]]; then
+			exit 3
+		elif [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response =~ $success ]]; then
+			exit 0
+		else
+			exit 1
+		fi
+	;;
+	'noreply')
+		# Comando abolido: substituído por "suppression".
+		head
+		suppression_manual
+		exit 1
 	;;
 	'dump')
 		# Parâmetros de entrada: nenhum.
 		#
 		# Códigos de saída: nenhum.
 
-		echo "DUMP" | $NCAT $IP_SERVIDOR $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
+		echo "DUMP" | $NCAT $IP_ADMIN $PORTA_ADMIN > $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")
 		if [ -f $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M") ]; then
 			echo "Dump saved as $DUMP_PATH/spfbl.dump.$(date "+%Y-%m-%d_%H-%M")"
 		else
@@ -4559,7 +5126,7 @@ case $1 in
 			if [ -f $file ]; then
 				while read line; do
 					echo -n "Adding $line ... "
-					echo "$line" | $NCAT $IP_SERVIDOR $PORTA_ADMIN
+					echo "$line" | $NCAT $IP_ADMIN $PORTA_ADMIN
 				done < $file
 			else
 				echo "File not found."
@@ -4809,6 +5376,123 @@ case $1 in
 	# Fim processos
 
 	;;
+	'thread'|'memory'|'service'|'log'|'owner'|'locale'|'icann'|'private'|'dnsbl'|'uribl'|'dnswl'|'score'|'dnsal'|'since'|'fqdn'|'gateway'|'recipient'|'guess'|'dictionary'|'certificate'|'stack'|'reload'|'queue'|'split'|'suspect'|'licence'|'invitation'|'transport')
+		# Comandos administrativos repassados à porta administrativa:
+		# spfbl <familia> <subcomando> [argumentos...] envia
+		# FAMILIA SUBCOMANDO argumentos... Só a família e as palavras-chave
+		# conhecidas vão em maiúsculas; os valores seguem como digitados.
+		#
+		# Códigos de saída:
+		#
+		#    0: sucesso.
+		#    1: parâmetro inválido, não encontrado ou erro.
+		#    2: timeout de conexão.
+		#    3: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
+		family=$1
+		FAMILY=$(echo "$family" | tr '[:lower:]' '[:upper:]')
+		shift
+		args=("$@")
+		case $family in
+			'certificate'|'stack'|'reload'|'queue')
+				# Sem argumentos.
+				if [ ${#args[@]} -ne 0 ]; then
+					head
+					admin_manual "$family"
+					exit 1
+				fi
+			;;
+			'split'|'suspect'|'licence'|'invitation'|'transport')
+				# O primeiro argumento é um valor, não um subcomando.
+				case $family in
+					'split'|'suspect') minimum=1 ;;
+					'licence') minimum=2 ;;
+					'invitation') minimum=1 ;;
+					'transport') minimum=2 ;;
+				esac
+				if [ ${#args[@]} -lt $minimum ]; then
+					head
+					admin_manual "$family"
+					exit 1
+				fi
+				if [[ $family == "transport" ]]; then
+					# TRANSPORT <usuario> <ACAO> ...; no ADD, o protocolo é o 4º.
+					args[1]=$(upperKeyword "${args[1]}" ADD SET PUT DROP SHOW)
+					if [[ ${args[1]} == "ADD" && ${#args[@]} -ge 4 ]]; then
+						args[3]=$(upperKeyword "${args[3]}" SMTP)
+					fi
+				fi
+			;;
+			*)
+				# O primeiro argumento é o subcomando.
+				case $family in
+					'thread'|'memory') subcommands="SHOW" ;;
+					'service') subcommands="START" ;;
+					'log') subcommands="LEVEL DNS P2P" ;;
+					'owner') subcommands="GET SET" ;;
+					'locale') subcommands="SET GET" ;;
+					'icann'|'private') subcommands="ADD DROP SHOW" ;;
+					'dnsbl'|'uribl'|'dnswl'|'score'|'dnsal'|'since') subcommands="ADD SET DROP SHOW" ;;
+					'fqdn') subcommands="ADD WHITE DROP SHOW" ;;
+					'gateway') subcommands="KEY SHOW ADD SET DROP IMPORT" ;;
+					'recipient') subcommands="ADD SET DROP SHOW" ;;
+					'guess') subcommands="ADD DROP SHOW" ;;
+					'dictionary') subcommands="ADD PUT COMPILE FLAG DROP REP SHOW" ;;
+				esac
+				if [ ${#args[@]} -eq 0 ]; then
+					head
+					admin_manual "$family"
+					exit 1
+				fi
+				if ! args[0]=$(upperKeyword "${args[0]}" $subcommands); then
+					head
+					admin_manual "$family"
+					exit 1
+				fi
+				# Palavras-chave na segunda posição, conforme o subcomando.
+				keywords=""
+				case "$FAMILY ${args[0]}" in
+					'LOG LEVEL') keywords="ERROR WARN INFO DEBUG TRACE" ;;
+					'LOG DNS'|'LOG P2P') keywords="TRUE FALSE" ;;
+					'DNSBL DROP'|'URIBL DROP'|'DNSWL DROP'|'SCORE DROP'|'DNSAL DROP'|'SINCE DROP'|'GUESS DROP') keywords="ALL" ;;
+					'GATEWAY KEY') keywords="ADD SHOW DROP" ;;
+					'DICTIONARY DROP') keywords="KEY WORD REGEX FLAG REP" ;;
+					'DICTIONARY SHOW') keywords="SET MAP REGEX FLAG" ;;
+					'RECIPIENT SHOW') keywords="ATTACK CATCHALL NODE" ;;
+					'RECIPIENT DROP') keywords="USER" ;;
+				esac
+				if [[ -n $keywords && ${#args[@]} -ge 2 ]]; then
+					args[1]=$(upperKeyword "${args[1]}" $keywords)
+				fi
+			;;
+		esac
+
+		command="$FAMILY"
+		if [ ${#args[@]} -gt 0 ]; then
+			command="$FAMILY ${args[*]}"
+		fi
+
+		response=$(echo "$command" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+		if [[ $response == "" ]]; then
+			response=$(emptyResponse)
+			maintenanceExit "$response"
+		else
+			resetTimeout
+		fi
+
+		echo "$response"
+
+		if [[ $response == "OUT OF SERVICE" ]]; then
+			exit 3
+		elif [[ $response == "TIMEOUT" ]]; then
+			exit 2
+		elif [[ $response =~ ^(INVALID|NOT\ FOUND|ERROR|NULL|NOT\ CHANGED|[A-Z]+\ NOT\ (FOUND|RESOLVED)|COULD\ NOT|KEY\ LIMIT) ]]; then
+			exit 1
+		else
+			exit 0
+		fi
+	;;
 	*)
 		head
 		printf "Help\n\n"
@@ -4825,7 +5509,9 @@ case $1 in
 		printf "    $0 ham ticketid/file\n"
 		printf "    $0 query ip email helo recipient\n"
 		printf "    $0 trap { add recipient | drop recipient | show }\n"
-		printf "    $0 noreply { add recipient | drop recipient | show }\n"
+		printf "    $0 suppression { TYPE key | drop key [TYPE] | show key | list TYPE }\n"
+		printf "    $0 listing { show user | list TYPE | drop TYPE user VALUE }\n"
+		printf "    $0 billing { create user | show user | close user | drop user | list | paid INVOICE CUR VALUE | pix user | credit { add | drop } user USD | element drop INVOICE ITEM ELEMENT | price { set ITEM VALUE | drop ITEM | show } }\n"
 		printf "    $0 abuse In-Reply-To:<messageID> From:<from>\n"
 		printf "\n"
 		printf "Admin Commands:\n"
@@ -4839,7 +5525,7 @@ case $1 in
 		printf "    $0 provider { add sender | drop sender | show }\n"
 		printf "    $0 ignore { add sender | drop sender | show }\n"
 		printf "    $0 client { add/set cidr domain option [email] | drop cidr | show }\n"
-		printf "    $0 user { add email nome | drop email | send-totp email | show }\n"
+		printf "    $0 user { add email nome | drop email | copy origem destino | move origem destino | send-totp email | show }\n"
 		printf "    $0 superblock { add sender | drop sender | show [all] | split | overlap }\n"
 		printf "    $0 superwhite { add sender | drop sender | show [all] }\n"
 		printf "    $0 analise <ip> or { show | dump | drop }\n"
@@ -4847,6 +5533,10 @@ case $1 in
 		printf "    $0 dump\n"
 		printf "    $0 load path\n"
 		printf "    $0 backup days [days to retain backup, default 60]\n"
+		printf "    $0 { thread | memory | service | log | owner | locale | icann | private | dnsbl | uribl | dnswl | score | dnsal | since | fqdn | gateway | recipient | guess | dictionary } subcommand [args...]\n"
+		printf "    $0 { certificate | stack | reload | queue }\n"
+		printf "    $0 { split cidr | suspect token | licence email mx | invitation recipient | transport user action ... }\n"
+		printf "    $0 <family>                   help of the family\n"
 		printf "\n"
 	;;
 esac
