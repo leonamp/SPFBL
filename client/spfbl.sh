@@ -223,7 +223,7 @@ function billing_manual() {
 	printf "\n"
 	printf "Examples:\n"
 	printf "    $0 billing price set spfbl_client_set 2\n"
-	printf "    $0 billing price set spfbl_envelope_count 0.00002\n"
+	printf "    $0 billing price set spfbl_envelope_count 0.01/K    (K or M, or the unit price)\n"
 	printf "    $0 billing price set spfbl_incoming_bytes 0.01/MB   (B, KB, MB, GB or TB)\n"
 	printf "    $0 billing paid MWVTZOAG BRL 10.68\n"
 	printf "    $0 billing element drop MWVTZOAG spfbl_domain_set example.com\n"
@@ -2653,9 +2653,53 @@ case $1 in
 					fi
 				fi
 			;;
+			'property')
+				# Propriedades administrativas da conta (ex.: spamcenter_api_key).
+				# O SHOW mostra só os 4 primeiros caracteres de cada valor.
+				#
+				# Códigos de saída:
+				#
+				#    0: sucesso (SHOW, CHANGED ou DROPPED).
+				#    1: conta ou propriedade não encontrada, valor igual ou erro.
+				#    2: timeout de conexão.
+				#    3: out of service.
+				action=$(echo "$4" | tr '[:lower:]' '[:upper:]')
+				if [[ $action == "SHOW" && $# -eq 4 ]]; then
+					command="USER PROPERTY $3 SHOW"
+				elif [[ $action == "SET" && $# -ge 6 ]]; then
+					command="USER PROPERTY $3 SET $5 ${*:6}"
+				elif [[ $action == "DROP" && $# -eq 5 ]]; then
+					command="USER PROPERTY $3 DROP $5"
+				else
+					head
+					printf "Invalid Parameters. Syntax:\n    $0 user property email show\n    $0 user property email set nome valor\n    $0 user property email drop nome\n"
+					exit 1
+				fi
+
+				response=$(echo "$command" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
+
+				if [[ $response == "" ]]; then
+					response=$(emptyResponse)
+					maintenanceExit "$response"
+				else
+					resetTimeout
+				fi
+
+				echo "$response"
+
+				if [[ $response == "OUT OF SERVICE" ]]; then
+					exit 3
+				elif [[ $response == "TIMEOUT" ]]; then
+					exit 2
+				elif [[ $response =~ ^(NOT\ FOUND|NOT\ CHANGED|INVALID|ERROR) ]]; then
+					exit 1
+				else
+					exit 0
+				fi
+			;;
 			*)
 				head
-				printf "Syntax:\n    $0 user add email nome\n    $0 user drop email\n    $0 user copy origem destino\n    $0 user move origem destino\n    $0 user show\n"
+				printf "Syntax:\n    $0 user add email nome\n    $0 user drop email\n    $0 user copy origem destino\n    $0 user move origem destino\n    $0 user property email { show | set nome valor | drop nome }\n    $0 user show\n"
 			;;
 		esac
 	;;
@@ -3231,6 +3275,95 @@ case $1 in
 			recipient=$5
 
 			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | spfbl_query 2> /dev/null)
+
+			if [[ $qualifier == "" ]]; then
+				qualifier=$(emptyResponse)
+				maintenanceExit "$qualifier"
+			else
+				resetTimeout
+			fi
+
+			echo "$qualifier"
+
+			if [[ $qualifier == "OUT OF SERVICE" ]]; then
+				exit 12
+			elif [[ $qualifier == "TIMEOUT" ]]; then
+				exit 9
+			elif [[ $qualifier == "NXDOMAIN" ]]; then
+				exit 10
+			elif [[ $qualifier == "NXSENDER" ]]; then
+				exit 13
+			elif [[ $qualifier == "LISTED"* ]]; then
+				exit 8
+			elif [[ $qualifier == "INVALID" ]]; then
+				exit 11
+			elif [[ $qualifier == "ERROR: HOST NOT FOUND" ]]; then
+				exit 6
+			elif [[ $qualifier == "ERROR: QUERY" ]]; then
+				exit 11
+			elif [[ $qualifier == "ERROR: "* ]]; then
+				exit 7
+			elif [[ $qualifier == "NONE"* ]]; then
+				exit 5
+			elif [[ $qualifier == "PASS"* ]]; then
+				exit 2
+			elif [[ $qualifier == "FAIL" ]]; then
+				exit 3
+			elif [[ $qualifier == "SOFTFAIL"* ]]; then
+				exit 4
+			elif [[ $qualifier == "NEUTRAL"* ]]; then
+				exit 1
+			else
+				exit 0
+			fi
+		fi
+	;;
+	'supercheck')
+		# Mesma consulta do check, pela porta administrativa (CHECK). Lá dentro, o
+		# SPFBL usa o mesmo método da porta de cliente (SPF.processSPF).
+		#
+		# Parâmetros de entrada:
+		#
+		#    1. IP: o IPv4 ou IPv6 do host de origem.
+		#    2. email: o email do remetente.
+		#    3. HELO: o HELO passado pelo host de origem.
+		#
+		# Saídas com qualificadores e os tokens com suas probabilidades:
+		#
+		#    <quaificador>\n
+		#    <token> <probabilidade>\n
+		#    <token> <probabilidade>\n
+		#    <token> <probabilidade>\n
+		#    ...
+		#
+		# Códigos de saída:
+		#
+		#    0: não especificado.
+		#    1: qualificador NEUTRAL.
+		#    2: qualificador PASS.
+		#    3: qualificador FAIL.
+		#    4: qualificador SOFTFAIL.
+		#    5: qualificador NONE.
+		#    6: erro temporário.
+		#    7: erro permanente.
+		#    8: listado em lista negra.
+		#    9: timeout de conexão.
+		#    10: domínio inexistente.
+		#    11: parâmetros inválidos.
+		#    12: out of service.
+		#   26: serviço em manutenção programada (status.spfbl.net).
+		#    13: remetente inexistente.
+
+		if [ $# -lt "4" ]; then
+			head
+			printf "Invalid Parameters. Syntax: $0 supercheck ip email helo [recipient]\n"
+		else
+			ip=$2
+			email=$3
+			helo=$4
+			recipient=$5
+
+			qualifier=$(echo "CHECK '$ip' '$email' '$helo' '$recipient'" | $NCAT $IP_ADMIN $PORTA_ADMIN 2> /dev/null)
 
 			if [[ $qualifier == "" ]]; then
 				qualifier=$(emptyResponse)
@@ -5505,6 +5638,7 @@ case $1 in
 		printf "    $0 clear hostname\n"
 		printf "    $0 refresh hostname\n"
 		printf "    $0 check ip email helo\n"
+		printf "    $0 supercheck ip email helo [recipient]   (administration port)\n"
 		printf "    $0 spam ticketid/file\n"
 		printf "    $0 ham ticketid/file\n"
 		printf "    $0 query ip email helo recipient\n"
