@@ -2,7 +2,7 @@
 #
 # SPFBL Irondome installer for cPanel, DirectAdmin, pure Exim and
 # Postfix panels. The control panel is detected automatically.
-# Pure Exim is supported on Debian and Ubuntu, with Exim 4.96 or newer.
+# Pure Exim is supported on Debian and Ubuntu, with Exim 4.92 or newer.
 # On CyberPanel, aaPanel, iRedMail and CWP, a compiled Exim works as a
 # gateway on port 25, in front of their Postfix.
 #
@@ -95,6 +95,9 @@ GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sig
 SPFBL_CLIENT="/usr/local/bin/spfbl"
 SIGS_SCRIPT="/usr/local/bin/clamav-unofficial-sigs.sh"
 SIGS_DIR="/etc/clamav-unofficial-sigs"
+# Present only when this script installed clamav-unofficial-sigs: an
+# updater that already existed is kept by the uninstall.
+SIGS_MARKER="$SIGS_DIR/.installed-by-spfbl"
 CONTACT_URL="https://spfbl.net/en/contact"
 CONTACT_EMAIL="admin@spfbl.net"
 IRONDOME_VERSION="2.9"
@@ -383,7 +386,7 @@ function select_mode() {
 
 function exim_requirements() {
     # Same requirements of exim_check, for the detection: Debian or Ubuntu,
-    # Exim 4.96 or newer and the Debian configuration (exim4-config).
+    # Exim 4.92 or newer and the Debian configuration (exim4-config).
     UNSUPPORTED_REASON=""
     local family="" like major minor
     if [ -r /etc/os-release ]; then
@@ -399,8 +402,8 @@ function exim_requirements() {
         major=${MTA_VERSION%%.*}
         minor=${MTA_VERSION#*.}
         minor=${minor%%[!0-9]*}
-        if [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "${minor:-0}" -lt 96 ]; }; then
-            UNSUPPORTED_REASON="the pure Exim installation requires Exim 4.96 or newer"
+        if [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "${minor:-0}" -lt 92 ]; }; then
+            UNSUPPORTED_REASON="the pure Exim installation requires Exim 4.92 or newer"
         elif ! command -v update-exim4.conf >/dev/null 2>&1; then
             UNSUPPORTED_REASON="the Debian Exim configuration (exim4-config) was not found"
         elif [ -f /etc/exim4/exim4.conf ]; then
@@ -582,7 +585,8 @@ function pkg_install() {
     done
     [ ${#missing[@]} -eq 0 ] && return 0
     if command -v apt-get >/dev/null; then
-        DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-upgrade "${missing[@]}"
+        # needrestart (Ubuntu) would stop asking about services and kernel.
+        NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-upgrade "${missing[@]}"
     elif command -v dnf >/dev/null; then
         dnf install -y "${missing[@]}"
     elif command -v yum >/dev/null; then
@@ -627,7 +631,7 @@ function migrate_client_config() {
     # Copies the settings of the installed client into the new one:
     # every simple assignment of the configuration section (before
     # "export PATH") that also exists in the old file, plus the query
-    # channel (HTTPS or ncat). Settings that only exist in the new
+    # channel, always HTTPS now. Settings that only exist in the new
     # version keep their default value. QUERY_TIMEOUT is never kept: it
     # always takes the value of the new client. The key, the hostname and
     # the protocol live in /etc/spfbl/spfbl.conf, not in the script.
@@ -644,13 +648,9 @@ function migrate_client_config() {
             echo "Preserved setting: ${name}=${old_value}"
         fi
     done < <(awk '/^export PATH=/ {exit} /^[A-Z_]+=/ {sub(/=.*/, ""); print}' "$new" | grep -vE '^(COMMAND|NCAT|QUERY_TIMEOUT|SPFBL_CONF|SPFBL_KEY|LOCAL_HOSTNAME|IP_VERSION|CURL_KEY_CONFIG)$')
-    # ncat only stays when it was a deliberate choice: the installed client
-    # already offered curl (commented line) and the admin chose ncat.
-    # Older clients, without the curl option, move to curl.
-    if grep -qE '^COMMAND="\$NCAT' "$old" && grep -qE '^#[[:space:]]*COMMAND="curl' "$old"; then
-        sed -i -E 's/^COMMAND="curl/# COMMAND="curl/; s/^# COMMAND="\$NCAT/COMMAND="$NCAT/' "$new"
-        echo "Preserved setting: queries through ncat"
-    elif grep -qE '^COMMAND="\$NCAT' "$old"; then
+    # The TCP query port is being discontinued: every client moves to
+    # HTTPS (curl), even when ncat was a deliberate choice.
+    if grep -qE '^COMMAND="\$NCAT' "$old"; then
         echo "Changed setting: queries through HTTPS (curl) instead of ncat"
     fi
 }
@@ -991,10 +991,25 @@ function sigs_value() {
 }
 
 function sigs_remove_script() {
-    # --remove-script asks "Are you sure? [y/N]" and repeats the question
-    # on any other answer: without a terminal (or with the output piped),
-    # it would wait forever. The answer is given here.
-    printf 'y\n' | "$SIGS_SCRIPT" --remove-script
+    # --remove-script asks "Are you sure? [y/N]" twice ("This can not be
+    # undone") and repeats the question on any other answer: without a
+    # terminal (or with the output piped), it would wait forever. The
+    # answers are given here.
+    yes y | "$SIGS_SCRIPT" --remove-script
+}
+
+function sigs_uninstall() {
+    # Removes clamav-unofficial-sigs only when this script installed it.
+    # An updater that already existed keeps running with its own
+    # databases; the SPFBL and Spamcenter ones were already taken out by
+    # remove_additional_dbs.
+    [ -x "$SIGS_SCRIPT" ] || return 0
+    if [ -f "$SIGS_MARKER" ]; then
+        sigs_remove_script
+        rm -f "$SIGS_MARKER"
+    else
+        echo "clamav-unofficial-sigs was installed before SPFBL Irondome and was kept."
+    fi
 }
 
 function remove_additional_dbs() {
@@ -1073,7 +1088,11 @@ function install_sigs() {
     if command -v dpkg >/dev/null && dpkg -s clamav-unofficial-sigs >/dev/null 2>&1; then
         apt-get purge -y clamav-unofficial-sigs
     fi
+    # First installation of the updater by SPFBL: marked for the uninstall.
+    local fresh=false
+    [ -x "$SIGS_SCRIPT" ] || fresh=true
     mkdir -p "$SIGS_DIR"
+    [ "$fresh" = true ] && : > "$SIGS_MARKER"
     [ "$PANEL" = "cpanel" ] || clamav_tools
     csf_allow_out 873
     # The script and master.conf must always have the same version.
@@ -1203,7 +1222,7 @@ function cpanel_configure_exim() {
 }
 
 function cpanel_uninstall() {
-    sigs_remove_script
+    sigs_uninstall
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_RECIPIENT_BLOCK/spfbl_end_recipient
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_SMTP_DKIM_BLOCK/spfbl_begin_smtp_dkim
     rm -f /usr/local/cpanel/etc/exim/acls/ACL_CHECK_MESSAGE_PRE_BLOCK/spfbl_begin_check_message_pre
@@ -1351,7 +1370,7 @@ function da_uninstall() {
         "$DA_BUILD" update
         "$DA_BUILD" spamassassin
     fi
-    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
+    sigs_uninstall
     rm -f /etc/exim.acl_check_recipient.pre.conf
     rm -rf /etc/exim.easy_spam_fighter/
     rm -f /etc/exim.acl_check_message.pre.conf
@@ -1363,10 +1382,24 @@ function da_uninstall() {
 ###########################################################################
 
 EXIM_SPFBL_DIR="/etc/exim4/spfbl"
-EXIM_MACROS="/etc/exim4/exim4.conf.localmacros"
-EXIM_MACROS_BACKUP="/etc/exim4/exim4.conf.localmacros.bak-spfbl"
+EXIM_MACROS=""
+EXIM_MACROS_SINGLE="/etc/exim4/exim4.conf.localmacros"
+EXIM_MACROS_SPLIT="/etc/exim4/conf.d/main/000_localmacros"
+# Outside /etc/exim4/conf.d: every file there becomes configuration.
+EXIM_MACROS_BACKUP="/var/lib/spfbl/exim.localmacros.bak"
+EXIM_MACROS_BACKUP_OLD="/etc/exim4/exim4.conf.localmacros.bak-spfbl"
 EXIM_STATE="/var/lib/spfbl/irondome.state"
 EXIM_BIN=""
+
+function exim_paths() {
+    # Debian only reads exim4.conf.localmacros in the single configuration;
+    # the split one (dc_use_split_config) reads conf.d/main/000_localmacros.
+    if grep -qE "^dc_use_split_config=['\"]?true" /etc/exim4/update-exim4.conf.conf 2>/dev/null; then
+        EXIM_MACROS="$EXIM_MACROS_SPLIT"
+    else
+        EXIM_MACROS="$EXIM_MACROS_SINGLE"
+    fi
+}
 
 function state_get() {
     # Reads a value recorded by the first installation.
@@ -1406,14 +1439,28 @@ function exim_check() {
     fi
     # Exim 4.96 splits the ${run} arguments before the expansion, so the
     # single quotes of the ACLs are safe for any sender or recipient.
+    # Older versions expand first: an apostrophe in a sender, recipient or
+    # header breaks the single quotes, so their ACLs get ${quote:...}.
     local version major minor
     version=$("$EXIM_BIN" -bV 2>/dev/null | sed -n 's/^Exim version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)
     major=${version%%.*}
     minor=${version#*.}
-    if [ -z "$version" ] || [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -lt 96 ]; }; then
-        fail "Exim ${version:-unknown} found. SPFBL Irondome requires Exim 4.96 or newer."
+    if [ -z "$version" ] || [ "$major" -lt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -lt 92 ]; }; then
+        fail "Exim ${version:-unknown} found. SPFBL Irondome requires Exim 4.92 or newer."
+    fi
+    EXIM_LEGACY_RUN=""
+    if [ "$major" -eq 4 ] && [ "$minor" -lt 96 ]; then
+        EXIM_LEGACY_RUN="yes"
     fi
     echo "Exim version detected: $version"
+    exim_paths
+    echo "Exim macros file: $EXIM_MACROS"
+    # An SPFBL integration made by hand would run together with this one.
+    local manual
+    manual=$(grep -rlis spfbl /etc/exim4/conf.d /etc/exim4/exim4.conf.template 2>/dev/null | grep -vxF "$EXIM_MACROS" | tr '\n' ' ')
+    if [ -n "$manual" ]; then
+        fail "A manual SPFBL integration was found in: ${manual% }. Remove it before installing."
+    fi
     # Options and macros already defined by the admin are not overwritten.
     local name value
     for name in CHECK_RCPT_LOCAL_ACL_FILE CHECK_DATA_LOCAL_ACL_FILE; do
@@ -1426,9 +1473,19 @@ function exim_check() {
     if [ -n "$value" ] && [[ $value != $EXIM_SPFBL_DIR/* ]]; then
         fail "The option acl_smtp_dkim is already defined ($value). Installation aborted."
     fi
+    # An av_scanner of the admin pointing to clamd is kept and used as it
+    # is; any other scanner stops the installation.
+    EXIM_AV_KEEP=""
     value=$(exim_value av_scanner)
-    if [ -n "$value" ] && ! grep -q "^# BEGIN SPFBL" "$EXIM_MACROS" 2>/dev/null; then
-        fail "The option av_scanner is already defined ($value). Installation aborted."
+    if [ "$(state_get AV_SCANNER)" = "present" ]; then
+        EXIM_AV_KEEP="yes"
+    elif [ -n "$value" ] && ! grep -q "^# BEGIN SPFBL" "$EXIM_MACROS" 2>/dev/null; then
+        if [[ $value == clamd:* ]]; then
+            EXIM_AV_KEEP="yes"
+            echo "Keeping the av_scanner already defined: $value"
+        else
+            fail "The option av_scanner is already defined ($value). Installation aborted."
+        fi
     fi
 }
 
@@ -1487,7 +1544,10 @@ function exim_write_block() {
         echo "CHECK_RCPT_LOCAL_ACL_FILE = $EXIM_SPFBL_DIR/acl_check_rcpt.conf"
         echo "CHECK_DATA_LOCAL_ACL_FILE = $EXIM_SPFBL_DIR/acl_check_data.conf"
         echo "acl_smtp_dkim = $EXIM_SPFBL_DIR/acl_check_dkim.conf"
-        echo "av_scanner = clamd:$socket"
+        # The av_scanner of the admin, when there is one, stays as it is.
+        if [ "$(state_get AV_SCANNER)" != "present" ]; then
+            echo "av_scanner = clamd:$socket"
+        fi
         # Frozen messages wait for "spfbl holding"; without this limit they never expire.
         if [ "$(state_get FROZEN_OPTION)" = "added" ]; then
             echo "timeout_frozen_after = 7d"
@@ -1509,11 +1569,36 @@ function exim_rebuild() {
     update-exim4.conf && "$EXIM_BIN" -bV >/dev/null
 }
 
+function exim_quote_run() {
+    # Exim older than 4.96 expands the ${run} command before splitting it:
+    # each '...' argument becomes ${quote:...}, which gives one argument
+    # whatever the content (apostrophes, double quotes, spaces). Only
+    # inside the ${run{...}} commands; the rest of the ACL is not touched.
+    local file
+    for file in "$@"; do
+        perl -0pi -e 's{(\$\{run\{)(.*?)(\}\{)}{my ($a, $b, $c) = ($1, $2, $3); $b =~ s/\x27([^\x27]*)\x27/\$\{quote:$1\}/g; "$a$b$c"}gse' "$file" \
+            || fail "Could not adapt $file to this Exim version."
+    done
+}
+
 function exim_configure() {
     download "$GITHUB_SPFBL/exim.acl_check_rcpt.conf" "$EXIM_SPFBL_DIR/acl_check_rcpt.conf"
     download "$GITHUB_SPFBL/exim.acl_check_data.conf" "$EXIM_SPFBL_DIR/acl_check_data.conf"
     download "$GITHUB_SPFBL/exim.acl_check_dkim.conf" "$EXIM_SPFBL_DIR/acl_check_dkim.conf"
+    if [ "$EXIM_LEGACY_RUN" = "yes" ]; then
+        echo 'Exim older than 4.96: ${run} arguments with ${quote:...}.'
+        exim_quote_run "$EXIM_SPFBL_DIR"/acl_check_*.conf
+    fi
     # Backup of the only Exim file touched by SPFBL, on the first installation.
+    mkdir -p "$(dirname "$EXIM_MACROS_BACKUP")"
+    if [ ! -f "$EXIM_MACROS_BACKUP" ] && [ -f "$EXIM_MACROS_BACKUP_OLD" ]; then
+        mv "$EXIM_MACROS_BACKUP_OLD" "$EXIM_MACROS_BACKUP"
+    fi
+    # Older versions wrote the block in exim4.conf.localmacros even in the
+    # split configuration, where it is not read.
+    if [ "$EXIM_MACROS" != "$EXIM_MACROS_SINGLE" ]; then
+        exim_remove_block "$EXIM_MACROS_SINGLE"
+    fi
     if [ ! -f "$EXIM_MACROS_BACKUP" ]; then
         if [ -f "$EXIM_MACROS" ]; then
             cp -p "$EXIM_MACROS" "$EXIM_MACROS_BACKUP"
@@ -1533,6 +1618,11 @@ function exim_configure() {
             state_set_once FROZEN_OPTION "present"
         fi
     fi
+    if [ "$EXIM_AV_KEEP" = "yes" ]; then
+        state_set_once AV_SCANNER "present"
+    else
+        state_set_once AV_SCANNER "added"
+    fi
     find_clamd
     exim_write_block "${CLAMD_SOCKET:-/run/clamav/clamd.ctl}"
     if ! exim_rebuild; then
@@ -1542,13 +1632,26 @@ function exim_configure() {
         exim_rebuild
         fail "The new Exim configuration is invalid. The previous configuration was kept."
     fi
+    # The block must be active in the generated configuration.
+    if [ "$(exim_value acl_smtp_dkim)" != "acl_smtp_dkim = $EXIM_SPFBL_DIR/acl_check_dkim.conf" ] &&
+       [ "$(exim_value acl_smtp_dkim)" != "$EXIM_SPFBL_DIR/acl_check_dkim.conf" ]; then
+        exim_remove_block "$EXIM_MACROS"
+        rm -rf "$EXIM_SPFBL_DIR"
+        exim_rebuild
+        fail "The SPFBL block in $EXIM_MACROS was not loaded by the Exim configuration. The previous configuration was kept."
+    fi
     exim_restart || fail "Exim could not be restarted."
 }
 
 function exim_uninstall() {
     EXIM_BIN=$(command -v exim4 || command -v exim)
-    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
+    sigs_uninstall
+    exim_paths
+    if [ ! -f "$EXIM_MACROS_BACKUP" ] && [ -f "$EXIM_MACROS_BACKUP_OLD" ]; then
+        mv "$EXIM_MACROS_BACKUP_OLD" "$EXIM_MACROS_BACKUP"
+    fi
     # Configuration: only the SPFBL block and files.
+    exim_remove_block "$EXIM_MACROS_SINGLE"
     exim_remove_block "$EXIM_MACROS"
     if [ "$(state_get MACROS_FILE)" = "absent" ] && [ -f "$EXIM_MACROS" ] && ! grep -q '[^[:space:]]' "$EXIM_MACROS"; then
         rm -f "$EXIM_MACROS"
@@ -1571,7 +1674,7 @@ function exim_uninstall() {
         gpasswd -d clamav Debian-exim 2>/dev/null
     fi
     if [ "$(state_get CLAMAV_PACKAGES)" = "installed" ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
+        NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
     fi
     rm -f "$EXIM_STATE"
     if [ -n "$EXIM_BIN" ]; then
@@ -2847,7 +2950,7 @@ function gw_apply() {
 function gw_uninstall() {
     POSTFIX_MASTER="$(postconf -h config_directory 2>/dev/null)/master.cf"
     gw_state_file
-    [ -x "$SIGS_SCRIPT" ] && sigs_remove_script
+    sigs_uninstall
     local keep=false clamav
     clamav=$(state_get CLAMAV_PACKAGES)
     if gw_installed; then
@@ -2911,7 +3014,7 @@ function gw_uninstall() {
     getent group "$GW_USER" >/dev/null && groupdel "$GW_USER"
     if [ "$clamav" = "installed" ]; then
         if command -v dpkg >/dev/null; then
-            DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
+            NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive apt-get remove --yes clamav clamav-daemon clamav-freshclam
         else
             dnf remove -y clamav clamd clamav-update 2>/dev/null || yum remove -y clamav clamd clamav-update
         fi
@@ -3387,6 +3490,7 @@ function usage() {
     echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
     echo "*** Gateway in steps: $0 [prepare [SPAMCENTER_API_KEY]|switch|rollback]"
     echo "*** SPFBL client configuration only: $0 config"
+    echo "*** Change the SPFBL access key of this server: $0 key"
     echo "*** Show the control panel and mail server found (changes nothing): $0 detect"
     echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
 }
@@ -3406,8 +3510,8 @@ function menu() {
     detect_report
     local options=() labels=()
     if detect_installed; then
-        options+=(update uninstall config spamcenter firewall)
-        labels+=("Update" "Uninstall" "Configure the SPFBL client" "Spamcenter API key" "Firewall")
+        options+=(update uninstall config key spamcenter firewall)
+        labels+=("Update" "Uninstall" "Configure the SPFBL client" "Change the SPFBL access key" "Spamcenter API key" "Firewall")
         if [ "$PANEL" = "gateway" ]; then
             options+=(switch rollback)
             labels+=("Switch port 25 to the gateway" "Rollback port 25 to Postfix")
@@ -3513,6 +3617,22 @@ case "$1" in
     ;;
     config)
         echo "[config] Configuring the SPFBL client powered by SPFBL.net"
+        config
+    ;;
+    key)
+        echo "[key] Changing the SPFBL access key of this server"
+        if ! (exec < /dev/tty) 2> /dev/null; then
+            echo "No terminal to ask for the key. Run: SPFBL_KEY=... $0 config"
+            exit 1
+        fi
+        echo "Create an access key in the SPFBL panel (Access keys) for this server."
+        read -rs -p "New SPFBL access key: " SPFBL_KEY < /dev/tty
+        echo ""
+        if [ -z "$SPFBL_KEY" ]; then
+            echo "Nothing was changed."
+            exit 0
+        fi
+        # The same path of "config", with the new key in place of the one in the file.
         config
     ;;
     detect)
