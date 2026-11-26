@@ -3382,6 +3382,81 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+function usage() {
+    echo "*** Without parameters: compatibility check and a menu with the options of this host."
+    echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
+    echo "*** Gateway in steps: $0 [prepare [SPAMCENTER_API_KEY]|switch|rollback]"
+    echo "*** SPFBL client configuration only: $0 config"
+    echo "*** Show the control panel and mail server found (changes nothing): $0 detect"
+    echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
+}
+
+function menu() {
+    # Without parameters: the same check of "detect" and a menu with the
+    # options that make sense on this host. The choice becomes the
+    # parameter and follows the same path of the command given directly.
+    # With "curl | bash", stdin is the script itself: the menu reads the
+    # terminal. Without a terminal (cron, automation), only the usage.
+    if ! (exec < /dev/tty) 2> /dev/null; then
+        usage
+        exit 1
+    fi
+    echo "SPFBL Irondome $IRONDOME_VERSION powered by SPFBL.net"
+    echo ""
+    detect_report
+    local options=() labels=()
+    if detect_installed; then
+        options+=(update uninstall config spamcenter firewall)
+        labels+=("Update" "Uninstall" "Configure the SPFBL client" "Spamcenter API key" "Firewall")
+        if [ "$PANEL" = "gateway" ]; then
+            options+=(switch rollback)
+            labels+=("Switch port 25 to the gateway" "Rollback port 25 to Postfix")
+        fi
+    elif select_mode; then
+        echo "Irondome installation: not found"
+        options+=(install firewall)
+        labels+=("Install" "Firewall only")
+        if [ "$PANEL" = "gateway" ]; then
+            options+=(prepare)
+            labels+=("Prepare the gateway in steps (port 25 is switched later)")
+        fi
+    else
+        # Not installed and not supported: the check above already says why.
+        exit 1
+    fi
+    echo ""
+    local i
+    for i in "${!options[@]}"; do
+        echo "  $((i + 1))) ${labels[$i]}"
+    done
+    echo "  0) Exit"
+    local choice
+    while true; do
+        read -r -p "Choose an option: " choice < /dev/tty || exit 1
+        if [ "$choice" = "0" ]; then
+            exit 0
+        elif [[ $choice =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
+            MENU_CHOICE="${options[$((choice - 1))]}"
+            break
+        else
+            echo "Invalid option."
+        fi
+    done
+    if [ "$MENU_CHOICE" = "uninstall" ]; then
+        read -r -p "Remove the SPFBL Irondome from this host? [y/N] " choice < /dev/tty || exit 1
+        case "$choice" in
+            y|Y|yes|YES) ;;
+            *) echo "Nothing was changed."; exit 0 ;;
+        esac
+    fi
+    echo ""
+}
+
+if [ -z "$1" ]; then
+    menu
+    set -- "$MENU_CHOICE"
+fi
+
 if [ -n "$2" ]; then
     case "$1" in
         install|update|prepare)
@@ -3449,10 +3524,6 @@ case "$1" in
         spamcenter_sync
     ;;
     *)
-        echo "*** Usage: $0 [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]"
-        echo "*** Gateway in steps: $0 [prepare [SPAMCENTER_API_KEY]|switch|rollback]"
-        echo "*** SPFBL client configuration only: $0 config"
-        echo "*** Show the control panel and mail server found (changes nothing): $0 detect"
-        echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
+        usage
         exit 1
 esac
