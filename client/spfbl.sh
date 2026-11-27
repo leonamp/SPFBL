@@ -148,7 +148,7 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $U
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.08"
+version="3.09"
 
 # Contador de timeouts seguidos. Guarda também o estado MAINTENANCE,
 # gravado quando a primeira falha de um evento coincide com a janela de
@@ -215,11 +215,18 @@ function billing_manual() {
 	printf "    $0 billing pix user@domain.com      enable PIX and the BRL currency (permanent)\n"
 	printf "    $0 billing credit add user@domain.com USD   add credit (used at once on pending invoices)\n"
 	printf "    $0 billing credit drop user@domain.com USD  reverse credit added by mistake\n"
+	printf "    $0 billing element add INVOICE ITEM ELEMENT\n"
+	printf "                                        add an element to a set item of an unpaid invoice\n"
 	printf "    $0 billing element drop INVOICE ITEM ELEMENT\n"
 	printf "                                        remove an element from a set item of an unpaid invoice\n"
+	printf "    $0 billing invoice price INVOICE ITEM VALUE\n"
+	printf "                                        change the price of an item in an unpaid invoice (0 = free)\n"
+	printf "    $0 billing invoice edit INVOICE     open (or renew) the edition of an unpaid invoice for 1 hour\n"
+	printf "    $0 billing invoice done INVOICE     end the edition now and settle the invoice\n"
 	printf "    $0 billing price set ITEM VALUE     create or change a price\n"
 	printf "    $0 billing price drop ITEM          remove a price (the item becomes zero)\n"
 	printf "    $0 billing price show               current price table\n"
+	printf "    $0 billing price apply [ITEM]       apply the price table to every current invoice (one item or all)\n"
 	printf "\n"
 	printf "Examples:\n"
 	printf "    $0 billing price set spfbl_client_set 2\n"
@@ -227,9 +234,16 @@ function billing_manual() {
 	printf "    $0 billing price set spfbl_incoming_bytes 0.01/MB   (B, KB, MB, GB or TB)\n"
 	printf "    $0 billing paid MWVTZOAG BRL 10.68\n"
 	printf "    $0 billing element drop MWVTZOAG spfbl_domain_set example.com\n"
+	printf "    $0 billing element add MWYYPW7R spfbl_client_set mx.example.com\n"
+	printf "    $0 billing invoice price MWYYPW7R spfbl_header_count 0.01/K\n"
 	printf "\n"
 	printf "An invoice copies the price table when it is created and keeps it until it\n"
-	printf "closes: a new price only applies to the invoices created after it.\n"
+	printf "closes: a new price only applies to the invoices created after it, unless\n"
+	printf "\"price apply\" copies it to the current invoices.\n"
+	printf "Every element or price change opens the edition of the invoice for 1 hour\n"
+	printf "(renewed at each change): meanwhile the credit is not used nor returned, the\n"
+	printf "invoice is not settled and the cycle does not close. At the end, any credit\n"
+	printf "used beyond the new total returns to the balance as an adjustment.\n"
 	printf "Users only see items with quantity and price greater than zero.\n"
 	printf "\n"
 	printf "Items:\n"
@@ -636,6 +650,477 @@ function maintenanceExit() {
 }
 
 
+###########################################################################
+# Diagnóstico da conexão com o SPFBL (spfbl diagnose) e aviso local ao
+# postmaster (spfbl monitor). Mesmas verificações do
+# "spfbl.irondome.sh diagnose", mais a consulta com a chave de acesso.
+###########################################################################
+
+# Contato mostrado no resumo do diagnóstico e no aviso ao postmaster.
+DIAG_CONTACT="contact@spfbl.net"
+# Estado do aviso ao postmaster: "<início da falha> <último aviso>", em
+# segundos. Fora do /tmp para sobreviver a um reinício.
+MONITOR_FILE="/var/tmp/SPFBL_MONITOR"
+DIAG_PROBLEMS=()
+
+function diag_host() {
+	# Hostname do servidor SPFBL das consultas HTTPS (URL_SERVIDOR).
+	local host=${URL_SERVIDOR#https://}
+	host=${host%%/*}
+	echo "${host%%:*}"
+}
+
+function diag_port() {
+	# Porta HTTPS do URL_SERVIDOR (443 sem porta explícita).
+	local host=${URL_SERVIDOR#https://}
+	host=${host%%/*}
+	if [[ $host == *:* ]]; then
+		echo "${host##*:}"
+	else
+		echo "443"
+	fi
+}
+
+function diag_problem() {
+	# Uma causa provável e o que fazer, guardada para o resumo.
+	DIAG_PROBLEMS+=("$1")
+	echo "   PROBLEM: $1"
+}
+
+function diag_now() {
+	# Milissegundos desde a época.
+	echo $(( $(date +%s%N) / 1000000 ))
+}
+
+function diag_ipv4_in() {
+	# O IPv4 $1 está dentro do CIDR $2?
+	local ip=$1 net=${2%/*} bits=${2#*/} a b c d x y mask
+	[[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+	IFS=. read -r a b c d <<< "$ip"
+	x=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+	IFS=. read -r a b c d <<< "$net"
+	y=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+	mask=$(( (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF ))
+	[ $(( x & mask )) -eq $(( y & mask )) ]
+}
+
+function diag_cloudflare() {
+	# $1 é um IP da Cloudflare? O matrix.spfbl.net fica sempre atrás dela:
+	# outro IP indica /etc/hosts ou um DNS respondendo outra coisa.
+	local ip=$1 cidr
+	if [[ $ip == *:* ]]; then
+		[[ ${ip,,} =~ ^(2400:cb00|2606:4700|2803:f800|2405:b500|2405:8100|2c0f:f248|2a06:98c[0-7]): ]]
+		return
+	fi
+	for cidr in 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 \
+		141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 \
+		197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 \
+		104.24.0.0/14 172.64.0.0/13 131.0.72.0/22; do
+		diag_ipv4_in "$ip" "$cidr" && return 0
+	done
+	return 1
+}
+
+function diag_resolvers() {
+	# Servidores DNS usados de fato. Com o systemd-resolved, o 127.0.0.53
+	# do /etc/resolv.conf esconde os reais, que ficam em
+	# /run/systemd/resolve/resolv.conf.
+	local file=/etc/resolv.conf
+	if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.53' /etc/resolv.conf 2> /dev/null \
+			&& [ -r /run/systemd/resolve/resolv.conf ]; then
+		file=/run/systemd/resolve/resolv.conf
+	fi
+	awk '$1 == "nameserver" && $2 != "" {print $2}' "$file" 2> /dev/null | awk '!seen[$0]++'
+}
+
+function diag_dns_query() {
+	# Pergunta ao DNS $1 o registro A do servidor SPFBL, esperando no máximo
+	# 3 segundos. Saída: OK <respostas>, EMPTY, ERROR <status> ou TIMEOUT.
+	# Com o dig quando existe; senão, uma consulta UDP montada pelo próprio
+	# bash, sem dependência.
+	local server=$1 host out status answers reply bytes qname label
+	host=$(diag_host)
+	if command -v dig > /dev/null; then
+		out=$(dig @"$server" "$host" A +time=3 +tries=1 2> /dev/null) || { echo "TIMEOUT"; return; }
+		status=$(grep -o 'status: [A-Z]*' <<< "$out" | command head -n 1 | cut -d' ' -f2)
+		answers=$(awk '!/^;/ && $4 == "A"' <<< "$out" | wc -l)
+		if [ -z "$status" ]; then
+			echo "TIMEOUT"
+		elif [ "$status" != "NOERROR" ]; then
+			echo "ERROR $status"
+		elif [ "$answers" -gt 0 ]; then
+			echo "OK $answers"
+		else
+			echo "EMPTY"
+		fi
+		return
+	fi
+	# Cabeçalho (ID, recursão, 1 pergunta) e a pergunta <host> IN A. Na
+	# resposta, o byte 4 traz o status (RCODE) e os bytes 7-8 as respostas.
+	qname=""
+	IFS=. read -r -a labels <<< "$host"
+	for label in "${labels[@]}"; do
+		qname+=$(printf '\\x%02x' "${#label}")$label
+	done
+	reply=$( { exec 3<> "/dev/udp/$server/53" || exit 1
+		printf "\x53\x50\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00${qname}\x00\x00\x01\x00\x01" >&3
+		timeout 3 dd bs=512 count=1 <&3 2> /dev/null | od -An -tu1 -N12; } 2> /dev/null )
+	read -r -a bytes <<< "$reply"
+	if [ "${#bytes[@]}" -lt 12 ]; then
+		echo "TIMEOUT"
+	elif [ $(( bytes[3] & 15 )) -ne 0 ]; then
+		case $(( bytes[3] & 15 )) in
+			2) echo "ERROR SERVFAIL" ;;
+			3) echo "ERROR NXDOMAIN" ;;
+			5) echo "ERROR REFUSED" ;;
+			*) echo "ERROR RCODE$(( bytes[3] & 15 ))" ;;
+		esac
+	elif [ $(( bytes[6] * 256 + bytes[7] )) -gt 0 ]; then
+		echo "OK $(( bytes[6] * 256 + bytes[7] ))"
+	else
+		echo "EMPTY"
+	fi
+}
+
+function diag_https() {
+	# HTTPS ao servidor SPFBL no IP $2 por IPv$1, sem DNS no caminho
+	# (--resolve). Saída: "<saída do curl> <código HTTP> <segundos para
+	# conectar> <corpo>"; os cabeçalhos vão para o arquivo $3 (relógio).
+	local version=$1 ip=$2 headers=$3 target out rc host port
+	host=$(diag_host)
+	port=$(diag_port)
+	target=$ip
+	[ "$version" = "6" ] && target="[$ip]"
+	out=$(curl -"$version" -s --connect-timeout 5 -m 15 -D "$headers" \
+		--resolve "$host:$port:$target" -w '\n%{http_code} %{time_connect}' \
+		"$URL_SERVIDOR/whatsmyip/" 2> /dev/null)
+	rc=$?
+	echo "$rc ${out##*$'\n'} $(command head -n 1 <<< "${out%$'\n'*}" | tr -cd '0-9a-fA-F:.')"
+}
+
+function diag_curl_error() {
+	# Significado de um código de saída do curl.
+	case "$1" in
+		5) echo "the proxy could not be resolved" ;;
+		6) echo "the name could not be resolved" ;;
+		7) echo "the connection was refused or there is no route" ;;
+		28) echo "no answer in time (timeout)" ;;
+		35) echo "the TLS handshake failed" ;;
+		51|60) echo "the certificate could not be verified" ;;
+		52|56) echo "the connection was closed with no answer" ;;
+		*) echo "curl error $1" ;;
+	esac
+}
+
+function diag_key_reason() {
+	# Explicação de uma recusa da chave ou do hostname ($1: corpo).
+	case "$1" in
+		"INVALID FQDN NO_ADDRESS")
+			echo "the hostname $LOCAL_HOSTNAME has no A/AAAA record in DNS. Create it with the IP of this server." ;;
+		"INVALID FQDN IP_MISMATCH")
+			echo "the DNS of $LOCAL_HOSTNAME does not point to the IP this server uses to reach SPFBL. Fix the A/AAAA record." ;;
+		"INVALID FQDN GENERIC")
+			echo "$LOCAL_HOSTNAME is a generic provider name. Set a hostname of its own on this server." ;;
+		"INVALID FQDN RESERVED_IP")
+			echo "this server reaches SPFBL from a private or reserved IP." ;;
+		"INVALID FQDN"*)
+			echo "the hostname $LOCAL_HOSTNAME is invalid. Set the full hostname (FQDN) of this server." ;;
+		*"KEY REVOKED"*)
+			echo "the SPFBL access key was revoked or expired. Create a new key in the SPFBL panel and run spfbl.irondome.sh (option Change the SPFBL access key)." ;;
+		*"INVALID KEY"*|*"KEY HTTPS"*)
+			echo "the SPFBL access key is invalid. Create a new key in the SPFBL panel and run spfbl.irondome.sh (option Change the SPFBL access key)." ;;
+		*BANNED*)
+			echo "too many failures from this IP. Wait a few minutes." ;;
+		"HOSTNAME REQUIRED")
+			echo "this server has no hostname. Set its full hostname (FQDN)." ;;
+		*)
+			echo "unexpected answer: $1" ;;
+	esac
+}
+
+function diagnose() {
+	# Diagnóstico somente leitura da conexão deste servidor com o SPFBL.
+	# Nada é alterado. Saída 0 sem problema encontrado, 1 com problema.
+	DIAG_PROBLEMS=()
+	local host line ip start ms result server servers count
+	host=$(diag_host)
+	echo "SPFBL v$version - connection diagnosis of $LOCAL_HOSTNAME (nothing is changed)"
+	echo ""
+
+	# 1. /etc/hosts: uma linha para *.spfbl.net fixa um IP, geralmente
+	# antigo, e passa por cima do DNS.
+	echo "[1/7] /etc/hosts"
+	line=$(grep -Ev '^[[:space:]]*#' /etc/hosts 2> /dev/null | grep -Ei "(^|[[:space:]])([a-z0-9-]+\.)*${host//./\\.}([[:space:]]|$)|(^|[[:space:]])([a-z0-9-]+\.)*spfbl\.net([[:space:]]|$)")
+	if [ -n "$line" ]; then
+		echo "   $line"
+		diag_problem "/etc/hosts fixes an IP for $host. Remove that line: DNS gives the right IPs."
+	else
+		echo "   OK: no line for $host."
+	fi
+
+	# 2. Cada DNS sozinho: um DNS morto faz toda consulta esperar o tempo
+	# dele antes de o próximo responder.
+	echo "[2/7] DNS servers"
+	servers=$(diag_resolvers)
+	if [ -z "$servers" ]; then
+		diag_problem "No DNS server (nameserver) in /etc/resolv.conf."
+	fi
+	for server in $servers; do
+		start=$(diag_now)
+		result=$(diag_dns_query "$server")
+		ms=$(( $(diag_now) - start ))
+		case "$result" in
+			OK*)
+				echo "   $server: OK (${ms} ms)"
+				[ "$ms" -gt 1000 ] && diag_problem "The DNS server $server is slow (${ms} ms). Check it or replace it in /etc/resolv.conf."
+				;;
+			TIMEOUT)
+				echo "   $server: no answer"
+				diag_problem "The DNS server $server does not answer. Fix it or remove it from /etc/resolv.conf: every lookup waits for it before the next one."
+				;;
+			EMPTY)
+				echo "   $server: empty answer"
+				diag_problem "The DNS server $server has no address for $host. Check its filters or replace it."
+				;;
+			*)
+				echo "   $server: ${result#ERROR }"
+				diag_problem "The DNS server $server answers ${result#ERROR } for $host. Check it or replace it."
+				;;
+		esac
+	done
+	line=$(grep -E '^[[:space:]]*options' /etc/resolv.conf 2> /dev/null)
+	[ -n "$line" ] && echo "   /etc/resolv.conf: $line"
+
+	# 3. A resolução do sistema (/etc/hosts e DNS, na ordem do
+	# /etc/nsswitch.conf), como o curl faz.
+	echo "[3/7] Name resolution of this server"
+	local ips4="" ips6=""
+	start=$(diag_now)
+	ips4=$(timeout 30 getent ahostsv4 "$host" 2> /dev/null | awk '{print $1}' | awk '!seen[$0]++')
+	ms=$(( $(diag_now) - start ))
+	if [ -z "$ips4" ]; then
+		echo "   IPv4: not resolved (${ms} ms)"
+		diag_problem "This server cannot resolve $host. Check the DNS servers above."
+	else
+		echo "   IPv4: $(echo $ips4) (${ms} ms)"
+		[ "$ms" -gt 2000 ] && diag_problem "Resolving $host takes ${ms} ms: each query gives up after a few seconds counting the lookup. A DNS server above is dead or slow."
+		if [ "$host" = "matrix.spfbl.net" ]; then
+			for ip in $ips4; do
+				diag_cloudflare "$ip" || diag_problem "$host resolves to $ip, which is not an SPFBL (Cloudflare) IP. Check /etc/hosts and the DNS servers."
+			done
+		fi
+	fi
+	ips6=$(timeout 30 getent ahostsv6 "$host" 2> /dev/null | awk '{print $1}' | grep ':' | grep -v '^::ffff:' | awk '!seen[$0]++')
+	if [ -n "$ips6" ]; then
+		echo "   IPv6: $(echo $ips6)"
+	else
+		echo "   IPv6: not resolved"
+	fi
+
+	# 4. HTTPS direto em cada IP: separa a rede do DNS.
+	echo "[4/7] HTTPS to $host"
+	local headers ok4="" ok6="" rc code connect body skew remote
+	headers=$(mktemp)
+	[ -z "$ips4" ] && echo "   IPv4: not tested (name not resolved)."
+	for ip in $ips4; do
+		read -r rc code connect body <<< "$(diag_https 4 "$ip" "$headers")"
+		if [ "$rc" = "0" ] && [[ $body =~ ^[0-9.]+$|: ]]; then
+			ok4=1
+			echo "   IPv4 $ip: OK (${connect}s), this server goes out as $body"
+		elif [ "$rc" = "0" ]; then
+			echo "   IPv4 $ip: HTTP $code"
+		else
+			echo "   IPv4 $ip: $(diag_curl_error "$rc")"
+		fi
+		[ -n "$ok4" ] && break
+	done
+	if [ -n "$ips6" ] && ip -6 route get 2606:4700::1 > /dev/null 2>&1; then
+		for ip in $ips6; do
+			read -r rc code connect body <<< "$(diag_https 6 "$ip" "$headers")"
+			if [ "$rc" = "0" ] && [[ $body =~ ^[0-9.]+$|: ]]; then
+				ok6=1
+				echo "   IPv6 $ip: OK (${connect}s), this server goes out as $body"
+			elif [ "$rc" = "0" ]; then
+				echo "   IPv6 $ip: HTTP $code"
+			else
+				echo "   IPv6 $ip: $(diag_curl_error "$rc")"
+			fi
+			[ -n "$ok6" ] && break
+		done
+		[ -z "$ok6" ] && echo "   IPv6 has a route here but does not reach SPFBL: the queries use IPv4."
+	else
+		echo "   IPv6: no route on this server (the queries use IPv4)."
+	fi
+	if [ -z "$ok4" ] && [ -z "$ok6" ] && [ -n "$ips4$ips6" ]; then
+		if [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
+			if isMaintenance; then
+				diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+			else
+				diag_problem "Cloudflare answers, but SPFBL does not (HTTP $code). Try again in a few minutes."
+			fi
+		elif [ "$rc" = "51" ] || [ "$rc" = "60" ]; then
+			diag_problem "The certificate of $host could not be verified. Check the clock of this server and update the CA certificates (ca-certificates)."
+		elif [ "$rc" = "35" ]; then
+			diag_problem "The TLS handshake with $host fails. A proxy or firewall inspecting HTTPS, or a very old OpenSSL, is in the way."
+		else
+			diag_problem "This server does not reach $host on port $(diag_port) ($(diag_curl_error "$rc")). Allow outgoing TCP $(diag_port) in the firewall."
+		fi
+	fi
+
+	# 5. Relógio: data errada quebra o TLS.
+	echo "[5/7] Clock"
+	remote=$(grep -i '^date:' "$headers" 2> /dev/null | command head -n 1 | cut -d' ' -f2- | tr -d '\r')
+	rm -f "$headers"
+	if [ -n "$remote" ] && remote=$(date -d "$remote" +%s 2> /dev/null); then
+		skew=$(( $(date +%s) - remote ))
+		if [ "${skew#-}" -gt 300 ]; then
+			echo "   This server is ${skew}s off SPFBL."
+			diag_problem "The clock of this server is ${skew#-} seconds off. Turn on NTP: timedatectl set-ntp true"
+		else
+			echo "   OK: ${skew}s off SPFBL."
+		fi
+	else
+		echo "   Not checked: no answer from SPFBL. Local time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+	fi
+
+	# 6. Proxy e firewall: o curl segue o https_proxy e o ~/.curlrc; o CSF
+	# bloqueia as portas de saída fora do TCP_OUT.
+	echo "[6/7] Proxy and firewall"
+	count=0
+	local proxies
+	proxies=$(printf '%s\n' "${https_proxy:-}" "${HTTPS_PROXY:-}" "${all_proxy:-}" "${ALL_PROXY:-}" | awk 'NF && !seen[$0]++')
+	for line in $proxies; do
+		echo "   curl goes through the proxy $line (environment)."
+		count=1
+	done
+	if grep -qiE '^[[:space:]]*-?-?(proxy|x)[[:space:]=]' ~/.curlrc 2> /dev/null; then
+		echo "   ~/.curlrc sets a proxy for curl."
+		count=1
+	fi
+	[ "$count" = "0" ] && echo "   No proxy for curl."
+	if [ -f /etc/csf/csf.conf ]; then
+		line=$(grep -E '^[[:space:]]*TCP_OUT[[:space:]]*=' /etc/csf/csf.conf | command head -n 1)
+		if [[ $line =~ [\",]443[\",] ]]; then
+			echo "   CSF: outgoing TCP 443 allowed."
+		else
+			echo "   CSF: $line"
+			diag_problem "CSF does not allow outgoing TCP 443 (TCP_OUT). Add 443 to TCP_OUT in /etc/csf/csf.conf and run: csf -r"
+		fi
+	fi
+
+	# 7. A consulta de verdade, com a chave de acesso e o hostname: mostra a
+	# recusa da chave (revogada, inválida) e do hostname (DNS).
+	echo "[7/7] Query with the access key"
+	if [[ -z $SPFBL_KEY ]]; then
+		echo "   No access key in $SPFBL_CONF: this server queries by IP (legacy)."
+		result=$(echo "VERSION" | spfbl_query 2> /dev/null)
+		if [[ $result == SPFBL-* ]]; then
+			echo "   OK: $result"
+		else
+			diag_problem "The query by IP does not work. Update Irondome (option Update) to use an SPFBL access key."
+		fi
+	else
+		versionBody() {
+			printf 'VERSION\n'
+		}
+		local out
+		out=$(keyCurl versionBody "$URL_SERVIDOR/spfbl/" ${IP_VERSION:+-$IP_VERSION} -s \
+			--connect-timeout 5 -m 30 --data-binary @-)
+		code=${out##*$'\n'}
+		body=${out%$'\n'*}
+		body=${body%%$'\n'*}
+		if [[ $code == "200" && $body == SPFBL-* ]]; then
+			echo "   OK: $body (hostname $LOCAL_HOSTNAME)"
+		elif [[ $code =~ ^(400|403|422|429)$ ]]; then
+			echo "   HTTP $code: $body"
+			diag_problem "SPFBL refuses the queries of this server: $(diag_key_reason "$body")"
+		elif [[ $code == "000" ]]; then
+			echo "   no connection"
+			[ "${#DIAG_PROBLEMS[@]}" -eq 0 ] && diag_problem "The query with the access key does not reach SPFBL, although the tests above pass. Check the outgoing firewall for this process and try again."
+		else
+			echo "   HTTP $code"
+			[ "${#DIAG_PROBLEMS[@]}" -eq 0 ] && diag_problem "SPFBL answers HTTP $code. Try again in a few minutes."
+		fi
+	fi
+
+	echo ""
+	if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
+		echo "No problem found in the connection of this server to SPFBL."
+		echo "If the failure goes on, send this output to $DIAG_CONTACT."
+		return 0
+	fi
+	echo "Probable cause$([ "${#DIAG_PROBLEMS[@]}" -gt 1 ] && echo "s"):"
+	for line in "${DIAG_PROBLEMS[@]}"; do
+		echo " - $line"
+	done
+	echo "After fixing it, run \"spfbl diagnose\" again. Questions: $DIAG_CONTACT"
+	return 1
+}
+
+function monitor_mail() {
+	# Aviso local ao postmaster desta máquina, pelo MTA dela: chega mesmo
+	# quando o servidor não alcança nada lá fora. $1: assunto; o corpo vem
+	# da entrada padrão.
+	local sendmail
+	sendmail=$(command -v sendmail || ls /usr/sbin/sendmail /usr/lib/sendmail 2> /dev/null | command head -n 1)
+	[[ -z $sendmail ]] && return 1
+	{
+		printf 'To: postmaster\n'
+		printf 'Subject: %s\n' "$1"
+		printf 'Content-Type: text/plain; charset=UTF-8\n'
+		printf 'Auto-Submitted: auto-generated\n'
+		printf '\n'
+		cat
+	} | "$sendmail" -t
+}
+
+function monitor() {
+	# Verificação de hora em hora (cron do Irondome), só com chave de
+	# acesso: os clientes antigos, por IP, ficam de fora. Sem resposta do
+	# SPFBL e sem manutenção programada, espera a próxima hora para
+	# confirmar; confirmada, roda o diagnóstico e avisa o postmaster, no
+	# máximo uma vez por dia. Quando volta, avisa a volta.
+	[[ -z $SPFBL_KEY ]] && return 0
+	local response now first mailed report
+	response=$(echo "VERSION" | spfbl_query 2> /dev/null)
+	now=$(date +%s)
+	first=""
+	mailed=""
+	[[ -r $MONITOR_FILE ]] && read -r first mailed < "$MONITOR_FILE"
+	if [[ $response == SPFBL-* ]]; then
+		resetTimeout
+		if [[ ${mailed:-0} -gt 0 ]]; then
+			{
+				printf 'This server (%s) is querying SPFBL again since %s.\n' "$LOCAL_HOSTNAME" "$(date '+%Y-%m-%d %H:%M %Z')"
+				printf 'The incoming messages are filtered by SPFBL again.\n\n'
+				printf 'SPFBL v%s\n' "$version"
+			} | monitor_mail "[SPFBL] $LOCAL_HOSTNAME is reaching SPFBL again"
+		fi
+		rm -f "$MONITOR_FILE"
+		return 0
+	fi
+	if isMaintenance; then
+		# Manutenção programada (status.spfbl.net): sem aviso.
+		return 0
+	fi
+	if [[ -z $first ]]; then
+		# Primeira falha: confirma na próxima hora.
+		echo "$now 0" > "$MONITOR_FILE"
+		return 1
+	fi
+	if [[ ${mailed:-0} -eq 0 || $(( now - mailed )) -ge 86400 ]]; then
+		report=$(diagnose 2>&1)
+		{
+			printf 'This server (%s) cannot query SPFBL since %s.\n' "$LOCAL_HOSTNAME" "$(date -d "@$first" '+%Y-%m-%d %H:%M %Z')"
+			printf 'Meanwhile, the incoming messages pass without the SPFBL filter.\n\n'
+			printf '%s\n\n' "$report"
+			printf 'This notice repeats once a day while the problem lasts.\n'
+		} | monitor_mail "[SPFBL] $LOCAL_HOSTNAME cannot reach SPFBL"
+		echo "$first $now" > "$MONITOR_FILE"
+	fi
+	return 1
+}
+
 case $1 in
 	'start')
 		echo "Iniciando serviço do SPFBL"
@@ -689,6 +1174,33 @@ case $1 in
 		else
 			exit 1
 		fi
+	;;
+	'diagnose')
+		# Diagnóstico da conexão deste servidor com o SPFBL: /etc/hosts,
+		# cada DNS, resolução, HTTPS por IPv4 e IPv6, relógio, proxy e
+		# firewall e a consulta com a chave de acesso. Não muda nada.
+		#
+		# Códigos de saída:
+		#
+		#    0: nenhum problema encontrado.
+		#    1: há problema; as causas prováveis saem no fim.
+
+		diagnose
+		exit $?
+	;;
+	'monitor')
+		# Verificação de hora em hora, pelo cron do Irondome, só para quem
+		# tem chave de acesso. Sem conexão com o SPFBL (fora da manutenção
+		# programada) em duas verificações seguidas, avisa o postmaster desta
+		# máquina com o diagnóstico; repete uma vez por dia e avisa a volta.
+		#
+		# Códigos de saída:
+		#
+		#    0: consulta funcionando (ou sem chave, ou em manutenção).
+		#    1: sem conexão com o SPFBL.
+
+		monitor
+		exit $?
 	;;
 	'firewall')
 		# Constroi um firewall pelo SPPFBL.
@@ -5138,13 +5650,41 @@ case $1 in
 				success='^CREDIT USD'
 			;;
 			'element')
-				if [ $# -ne "6" ] || [ "$3" != "drop" ]; then
+				if [ $# -ne "6" ] || { [ "$3" != "add" ] && [ "$3" != "drop" ]; }; then
 					head
 					billing_manual
 					exit 1
 				fi
-				command="BILLING ELEMENT DROP $4 $5 $6"
-				success='^DROPPED'
+				command="BILLING ELEMENT $(echo "$3" | tr '[:lower:]' '[:upper:]') $4 $5 $6"
+				success='^(ADDED|DROPPED)'
+			;;
+			'invoice')
+				# Correção de fatura não paga: preço de um item ou edição.
+				case $3 in
+					'price')
+						if [ $# -ne "6" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING INVOICE PRICE $4 $5 $6"
+						success='^PRICE'
+					;;
+					'edit'|'done')
+						if [ $# -ne "4" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING INVOICE $(echo "$3" | tr '[:lower:]' '[:upper:]') $4"
+						success='^(EDIT|DONE)'
+					;;
+					*)
+						head
+						billing_manual
+						exit 1
+					;;
+				esac
 			;;
 			'paid')
 				if [ $# -ne "5" ]; then
@@ -5192,6 +5732,15 @@ case $1 in
 						fi
 						command="BILLING PRICE SHOW"
 						success='^spfbl_'
+					;;
+					'apply')
+						if [ $# -ne "3" ] && [ $# -ne "4" ]; then
+							head
+							billing_manual
+							exit 1
+						fi
+						command="BILLING PRICE APPLY $4"
+						success='^APPLIED'
 					;;
 					*)
 						head
@@ -5631,6 +6180,8 @@ case $1 in
 		printf "Help\n\n"
 		printf "User Commands:\n"
 		printf "    $0 version\n"
+		printf "    $0 diagnose                   connection of this server to SPFBL (changes nothing)\n"
+		printf "    $0 monitor                    hourly check: e-mail to the local postmaster when SPFBL is unreachable\n"
 		printf "    $0 start|stop|restart|shutdown\n"
 		printf "    $0 block { add sender | drop sender | show [all] | find }\n"
 		printf "    $0 white { add sender | drop sender | show | sender }\n"
@@ -5645,7 +6196,7 @@ case $1 in
 		printf "    $0 trap { add recipient | drop recipient | show }\n"
 		printf "    $0 suppression { TYPE key | drop key [TYPE] | show key | list TYPE }\n"
 		printf "    $0 listing { show user | list TYPE | drop TYPE user VALUE }\n"
-		printf "    $0 billing { create user | show user | close user | drop user | list | paid INVOICE CUR VALUE | pix user | credit { add | drop } user USD | element drop INVOICE ITEM ELEMENT | price { set ITEM VALUE | drop ITEM | show } }\n"
+		printf "    $0 billing { create user | show user | close user | drop user | list | paid INVOICE CUR VALUE | pix user | credit { add | drop } user USD | element { add | drop } INVOICE ITEM ELEMENT | invoice { price INVOICE ITEM VALUE | edit INVOICE | done INVOICE } | price { set ITEM VALUE | drop ITEM | show | apply [ITEM] } }\n"
 		printf "    $0 abuse In-Reply-To:<messageID> From:<from>\n"
 		printf "\n"
 		printf "Admin Commands:\n"

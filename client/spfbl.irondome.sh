@@ -12,6 +12,11 @@
 # Connection diagnosis (changes nothing; also offered after a failure of
 # install or update):
 #    ./spfbl.irondome.sh diagnose
+# The installed client has the same diagnosis ("spfbl diagnose") and an
+# hourly check ("spfbl monitor") that e-mails the local postmaster when
+# SPFBL is unreachable. "uninstall" first tells SPFBL that the server left
+# (POST /client/uninstall/, servers with an access key only), so the
+# account gets an uninstallation notice instead of a "stopped" one.
 #
 # Gateway only (CyberPanel, aaPanel, iRedMail and CWP), for a switch in steps:
 #    ./spfbl.irondome.sh prepare [SPAMCENTER_API_KEY]
@@ -91,7 +96,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.10
+# Version: 2.11
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -103,7 +108,7 @@ SIGS_DIR="/etc/clamav-unofficial-sigs"
 SIGS_MARKER="$SIGS_DIR/.installed-by-spfbl"
 CONTACT_URL="https://spfbl.net/en/contact"
 CONTACT_EMAIL="admin@spfbl.net"
-IRONDOME_VERSION="2.10"
+IRONDOME_VERSION="2.11"
 SPAMCENTER_URL="https://api.spam.center/download/clamav"
 SPAMCENTER_KEY=""
 # Every additional database this script may configure; uninstall removes them.
@@ -1133,7 +1138,9 @@ function install_sigs() {
 }
 
 function install_holding() {
-    echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding' > /etc/cron.hourly/spfbl-holding-check
+    # Hourly: frozen messages (holding) and the connection check (monitor),
+    # which e-mails the local postmaster when SPFBL is unreachable.
+    echo -e '#!/bin/bash\n/usr/local/bin/spfbl holding\n/usr/local/bin/spfbl monitor > /dev/null 2>&1' > /etc/cron.hourly/spfbl-holding-check
     chmod +x /etc/cron.hourly/spfbl-holding-check
 }
 
@@ -3838,7 +3845,40 @@ function update() {
     firewall
 }
 
+function uninstall_notify() {
+    # Declares the uninstallation to SPFBL (POST /client/uninstall/) with the
+    # access key and the hostname, before anything is removed: the account
+    # gets the uninstallation alert, not the one of a server that stopped
+    # querying. Without a key (legacy, by IP) there is nothing to declare.
+    # A failure only prints a note: the uninstallation goes on.
+    local key hostname first version out code body
+    key=$(conf_value SPFBL_KEY)
+    conf_key_valid "$key" || return 0
+    hostname=$(tr 'A-Z' 'a-z' < /proc/sys/kernel/hostname 2> /dev/null)
+    [ -n "$hostname" ] || hostname=$(hostname 2> /dev/null | tr 'A-Z' 'a-z')
+    first=$(conf_value IP_VERSION)
+    for version in $(printf '%s\n' "$first" 4 6 | awk 'NF && !seen[$0]++'); do
+        out=$(curl -"$version" -s --connect-timeout 10 -m 30 -X POST -w '\n%{http_code}' -K /dev/fd/3 \
+            "$SPFBL_SERVER/client/uninstall/" 2> /dev/null \
+            3<<< "header = \"Authorization: Bearer $key\""$'\n'"header = \"X-SPFBL-Hostname: $hostname\"")
+        code=${out##*$'\n'}
+        body=${out%$'\n'*}
+        body=${body%%$'\n'*}
+        case "$code" in
+            200)
+                echo "SPFBL notified: $hostname left the MTA clients of the account."
+                return 0 ;;
+            404)
+                echo "SPFBL notified: $hostname was not among the MTA clients of the account."
+                return 0 ;;
+        esac
+    done
+    echo "SPFBL could not be notified of the uninstallation (HTTP ${code:-000})."
+    echo "The account gets the notice of a server that stopped querying instead."
+}
+
 function uninstall() {
+    uninstall_notify
     remove_additional_dbs
     if [ "$PANEL" = "cpanel" ]; then
         cpanel_uninstall
