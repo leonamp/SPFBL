@@ -9,6 +9,10 @@
 # Usage as root:
 #    ./spfbl.irondome.sh [install|update|uninstall|firewall] [SPAMCENTER_API_KEY]
 #
+# Connection diagnosis (changes nothing; also offered after a failure of
+# install or update):
+#    ./spfbl.irondome.sh diagnose
+#
 # Gateway only (CyberPanel, aaPanel, iRedMail and CWP), for a switch in steps:
 #    ./spfbl.irondome.sh prepare [SPAMCENTER_API_KEY]
 #        Everything but the switch: Exim is compiled and configured and
@@ -87,7 +91,7 @@
 # Project SPFBL - Copyright Leandro Carlos Rodrigues - leandro@spfbl.net
 # https://github.com/leonamp/SPFBL
 #
-# Version: 2.9
+# Version: 2.10
 
 GITHUB_SPFBL="https://raw.githubusercontent.com/leonamp/SPFBL/master/client"
 GITHUB_SIGS="https://raw.githubusercontent.com/extremeshok/clamav-unofficial-sigs/master"
@@ -99,7 +103,7 @@ SIGS_DIR="/etc/clamav-unofficial-sigs"
 SIGS_MARKER="$SIGS_DIR/.installed-by-spfbl"
 CONTACT_URL="https://spfbl.net/en/contact"
 CONTACT_EMAIL="admin@spfbl.net"
-IRONDOME_VERSION="2.9"
+IRONDOME_VERSION="2.10"
 SPAMCENTER_URL="https://api.spam.center/download/clamav"
 SPAMCENTER_KEY=""
 # Every additional database this script may configure; uninstall removes them.
@@ -3150,10 +3154,383 @@ function spfbl_unavailable() {
     if [ -n "$CONF_SOFT" ]; then
         echo "Going on without $SPFBL_CONF: spfbl.sh keeps querying by IP."
         echo "Run \"$0 config\" later to use the SPFBL access key."
+        # The end of the run offers the connection diagnosis.
+        DIAG_SUGGEST=1
         return 1
     fi
     echo "Nothing was changed."
     exit 1
+}
+
+###########################################################################
+# Connection diagnosis
+###########################################################################
+
+# Name queried by every step that talks to SPFBL.
+DIAG_HOST="matrix.spfbl.net"
+# Probable causes found by "diagnose", for the summary.
+DIAG_PROBLEMS=()
+# Set when a step could not reach SPFBL but the run went on (update
+# querying by IP): the end of the run offers the diagnosis as well.
+DIAG_SUGGEST=""
+# Verb of the run, for the failure message (install or update).
+DIAG_ACTION=""
+
+function diag_problem() {
+    # One probable cause and what to do, kept for the summary.
+    DIAG_PROBLEMS+=("$1")
+    echo "   PROBLEM: $1"
+}
+
+function diag_now() {
+    # Milliseconds since the epoch.
+    echo $(( $(date +%s%N) / 1000000 ))
+}
+
+function diag_ipv4_in() {
+    # Is the IPv4 $1 inside the CIDR $2?
+    local ip=$1 net=${2%/*} bits=${2#*/} a b c d x y mask
+    [[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+    IFS=. read -r a b c d <<< "$ip"
+    x=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+    IFS=. read -r a b c d <<< "$net"
+    y=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+    mask=$(( (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF ))
+    [ $(( x & mask )) -eq $(( y & mask )) ]
+}
+
+function diag_cloudflare() {
+    # Is $1 a Cloudflare IP? matrix.spfbl.net is always behind Cloudflare:
+    # another IP means /etc/hosts or a DNS server answering something else.
+    local ip=$1 cidr
+    if [[ $ip == *:* ]]; then
+        [[ ${ip,,} =~ ^(2400:cb00|2606:4700|2803:f800|2405:b500|2405:8100|2c0f:f248|2a06:98c[0-7]): ]]
+        return
+    fi
+    for cidr in 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 \
+        141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 \
+        197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 \
+        104.24.0.0/14 172.64.0.0/13 131.0.72.0/22; do
+        diag_ipv4_in "$ip" "$cidr" && return 0
+    done
+    return 1
+}
+
+function diag_resolvers() {
+    # DNS servers this host really uses. With systemd-resolved, the stub
+    # 127.0.0.53 of /etc/resolv.conf hides the real ones, listed in
+    # /run/systemd/resolve/resolv.conf.
+    local file=/etc/resolv.conf
+    if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.53' /etc/resolv.conf 2> /dev/null \
+            && [ -r /run/systemd/resolve/resolv.conf ]; then
+        file=/run/systemd/resolve/resolv.conf
+    fi
+    awk '$1 == "nameserver" && $2 != "" {print $2}' "$file" 2> /dev/null | awk '!seen[$0]++'
+}
+
+function diag_dns_query() {
+    # Asks the DNS server $1 for the A record of matrix.spfbl.net, waiting
+    # 3 seconds at most. Output: OK <answers>, EMPTY, ERROR <status> or
+    # TIMEOUT. With dig when present; otherwise a raw query over UDP made
+    # by bash itself, so it works before the dependencies are installed.
+    local server=$1 out status answers
+    if command -v dig > /dev/null; then
+        out=$(dig @"$server" "$DIAG_HOST" A +time=3 +tries=1 2> /dev/null) || { echo "TIMEOUT"; return; }
+        status=$(grep -o 'status: [A-Z]*' <<< "$out" | head -n 1 | cut -d' ' -f2)
+        answers=$(awk '!/^;/ && $4 == "A"' <<< "$out" | wc -l)
+        if [ -z "$status" ]; then
+            echo "TIMEOUT"
+        elif [ "$status" != "NOERROR" ]; then
+            echo "ERROR $status"
+        elif [ "$answers" -gt 0 ]; then
+            echo "OK $answers"
+        else
+            echo "EMPTY"
+        fi
+        return
+    fi
+    # Header (ID, recursion desired, 1 question) and the question
+    # matrix.spfbl.net IN A. The answer header: byte 4 has the status
+    # (RCODE) and bytes 7-8 the number of answers.
+    local reply bytes
+    reply=$( { exec 3<> "/dev/udp/$server/53" || exit 1
+        printf '\x53\x50\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x06matrix\x05spfbl\x03net\x00\x00\x01\x00\x01' >&3
+        timeout 3 dd bs=512 count=1 <&3 2> /dev/null | od -An -tu1 -N12; } 2> /dev/null )
+    read -r -a bytes <<< "$reply"
+    if [ "${#bytes[@]}" -lt 12 ]; then
+        echo "TIMEOUT"
+    elif [ $(( bytes[3] & 15 )) -ne 0 ]; then
+        case $(( bytes[3] & 15 )) in
+            2) echo "ERROR SERVFAIL" ;;
+            3) echo "ERROR NXDOMAIN" ;;
+            5) echo "ERROR REFUSED" ;;
+            *) echo "ERROR RCODE$(( bytes[3] & 15 ))" ;;
+        esac
+    elif [ $(( bytes[6] * 256 + bytes[7] )) -gt 0 ]; then
+        echo "OK $(( bytes[6] * 256 + bytes[7] ))"
+    else
+        echo "EMPTY"
+    fi
+}
+
+function diag_https() {
+    # HTTPS to matrix.spfbl.net on the IP $2 over IPv$1, with no DNS in the
+    # way (--resolve). Output: "<curl exit> <HTTP code> <seconds to
+    # connect> <body>"; the headers go to the file $3 (clock check).
+    local version=$1 ip=$2 headers=$3 target out rc
+    target=$ip
+    [ "$version" = "6" ] && target="[$ip]"
+    out=$(curl -"$version" -s --connect-timeout 5 -m 15 -D "$headers" \
+        --resolve "$DIAG_HOST:443:$target" -w '\n%{http_code} %{time_connect}' \
+        "https://$DIAG_HOST/whatsmyip/" 2> /dev/null)
+    rc=$?
+    echo "$rc ${out##*$'\n'} $(head -n 1 <<< "${out%$'\n'*}" | tr -cd '0-9a-fA-F:.')"
+}
+
+function diag_curl_error() {
+    # Meaning of a curl exit code in the HTTPS test.
+    case "$1" in
+        5) echo "the proxy could not be resolved" ;;
+        6) echo "the name could not be resolved" ;;
+        7) echo "the connection was refused or there is no route" ;;
+        28) echo "no answer in time (timeout)" ;;
+        35) echo "the TLS handshake failed" ;;
+        51|60) echo "the certificate could not be verified" ;;
+        52|56) echo "the connection was closed with no answer" ;;
+        *) echo "curl error $1" ;;
+    esac
+}
+
+function diagnose() {
+    # Read-only diagnosis of the connection of this host to SPFBL: the same
+    # path of every step of the installer and of spfbl.sh. Nothing is
+    # changed. Exit code 0 with no problem found, 1 otherwise.
+    DIAG_PROBLEMS=()
+    local line ip start ms result server servers count
+    echo "SPFBL Irondome $IRONDOME_VERSION - connection diagnosis (nothing is changed)"
+    echo ""
+
+    # 1. /etc/hosts: a line for *.spfbl.net overrides DNS for good,
+    # usually with an old IP from before Cloudflare.
+    echo "[1/7] /etc/hosts"
+    line=$(grep -Ev '^[[:space:]]*#' /etc/hosts 2> /dev/null | grep -Ei '(^|[[:space:]])([a-z0-9-]+\.)*spfbl\.net([[:space:]]|$)')
+    if [ -n "$line" ]; then
+        echo "   $line"
+        diag_problem "/etc/hosts fixes an IP for spfbl.net. Remove that line: DNS gives the right IPs."
+    else
+        echo "   OK: no line for spfbl.net."
+    fi
+
+    # 2. Each DNS server alone: a dead one makes every lookup wait for
+    # its timeout before the next one answers.
+    echo "[2/7] DNS servers"
+    servers=$(diag_resolvers)
+    if [ -z "$servers" ]; then
+        diag_problem "No DNS server (nameserver) in /etc/resolv.conf."
+    fi
+    for server in $servers; do
+        start=$(diag_now)
+        result=$(diag_dns_query "$server")
+        ms=$(( $(diag_now) - start ))
+        case "$result" in
+            OK*)
+                echo "   $server: OK (${ms} ms)"
+                [ "$ms" -gt 1000 ] && diag_problem "The DNS server $server is slow (${ms} ms). Check it or replace it in /etc/resolv.conf."
+                ;;
+            TIMEOUT)
+                echo "   $server: no answer"
+                diag_problem "The DNS server $server does not answer. Fix it or remove it from /etc/resolv.conf: every lookup waits for it before the next one."
+                ;;
+            EMPTY)
+                echo "   $server: empty answer"
+                diag_problem "The DNS server $server has no address for $DIAG_HOST. Check its filters or replace it."
+                ;;
+            *)
+                echo "   $server: ${result#ERROR }"
+                diag_problem "The DNS server $server answers ${result#ERROR } for $DIAG_HOST. Check it or replace it."
+                ;;
+        esac
+    done
+    line=$(grep -E '^[[:space:]]*options' /etc/resolv.conf 2> /dev/null)
+    [ -n "$line" ] && echo "   /etc/resolv.conf: $line"
+
+    # 3. The lookup of the system (/etc/hosts and DNS, in the order of
+    # /etc/nsswitch.conf), as curl does it.
+    echo "[3/7] Name resolution of this host"
+    local ips4="" ips6=""
+    start=$(diag_now)
+    ips4=$(timeout 30 getent ahostsv4 "$DIAG_HOST" 2> /dev/null | awk '{print $1}' | awk '!seen[$0]++')
+    ms=$(( $(diag_now) - start ))
+    if [ -z "$ips4" ]; then
+        echo "   IPv4: not resolved (${ms} ms)"
+        diag_problem "This host cannot resolve $DIAG_HOST. Check the DNS servers above."
+    else
+        echo "   IPv4: $(echo $ips4) (${ms} ms)"
+        [ "$ms" -gt 2000 ] && diag_problem "Resolving $DIAG_HOST takes ${ms} ms: the installer gives up after 10 seconds counting the lookup. A DNS server above is dead or slow."
+        for ip in $ips4; do
+            diag_cloudflare "$ip" || diag_problem "$DIAG_HOST resolves to $ip, which is not an SPFBL (Cloudflare) IP. Check /etc/hosts and the DNS servers."
+        done
+    fi
+    ips6=$(timeout 30 getent ahostsv6 "$DIAG_HOST" 2> /dev/null | awk '{print $1}' | grep ':' | grep -v '^::ffff:' | awk '!seen[$0]++')
+    if [ -n "$ips6" ]; then
+        echo "   IPv6: $(echo $ips6)"
+    else
+        echo "   IPv6: not resolved"
+    fi
+
+    # 4. HTTPS straight to each IP: tells the network apart from DNS.
+    echo "[4/7] HTTPS to $DIAG_HOST"
+    local headers ok4="" ok6="" rc code connect body skew remote
+    headers=$(mktemp)
+    [ -z "$ips4" ] && echo "   IPv4: not tested (name not resolved)."
+    for ip in $ips4; do
+        read -r rc code connect body <<< "$(diag_https 4 "$ip" "$headers")"
+        if [ "$rc" = "0" ] && [[ $body =~ ^[0-9.]+$|: ]]; then
+            ok4=1
+            echo "   IPv4 $ip: OK (${connect}s), this host goes out as $body"
+        elif [ "$rc" = "0" ] && [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
+            echo "   IPv4 $ip: HTTP $code from Cloudflare"
+        elif [ "$rc" = "0" ]; then
+            echo "   IPv4 $ip: HTTP $code"
+        else
+            echo "   IPv4 $ip: $(diag_curl_error "$rc")"
+        fi
+        [ -n "$ok4" ] && break
+    done
+    if [ -n "$ips6" ] && ip -6 route get 2606:4700::1 > /dev/null 2>&1; then
+        for ip in $ips6; do
+            read -r rc code connect body <<< "$(diag_https 6 "$ip" "$headers")"
+            if [ "$rc" = "0" ] && [[ $body =~ ^[0-9.]+$|: ]]; then
+                ok6=1
+                echo "   IPv6 $ip: OK (${connect}s), this host goes out as $body"
+            elif [ "$rc" = "0" ]; then
+                echo "   IPv6 $ip: HTTP $code"
+            else
+                echo "   IPv6 $ip: $(diag_curl_error "$rc")"
+            fi
+            [ -n "$ok6" ] && break
+        done
+        [ -z "$ok6" ] && echo "   IPv6 has a route here but does not reach SPFBL: the queries will use IPv4."
+    else
+        echo "   IPv6: no route on this host (the queries use IPv4)."
+    fi
+    if [ -z "$ok4" ] && [ -z "$ok6" ]; then
+        if [ -n "$ips4$ips6" ]; then
+            if [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
+                if spfbl_is_maintenance; then
+                    diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+                else
+                    diag_problem "Cloudflare answers, but SPFBL does not (HTTP $code). Try again in a few minutes."
+                fi
+            elif [ "$rc" = "51" ] || [ "$rc" = "60" ]; then
+                diag_problem "The certificate of $DIAG_HOST could not be verified. Check the clock of this host and update the CA certificates (ca-certificates)."
+            elif [ "$rc" = "35" ]; then
+                diag_problem "The TLS handshake with $DIAG_HOST fails. A proxy or firewall inspecting HTTPS, or a very old OpenSSL, is in the way."
+            else
+                diag_problem "This host does not reach $DIAG_HOST on port 443 ($(diag_curl_error "$rc")). Allow outgoing TCP 443 in the firewall."
+            fi
+        fi
+    fi
+
+    # 5. Clock: a wrong date breaks TLS and the signatures of the updates.
+    echo "[5/7] Clock"
+    remote=$(grep -i '^date:' "$headers" 2> /dev/null | head -n 1 | cut -d' ' -f2- | tr -d '\r')
+    rm -f "$headers"
+    if [ -n "$remote" ] && remote=$(date -d "$remote" +%s 2> /dev/null); then
+        skew=$(( $(date +%s) - remote ))
+        if [ "${skew#-}" -gt 300 ]; then
+            echo "   This host is ${skew}s off SPFBL."
+            diag_problem "The clock of this host is ${skew#-} seconds off. Turn on NTP: timedatectl set-ntp true"
+        else
+            echo "   OK: ${skew}s off SPFBL."
+        fi
+    else
+        echo "   Not checked: no answer from SPFBL. Local time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    fi
+
+    # 6. Proxy and firewall: curl follows https_proxy and ~/.curlrc; CSF
+    # blocks outgoing ports not listed in TCP_OUT.
+    echo "[6/7] Proxy and firewall"
+    count=0
+    local proxies
+    proxies=$(printf '%s\n' "${https_proxy:-}" "${HTTPS_PROXY:-}" "${all_proxy:-}" "${ALL_PROXY:-}" | awk 'NF && !seen[$0]++')
+    for line in $proxies; do
+        echo "   curl goes through the proxy $line (environment)."
+        count=1
+    done
+    if grep -qiE '^[[:space:]]*-?-?(proxy|x)[[:space:]=]' ~/.curlrc 2> /dev/null; then
+        echo "   ~/.curlrc sets a proxy for curl."
+        count=1
+    fi
+    [ "$count" = "0" ] && echo "   No proxy for curl."
+    if [ -f /etc/csf/csf.conf ]; then
+        line=$(grep -E '^[[:space:]]*TCP_OUT[[:space:]]*=' /etc/csf/csf.conf | head -n 1)
+        if [[ $line =~ [\",]443[\",] ]]; then
+            echo "   CSF: outgoing TCP 443 allowed."
+        else
+            echo "   CSF: $line"
+            diag_problem "CSF does not allow outgoing TCP 443 (TCP_OUT). Add 443 to TCP_OUT in /etc/csf/csf.conf and run: csf -r"
+        fi
+    fi
+
+    # 7. GitHub: install and update download the SPFBL client from there.
+    echo "[7/7] Downloads (raw.githubusercontent.com)"
+    start=$(diag_now)
+    code=$(curl -s -o /dev/null --connect-timeout 10 -m 30 -w '%{http_code}' "$GITHUB_SPFBL/spfbl.sh" 2> /dev/null)
+    rc=$?
+    ms=$(( $(diag_now) - start ))
+    if [ "$code" = "200" ]; then
+        echo "   OK (${ms} ms)"
+    elif [ "$rc" != "0" ]; then
+        echo "   $(diag_curl_error "$rc")"
+        diag_problem "This host does not download from raw.githubusercontent.com ($(diag_curl_error "$rc")). Check DNS and outgoing TCP 443."
+    else
+        echo "   HTTP $code"
+        diag_problem "raw.githubusercontent.com answers HTTP $code. Try again in a few minutes."
+    fi
+
+    echo ""
+    if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
+        echo "No problem found in the connection of this host to SPFBL."
+        echo "If the failure goes on, send this output to $CONTACT_EMAIL."
+        return 0
+    fi
+    echo "Probable cause$([ "${#DIAG_PROBLEMS[@]}" -gt 1 ] && echo "s"):"
+    for line in "${DIAG_PROBLEMS[@]}"; do
+        echo " - $line"
+    done
+    echo "After fixing it, run this script again. Questions: $CONTACT_EMAIL"
+    return 1
+}
+
+function diag_offer() {
+    # EXIT trap of install and update. After a failure, or a step that
+    # could not reach SPFBL while the run went on, offers the connection
+    # diagnosis. Interrupted (Ctrl+C) or no terminal: only how to run it.
+    local status=$1 answer
+    trap - EXIT
+    if [ "$status" -ge 128 ] || { [ "$status" -eq 0 ] && [ -z "$DIAG_SUGGEST" ]; }; then
+        exit "$status"
+    fi
+    echo ""
+    if [ "$status" -ne 0 ]; then
+        echo "It was not possible to $DIAG_ACTION the SPFBL Irondome."
+    else
+        echo "The SPFBL Irondome was updated, but this host could not reach SPFBL."
+    fi
+    if (exec < /dev/tty) 2> /dev/null; then
+        read -r -p "Would you like a diagnosis of the connection to SPFBL? [Y/n] " answer < /dev/tty
+        case "$answer" in
+            n|N|no|NO)
+                echo "To run it later: $0 diagnose" ;;
+            *)
+                echo ""
+                diagnose ;;
+        esac
+    else
+        echo "To diagnose the connection to SPFBL: $0 diagnose"
+    fi
+    exit "$status"
 }
 
 function client_check() {
@@ -3488,6 +3865,7 @@ function usage() {
     echo "*** Change the SPFBL access key of this server: $0 key"
     echo "*** Show the control panel and mail server found (changes nothing): $0 detect"
     echo "*** Spamcenter API key of the SPFBL account only: $0 spamcenter"
+    echo "*** Diagnose the connection of this host to SPFBL (changes nothing): $0 diagnose"
 }
 
 function menu() {
@@ -3505,16 +3883,16 @@ function menu() {
     detect_report
     local options=() labels=()
     if detect_installed; then
-        options+=(update uninstall config key spamcenter firewall)
-        labels+=("Update" "Uninstall" "Configure the SPFBL client" "Change the SPFBL access key" "Spamcenter API key" "Firewall")
+        options+=(update uninstall config key spamcenter firewall diagnose)
+        labels+=("Update" "Uninstall" "Configure the SPFBL client" "Change the SPFBL access key" "Spamcenter API key" "Firewall" "Diagnose the connection to SPFBL")
         if [ "$PANEL" = "gateway" ]; then
             options+=(switch rollback)
             labels+=("Switch port 25 to the gateway" "Rollback port 25 to Postfix")
         fi
     elif select_mode; then
         echo "Irondome installation: not found"
-        options+=(install firewall)
-        labels+=("Install" "Firewall only")
+        options+=(install firewall diagnose)
+        labels+=("Install" "Firewall only" "Diagnose the connection to SPFBL")
         if [ "$PANEL" = "gateway" ]; then
             options+=(prepare)
             labels+=("Prepare the gateway in steps (port 25 is switched later)")
@@ -3576,13 +3954,23 @@ fi
 case "$1" in
     install)
         echo "[install] Installing SPFBL Irondome powered by SPFBL.net"
+        # Any failure from here on offers the connection diagnosis.
+        DIAG_ACTION="install"
+        trap 'diag_offer $?' EXIT
         detect_panel
         install
+        # Reaching here is success: every failure above leaves by exit.
+        exit 0
     ;;
     update)
         echo "[update] Updating SPFBL Irondome powered by SPFBL.net"
+        # Any failure from here on offers the connection diagnosis.
+        DIAG_ACTION="update"
+        trap 'diag_offer $?' EXIT
         require_installed
         update
+        # Reaching here is success: every failure above leaves by exit.
+        exit 0
     ;;
     uninstall)
         echo "[uninstall] Uninstalling SPFBL Irondome powered by SPFBL.net"
@@ -3633,6 +4021,11 @@ case "$1" in
     detect)
         echo "[detect] Control panel and mail server of this host (nothing is changed)"
         detect_report
+    ;;
+    diagnose)
+        echo "[diagnose] Connection of this host to SPFBL (nothing is changed)"
+        diagnose
+        exit $?
     ;;
     spamcenter)
         echo "[spamcenter] Configuring the Spamcenter API key of the SPFBL account"
