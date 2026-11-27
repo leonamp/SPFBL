@@ -681,6 +681,33 @@ function diag_port() {
 	fi
 }
 
+function spfblStatus() {
+	# Estado do SPFBL no monitor da HetrixTools (o mesmo do status.spfbl.net):
+	# o primeiro "uptime_status" da resposta é o geral (os seguintes são das
+	# localidades). Saída: maint (manutenção programada), up, down ou
+	# unknown (sem resposta: este servidor também não alcança a HetrixTools).
+	local status
+	status=$(curl -s -f --connect-timeout 5 -m 10 \
+		-H "Authorization: Bearer $HETRIX_KEY" "$HETRIX_URL" 2> /dev/null)
+	if [[ $status =~ \"monitor_status\"[[:space:]]*:[[:space:]]*\"maint\" ]]; then
+		echo "maint"
+	elif [[ $status =~ \"uptime_status\"[[:space:]]*:[[:space:]]*\"(up|down)\" ]]; then
+		echo "${BASH_REMATCH[1]}"
+	else
+		echo "unknown"
+	fi
+}
+
+function spfblStatusLine() {
+	# Linha do estado do SPFBL para o diagnóstico e o aviso ao postmaster.
+	case "$1" in
+		up) echo "SPFBL is online (status.spfbl.net): the problem is on this server or on its path to SPFBL." ;;
+		down) echo "SPFBL is offline (status.spfbl.net): nothing to fix on this server; the messages pass unfiltered until it is back." ;;
+		maint) echo "SPFBL is under scheduled maintenance (status.spfbl.net): try again in a few minutes." ;;
+		*) echo "SPFBL status unknown: this server could not reach status.spfbl.net either." ;;
+	esac
+}
+
 function diag_problem() {
 	# Uma causa provável e o que fazer, guardada para o resumo.
 	DIAG_PROBLEMS+=("$1")
@@ -842,9 +869,11 @@ function diagnose() {
 	# Diagnóstico somente leitura da conexão deste servidor com o SPFBL.
 	# Nada é alterado. Saída 0 sem problema encontrado, 1 com problema.
 	DIAG_PROBLEMS=()
-	local host line ip start ms result server servers count
+	local host line ip start ms result server servers count status
 	host=$(diag_host)
+	status=$(spfblStatus)
 	echo "SPFBL v$version - connection diagnosis of $LOCAL_HOSTNAME (nothing is changed)"
+	echo "$(spfblStatusLine "$status")"
 	echo ""
 
 	# 1. /etc/hosts: uma linha para *.spfbl.net fixa um IP, geralmente
@@ -952,8 +981,11 @@ function diagnose() {
 		echo "   IPv6: no route on this server (the queries use IPv4)."
 	fi
 	if [ -z "$ok4" ] && [ -z "$ok6" ] && [ -n "$ips4$ips6" ]; then
-		if [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
-			if isMaintenance; then
+		if [ "$status" = "down" ]; then
+			# O SPFBL caiu: a falha não é deste servidor.
+			diag_problem "SPFBL is offline (status.spfbl.net). Nothing to fix here: wait until it is back."
+		elif [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
+			if [ "$status" = "maint" ]; then
 				diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
 			else
 				diag_problem "Cloudflare answers, but SPFBL does not (HTTP $code). Try again in a few minutes."
