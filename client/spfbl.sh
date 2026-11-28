@@ -988,9 +988,9 @@ function diagnose() {
 			diag_problem "SPFBL is offline (status.spfbl.net). Nothing to fix here: wait until it is back."
 		elif [[ $code =~ ^(52[0-9]|530|502|503|504)$ ]]; then
 			if [ "$status" = "maint" ]; then
-				diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+				diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net)."
 			else
-				diag_problem "Cloudflare answers, but SPFBL does not (HTTP $code). Try again in a few minutes."
+				diag_problem "Cloudflare answers, but SPFBL does not (HTTP $code)."
 			fi
 		elif [ "$rc" = "51" ] || [ "$rc" = "60" ]; then
 			diag_problem "The certificate of $host could not be verified. Check the clock of this server and update the CA certificates (ca-certificates)."
@@ -1073,7 +1073,7 @@ function diagnose() {
 			if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
 				# Em manutenção programada, a falha é esperada e passa sozinha.
 				if [ "$status" = "maint" ]; then
-					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net)."
 				else
 					diag_problem "The query with the access key does not reach SPFBL, although the tests above pass. Check the outgoing firewall for this process and try again."
 				fi
@@ -1082,9 +1082,9 @@ function diagnose() {
 			echo "   HTTP $code"
 			if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
 				if [ "$status" = "maint" ]; then
-					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net)."
 				else
-					diag_problem "SPFBL answers HTTP $code. Try again in a few minutes."
+					diag_problem "SPFBL answers HTTP $code."
 				fi
 			fi
 		fi
