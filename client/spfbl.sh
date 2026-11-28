@@ -148,7 +148,7 @@ COMMAND="curl -4 -s -f --connect-timeout 3 -m $QUERY_TIMEOUT --data-binary @- $U
 # COMMAND="$NCAT $IP_SERVIDOR $PORTA_SERVIDOR"
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-version="3.09"
+version="3.10"
 
 # Contador de timeouts seguidos. Guarda também o estado MAINTENANCE,
 # gravado quando a primeira falha de um evento coincide com a janela de
@@ -701,9 +701,11 @@ function spfblStatus() {
 function spfblStatusLine() {
 	# Linha do estado do SPFBL para o diagnóstico e o aviso ao postmaster.
 	case "$1" in
-		up) echo "SPFBL is online (status.spfbl.net): the problem is on this server or on its path to SPFBL." ;;
+		# Só o estado: a causa, quando houver, vem no resumo do diagnóstico.
+		# A consulta do passo 7 pode funcionar mesmo em manutenção.
+		up) echo "SPFBL is online (status.spfbl.net)." ;;
 		down) echo "SPFBL is offline (status.spfbl.net): nothing to fix on this server; the messages pass unfiltered until it is back." ;;
-		maint) echo "SPFBL is under scheduled maintenance (status.spfbl.net): try again in a few minutes." ;;
+		maint) echo "SPFBL is under scheduled maintenance (status.spfbl.net)." ;;
 		*) echo "SPFBL status unknown: this server could not reach status.spfbl.net either." ;;
 	esac
 }
@@ -1068,10 +1070,23 @@ function diagnose() {
 			diag_problem "SPFBL refuses the queries of this server: $(diag_key_reason "$body")"
 		elif [[ $code == "000" ]]; then
 			echo "   no connection"
-			[ "${#DIAG_PROBLEMS[@]}" -eq 0 ] && diag_problem "The query with the access key does not reach SPFBL, although the tests above pass. Check the outgoing firewall for this process and try again."
+			if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
+				# Em manutenção programada, a falha é esperada e passa sozinha.
+				if [ "$status" = "maint" ]; then
+					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+				else
+					diag_problem "The query with the access key does not reach SPFBL, although the tests above pass. Check the outgoing firewall for this process and try again."
+				fi
+			fi
 		else
 			echo "   HTTP $code"
-			[ "${#DIAG_PROBLEMS[@]}" -eq 0 ] && diag_problem "SPFBL answers HTTP $code. Try again in a few minutes."
+			if [ "${#DIAG_PROBLEMS[@]}" -eq 0 ]; then
+				if [ "$status" = "maint" ]; then
+					diag_problem "SPFBL is under scheduled maintenance (https://status.spfbl.net). Try again in a few minutes."
+				else
+					diag_problem "SPFBL answers HTTP $code. Try again in a few minutes."
+				fi
+			fi
 		fi
 	fi
 
