@@ -27,22 +27,30 @@ LOG_DIR=/var/log/spfbl
 PID_FILE=/run/spfbl.pid
 LOCK_FILE=/run/spfbl-init.lock
 ADMIN_PORT=9875
-# RAM nominal da instância, em MB (8 GB para uma instância de 8 GB), e não
-# o MemTotal, que vem abaixo disso pelo que o kernel reserva. Soma os
-# blocos de memória online do /sys, como o lsmem. Sem esse /sys, usa o
-# MemTotal arredondado para cima em múltiplos de 4 GB, o passo dos tipos
-# de instância.
+# RAM nominal da instância, em MB (32768 para uma instância de 32 GB), e
+# não o que o sistema enxerga, que vem abaixo disso: o MemTotal perde o que
+# o kernel reserva, e os blocos de memória online do /sys (a soma do lsmem)
+# perdem o buraco de endereços abaixo de 4 GB (32256 MB numa de 32 GB).
+# Os blocos do /sys chegam mais perto; sem eles, vale o MemTotal. Os dois
+# são arredondados para cima no passo dos tipos de instância: múltiplos de
+# 4 GB acima de 3 GB, e de 512 MB nas menores (1 GB, 2 GB).
 instance_mb() {
     dir=/sys/devices/system/memory
+    mb=0
     if [ -r "$dir/block_size_bytes" ]; then
         size=$(cat "$dir/block_size_bytes")
         count=$(grep -l '^online' "$dir"/memory*/state 2>/dev/null | wc -l)
-        if [ "$count" -gt 0 ]; then
-            echo $(( count * 0x$size / 1048576 ))
-            return
-        fi
+        mb=$(( count * 0x$size / 1048576 ))
     fi
-    awk '/^MemTotal:/ { m = $2 / 1024; s = 4096; print int((m + s - 1) / s) * s }' /proc/meminfo
+    if [ "$mb" -le 0 ]; then
+        mb=$(awk '/^MemTotal:/ { print int(($2 + 1023) / 1024) }' /proc/meminfo)
+    fi
+    if [ "$mb" -gt 3072 ]; then
+        step=4096
+    else
+        step=512
+    fi
+    echo $(( (mb + step - 1) / step * step ))
 }
 
 # Heap (-Xms e -Xmx): sempre 50% da RAM da instância, em múltiplos de
