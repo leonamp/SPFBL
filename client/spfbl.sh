@@ -4333,7 +4333,7 @@ case $1 in
 
 		if [ $# -lt "3" ]; then
 			head
-			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Message-ID:[<messageid>]' 'In-Reply-To:[<inreplyto>]' 'Date:[<date>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]' 'Queue-ID:[<queueid>]'\n"
+			printf "Faltando parametro(s).\nSintaxe: $0 header <ticket> 'From:[<from>]' 'Reply-To:[<replyto>]' 'Message-ID:[<messageid>]' 'In-Reply-To:[<inreplyto>]' 'Date:[<date>]' 'Subject:[<subject>]' 'List-Unsubscribe:[<url>]' 'Queue-ID:[<queueid>]' ['Length:<bytes>']\n"
 		else
 			ticket=$2
 			from=$3
@@ -4343,8 +4343,12 @@ case $1 in
 			subject=$7
 			unsubscribe=$8
 			queueID=$9
+			# Tamanho da mensagem em bytes, opcional: só os MX do SPFBL.net
+			# informam, para cobrar o spfbl_incoming_bytes (a transferência
+			# do remetente até o MX). Vai por último, depois do Queue-ID.
+			length=${10}
 
-			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID" | spfbl_query 2> /dev/null)
+			response=$(echo "HEADER $ticket $from $replyto $messageID $date $subject $unsubscribe $queueID${length:+ $length}" | spfbl_query 2> /dev/null)
 
 			if [[ $response == "" ]]; then
 				response=$(emptyResponse)
